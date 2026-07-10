@@ -1591,7 +1591,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
 # Image generation
 # ---------------------------------------------------------------------------
 
-async def do_generate_image(content: str, session_id: Optional[str] = None, owner: Optional[str] = None, character: Optional[str] = None) -> Dict:
+async def do_generate_image(content: str, session_id: Optional[str] = None, owner: Optional[str] = None, character: Optional[str] = None, steps: Optional[int] = None, cfg: Optional[float] = None) -> Dict:
     """Generate an image using an image-capable model (e.g. gpt-image-1).
 
     Content format:
@@ -1713,6 +1713,14 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
     # cloud image APIs would reject an unknown field.
     if character and is_local_diffusion:
         payload["character"] = character
+
+    # Per-style sampler budget (turbo vs standard SDXL). Local bridge reads
+    # these; cloud APIs would reject the unknown fields, so local only.
+    if is_local_diffusion:
+        if steps:
+            payload["steps"] = steps
+        if cfg:
+            payload["cfg"] = cfg
 
     logger.info(
         "Image generation: endpoint=%s, model=%s, size=%s, quality=%s, char=%s, prompt=%s",

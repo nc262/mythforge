@@ -37,6 +37,7 @@ from src.ai_interaction import do_generate_image, _resolve_model
 from src.llm_core import llm_call_async
 from src import party_registry
 from src import campaign_memory
+from src import art_styles
 from routes.gallery_routes import _first_visible_image_endpoint
 
 logger = logging.getLogger(__name__)
@@ -342,7 +343,7 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
     # The client treats the server as the source of truth on load and pushes
     # each save back here. Writes are serialized (read-modify-write the whole
     # file) so concurrent kind-saves can't clobber each other.
-    _WS_KINDS = {"mem", "codex", "quests", "combat", "sheet", "gm", "notes", "bmap", "inv", "clock", "world", "rel", "cworlds", "cstories"}
+    _WS_KINDS = {"mem", "codex", "quests", "combat", "sheet", "gm", "notes", "bmap", "inv", "clock", "world", "rel", "cworlds", "cstories", "artstyle"}
 
     def _world_state_path():
         return os.path.join(os.path.dirname(preset_manager.presets_file), "studio_world_state.json")
@@ -388,8 +389,17 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
             raise HTTPException(400, "prompt is required")
         size = (data.get("size") or "1024x1024").strip()
         character = (data.get("character") or "").strip() or None
-        content = f"{prompt}\n\n{size}"
-        result = await do_generate_image(content, session_id=None, owner=user, character=character)
+        # Art style → a specific checkpoint + its sampler budget (turbo vs
+        # standard SDXL). Line 2 of content is the model the bridge loads; when
+        # the style isn't installed we fall through to the bridge's default.
+        style = art_styles.resolve_for_generation((data.get("style") or "").strip())
+        ckpt = style["ckpt"] if style else ""
+        content = f"{prompt}\n{ckpt}\n{size}"
+        result = await do_generate_image(
+            content, session_id=None, owner=user, character=character,
+            steps=(style["steps"] if style else None),
+            cfg=(style["cfg"] if style else None),
+        )
         if result.get("error"):
             raise HTTPException(502, result["error"])
         image_url = result.get("image_url", "")
@@ -722,6 +732,29 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
             _mem_dir(), _mem_key(user, cid), query, k=int(data.get("k") or 5),
         )
         return {"ok": True, "beats": beats}
+
+    # ── Art styles (§ picker) ────────────────────────────────────────────────
+    # Each style is a full SDXL checkpoint the ComfyUI bridge loads by name;
+    # un-installed styles download on demand from Hugging Face. The world stores
+    # its chosen style (world-state kind "artstyle"); generation threads the
+    # matching checkpoint + sampler budget into do_generate_image.
+    @router.get("/api/characters/studio/art-styles")
+    async def studio_art_styles(request: Request):
+        get_current_user(request)
+        return {"ok": True, "styles": art_styles.list_styles()}
+
+    @router.post("/api/characters/studio/art-styles/download")
+    async def studio_art_style_download(request: Request):
+        get_current_user(request)
+        data = await request.json()
+        style_id = (data.get("id") or "").strip()
+        prog = art_styles.start_download(style_id)
+        return {"ok": prog.get("state") != "error", "id": style_id, "progress": prog}
+
+    @router.get("/api/characters/studio/art-styles/progress/{style_id}")
+    async def studio_art_style_progress(request: Request, style_id: str):
+        get_current_user(request)
+        return {"ok": True, "id": style_id, "progress": art_styles.get_progress(style_id)}
 
     @router.post("/api/characters/studio/codex")
     async def studio_codex(request: Request):

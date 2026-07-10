@@ -69,6 +69,10 @@ class ImageRequest(BaseModel):
     # Optional pass-throughs (Odysseus doesn't send these today, but harmless):
     negative_prompt: str | None = None
     seed: int | None = None
+    # Per-request sampler budget so turbo (~6 steps) and standard SDXL (~30) art
+    # styles can coexist behind one bridge. Fall back to launch flags when unset.
+    steps: int | None = None
+    cfg: float | None = None
     # When set (e.g. "meg", "lilly"), condition generation on that character's
     # reference photos via IP-Adapter so the look stays consistent across scenes.
     character: str | None = None
@@ -164,7 +168,7 @@ def _steps_for_quality(quality: str) -> int:
 
 
 def _build_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
-                    steps: int, seed: int) -> dict:
+                    steps: int, seed: int, cfg: float = None) -> dict:
     """Minimal SDXL txt2img graph in ComfyUI API ('prompt') format.
 
     The 'cudnn' node forces torch.backends.cudnn.enabled=False before sampling.
@@ -203,7 +207,7 @@ def _build_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
                 "latent_image": ["latent", 0],
                 "seed": seed,
                 "steps": steps,
-                "cfg": _args.cfg,
+                "cfg": cfg if cfg is not None else _args.cfg,
                 "sampler_name": _args.sampler,
                 "scheduler": _args.scheduler,
                 "denoise": 1.0,
@@ -301,14 +305,15 @@ async def _list_checkpoints(client: httpx.AsyncClient) -> list[str]:
 
 
 async def _generate_one(client: httpx.AsyncClient, prompt: str, negative: str,
-                        w: int, h: int, steps: int, ckpt: str, ref_image: str | None = None) -> str:
+                        w: int, h: int, steps: int, ckpt: str, ref_image: str | None = None,
+                        cfg: float = None) -> str:
     """Queue one txt2img job, wait for it, return base64 PNG. If ref_image is
     given, condition the generation on it via IP-Adapter (consistent character)."""
     seed = random.randint(1, 2**63 - 1)
     if ref_image:
         workflow = _build_ipadapter_workflow(ckpt, prompt, negative, w, h, steps, seed, ref_image)
     else:
-        workflow = _build_workflow(ckpt, prompt, negative, w, h, steps, seed)
+        workflow = _build_workflow(ckpt, prompt, negative, w, h, steps, seed, cfg)
     client_id = uuid.uuid4().hex
 
     resp = await client.post(
@@ -367,7 +372,10 @@ async def generate(req: ImageRequest):
     if not req.prompt:
         return {"error": {"message": "prompt is required"}}
     w, h = _parse_size(req.size)
-    steps = _steps_for_quality(req.quality)
+    # A style may pin its own sampler budget (turbo vs standard SDXL); else the
+    # quality→steps curve off the launch default.
+    steps = req.steps if req.steps else _steps_for_quality(req.quality)
+    cfg = req.cfg  # None → _build_workflow uses _args.cfg
     negative = req.negative_prompt or _args.negative
     n = max(1, min(4, req.n))
     try:
@@ -389,7 +397,7 @@ async def generate(req: ImageRequest):
                     logger.info("character %r -> appearance anchor (%d chars)", req.character, len(appearance))
             data = []
             for _ in range(n):
-                b64 = await _generate_one(client, prompt, negative, w, h, steps, ckpt, ref_image)
+                b64 = await _generate_one(client, prompt, negative, w, h, steps, ckpt, ref_image, cfg)
                 data.append({"b64_json": b64})
         return {"created": 0, "data": data}
     except Exception as e:

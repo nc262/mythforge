@@ -305,6 +305,7 @@ function renderWorlds() {
 
 function renderWorldDetail(world) {
   _world = world;
+  _activeStyle = _loadWorldStyle(world.id);   // per-world art style rides all image gen this world
   applyWorldTheme(world.id);
   const root = $('studio-worlds');
   if (!root) return;
@@ -344,6 +345,11 @@ function renderWorldDetail(world) {
         <p class="world-lore">${_esc(world.lore)}</p>
       </div>
     </div>
+    <div class="world-style-bar">
+      <label for="world-style">✦ Art style</label>
+      <select id="world-style" class="st-select" aria-label="Art style for this world"></select>
+      <span class="style-note" id="world-style-note" role="status" aria-live="polite"></span>
+    </div>
     <p class="section-rule">Adventures <span class="rule-hint">a Dungeon Master narrates &amp; drives the story</span></p>
     <div class="adventure-grid">${adv}</div>
     <p class="section-rule">The cast <span class="rule-hint">chat one-to-one, no Dungeon Master</span></p>
@@ -351,6 +357,37 @@ function renderWorldDetail(world) {
     ${world.custom ? `<div class="world-admin"><button class="st-btn small ghost" id="world-export" type="button">⬇ Export world</button> <button class="st-btn small ghost" id="world-delete" type="button">Unmake this world</button></div>` : ''}`;
   root.scrollTop = 0;
   $('worlds-back').addEventListener('click', () => { renderWorlds(); });
+  // Art-style picker: pick a look for this world; un-installed styles offer a
+  // one-time "free style pack" download with live progress, then become active.
+  (async () => {
+    const sel = $('world-style'); const note = $('world-style-note');
+    if (!sel) return;
+    const styles = await _fetchArtStyles();
+    if (!styles.length) { sel.closest('.world-style-bar')?.remove(); return; }   // image gen not set up
+    const saved = _loadWorldStyle(world.id);
+    const cur = styles.find(s => s.id === saved) ? saved : (styles.find(s => s.installed)?.id || styles[0].id);
+    _activeStyle = cur;
+    sel.innerHTML = styles.map(s => `<option value="${_esc(s.id)}"${s.id === cur ? ' selected' : ''}>${_esc(s.label)}${s.installed ? '' : ` — download ~${s.size_gb} GB`}</option>`).join('');
+    const setNote = (t) => { if (note) note.textContent = t || ''; };
+    if (!styles.find(s => s.id === cur)?.installed && cur !== _activeStyle) setNote('');
+    sel.addEventListener('change', async () => {
+      const id = sel.value;
+      const st = (await _fetchArtStyles()).find(s => s.id === id);
+      if (st && !st.installed) {
+        if (!confirm(`Download the "${st.label}" style pack (~${st.size_gb} GB)?\n\nIt's a free, one-time download. The game keeps playing while it fetches.`)) { sel.value = _activeStyle; return; }
+        sel.disabled = true;
+        setNote(`Downloading ${st.label}… 0%`);
+        const ok = await _downloadStyle(id, (p) => setNote(`Downloading ${st.label}… ${p.pct || 0}%${p.total_mb ? ` (${p.mb || 0}/${p.total_mb} MB)` : ''}`));
+        sel.disabled = false;
+        if (!ok) { setNote('Download failed — try again.'); sel.value = _activeStyle; return; }
+        // refresh option labels (drop the "download" hint on the now-installed one)
+        const fresh = await _fetchArtStyles(true);
+        sel.innerHTML = fresh.map(s => `<option value="${_esc(s.id)}"${s.id === id ? ' selected' : ''}>${_esc(s.label)}${s.installed ? '' : ` — download ~${s.size_gb} GB`}</option>`).join('');
+        setNote(`${st.label} ready ✓`);
+      } else { setNote(''); }
+      _saveWorldStyle(world.id, id);
+    });
+  })();
   $('world-export')?.addEventListener('click', () => {
     const blob = new Blob([JSON.stringify(world, null, 2)], { type: 'application/json' });
     const a = document.createElement('a');
@@ -3441,7 +3478,41 @@ function _toast(msg) {
   setTimeout(() => t.remove(), 4200);
 }
 let _artInFlight = 0, _artToastAt = 0;
+// ── Art styles (per-world image checkpoint) ─────────────────────────────────
+// Each world can pick an SDXL checkpoint ("Realism", "High Fantasy", …). The
+// choice rides every /studio/generate call (injected in _artFetch below, so all
+// ~12 call sites are covered in one place); the server maps it to a checkpoint.
+let _activeStyle = '';
+let _artStyleCache = null;
+const _STYLE_KEY = (wid) => `studio-artstyle-${wid}`;
+function _loadWorldStyle(wid) { try { return localStorage.getItem(_STYLE_KEY(wid)) || ''; } catch { return ''; } }
+function _saveWorldStyle(wid, id) { try { localStorage.setItem(_STYLE_KEY(wid), id || ''); } catch {} _activeStyle = id || ''; }
+async function _fetchArtStyles(force) {
+  if (_artStyleCache && !force) return _artStyleCache;
+  try { const d = await (await fetch(`${API_BASE}/api/characters/studio/art-styles`)).json(); _artStyleCache = d.styles || []; } catch { _artStyleCache = []; }
+  return _artStyleCache;
+}
+// Kick a download, then poll progress until done/error. onProg(pct, mb, total).
+async function _downloadStyle(id, onProg) {
+  try { await fetch(`${API_BASE}/api/characters/studio/art-styles/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch { return false; }
+  return new Promise((resolve) => {
+    const tick = async () => {
+      let p = {};
+      try { p = ((await (await fetch(`${API_BASE}/api/characters/studio/art-styles/progress/${encodeURIComponent(id)}`)).json()) || {}).progress || {}; } catch {}
+      if (onProg) onProg(p);
+      if (p.state === 'done') { _artStyleCache = null; resolve(true); }
+      else if (p.state === 'error') { resolve(false); }
+      else setTimeout(tick, 1500);
+    };
+    tick();
+  });
+}
+
 function _artFetch(url, opts) {
+  // Thread the world's chosen art style into every image-gen call, in one place.
+  if (_activeStyle && typeof url === 'string' && url.indexOf('/studio/generate') >= 0 && opts && typeof opts.body === 'string') {
+    try { const b = JSON.parse(opts.body); if (b && !b.style) { b.style = _activeStyle; opts = { ...opts, body: JSON.stringify(b) }; } } catch {}
+  }
   _artInFlight++;
   if (_artInFlight > 1 && Date.now() - _artToastAt > 20000) {
     _artToastAt = Date.now();
