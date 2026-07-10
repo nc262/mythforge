@@ -40,7 +40,7 @@ STYLES: List[Dict] = [
         "desc": "Anime-styled fantasy — dragons, myth, vivid heroes.",
         "repo": "cagliostrolab/animagine-xl-3.1",
         "ckpt": "animagine-xl-3.1.safetensors",
-        "size_gb": 6.9, "steps": 28, "cfg": 6.0,
+        "size_gb": 6.9, "steps": 36, "cfg": 6.0,
     },
     {
         "id": "semireal", "label": "Semi-Real / 3D",
