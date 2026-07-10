@@ -8,6 +8,9 @@ APP_VERSION = "1.0.0"
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
 STATIC_DIR = os.path.join(BASE_DIR, "static")
 DATA_DIR = os.getenv("ODYSSEUS_DATA_DIR", os.path.join(BASE_DIR, "data"))
+# Create the data dir on first import so a fresh clone boots without a manual
+# `mkdir data` (the SQLite DB and every persisted file live under here).
+os.makedirs(DATA_DIR, exist_ok=True)
 
 # Data file paths
 # Single source of truth: every persisted file/dir lives under DATA_DIR, which
