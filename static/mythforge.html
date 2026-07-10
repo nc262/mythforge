@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mythforge</title>
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 3 L19 13 L29 16 L19 19 L16 29 L13 19 L3 16 L13 13 Z' fill='%23e8c171'/%3E%3C/svg%3E">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#282c34">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="format-detection" content="telephone=no, date=no, address=no, email=no">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
+  <!-- Pre-paint theme: apply the saved theme's CSS vars before first render so
+       there's no flash. Copied from the Odysseus index.html boot (studio.css
+       reads these vars). -->
+  <script nonce="{{CSP_NONCE}}">
+  window._odysseusLoadTime = Date.now();
+  (function(){
+    try {
+      var t = JSON.parse(localStorage.getItem('odysseus-theme'));
+      if (t && t.colors) {
+        var s = document.documentElement.style;
+        var c = t.colors;
+        s.setProperty('--bg', c.bg);
+        s.setProperty('--fg', c.fg);
+        s.setProperty('--panel', c.panel);
+        s.setProperty('--border', c.border);
+        if (c.red) s.setProperty('--red', c.red);
+        var _bc = (c.advanced && c.advanced.brandColor) || c.red;
+        if (_bc) s.setProperty('--brand-color', _bc);
+        var mtc = document.querySelector('meta[name="theme-color"]');
+        if (mtc && c.bg) mtc.setAttribute('content', c.bg);
+        var ac = c.red || '#e8c171';
+        var fav = document.querySelector("link[rel='icon']");
+        if (fav) fav.href = 'data:image/svg+xml,' + encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 3 L19 13 L29 16 L19 19 L16 29 L13 19 L3 16 L13 13 Z' fill='" + ac + "'/></svg>");
+        function h2hsl(hex) {
+          hex = hex.replace('#','');
+          var r=parseInt(hex.substring(0,2),16)/255, g=parseInt(hex.substring(2,4),16)/255, b=parseInt(hex.substring(4,6),16)/255;
+          var mx=Math.max(r,g,b), mn=Math.min(r,g,b), h, sv, l=(mx+mn)/2;
+          if(mx===mn){h=sv=0}else{var d=mx-mn;sv=l>0.5?d/(2-mx-mn):d/(mx+mn);if(mx===r)h=((g-b)/d+(g<b?6:0))/6;else if(mx===g)h=((b-r)/d+2)/6;else h=((r-g)/d+4)/6}
+          return[h*360,sv*100,l*100];
+        }
+        function hsl2h(h,sv,l) {
+          h=((h%360)+360)%360;sv=Math.max(0,Math.min(100,sv))/100;l=Math.max(0,Math.min(100,l))/100;
+          var a=sv*Math.min(l,1-l);function f(n){var k=(n+h/30)%12;return l-a*Math.max(-1,Math.min(k-3,9-k,1))}
+          function th(v){return Math.round(v*255).toString(16).padStart(2,'0')}
+          return'#'+th(f(0))+th(f(8))+th(f(4));
+        }
+        var fH=h2hsl(c.fg),bH=h2hsl(c.bg),rH=h2hsl(c.red||'#e06c75');
+        var dk=bH[2]<50;
+        s.setProperty('--hl-bg', hsl2h(bH[0],bH[1],dk?Math.max(bH[2]-4,0):Math.min(bH[2]+4,100)));
+        s.setProperty('--hl-fg', c.fg);
+        s.setProperty('--hl-keyword', hsl2h((rH[0]+280)%360,Math.min(rH[1]+10,80),dk?70:45));
+        s.setProperty('--hl-string', hsl2h(40,Math.min(fH[1]+20,70),dk?72:42));
+        s.setProperty('--hl-comment', hsl2h(fH[0],Math.max(fH[1]-20,5),(fH[2]*0.5+bH[2]*0.5)));
+        s.setProperty('--hl-function', hsl2h(210,Math.min(fH[1]+20,75),dk?70:45));
+        s.setProperty('--hl-number', hsl2h(20,Math.min(fH[1]+15,65),dk?68:48));
+        s.setProperty('--hl-builtin', hsl2h(180,Math.min(fH[1]+15,60),dk?65:40));
+        s.setProperty('--hl-variable', hsl2h((fH[0]+30)%360,Math.min(fH[1]+5,60),fH[2]));
+        s.setProperty('--hl-params', hsl2h(fH[0],Math.max(fH[1]-5,10),dk?Math.min(fH[2]+8,85):Math.max(fH[2]-8,25)));
+        if (c.advanced) {
+          var a = c.advanced;
+          var advMap = {userBubbleBg:'--user-bubble-bg',aiBubbleBg:'--ai-bubble-bg',bubbleBorder:'--bubble-border',sidebarBg:'--sidebar-bg',sectionAccent:'--section-accent',brandColor:'--brand-color',inputBg:'--input-bg',inputBorder:'--input-border',sendBtnBg:'--send-btn-bg',sendBtnHover:'--send-btn-hover',codeBg:'--code-bg',codeFg:'--code-fg',toggleBg:'--toggle-bg',toggleActive:'--toggle-active',accentPrimary:'--accent-primary',accentError:'--accent-error'};
+          for (var k in advMap) { if (a[k]) s.setProperty(advMap[k], a[k]); }
+        }
+      }
+      if (t && t.font) {
+        var fm = {mono:"'Fira Code', monospace",sans:"system-ui, -apple-system, 'Segoe UI', sans-serif",serif:"Georgia, 'Times New Roman', serif"};
+        if (fm[t.font]) { document.documentElement.style.setProperty('--font-family', fm[t.font]); }
+        else { document.documentElement.style.setProperty('--font-family', "'" + t.font.replace(/'/g,'') + "', sans-serif"); }
+      }
+      if (t && t.density && t.density !== 'comfortable') {
+        document.documentElement.classList.add('density-' + t.density);
+      }
+      if (t && t.bgPattern && t.bgPattern !== 'none') {
+        document.addEventListener('DOMContentLoaded', function() {
+          document.body.classList.add('bg-pattern-' + t.bgPattern);
+        }, {once:true});
+      }
+    } catch(e){}
+  })();
+  </script>
+  <script defer src="/static/lib/highlight.min.js"></script>
+  <style>
+    @font-face { font-family: 'Inter'; font-weight: 400; font-style: normal; font-display: swap; src: url('/static/fonts/Inter-Regular.woff2') format('woff2'); }
+    @font-face { font-family: 'Inter'; font-weight: 500; font-style: normal; font-display: swap; src: url('/static/fonts/Inter-Medium.woff2') format('woff2'); }
+    @font-face { font-family: 'Inter'; font-weight: 600; font-style: normal; font-display: swap; src: url('/static/fonts/Inter-SemiBold.woff2') format('woff2'); }
+  </style>
+  <link id="katex-css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.css" media="print">
+  <script async src="https://cdn.jsdelivr.net/npm/katex@0.16.22/dist/katex.min.js"></script>
+  <script id="mermaid-script" async src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+  <script nonce="{{CSP_NONCE}}">
+    (function(){
+      var k = document.getElementById('katex-css');
+      if (k) k.addEventListener('load', function(){ k.media = 'all'; }, { once: true });
+      var m = document.getElementById('mermaid-script');
+      if (m) m.addEventListener('load', function(){
+        if (window.odysseusInitMermaid) window.odysseusInitMermaid();
+      }, { once: true });
+    })();
+  </script>
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/studio.css">
+</head>
+<body class="game-mode studio-open">
+
+  <!-- Character Studio / Mythforge: full-surface fantasy-RPG.
+       Shell only; views are rendered by js/characterStudio.js. -->
+  <div id="studio-modal" class="studio-root" role="dialog" aria-modal="true" aria-label="Mythforge">
+    <div id="studio-backdrop" class="studio-backdrop" aria-hidden="true"></div>
+    <canvas id="studio-bg-canvas" class="studio-bg-canvas" aria-hidden="true"></canvas>
+    <div class="studio-stars" aria-hidden="true"></div>
+    <div class="studio-topbar">
+      <div class="studio-brand"><span class="st-spark" aria-hidden="true">✦</span> Mythforge</div>
+      <div class="studio-tabs" role="tablist" aria-label="Studio views">
+        <button class="studio-tab active" data-view="worlds" role="tab" type="button">Worlds</button>
+        <button class="studio-tab" data-view="campaigns" role="tab" type="button">Campaigns</button>
+        <button class="studio-tab" data-view="roster" role="tab" type="button">Characters</button>
+      </div>
+      <div class="studio-spacer"></div>
+      <button class="studio-close studio-close-labeled" id="studio-close" type="button" aria-label="Back to the worlds gallery">⌂ Worlds</button>
+    </div>
+    <div class="studio-view" id="studio-worlds-view" role="tabpanel"><div class="studio-inner" id="studio-worlds"></div></div>
+    <div class="studio-view" id="studio-campaigns-view" role="tabpanel" hidden><div class="studio-inner" id="studio-campaigns"></div></div>
+    <div class="studio-view" id="studio-roster-view" role="tabpanel" hidden><div class="studio-inner" id="studio-roster"></div></div>
+    <div class="studio-view" id="studio-forge-view" role="tabpanel" hidden><div class="studio-inner" id="studio-forge"></div></div>
+    <div class="studio-view" id="studio-chat-view" role="tabpanel" hidden><div class="studio-chat" id="studio-chat"></div></div>
+  </div>
+
+  <!-- Minimized-window dock + toast: shared UI surfaces ui.js/modalManager
+       render into. -->
+  <div id="minimized-dock" class="minimized-dock" aria-label="Minimized windows"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <!-- models.js self-registers window.modelsModule; the boot then wires the
+       studio. Both pull their shared deps via ES imports. -->
+  <script type="module" nonce="{{CSP_NONCE}}">
+    import modelsModule from '/static/js/models.js';
+    import characterStudio from '/static/js/characterStudio.js';
+
+    const API = window.location.origin;
+    modelsModule.init(API);
+    characterStudio.init(API);
+    characterStudio.open();
+
+    // Standalone Mythforge has no separate SPA "title screen" to return to —
+    // the studio's own close() hides the modal + does its cleanup (stop music,
+    // party, ambient), so re-open straight back into the Worlds gallery.
+    document.getElementById('studio-close')?.addEventListener('click', () => {
+      characterStudio.open();
+    });
+  </script>
+</body>
+</html>
