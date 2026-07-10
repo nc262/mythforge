@@ -378,13 +378,32 @@
 @keyframes st-blink { 0%,60%,100%{opacity:.3} 30%{opacity:1} }
 
 .chat-composer {
-  display: flex; gap: 10px; padding: 14px 24px 18px; border-top: 1px solid var(--st-border-soft);
-  background: linear-gradient(0deg, rgba(18,14,38,.85), transparent);
+  display: flex; gap: 8px; padding: 14px 24px 18px; border-top: 1px solid var(--st-border-soft);
+  background: linear-gradient(0deg, rgba(18,14,38,.92), rgba(18,14,38,.5) 60%, transparent);
 }
 .chat-composer textarea {
-  flex: 1; max-height: 160px; min-height: 46px; border-radius: 12px;
+  flex: 1; max-height: 160px; min-height: 48px; border-radius: 14px;
+  background: color-mix(in oklab, var(--st-surface) 88%, #000);
+  border: 1px solid var(--st-border); color: var(--st-ink);
+  padding: 13px 15px; font: inherit; font-size: 14.5px; line-height: 1.5;
+  resize: none; transition: border-color .18s ease-out, box-shadow .18s ease-out, background .18s ease-out;
 }
-.chat-composer .send-btn { align-self: flex-end; }
+.chat-composer textarea::placeholder { color: var(--st-ink-soft); }
+.chat-composer textarea:focus {
+  outline: none; border-color: var(--st-gold-soft);
+  background: var(--st-surface);
+  box-shadow: 0 0 0 3px rgba(232,193,113,.15);
+}
+.chat-composer .send-btn { align-self: flex-end; height: 48px; }
+/* "Ask for a picture" — companion chats can request an in-the-moment portrait */
+.chat-composer .pic-btn {
+  align-self: flex-end; height: 48px; width: 46px; padding: 0; font-size: 18px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center; flex: none;
+  transition: transform .15s ease-out, border-color .18s ease-out;
+}
+.chat-composer .pic-btn:hover:not(:disabled) { transform: translateY(-1px); border-color: var(--st-gold-soft); }
+.chat-composer .pic-btn:disabled { opacity: .5; cursor: progress; }
+@media (prefers-reduced-motion: reduce) { .chat-composer .pic-btn:hover:not(:disabled) { transform: none; } }
 
 .chat-back {
   display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--st-ink-soft);

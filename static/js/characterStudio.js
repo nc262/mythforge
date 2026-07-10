@@ -1658,6 +1658,7 @@ function renderChatShell(char) {
       <button class="st-btn small ghost" id="studio-skillcheck" type="button" title="Roll a skill or ability check on your own">🎲 Check</button>
     </div>` : ''}
     <div class="chat-composer">
+      ${isDM ? '' : `<button class="st-btn ghost pic-btn" id="studio-ask-pic" type="button" title="Ask ${_esc(char.name)} for a picture" aria-label="Ask ${_esc(char.name)} for a picture">📷</button>`}
       <textarea id="studio-composer" rows="1" placeholder="${isDM ? 'What do you do?' : `Say something to ${_esc(char.name)}…`}"></textarea>
       <button class="st-btn primary send-btn" id="studio-send" type="button">Send</button>
     </div>`;
@@ -1727,6 +1728,7 @@ function renderChatShell(char) {
   });
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; });
   $('studio-send').addEventListener('click', () => sendChat());
+  $('studio-ask-pic')?.addEventListener('click', () => _askForPicture());
 }
 
 // Adventures are Game-Master ("dm-*") sessions. Tag them server-side into an
@@ -2025,6 +2027,38 @@ function _howToPlay() {
 async function _dmKickoff() {
   const playerLine = _chat.playAs ? ` The player is playing as ${_chat.playAs}.` : '';
   await _streamAssistant(`[Begin the adventure now. Set the opening scene vividly in second person and end by asking what I do. Do not speak or act for me.${playerLine}]`);
+}
+
+// Companion chats: ask the character to share an in-the-moment picture. Same
+// image endpoint as portraits — conditioned on the character (IP-adapter, so a
+// character with saved refs stays on-model) and the world's art style (threaded
+// via _artFetch) — dropped in as a message from them.
+async function _askForPicture() {
+  if (!_chat.char || _chat.streaming) return;
+  const char = _chat.char;
+  const btn = $('studio-ask-pic'); if (btn) btn.disabled = true;
+  const wrap = _appendBubble('them', '<span class="rp-typing"><span class="dot">✦</span> taking a picture…</span>');
+  const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
+  _scrollChat();
+  try {
+    const bits = [char.name, char.role, char.blurb].filter(Boolean).join(', ');
+    const prompt = `${bits}, candid in-the-moment portrait, looking toward you`;
+    const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, character: char.id }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.image_url && bubble) {
+      bubble.innerHTML = `<em>${_esc(char.name)} shares a picture.</em><img class="rp-photo" src="${_esc(d.image_url)}" alt="A picture from ${_esc(char.name)}" loading="lazy">`;
+    } else if (bubble) {
+      bubble.innerHTML = `<span class="rp-typing">${_esc(char.name)} couldn't get a good shot just now.</span>`;
+    }
+  } catch (e) {
+    if (bubble) bubble.innerHTML = `<span class="rp-typing">The picture didn't come through — try again.</span>`;
+  } finally {
+    if (btn) btn.disabled = false;
+    _scrollChat();
+  }
 }
 
 // Shared streaming core: re-assert the active persona, spawn the reply bubble,
