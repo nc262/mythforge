@@ -165,17 +165,23 @@ function _buildModelRow(mid, url, displayName, endpointId, offline, modelType) {
 
 export async function refreshModels(force = false) {
   const box = document.getElementById('models');
-  if (!box) return;
+  // NOTE: no early return when #models is absent — the standalone Mythforge
+  // entry page has no model-switcher UI but still needs the data cache
+  // (_cachedItems) populated so narration/companion chats can resolve an
+  // endpoint. Fetch always; only render the switcher UI when #models exists.
 
   // Skip network fetch if cache is fresh and not forced — still re-render UI
   const now = Date.now();
   const needsFetch = force || _cachedItems.length === 0 || (now - _lastFetchTime) >= _FETCH_CACHE_TTL;
 
-  box.innerHTML = '';
+  if (box) box.innerHTML = '';
   if (needsFetch) {
-    const _loadingSpinner = spinnerModule.create('', 'right', 'wave');
-    box.appendChild(_loadingSpinner.createElement());
-    _loadingSpinner.start();
+    let _loadingSpinner = null;
+    if (box) {
+      _loadingSpinner = spinnerModule.create('', 'right', 'wave');
+      box.appendChild(_loadingSpinner.createElement());
+      _loadingSpinner.start();
+    }
     try {
       if (!_fetchInflight) {
         _fetchInflight = fetch(`${API_BASE}/api/models`, { credentials: 'same-origin' })
@@ -190,12 +196,13 @@ export async function refreshModels(force = false) {
       _cachedItems = data.items || [];
     } catch (e) {
       console.error(e);
-      box.textContent = '(scan failed)';
+      if (box) box.textContent = '(scan failed)';
       return;
     } finally {
-      box.innerHTML = '';
+      if (box) box.innerHTML = '';
     }
   }
+  if (!box) return;  // data cache populated; no switcher UI to render
   try {
 
     const collapseState = _loadCollapsed();

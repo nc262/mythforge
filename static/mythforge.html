@@ -142,6 +142,13 @@
 
     const API = window.location.origin;
     modelsModule.init(API);
+    // The full Odysseus SPA populates the model cache through its model-switcher
+    // UI, which this lean page omits — so do it here, or companion/narration
+    // chats can't resolve an endpoint. ?refresh=true discovers endpoint models
+    // server-side; refreshModels() then fills the client cache.
+    fetch(API + '/api/models?refresh=true').catch(() => {}).finally(() => {
+      try { modelsModule.refreshModels(true); } catch {}
+    });
     characterStudio.init(API);
     characterStudio.open();
 
