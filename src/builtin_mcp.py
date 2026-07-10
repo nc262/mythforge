@@ -66,11 +66,12 @@ def _find_npx() -> str:
 # image_gen / memory / rag / email still run as stdio MCP servers — each
 # carries hundreds of LOC of unique IMAP / HTTP / manager logic not worth
 # duplicating into the native path right now.
+# [MYTHFORGE] Mythforge ships only the image_gen builtin server. rag + memory
+# both connect to ChromaDB (cut in batch 2 — see EXTRACTION.md), and email is
+# not a game feature. Dropping them is what finally frees the `chroma` process
+# from the pm2 stack: with no consumer, ChromaDB no longer needs to run.
 _BUILTIN_SERVERS = {
     "image_gen":  ("mcp_servers/image_gen_server.py",  "Built-in: Image Generation"),
-    "memory":     ("mcp_servers/memory_server.py",     "Built-in: Memory"),
-    "rag":        ("mcp_servers/rag_server.py",        "Built-in: RAG"),
-    "email":      ("mcp_servers/email_server.py",      "Built-in: Email"),
 }
 
 # NPX-based built-in servers (run via npx, not Python)

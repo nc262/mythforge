@@ -58,6 +58,7 @@ Step 'Pulling the AI models (~7 GB — go get a coffee)'
 try { Start-Process ollama -ArgumentList 'serve' -WindowStyle Hidden -ErrorAction SilentlyContinue; Start-Sleep 3 } catch {}
 ollama pull llama3.1:8b     # the Game Master's voice
 ollama pull llama3.2:3b     # fast helper (quests, codex, worldsmith)
+ollama pull all-minilm      # ~45 MB — embeddings for pinpoint campaign memory
 Ok 'Models ready'
 
 # ── 5. Image generation (per GPU) ────────────────────────────────────────────

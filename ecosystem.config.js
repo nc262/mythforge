@@ -14,7 +14,8 @@ const cwd = __dirname;
 
 module.exports = {
   apps: [
-    { name: "chroma", script: "start-chroma.cmd", interpreter: "cmd", interpreter_args: "/c", cwd },
+    // chroma removed — Mythforge cut ChromaDB (batch 2) and the rag/memory MCP
+    // servers that consumed it (see src/builtin_mcp.py), so nothing needs it.
     { name: "odysseus-api", script: "run-api.py", interpreter: "python", cwd }
   ]
 }
