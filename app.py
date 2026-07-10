@@ -764,6 +764,36 @@ async def serve_mythforge(request: Request):
         return _serve_html_with_nonce(request, p)
     raise HTTPException(404, "mythforge.html not found")
 
+@app.post("/api/shutdown")
+async def shutdown_server(request: Request):
+    """Stop the server from the UI. Host-only: the request must come straight
+    from loopback with no proxy/tunnel forwarding headers, so a remote party
+    guest can't kill the host (auth is already enforced for /api/* by the
+    middleware). Under pm2 (autorestart on) a plain process exit would just
+    restart, so if we're pm2-managed we ask pm2 to stop the app instead."""
+    host = request.client.host if request.client else None
+    forwarded = any(request.headers.get(h) for h in
+                    ("x-forwarded-for", "x-real-ip", "cf-connecting-ip", "forwarded"))
+    if host not in ("127.0.0.1", "::1") or forwarded:
+        raise HTTPException(403, "Shutdown is allowed only from the host machine.")
+
+    import threading, time, subprocess
+    pm_name = os.environ.get("name")
+    pm_managed = os.environ.get("pm_id") is not None or bool(os.environ.get("PM2_HOME"))
+
+    def _stop():
+        time.sleep(0.5)  # let the HTTP response flush before we go down
+        if pm_managed and pm_name:
+            try:
+                subprocess.Popen(f"pm2 stop {pm_name}", shell=True)
+                return
+            except Exception:
+                pass
+        os._exit(0)
+
+    threading.Thread(target=_stop, daemon=True).start()
+    return {"ok": True, "stopping": True, "via": "pm2" if (pm_managed and pm_name) else "signal"}
+
 @app.get("/notes")
 async def serve_notes(request: Request):
     return await serve_index(request)

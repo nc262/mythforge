@@ -119,6 +119,7 @@
         <button class="studio-tab" data-view="roster" role="tab" type="button">Characters</button>
       </div>
       <div class="studio-spacer"></div>
+      <button class="studio-close" id="studio-shutdown" type="button" aria-label="Shut down the Mythforge server" title="Shut down the server">⏻</button>
       <button class="studio-close studio-close-labeled" id="studio-close" type="button" aria-label="Back to the worlds gallery">⌂ Worlds</button>
     </div>
     <div class="studio-view" id="studio-worlds-view" role="tabpanel"><div class="studio-inner" id="studio-worlds"></div></div>
@@ -150,6 +151,19 @@
     document.getElementById('studio-close')?.addEventListener('click', () => {
       characterStudio.open();
     });
-  </script>
+
+    // Host-only "shut down the server" control. Confirms, POSTs, then replaces
+    // the page with a plain "stopping" notice (the server is going down).
+    document.getElementById('studio-shutdown')?.addEventListener('click', async () => {
+      if (!window.confirm('Shut down the Mythforge server? Anyone playing will be disconnected.')) return;
+      try {
+        const r = await fetch('/api/shutdown', { method: 'POST' });
+        if (!r.ok) { window.alert('Could not shut down (' + r.status + '). Only the host machine can.'); return; }
+        document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;font:600 20px/1.6 system-ui,sans-serif;color:#e8c171;background:#14121f;text-align:center">✦ Mythforge server is shutting down.<br><span style="font-size:14px;color:#9a93b5">You can close this tab.</span></div>';
+      } catch (e) {
+        window.alert('Shutdown request failed: ' + e);
+      }
+    });
+</script>
 </body>
 </html>
