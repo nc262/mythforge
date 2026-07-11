@@ -2065,7 +2065,7 @@ function _sceneFromNarration() {
     if (b.querySelector('img')) continue;            // a picture bubble, not narration
     let t = (b.innerText || '').trim();
     if (t.length < 12) continue;                     // typing indicator / stub
-    t = t.replace(/[“”"][^“”"]*[“”"]|'[^']{6,}'/g, ' ')  // drop quoted dialogue
+    t = t.replace(/[“”"][^“”"]*[“”"]/g, ' ')          // drop quoted dialogue (contractions keep their apostrophes)
          .replace(/[*_>#`~]/g, ' ')                       // drop markdown
          .replace(/\s+/g, ' ').trim();
     if (t.length < 12) continue;

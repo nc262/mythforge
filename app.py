@@ -130,6 +130,7 @@ _TIMEOUT_EXEMPT_PREFIXES = (
     "/api/upload",          # large files
     "/api/image",           # diffusion proxies (inpaint/harmonize/upscale/etc.) — own 120s httpx timeout
     "/api/characters/studio/worldsmith",  # one-off long creative LLM call — own 180s timeout
+    "/api/characters/studio/generate",    # SDXL image gen — 30-120s warm, up to 420s on cold ZLUDA load; own 300s httpx timeout
 )
 
 
