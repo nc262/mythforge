@@ -2112,13 +2112,15 @@ async function _askGroupPicture() {
   try {
     const look = async (c) => { try { const d = await (await fetch(`${API_BASE}/api/characters/studio/appearance/${encodeURIComponent(c.name)}`)).json(); return (d.appearance || '').trim() || c.name; } catch { return c.name; } };
     const [lookA, lookB] = await Promise.all([look(A), look(B)]);
+    // "solo, one person" + overlapping zones (0.55/0.45) suppress a spurious third
+    // figure in the seam; the base prompt is scene-only (no person count).
     const regions = [
-      { prompt: `full body photo of ${A.name}: ${lookA}, ${scene}`, x: 0.0, y: 0.0, w: 0.5, h: 1.0 },
-      { prompt: `full body photo of ${B.name}: ${lookB}, ${scene}`, x: 0.5, y: 0.0, w: 0.5, h: 1.0 },
+      { prompt: `solo, one person, full body of ${A.name}: ${lookA}, ${scene}`, x: 0.0, y: 0.0, w: 0.55, h: 1.0 },
+      { prompt: `solo, one person, full body of ${B.name}: ${lookB}, ${scene}`, x: 0.45, y: 0.0, w: 0.55, h: 1.0 },
     ];
     const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: `two people ${scene}, full body, detailed environment, sharp focus`, regions, size: '1216x832' }),
+      body: JSON.stringify({ prompt: `${scene}, one cohesive scene, detailed background, warm light, wide cinematic shot`, regions, size: '1216x832' }),
     });
     const d = await r.json().catch(() => ({}));
     if (d && d.image_url && bubble) {
