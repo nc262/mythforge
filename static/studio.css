@@ -377,6 +377,7 @@
 .gp-av { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--st-surface-2); color: var(--st-amethyst); font-size: 12.5px; flex: none; }
 .gp-av img { width: 100%; height: 100%; object-fit: cover; }
 .rp-bubble img.rp-photo { display: block; max-width: 320px; width: 100%; border-radius: 10px; margin-top: 8px; border: 1px solid var(--st-border); }
+.rp-bubble img.rp-photo-wide { max-width: 480px; }
 .rp-cast { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--st-border-soft); }
 .rp-cast-lbl { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--st-ink-dim); }
 .rp-cast-npc { display: inline-flex; align-items: center; gap: 5px; background: var(--st-night-1); border: 1px solid var(--st-border-soft); border-radius: 999px; padding: 2px 9px 2px 2px; font-size: 11.5px; color: var(--st-ink); }

@@ -73,6 +73,9 @@ class ImageRequest(BaseModel):
     # styles can coexist behind one bridge. Fall back to launch flags when unset.
     steps: int | None = None
     cfg: float | None = None
+    # Regional prompting: [{prompt, x, y, w, h}] paints each subject in its own
+    # canvas zone (keeps two characters from bleeding together).
+    regions: list | None = None
     # When set (e.g. "meg", "lilly"), condition generation on that character's
     # reference photos via IP-Adapter so the look stays consistent across scenes.
     character: str | None = None
@@ -224,6 +227,50 @@ def _build_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
     }
 
 
+def _build_regional_workflow(ckpt: str, regions: list, negative: str, w: int, h: int,
+                             steps: int, seed: int, cfg: float = None, base_prompt: str = "") -> dict:
+    """Multi-subject SDXL graph: each region gets its own prompt confined to a
+    slice of the canvas (ConditioningSetAreaPercentage) and the slices are merged
+    (ConditioningCombine). This keeps two characters' looks from bleeding into
+    each other — each is painted in its own zone. regions = [{prompt, x, y, w, h}]
+    with x/y/w/h as 0..1 fractions of the canvas (default: split left/right).
+    base_prompt (the shared scene) is applied full-canvas so both halves share one
+    environment instead of two stitched backgrounds."""
+    wf = {
+        "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
+        "cudnn": {"class_type": "CUDNNToggleAutoPassthrough",
+                  "inputs": {"model": ["ckpt", 0], "enable_cudnn": False, "cudnn_benchmark": False}},
+        "neg": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["ckpt", 1]}},
+        "latent": {"class_type": "EmptyLatentImage", "inputs": {"width": w, "height": h, "batch_size": 1}},
+    }
+    conds = []
+    if base_prompt:
+        wf["base"] = {"class_type": "CLIPTextEncode", "inputs": {"text": base_prompt, "clip": ["ckpt", 1]}}
+        conds.append("base")   # full-canvas: shared scene/background
+    for i, r in enumerate(regions):
+        enc, area = f"enc{i}", f"area{i}"
+        wf[enc] = {"class_type": "CLIPTextEncode", "inputs": {"text": r.get("prompt", ""), "clip": ["ckpt", 1]}}
+        wf[area] = {"class_type": "ConditioningSetAreaPercentage", "inputs": {
+            "conditioning": [enc, 0],
+            "width": float(r.get("w", 0.5)), "height": float(r.get("h", 1.0)),
+            "x": float(r.get("x", 0.0)), "y": float(r.get("y", 0.0)), "strength": 1.0}}
+        conds.append(area)
+    combined = conds[0]
+    for i in range(1, len(conds)):
+        node = f"comb{i}"
+        wf[node] = {"class_type": "ConditioningCombine",
+                    "inputs": {"conditioning_1": [combined, 0], "conditioning_2": [conds[i], 0]}}
+        combined = node
+    wf["sampler"] = {"class_type": "KSampler", "inputs": {
+        "model": ["cudnn", 0], "positive": [combined, 0], "negative": ["neg", 0],
+        "latent_image": ["latent", 0], "seed": seed, "steps": steps,
+        "cfg": cfg if cfg is not None else _args.cfg,
+        "sampler_name": _args.sampler, "scheduler": _args.scheduler, "denoise": 1.0}}
+    wf["decode"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["ckpt", 2]}}
+    wf["save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "odysseus", "images": ["decode", 0]}}
+    return wf
+
+
 def _build_ipadapter_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
                               steps: int, seed: int, ref_image: str) -> dict:
     """SDXL txt2img conditioned on a character reference photo via IP-Adapter,
@@ -306,11 +353,13 @@ async def _list_checkpoints(client: httpx.AsyncClient) -> list[str]:
 
 async def _generate_one(client: httpx.AsyncClient, prompt: str, negative: str,
                         w: int, h: int, steps: int, ckpt: str, ref_image: str | None = None,
-                        cfg: float = None) -> str:
-    """Queue one txt2img job, wait for it, return base64 PNG. If ref_image is
-    given, condition the generation on it via IP-Adapter (consistent character)."""
+                        cfg: float = None, regions: list | None = None) -> str:
+    """Queue one txt2img job, wait for it, return base64 PNG. regions → multi-
+    subject regional prompting; else ref_image → IP-Adapter; else plain txt2img."""
     seed = random.randint(1, 2**63 - 1)
-    if ref_image:
+    if regions:
+        workflow = _build_regional_workflow(ckpt, regions, negative, w, h, steps, seed, cfg, prompt)
+    elif ref_image:
         workflow = _build_ipadapter_workflow(ckpt, prompt, negative, w, h, steps, seed, ref_image)
     else:
         workflow = _build_workflow(ckpt, prompt, negative, w, h, steps, seed, cfg)
@@ -397,7 +446,7 @@ async def generate(req: ImageRequest):
                     logger.info("character %r -> appearance anchor (%d chars)", req.character, len(appearance))
             data = []
             for _ in range(n):
-                b64 = await _generate_one(client, prompt, negative, w, h, steps, ckpt, ref_image, cfg)
+                b64 = await _generate_one(client, prompt, negative, w, h, steps, ckpt, ref_image, cfg, req.regions)
                 data.append({"b64_json": b64})
         return {"created": 0, "data": data}
     except Exception as e:

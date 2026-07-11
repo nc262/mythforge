@@ -2050,6 +2050,7 @@ async function _dmKickoff() {
 // via _artFetch) — dropped in as a message from them.
 async function _askForPicture() {
   if (!_chat.char || _chat.streaming) return;
+  if (_chat.group && _chat.group.length >= 2) return _askGroupPicture();   // two-character regional shot
   const char = _chat.char;
   // Ask what they should be doing — full scenes, not just headshots. Blank = a
   // candid photo. If the character has seeded reference photos, the bridge's
@@ -2091,6 +2092,42 @@ async function _askForPicture() {
   } finally {
     if (btn) btn.disabled = false;
     _scrollChat();
+  }
+}
+
+// Group chat: a picture of two characters together. Uses regional prompting —
+// each person is painted in their own half of a wide canvas — so their looks
+// don't bleed into each other (the failure mode of a single two-person prompt).
+async function _askGroupPicture() {
+  const [A, B] = _chat.group.slice(0, 2);
+  const ask = `What are ${A.name} and ${B.name} doing together?\n\ne.g. "playing Twister", "cooking dinner", "arm-wrestling at a bar", "sitting on a park bench".`;
+  let scene;
+  try { scene = window.styledPrompt ? await window.styledPrompt(ask, '') : window.prompt(ask, ''); } catch { scene = null; }
+  if (scene === null || scene === undefined) return;
+  scene = String(scene).trim() || 'together';
+  const btn = $('studio-ask-pic'); if (btn) btn.disabled = true;
+  const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> setting up a photo of ${_esc(A.name)} & ${_esc(B.name)}…</span>`);
+  const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
+  _scrollChat();
+  try {
+    const look = async (c) => { try { const d = await (await fetch(`${API_BASE}/api/characters/studio/appearance/${encodeURIComponent(c.name)}`)).json(); return (d.appearance || '').trim() || c.name; } catch { return c.name; } };
+    const [lookA, lookB] = await Promise.all([look(A), look(B)]);
+    const regions = [
+      { prompt: `full body photo of ${A.name}: ${lookA}, ${scene}`, x: 0.0, y: 0.0, w: 0.5, h: 1.0 },
+      { prompt: `full body photo of ${B.name}: ${lookB}, ${scene}`, x: 0.5, y: 0.0, w: 0.5, h: 1.0 },
+    ];
+    const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: `two people ${scene}, full body, detailed environment, sharp focus`, regions, size: '1216x832' }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.image_url && bubble) {
+      bubble.innerHTML = `<em>${_esc(A.name)} & ${_esc(B.name)} — ${_esc(scene)}</em><img class="rp-photo rp-photo-wide" src="${_esc(d.image_url)}" alt="${_esc(A.name)} and ${_esc(B.name)} ${_esc(scene)}" loading="lazy">`;
+    } else if (bubble) { bubble.innerHTML = `<span class="rp-typing">Couldn't get the shot — try again.</span>`; }
+  } catch (e) {
+    if (bubble) bubble.innerHTML = `<span class="rp-typing">The picture didn't come through — try again.</span>`;
+  } finally {
+    if (btn) btn.disabled = false; _scrollChat();
   }
 }
 
