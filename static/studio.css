@@ -367,6 +367,15 @@
 .rp-msg.them .rp-bubble { border-color: var(--st-border); }
 .rp-bubble p { margin: 0 0 8px; } .rp-bubble p:last-child { margin: 0; }
 .rp-bubble em { color: var(--st-amethyst); font-style: italic; }   /* roleplay *actions* */
+/* Group chat: name label above a speaker's line + the character picker */
+.rp-msg-col { display: flex; flex-direction: column; min-width: 0; }
+.rp-speaker-name { display: block; font-family: var(--st-serif); font-size: 12px; color: var(--st-amethyst); margin: 0 0 3px 2px; letter-spacing: .02em; }
+.group-pick { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.group-pick label { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 8px 11px; border-radius: 11px; border: 1px solid var(--st-border); background: var(--st-surface); transition: border-color .16s; }
+.group-pick label:hover { border-color: var(--st-gold-soft); }
+.group-pick input { accent-color: var(--st-gold, #e8c171); width: 16px; height: 16px; }
+.gp-av { width: 30px; height: 30px; border-radius: 50%; overflow: hidden; display: inline-flex; align-items: center; justify-content: center; background: var(--st-surface-2); color: var(--st-amethyst); font-size: 12.5px; flex: none; }
+.gp-av img { width: 100%; height: 100%; object-fit: cover; }
 .rp-bubble img.rp-photo { display: block; max-width: 320px; width: 100%; border-radius: 10px; margin-top: 8px; border: 1px solid var(--st-border); }
 .rp-cast { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--st-border-soft); }
 .rp-cast-lbl { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--st-ink-dim); }

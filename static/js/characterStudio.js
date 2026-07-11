@@ -1159,6 +1159,7 @@ function renderRoster() {
     <h1 class="studio-h">Characters</h1>
     <p class="studio-sub">Your heroes, and the Game Masters who run their tales.</p>
     <button class="st-btn small" id="roster-you-btn" type="button" style="margin-bottom:20px">✦ Your adventurer</button>
+    <button class="st-btn small" id="roster-group-btn" type="button" style="margin-bottom:20px;margin-left:8px">💬 Group chat</button>
     <p class="section-rule">Heroes &amp; companions <span class="rule-hint">who you play, and who travels with you</span></p>
     <div class="roster-grid">${newHero}${heroCards}</div>
     <p class="section-rule">Game Masters <span class="rule-hint">the voices that run your adventures</span></p>
@@ -1167,6 +1168,7 @@ function renderRoster() {
 
   root.querySelectorAll('[data-new]').forEach(b => b.addEventListener('click', () => openForge(null, b.dataset.new === 'gm' ? 'gm' : 'companion')));
   $('roster-you-btn')?.addEventListener('click', () => openPlayerEditor());
+  $('roster-group-btn')?.addEventListener('click', () => _openGroupPicker());
   root.querySelectorAll('.char-card[data-cid]').forEach(card => {
     const c = _chars.find(x => x.id === card.dataset.cid);
     card.addEventListener('click', (e) => {
@@ -1479,6 +1481,7 @@ async function save(enterChat) {
 // ── Chat view ────────────────────────────────────────────────────────────────
 async function openChat(char) {
   if (_view && _view !== 'chat') _chatReturnView = _view;   // remember where we came from for "‹ back"
+  _chat.group = null;   // leaving any group chat
   _chat.char = char;
   _chat.playAs = '';
   if (_isDM(char)) {   // title-screen "Continue" target + its save-file caption
@@ -1881,7 +1884,11 @@ function _appendBubble(side, html, imgUrl, dbId) {
             : `<div class="rp-avatar me-av" aria-hidden="true">${_esc(_initial(char.name))}</div>`));
   const photo = imgUrl ? `<img class="rp-photo" src="${_esc(imgUrl)}" alt="Shared image" loading="lazy">` : '';
   const isPreHtml = typeof html === 'string' && html.startsWith('<');
-  wrap.innerHTML = `${avatar}<div class="rp-bubble">${isPreHtml ? html : _rp(html)}${photo}</div>`;
+  // Group chat: label each reply with the speaker (avatars alone get ambiguous).
+  // The label sits OUTSIDE .rp-bubble (streaming rewrites the bubble's innerHTML).
+  const nameLbl = (_chat.group && side !== 'me' && char.name) ? `<span class="rp-speaker-name">${_esc(char.name)}</span>` : '';
+  const bubbleHtml = `<div class="rp-bubble">${isPreHtml ? html : _rp(html)}${photo}</div>`;
+  wrap.innerHTML = nameLbl ? `${avatar}<div class="rp-msg-col">${nameLbl}${bubbleHtml}</div>` : `${avatar}${bubbleHtml}`;
   if (!isPreHtml && typeof html === 'string') wrap.dataset.raw = html;
   if (dbId) { wrap.dataset.mid = dbId; _addBubbleActions(wrap); }
   thread.appendChild(wrap);
@@ -1961,10 +1968,12 @@ async function sendChat() {
   }
   const ta = $('studio-composer');
   const text = (ta?.value || '').trim();
-  if (!text || !_chat.sessionId) return;
+  if (!text) return;
+  if (!_chat.group && !_chat.sessionId) return;
   ta.value = ''; ta.style.height = 'auto';
   _appendBubble('me', text);
   _scrollChat();
+  if (_chat.group) { await _streamGroupTurn(text); return; }   // group: each character replies in turn
   // Display the raw line, but tell the model who's speaking when you're embodying
   // someone other than yourself.
   const framed = _chat.playAs ? `[I am speaking and acting in-character as ${_chat.playAs}.] ${text}` : text;
@@ -2298,6 +2307,78 @@ async function _streamAssistant(framed) {
     }
     _scrollChat();
   }
+  return acc;   // the reply text (used by group chat to build the running transcript)
+}
+
+// ── Group chat: 2+ companions + you in one thread, each replying in turn ──────
+// Reuses _streamAssistant per character (set _chat.char, ensure their session,
+// feed the running group transcript so they react to each other and stay in
+// character). No adventure machinery — just personas talking.
+async function openGroupChat(chars) {
+  chars = (chars || []).filter(Boolean);
+  if (chars.length < 2) { _toast('Pick at least two characters for a group chat.'); return; }
+  if (_view && _view !== 'chat') _chatReturnView = _view;
+  const groupChar = {
+    id: 'grp-' + chars.map(c => _slugify(c.name)).join('_'),
+    name: chars.map(c => c.name.split(/\s+/)[0]).join(' & '),
+    avatar: chars.find(c => c.avatar)?.avatar || '',
+    relationship: 'a group chat', __group: true,
+  };
+  _chat.group = chars;
+  _chat.char = groupChar;
+  _chat.playAs = '';
+  applyWorldTheme('');
+  switchView('chat');
+  renderChatShell(groupChar);
+  _fxTitleCard(groupChar.name, `${chars.length} together`);
+  const thread = $('studio-thread');
+  if (thread) thread.innerHTML = `<div class="rp-typing">${_esc(chars.map(c => c.name).join(', '))} are here. Say something to get them talking.</div>`;
+  for (const c of chars) { try { await _ensureSession(c); } catch {} }
+}
+
+async function _streamGroupTurn(userText) {
+  const group = _chat.group; if (!group || !group.length) return;
+  const groupChar = _chat.char, groupSid = _chat.sessionId;
+  const names = group.map(c => c.name).join(', ');
+  let transcript = `You: ${_stripTags(userText)}`;
+  _chat.streaming = true;
+  for (const c of group) {
+    _chat.char = c;
+    try { await _ensureSession(c); } catch {}   // sets _chat.sessionId to c's own session
+    const framed = `[This is a relaxed group conversation between ${names} and the player — not an adventure, just people talking. Here is what has just been said:\n${transcript}\nNow reply AS ${c.name}, fully in character and in your own voice, a few sentences. React naturally to the others and to the player. Never speak or act for anyone but ${c.name}.]`;
+    let reply = '';
+    try { reply = await _streamAssistant(framed); } catch {}
+    if (reply && reply.trim()) transcript += `\n${c.name}: ${_stripTags(reply)}`;
+    if (!_chat.group) break;   // user left mid-turn
+  }
+  _chat.char = groupChar; _chat.sessionId = groupSid;
+  _chat.streaming = false;
+}
+
+function _openGroupPicker() {
+  const companions = _chars.filter(c => !_isDM(c));
+  if (companions.length < 2) { _toast('Create at least two characters to start a group chat.'); return; }
+  const modal = $('studio-modal'); if (!modal) return;
+  let ov = $('studio-group-overlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'studio-group-overlay'; ov.className = 'chronicle-overlay'; modal.appendChild(ov); }
+  ov.innerHTML = `<div class="chronicle-sheet" role="dialog" aria-modal="true" aria-label="Start a group chat">
+    <div class="chronicle-bar"><h2>Start a group chat</h2><button class="studio-close" id="group-close" type="button" aria-label="Close">✕</button></div>
+    <div class="chronicle-list">
+      <p class="gm-hint">Pick two or more — they'll each reply in character and react to one another.</p>
+      <ul class="group-pick">${companions.map(c => `<li><label><input type="checkbox" value="${_esc(c.id)}"><span class="gp-av">${c.avatar ? `<img src="${_esc(c.avatar)}" alt="">` : _esc(_initial(c.name))}</span><strong>${_esc(c.name)}</strong></label></li>`).join('')}</ul>
+      <div class="chronicle-actions"><button class="st-btn" id="group-start" type="button">Start group chat</button></div>
+    </div></div>`;
+  ov.style.display = 'flex';
+  const close = () => { ov.style.display = 'none'; };
+  $('group-close').addEventListener('click', close);
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  $('group-start').addEventListener('click', () => {
+    const ids = [...ov.querySelectorAll('input:checked')].map(i => i.value);
+    const chosen = companions.filter(c => ids.includes(c.id));
+    if (chosen.length < 2) { _toast('Pick at least two to talk together.'); return; }
+    close();
+    openGroupChat(chosen);
+  });
 }
 
 // ── Snapshots (the Chronicle) ───────────────────────────────────────────────
