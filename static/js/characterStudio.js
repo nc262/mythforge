@@ -1658,7 +1658,9 @@ function renderChatShell(char) {
       <button class="st-btn small ghost" id="studio-skillcheck" type="button" title="Roll a skill or ability check on your own">🎲 Check</button>
     </div>` : ''}
     <div class="chat-composer">
-      ${isDM ? '' : `<button class="st-btn ghost pic-btn" id="studio-ask-pic" type="button" title="Ask ${_esc(char.name)} for a picture" aria-label="Ask ${_esc(char.name)} for a picture">📷</button>`}
+      ${isDM ? '' : `<button class="st-btn ghost pic-btn" id="studio-seed-pic" type="button" title="Use your own photos as reference — pictures will resemble them" aria-label="Seed reference photos for ${_esc(char.name)}">🖼️</button>
+      <input type="file" id="studio-ref-file" accept="image/*" multiple hidden>
+      <button class="st-btn ghost pic-btn" id="studio-ask-pic" type="button" title="Ask ${_esc(char.name)} for a picture" aria-label="Ask ${_esc(char.name)} for a picture">📷</button>`}
       <textarea id="studio-composer" rows="1" placeholder="${isDM ? 'What do you do?' : `Say something to ${_esc(char.name)}…`}"></textarea>
       <button class="st-btn primary send-btn" id="studio-send" type="button">Send</button>
     </div>`;
@@ -1729,6 +1731,8 @@ function renderChatShell(char) {
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; });
   $('studio-send').addEventListener('click', () => sendChat());
   $('studio-ask-pic')?.addEventListener('click', () => _askForPicture());
+  $('studio-seed-pic')?.addEventListener('click', () => _seedReferences());
+  $('studio-ref-file')?.addEventListener('change', _onSeedFiles);
 }
 
 // Adventures are Game-Master ("dm-*") sessions. Tag them server-side into an
@@ -2036,20 +2040,34 @@ async function _dmKickoff() {
 async function _askForPicture() {
   if (!_chat.char || _chat.streaming) return;
   const char = _chat.char;
+  // Ask what they should be doing — full scenes, not just headshots. Blank = a
+  // candid photo. If the character has seeded reference photos, the bridge's
+  // IP-Adapter keeps their face on-model while the body does the activity.
+  const ask = `What's ${char.name} doing in the picture?\n\nLeave blank for a candid photo, or describe a scene — e.g. "doing yoga at sunrise", "riding a horse through snow", "mid-backflip in a gym", "fighting a dragon".`;
+  let scene;
+  try { scene = window.styledPrompt ? await window.styledPrompt(ask, '') : window.prompt(ask, ''); }
+  catch { scene = null; }
+  if (scene === null || scene === undefined) return;  // cancelled
+  scene = String(scene).trim();
+
   const btn = $('studio-ask-pic'); if (btn) btn.disabled = true;
-  const wrap = _appendBubble('them', '<span class="rp-typing"><span class="dot">✦</span> taking a picture…</span>');
+  const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> ${scene ? 'setting up the shot' : 'taking a picture'}…</span>`);
   const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
   _scrollChat();
   try {
-    const bits = [char.name, char.role, char.blurb].filter(Boolean).join(', ');
-    const prompt = `${bits}, candid in-the-moment portrait, looking toward you`;
+    const who = [char.name, char.role, char.blurb].filter(Boolean).join(', ');
+    // With a scene: full-body action shot. Without: a candid natural-pose photo.
+    const prompt = scene
+      ? `full body photo of ${char.name} ${scene}, ${who}, dynamic pose, full scene, detailed`
+      : `candid photo of ${who}, natural pose`;
     const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, character: char.id }),
+      body: JSON.stringify({ prompt, character: char.id, size: '1024x1024' }),
     });
     const d = await r.json().catch(() => ({}));
     if (d && d.image_url && bubble) {
-      bubble.innerHTML = `<em>${_esc(char.name)} shares a picture.</em><img class="rp-photo" src="${_esc(d.image_url)}" alt="A picture from ${_esc(char.name)}" loading="lazy">`;
+      const cap = scene ? `${_esc(char.name)} — ${_esc(scene)}` : `${_esc(char.name)} shares a picture.`;
+      bubble.innerHTML = `<em>${cap}</em><img class="rp-photo" src="${_esc(d.image_url)}" alt="${_esc(char.name)}${scene ? ' ' + _esc(scene) : ''}" loading="lazy">`;
     } else if (bubble) {
       bubble.innerHTML = `<span class="rp-typing">${_esc(char.name)} couldn't get a good shot just now.</span>`;
     }
@@ -2059,6 +2077,31 @@ async function _askForPicture() {
     if (btn) btn.disabled = false;
     _scrollChat();
   }
+}
+
+// Seed a character's look with the user's own photos (IP-Adapter references), so
+// generated pictures resemble that person. Absent references → plain gen.
+function _seedReferences() { $('studio-ref-file')?.click(); }
+async function _onSeedFiles(ev) {
+  const files = [...(ev.target.files || [])].slice(0, 8);
+  ev.target.value = '';
+  if (!files.length || !_chat.char) return;
+  _toast(`Adding ${files.length} reference photo${files.length > 1 ? 's' : ''}…`);
+  const images = (await Promise.all(files.map(f => new Promise(res => {
+    const r = new FileReader();
+    r.onload = () => res({ b64: String(r.result).split(',')[1] || '', ext: (f.name.split('.').pop() || 'png').toLowerCase() });
+    r.onerror = () => res(null);
+    r.readAsDataURL(f);
+  })))).filter(x => x && x.b64);
+  if (!images.length) { _toast('Could not read those files.'); return; }
+  try {
+    const r = await fetch(`${API_BASE}/api/characters/studio/reference/upload`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ character: _chat.char.id, images }),
+    });
+    const d = await r.json().catch(() => ({}));
+    _toast(d.ok ? `✓ Added ${d.saved} photo${d.saved > 1 ? 's' : ''} — pictures will resemble them now.` : 'Could not add those photos.');
+  } catch { _toast('Upload failed — try again.'); }
 }
 
 // Shared streaming core: re-assert the active persona, spawn the reply bubble,

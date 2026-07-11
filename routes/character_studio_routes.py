@@ -394,6 +394,8 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
         # the style isn't installed we fall through to the bridge's default.
         style = art_styles.resolve_for_generation((data.get("style") or "").strip())
         ckpt = style["ckpt"] if style else ""
+        if style and style.get("prefix"):
+            prompt = style["prefix"] + prompt   # some checkpoints (e.g. Pony) need tag prefixes
         content = f"{prompt}\n{ckpt}\n{size}"
         result = await do_generate_image(
             content, session_id=None, owner=user, character=character,
@@ -755,6 +757,45 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
     async def studio_art_style_progress(request: Request, style_id: str):
         get_current_user(request)
         return {"ok": True, "id": style_id, "progress": art_styles.get_progress(style_id)}
+
+    @router.post("/api/characters/studio/reference/upload")
+    async def studio_reference_upload(request: Request):
+        """Seed a character's IP-Adapter reference set with user-supplied photos so
+        their generated pictures look like that specific person. Forwards each to
+        the image bridge, which appends it to input/characters/<key>/ — the same
+        folder generation reads. With no references there, gen falls back to a
+        plain prompt-only image (handled by the bridge's _pick_reference)."""
+        user = require_privilege(request, "can_generate_images")
+        data = await request.json()
+        character = (data.get("character") or "").strip()
+        images = data.get("images") or []
+        if not character or not isinstance(images, list) or not images:
+            raise HTTPException(400, "character and images are required")
+        db = SessionLocal()
+        try:
+            ep = _first_visible_image_endpoint(db, user)
+        finally:
+            db.close()
+        if not ep:
+            raise HTTPException(400, "No image endpoint configured to store references.")
+        base_url = ep.base_url.rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url += "/v1"
+        ref_url = f"{base_url}/characters/{quote(character, safe='')}/reference"
+        saved = 0
+        async with httpx.AsyncClient(timeout=60) as client:
+            for im in images[:8]:
+                b64 = (im.get("b64") or "").strip()
+                ext = (im.get("ext") or "png").lower().lstrip(".")
+                if not b64:
+                    continue
+                try:
+                    resp = await client.post(ref_url, json={"b64": b64, "ext": ext})
+                    if resp.status_code == 200 and not isinstance(resp.json().get("error"), dict):
+                        saved += 1
+                except Exception:
+                    pass
+        return {"ok": saved > 0, "saved": saved}
 
     @router.post("/api/characters/studio/codex")
     async def studio_codex(request: Request):

@@ -49,6 +49,15 @@ STYLES: List[Dict] = [
         "ckpt": "Juggernaut-XL_v9_RunDiffusionPhoto_v2.safetensors",
         "size_gb": 7.1, "steps": 30, "cfg": 5.0,
     },
+    {
+        "id": "pony", "label": "Pony / Illustrated",
+        "desc": "Bold stylized illustration & character art — cartoon-to-comic range.",
+        "repo": "LyliaEngine/Pony_Diffusion_V6_XL",
+        "ckpt": "ponyDiffusionV6XL_v6StartWithThisOne.safetensors",
+        "size_gb": 6.9, "steps": 28, "cfg": 6.5,
+        # Pony V6 renders poorly without its quality/source tag prefix.
+        "prefix": "score_9, score_8_up, score_7_up, source_cartoon, ",
+    },
 ]
 
 _BY_ID = {s["id"]: s for s in STYLES}
@@ -114,7 +123,8 @@ def resolve_for_generation(style_id: str) -> Optional[dict]:
     s = _BY_ID.get(style_id)
     if not s or not is_installed(s):
         return None
-    return {"ckpt": s["ckpt"], "steps": s["steps"], "cfg": s["cfg"]}
+    return {"ckpt": s["ckpt"], "steps": s["steps"], "cfg": s["cfg"],
+            "prefix": s.get("prefix", "")}
 
 
 def _resolve_repo_filename(repo: str, preferred: str) -> str:
