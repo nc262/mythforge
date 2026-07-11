@@ -1901,7 +1901,9 @@ function _appendBubble(side, html, imgUrl, dbId) {
 // be fixed or re-rolled, and the corrected lore sticks going forward).
 function _addBubbleActions(wrap) {
   if (!wrap || wrap.querySelector('.rp-actions')) return;
-  if (!_isDM(_chat.char) || !wrap.classList.contains('them')) return;
+  // Edit/regenerate on any single-speaker reply (GM or companion); not in group
+  // chat, where "the last reply" is ambiguous across speakers.
+  if (_chat.group || !wrap.classList.contains('them')) return;
   const bar = document.createElement('div');
   bar.className = 'rp-actions';
   bar.innerHTML = `<button class="rp-act" type="button" data-act="edit" title="Edit" aria-label="Edit">✎</button>`
@@ -1942,6 +1944,12 @@ function _editBubble(wrap) {
 
 async function _regenBubble(wrap) {
   if (_chat.streaming) return;
+  // Re-rolling replays _chat.lastFramed (the newest turn), so it's only coherent
+  // for the newest reply. Regenerating an older bubble would delete it and append
+  // a reply to the latest prompt at the bottom — refuse it instead.
+  const thread = $('studio-thread');
+  const lastThem = thread ? [...thread.querySelectorAll('.rp-msg.them')].pop() : null;
+  if (lastThem && wrap !== lastThem) { _toast('You can only redo the most recent reply.'); return; }
   const mid = wrap.dataset.mid;
   if (mid) {
     try {
@@ -1961,7 +1969,7 @@ function _scrollChat() {
 }
 
 async function sendChat() {
-  if (_chat.streaming) return;
+  if (_chat.streaming || _chat.groupBusy) return;   // groupBusy: a multi-speaker turn spans several _streamAssistant calls that each clear .streaming
   if (_chat.dead) { _toast('Your hero has fallen — load a save or cling to life to continue.'); return; }   // game over halts play
   // At a shared table, wait your turn — someone else is mid-scene with the GM.
   if (_party && _partyBusy && _partyBusy.by) {
@@ -1971,7 +1979,11 @@ async function sendChat() {
   const ta = $('studio-composer');
   const text = (ta?.value || '').trim();
   if (!text) return;
-  if (!_chat.group && !_chat.sessionId) return;
+  if (!_chat.group && !_chat.sessionId) {   // session not ready yet — tell the player and try to (re)establish it
+    _toast('Still connecting to this chat — give it a moment and try again.');
+    if (_chat.char) _ensureSession(_chat.char).catch(() => {});
+    return;
+  }
   ta.value = ''; ta.style.height = 'auto';
   _appendBubble('me', text);
   _scrollChat();
@@ -2441,18 +2453,24 @@ async function _streamGroupTurn(userText) {
   const groupChar = _chat.char, groupSid = _chat.sessionId;
   const names = group.map(c => c.name).join(', ');
   let transcript = `You: ${_stripTags(userText)}`;
-  _chat.streaming = true;
-  for (const c of group) {
-    _chat.char = c;
-    try { await _ensureSession(c); } catch {}   // sets _chat.sessionId to c's own session
-    const framed = `[This is a relaxed group conversation between ${names} and the player — not an adventure, just people talking. Here is what has just been said:\n${transcript}\nNow reply AS ${c.name}, fully in character and in your own voice, a few sentences. React naturally to the others and to the player. Never speak or act for anyone but ${c.name}.]`;
-    let reply = '';
-    try { reply = await _streamAssistant(framed); } catch {}
-    if (reply && reply.trim()) transcript += `\n${c.name}: ${_stripTags(reply)}`;
-    if (!_chat.group) break;   // user left mid-turn
+  // Each speaker's _streamAssistant flips _chat.streaming back to false in its
+  // finally, so guard the whole multi-speaker turn with a separate flag that
+  // sendChat also checks — otherwise a send in the gap between speakers re-enters.
+  _chat.groupBusy = true;
+  try {
+    for (const c of group) {
+      _chat.char = c;
+      try { await _ensureSession(c); } catch {}   // sets _chat.sessionId to c's own session
+      const framed = `[This is a relaxed group conversation between ${names} and the player — not an adventure, just people talking. Here is what has just been said:\n${transcript}\nNow reply AS ${c.name}, fully in character and in your own voice, a few sentences. React naturally to the others and to the player. Never speak or act for anyone but ${c.name}.]`;
+      let reply = '';
+      try { reply = await _streamAssistant(framed); } catch {}
+      if (reply && reply.trim()) transcript += `\n${c.name}: ${_stripTags(reply)}`;
+      if (!_chat.group) break;   // user left mid-turn
+    }
+  } finally {
+    _chat.char = groupChar; _chat.sessionId = groupSid;
+    _chat.groupBusy = false;
   }
-  _chat.char = groupChar; _chat.sessionId = groupSid;
-  _chat.streaming = false;
 }
 
 function _openGroupPicker() {
@@ -2982,16 +3000,22 @@ function _rollDie(sides) {
   const stat = ($('dice-mod') && $('dice-mod').value) || '';
   const roll = 1 + Math.floor(Math.random() * sides);
   const mod = (stat && s.abilities[stat] != null) ? _mod(s.abilities[stat]) : null;
+  const rp = $('studio-roll-prompt');
+  const pending = !!(rp && !rp.hidden);   // the GM just called for a roll
   const send = () => {
     const text = mod != null
       ? `🎲 *rolls 1d${sides} for ${stat}* → ${roll} ${mod >= 0 ? '+' : ''}${mod} = **${roll + mod}**`
       : `🎲 *rolls 1d${sides}* → **${roll}**`;
     _appendBubble('me', text);
     _scrollChat();
-    // A bare roll with no declared check isn't a result yet — the GM asks
-    // what it's for (and corrects a wrong die/ability) instead of just
-    // absorbing random dice into the fiction.
-    _streamAssistant(text + (mod == null ? ' [No check was declared for this roll — ask me what it was for before using it, or if you had called for a specific check, tell me whether this was the right die and ability.]' : ''));
+    // Only spend a GM turn when the roll means something — a called-for check or
+    // a chosen ability modifier. A bare, contextless tap on the tray just shows
+    // the number so a stray click doesn't cost a whole (slow) turn.
+    if (pending || mod != null) {
+      _streamAssistant(text + (mod == null ? ' [Resolving the check you called for.]' : ''));
+    } else {
+      _toast("🎲 Roll noted — tell the GM what it's for to put it in play.");
+    }
   };
   _animateDie(sides, roll, mod, stat, send);
 }
@@ -5225,7 +5249,12 @@ function _seedCast(cid, worldId) {
   if (changed) _saveCodex(cid, c);
 }
 const _castPortraitTried = new Set();
+// Circuit breaker: after a failed image gen, stop conjuring decorative NPC
+// portraits for a couple minutes so a down/slow image stack isn't hammered with
+// a fresh doomed request for every new face that walks on stage.
+let _artFailAt = 0;
 async function _genNpcPortrait(cid, npcId) {
+  if (Date.now() - _artFailAt < 120000) return;   // recent failure — give the forge a rest
   const c0 = _loadCodex(cid); const n0 = (c0.npcs || []).find(x => x.id === npcId); if (!n0 || n0.avatar) return;
   const wid = _chat.char && _chat.char.world_id;
   const style = { embervale: 'fantasy character portrait', neonspire: 'cyberpunk character portrait, neon', everyday: 'realistic portrait photo' }[wid] || 'character portrait';
@@ -5235,9 +5264,10 @@ async function _genNpcPortrait(cid, npcId) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt: `${style}, ${desc}, head and shoulders, dramatic lighting, no text`, size: '512x512' }),
     });
+    if (!r.ok) { _artFailAt = Date.now(); return; }   // 502/504/etc. — trip the breaker (r.ok=false doesn't throw)
     const d = await r.json();
     if (d.ok && d.image_url) { const c = _loadCodex(cid); const m = (c.npcs || []).find(x => x.id === npcId); if (m) { m.avatar = d.image_url; _saveCodex(cid, c); const cp = $('studio-codex-overlay'); if (cp && cp.style.display === 'flex') openCodex(); } }
-  } catch (e) { /* portrait is decorative */ }
+  } catch (e) { _artFailAt = Date.now(); /* portrait is decorative */ }
 }
 // Returns 'ok' (NPCs found), 'empty' (model read fine but surfaced nobody),
 // or 'error' (couldn't reach/parse the model). Callers decide how to react.
@@ -7251,10 +7281,13 @@ function _useItem(cid, id) {
 function _detectGold(text) {
   if (!text) return 0;
   const CUR = '(?:gold(?:\\s+pieces?)?|gp|coins?|credits?|creds?|silver|marks?|cash|dollars?)';
+  // ponytail: heuristic denylist — "20 gold teeth/ring/crown" is describing an
+  // object, not paying in currency. Extend this list, don't rebuild the parser.
+  const NOTOBJ = '(?!\\s+(?:teeth|tooth|fang|fangs|ring|rings|crown|crowns|statue|statues|idol|idols|chain|chains|leaf|leaves|dust|trim|plate|plated|bar|bars|nugget|nuggets|vein|veins|ore|filigree|thread|threads|embroidery|band|bands|hilt|hilts|inlay|lettering|scale|scales|eyes?|hair|mane|fur|paint|light))';
   const clamp = (s) => Math.min(99999, Math.max(0, parseInt(s, 10) || 0));
   let gain = 0, spend = 0, m;
-  const gainRe = new RegExp(`\\b(?:gain|receive[ds]?|find|found|earn(?:ed)?|loot(?:ed)?|award(?:ed)?|reward(?:ed)?|pocket(?:ed)?|collect(?:ed)?|are\\s+given|hands?\\s+you)\\b\\D{0,25}?(\\d{1,5})\\s*${CUR}\\b`, 'gi');
-  const spendRe = new RegExp(`\\b(?:pays?|paid|spend|spent|costs?|lose|lost|hand(?:s|ed)?\\s+over|part\\s+with|deduct(?:ed)?|charge[ds]?)\\b\\D{0,25}?(\\d{1,5})\\s*${CUR}\\b`, 'gi');
+  const gainRe = new RegExp(`\\b(?:gain|receive[ds]?|find|found|earn(?:ed)?|loot(?:ed)?|award(?:ed)?|reward(?:ed)?|pocket(?:ed)?|collect(?:ed)?|are\\s+given|hands?\\s+you)\\b\\D{0,25}?(\\d{1,5})\\s*${CUR}\\b${NOTOBJ}`, 'gi');
+  const spendRe = new RegExp(`\\b(?:pays?|paid|spend|spent|costs?|lose|lost|hand(?:s|ed)?\\s+over|part\\s+with|deduct(?:ed)?|charge[ds]?)\\b\\D{0,25}?(\\d{1,5})\\s*${CUR}\\b${NOTOBJ}`, 'gi');
   while ((m = gainRe.exec(text))) gain += clamp(m[1]);
   while ((m = spendRe.exec(text))) spend += clamp(m[1]);
   return gain - spend;
