@@ -1582,6 +1582,7 @@ function renderChatShell(char) {
             Narrate
           </button>
           <button type="button" id="studio-sfx-btn" class="st-btn ghost small cb-act-btn" title="Sound effects on/off"><span class="sfx-ico" aria-hidden="true">🔊</span> SFX</button>
+          <button type="button" id="studio-look-btn" class="st-btn ghost small cb-act-btn" title="Edit the look — what stays the same in every picture (keep it person-only for open poses)">✎ Look</button>
           <button type="button" id="studio-notes-btn" class="st-btn ghost small cb-act-btn" title="Your private notes">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
             Notes
@@ -1733,6 +1734,7 @@ function renderChatShell(char) {
   $('studio-ask-pic')?.addEventListener('click', () => _askForPicture());
   $('studio-seed-pic')?.addEventListener('click', () => _seedReferences());
   $('studio-ref-file')?.addEventListener('change', _onSeedFiles);
+  $('studio-look-btn')?.addEventListener('click', () => openAppearance());
 }
 
 // Adventures are Game-Master ("dm-*") sessions. Tag them server-side into an
@@ -2066,7 +2068,7 @@ async function _askForPicture() {
       : `Candid full-body photograph of ${char.name} (${who}), relaxed natural pose, complete figure in frame, soft natural light, sharp focus, highly detailed.`;
     const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, character: char.id, size: '1024x1024' }),
+      body: JSON.stringify({ prompt, character: char.name, size: '1024x1024' }),
     });
     const d = await r.json().catch(() => ({}));
     if (d && d.image_url && bubble) {
@@ -2101,11 +2103,47 @@ async function _onSeedFiles(ev) {
   try {
     const r = await fetch(`${API_BASE}/api/characters/studio/reference/upload`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ character: _chat.char.id, images }),
+      body: JSON.stringify({ character: _chat.char.name, images }),
     });
     const d = await r.json().catch(() => ({}));
     _toast(d.ok ? `✓ Added ${d.saved} photo${d.saved > 1 ? 's' : ''} — pictures will resemble them now.` : 'Could not add those photos.');
   } catch { _toast('Upload failed — try again.'); }
+}
+
+// Edit the character's appearance anchor — the tokens glued onto every picture
+// to keep them on-model. Person-only (build, hair, face) leaves the pose, outfit
+// and scene free; setting/clothing tokens here fight action shots.
+async function openAppearance() {
+  const modal = $('studio-modal'); if (!modal || !_chat.char) return;
+  const char = _chat.char;
+  let ov = $('studio-appearance-overlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'studio-appearance-overlay'; ov.className = 'chronicle-overlay'; modal.appendChild(ov); }
+  let cur = '';
+  try { const d = await (await fetch(`${API_BASE}/api/characters/studio/appearance/${encodeURIComponent(char.name)}`)).json(); cur = d.appearance || ''; } catch {}
+  ov.innerHTML = `<div class="chronicle-sheet" role="dialog" aria-modal="true" aria-label="Appearance">
+    <div class="chronicle-bar"><h2>${_esc(char.name)}'s look</h2><button class="studio-close" id="appearance-close" type="button" aria-label="Close">✕</button></div>
+    <div class="chronicle-list">
+      <p class="gm-hint">What stays the same in every picture — <strong>describe the person only</strong>: age, build, hair, face, distinctive features. Leave out clothing and setting so their pictures can show any pose or scene (riding a horse, a fight, a beach).</p>
+      <label class="sf">Appearance<textarea id="appearance-text" rows="4" placeholder="e.g. woman in her 40s, athletic build, auburn hair in a loose bun, freckles, warm green eyes">${_esc(cur)}</textarea></label>
+      <div class="chronicle-actions"><button class="st-btn" id="appearance-save" type="button">Save look</button></div>
+    </div></div>`;
+  ov.style.display = 'flex';
+  const close = () => { ov.style.display = 'none'; };
+  $('appearance-close').addEventListener('click', close);
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  $('appearance-save').addEventListener('click', async () => {
+    const btn = $('appearance-save'); btn.disabled = true; btn.textContent = 'Saving…';
+    try {
+      const r = await fetch(`${API_BASE}/api/characters/studio/appearance`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ character: char.name, appearance: $('appearance-text').value }),
+      });
+      const d = await r.json().catch(() => ({}));
+      _toast(d.ok ? '✓ Look saved — new pictures will use it.' : 'Could not save the look.');
+      if (d.ok) close();
+    } catch { _toast('Save failed — try again.'); }
+    btn.disabled = false; btn.textContent = 'Save look';
+  });
 }
 
 // Shared streaming core: re-assert the active persona, spawn the reply bubble,

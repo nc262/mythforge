@@ -84,6 +84,18 @@ def checkpoints_dir() -> Optional[str]:
     return None
 
 
+def comfy_input_dir() -> Optional[str]:
+    """The sibling ComfyUI install's input dir (mirrors the bridge). Character
+    reference photos + appearance.txt live under input/characters/<key>/."""
+    here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sib = os.path.dirname(here)
+    for name in ("ComfyUI-Zluda", "ComfyUI"):
+        d = os.path.join(sib, name, "input")
+        if os.path.isdir(d):
+            return d
+    return None
+
+
 def _installed_files() -> set:
     d = checkpoints_dir()
     if not d:

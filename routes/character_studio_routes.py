@@ -797,6 +797,52 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
                     pass
         return {"ok": saved > 0, "saved": saved}
 
+    # ── Appearance anchor (the physique tokens glued onto every picture) ──────
+    # Editing it directly on disk (not via the bridge) so it works even while
+    # ComfyUI is down. Keep it person-only (build, hair, face) — dropping setting
+    # and specific clothing frees the pose/scene while identity still holds.
+    def _safe_char_key(name: str) -> str:
+        return "".join(c for c in (name or "") if c.isalnum() or c in ("-", "_")).lower()
+
+    def _appearance_path(character: str):
+        base = art_styles.comfy_input_dir()
+        key = _safe_char_key(character)
+        if not base or not key:
+            return None
+        return os.path.join(base, "characters", key, "appearance.txt")
+
+    @router.get("/api/characters/studio/appearance/{character}")
+    async def studio_get_appearance(request: Request, character: str):
+        get_current_user(request)
+        p = _appearance_path(character)
+        if not p:
+            return {"ok": True, "appearance": "", "available": False}
+        text = ""
+        try:
+            if os.path.exists(p):
+                with open(p, encoding="utf-8") as f:
+                    text = f.read().strip()
+        except OSError:
+            pass
+        return {"ok": True, "appearance": text, "available": True}
+
+    @router.post("/api/characters/studio/appearance")
+    async def studio_set_appearance(request: Request):
+        require_privilege(request, "can_generate_images")
+        data = await request.json()
+        character = (data.get("character") or "").strip()
+        appearance = (data.get("appearance") or "").strip()[:600]
+        p = _appearance_path(character)
+        if not p:
+            raise HTTPException(400, "ComfyUI isn't installed, so there's no reference folder to write.")
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(appearance)
+        except OSError as e:
+            raise HTTPException(500, f"Could not save appearance: {e}")
+        return {"ok": True}
+
     @router.post("/api/characters/studio/codex")
     async def studio_codex(request: Request):
         """Maintain a cast codex: the named NPCs the player has met, each with a
