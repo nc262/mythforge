@@ -2056,10 +2056,14 @@ async function _askForPicture() {
   _scrollChat();
   try {
     const who = [char.name, char.role, char.blurb].filter(Boolean).join(', ');
-    // With a scene: full-body action shot. Without: a candid natural-pose photo.
+    // Lead with the action so the model composes the whole scene (a person +
+    // horse, a fall, a fight…) at full body. In scene mode we drop the role
+    // (which pulls back toward their "home" setting) and let the scene define
+    // the context — identity still holds via the IP-Adapter face + physique
+    // anchor. Without a scene: a clean candid full-body photo.
     const prompt = scene
-      ? `full body photo of ${char.name} ${scene}, ${who}, dynamic pose, full scene, detailed`
-      : `candid photo of ${who}, natural pose`;
+      ? `${scene}. Full-body cinematic photograph, ${char.name} as the subject, natural expressive pose that fits the action, complete figure in frame, detailed environment and props, dramatic depth of field, sharp focus, highly detailed.`
+      : `Candid full-body photograph of ${char.name} (${who}), relaxed natural pose, complete figure in frame, soft natural light, sharp focus, highly detailed.`;
     const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt, character: char.id, size: '1024x1024' }),
