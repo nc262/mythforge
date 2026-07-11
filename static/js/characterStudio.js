@@ -1665,6 +1665,7 @@ function renderChatShell(char) {
       ${isDM ? '' : `<button class="st-btn ghost pic-btn" id="studio-seed-pic" type="button" title="Use your own photos as reference — pictures will resemble them" aria-label="Seed reference photos for ${_esc(char.name)}">🖼️</button>
       <input type="file" id="studio-ref-file" accept="image/*" multiple hidden>
       <button class="st-btn ghost pic-btn" id="studio-ask-pic" type="button" title="Ask ${_esc(char.name)} for a picture" aria-label="Ask ${_esc(char.name)} for a picture">📷</button>`}
+      <button class="st-btn ghost pic-btn" id="studio-capture" type="button" title="${isDM ? 'Picture this moment — art of what\'s happening now' : `Picture what ${_esc(char.name)} is doing right now`}" aria-label="Capture the current moment as a picture">🎬</button>
       <textarea id="studio-composer" rows="1" placeholder="${isDM ? 'What do you do?' : `Say something to ${_esc(char.name)}…`}"></textarea>
       <button class="st-btn primary send-btn" id="studio-send" type="button">Send</button>
     </div>`;
@@ -1735,6 +1736,7 @@ function renderChatShell(char) {
   ta.addEventListener('input', () => { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 160) + 'px'; });
   $('studio-send').addEventListener('click', () => sendChat());
   $('studio-ask-pic')?.addEventListener('click', () => _askForPicture());
+  $('studio-capture')?.addEventListener('click', () => _captureMoment());
   $('studio-seed-pic')?.addEventListener('click', () => _seedReferences());
   $('studio-ref-file')?.addEventListener('change', _onSeedFiles);
   $('studio-look-btn')?.addEventListener('click', () => openAppearance());
@@ -2048,31 +2050,80 @@ async function _dmKickoff() {
 // image endpoint as portraits — conditioned on the character (IP-adapter, so a
 // character with saved refs stays on-model) and the world's art style (threaded
 // via _artFetch) — dropped in as a message from them.
+// Disable both picture buttons while a shot renders (either can trigger a gen).
+function _picBusy(on) {
+  ['studio-ask-pic', 'studio-capture'].forEach(id => { const b = $(id); if (b) b.disabled = on; });
+}
+
+// Pull "what's happening now" out of the latest narration so a picture can show
+// the current moment without the player retyping it. Skips picture/typing
+// bubbles, drops spoken dialogue and markdown, and keeps the freshest sentences.
+function _sceneFromNarration() {
+  const bubbles = [...document.querySelectorAll('#studio-thread .rp-msg.them .rp-bubble')];
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    if (b.querySelector('img')) continue;            // a picture bubble, not narration
+    let t = (b.innerText || '').trim();
+    if (t.length < 12) continue;                     // typing indicator / stub
+    t = t.replace(/[“”"][^“”"]*[“”"]|'[^']{6,}'/g, ' ')  // drop quoted dialogue
+         .replace(/[*_>#`~]/g, ' ')                       // drop markdown
+         .replace(/\s+/g, ' ').trim();
+    if (t.length < 12) continue;
+    const sents = t.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 3);
+    return (sents.slice(-3).join(' ') || t).slice(0, 420)
+      .replace(/\s+([.,!?;:])/g, '$1')   // "console ." → "console."
+      .replace(/[.\s]+$/, '').trim();     // drop trailing period so callers append cleanly
+  }
+  return (_chat.char && _chat.char.scene) ? String(_chat.char.scene).trim() : '';
+}
+
+// ── Picture entry points ──────────────────────────────────────────────────
+// 📷 "ask for a specific picture" — the player types the scene.
 async function _askForPicture() {
   if (!_chat.char || _chat.streaming) return;
-  if (_chat.group && _chat.group.length >= 2) return _askGroupPicture();   // two-character regional shot
+  if (_chat.group && _chat.group.length >= 2) return _askGroupPicture();
   const char = _chat.char;
-  // Ask what they should be doing — full scenes, not just headshots. Blank = a
-  // candid photo. If the character has seeded reference photos, the bridge's
-  // IP-Adapter keeps their face on-model while the body does the activity.
   const ask = `What's ${char.name} doing in the picture?\n\nLeave blank for a candid photo, or describe a scene — e.g. "doing yoga at sunrise", "riding a horse through snow", "mid-backflip in a gym", "fighting a dragon".`;
   let scene;
   try { scene = window.styledPrompt ? await window.styledPrompt(ask, '') : window.prompt(ask, ''); }
   catch { scene = null; }
   if (scene === null || scene === undefined) return;  // cancelled
-  scene = String(scene).trim();
+  return _photoSolo(char, String(scene).trim());
+}
 
-  const btn = $('studio-ask-pic'); if (btn) btn.disabled = true;
+// 🎬 "capture this moment" — no typing: derive the scene from the live story
+// and picture it. Scene- and action-aware; routes by chat mode.
+async function _captureMoment() {
+  if (!_chat.char || _chat.streaming) return;
+  const scene = _sceneFromNarration();
+  if (!scene) { _toast('Nothing to picture yet — play a beat first.'); return; }
+  if (_chat.group && _chat.group.length >= 2) return _photoGroup(_chat.group[0], _chat.group[1], scene);
+  if (_isDM(_chat.char)) return _photoScene(scene);   // GM mode: the whole scene, not one portrait
+  return _photoSolo(_chat.char, scene);
+}
+
+async function _askGroupPicture() {
+  const [A, B] = _chat.group.slice(0, 2);
+  const ask = `What are ${A.name} and ${B.name} doing together?\n\ne.g. "playing Twister", "cooking dinner", "arm-wrestling at a bar", "sitting on a park bench".`;
+  let scene;
+  try { scene = window.styledPrompt ? await window.styledPrompt(ask, '') : window.prompt(ask, ''); } catch { scene = null; }
+  if (scene === null || scene === undefined) return;
+  return _photoGroup(A, B, String(scene).trim() || 'together');
+}
+
+// ── Picture renderers (shared by ask + capture) ───────────────────────────
+// One character. Empty scene → a candid full-body shot. IP-Adapter keeps the
+// face on-model while the body takes the pose the action calls for.
+async function _photoSolo(char, scene) {
+  _picBusy(true);
   const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> ${scene ? 'setting up the shot' : 'taking a picture'}…</span>`);
   const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
   _scrollChat();
   try {
     const who = [char.name, char.role, char.blurb].filter(Boolean).join(', ');
-    // Lead with the action so the model composes the whole scene (a person +
-    // horse, a fall, a fight…) at full body. In scene mode we drop the role
-    // (which pulls back toward their "home" setting) and let the scene define
-    // the context — identity still holds via the IP-Adapter face + physique
-    // anchor. Without a scene: a clean candid full-body photo.
+    // Lead with the action so the model composes the whole scene at full body;
+    // in scene mode we drop the role (which pulls back to their "home" setting)
+    // and let identity hold via the face + physique anchor.
     const prompt = scene
       ? `${scene}. Full-body cinematic photograph, ${char.name} as the subject, natural expressive pose that fits the action, complete figure in frame, detailed environment and props, dramatic depth of field, sharp focus, highly detailed.`
       : `Candid full-body photograph of ${char.name} (${who}), relaxed natural pose, complete figure in frame, soft natural light, sharp focus, highly detailed.`;
@@ -2089,31 +2140,21 @@ async function _askForPicture() {
     }
   } catch (e) {
     if (bubble) bubble.innerHTML = `<span class="rp-typing">The picture didn't come through — try again.</span>`;
-  } finally {
-    if (btn) btn.disabled = false;
-    _scrollChat();
-  }
+  } finally { _picBusy(false); _scrollChat(); }
 }
 
-// Group chat: a picture of two characters together. Uses regional prompting —
-// each person is painted in their own half of a wide canvas — so their looks
-// don't bleed into each other (the failure mode of a single two-person prompt).
-async function _askGroupPicture() {
-  const [A, B] = _chat.group.slice(0, 2);
-  const ask = `What are ${A.name} and ${B.name} doing together?\n\ne.g. "playing Twister", "cooking dinner", "arm-wrestling at a bar", "sitting on a park bench".`;
-  let scene;
-  try { scene = window.styledPrompt ? await window.styledPrompt(ask, '') : window.prompt(ask, ''); } catch { scene = null; }
-  if (scene === null || scene === undefined) return;
-  scene = String(scene).trim() || 'together';
-  const btn = $('studio-ask-pic'); if (btn) btn.disabled = true;
+// Two characters together. Regional prompting paints each in their own half of a
+// wide canvas so their looks don't bleed; overlapping zones + "solo, one person"
+// suppress a spurious third figure in the seam.
+async function _photoGroup(A, B, scene) {
+  scene = scene || 'together';
+  _picBusy(true);
   const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> setting up a photo of ${_esc(A.name)} & ${_esc(B.name)}…</span>`);
   const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
   _scrollChat();
   try {
     const look = async (c) => { try { const d = await (await fetch(`${API_BASE}/api/characters/studio/appearance/${encodeURIComponent(c.name)}`)).json(); return (d.appearance || '').trim() || c.name; } catch { return c.name; } };
     const [lookA, lookB] = await Promise.all([look(A), look(B)]);
-    // "solo, one person" + overlapping zones (0.55/0.45) suppress a spurious third
-    // figure in the seam; the base prompt is scene-only (no person count).
     const regions = [
       { prompt: `solo, one person, full body of ${A.name}: ${lookA}, ${scene}`, x: 0.0, y: 0.0, w: 0.55, h: 1.0 },
       { prompt: `solo, one person, full body of ${B.name}: ${lookB}, ${scene}`, x: 0.45, y: 0.0, w: 0.55, h: 1.0 },
@@ -2128,9 +2169,29 @@ async function _askGroupPicture() {
     } else if (bubble) { bubble.innerHTML = `<span class="rp-typing">Couldn't get the shot — try again.</span>`; }
   } catch (e) {
     if (bubble) bubble.innerHTML = `<span class="rp-typing">The picture didn't come through — try again.</span>`;
-  } finally {
-    if (btn) btn.disabled = false; _scrollChat();
-  }
+  } finally { _picBusy(false); _scrollChat(); }
+}
+
+// GM mode: the world and its action, not one character's portrait. No single-
+// subject face anchor — the whole moment is the subject.
+async function _photoScene(scene) {
+  _picBusy(true);
+  const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> capturing the scene…</span>`);
+  const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
+  _scrollChat();
+  try {
+    const prompt = `${scene}. Epic cinematic wide establishing shot, dynamic action, dramatic volumetric lighting, richly detailed fantasy illustration, sharp focus, highly detailed.`;
+    const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, size: '1216x832' }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.image_url && bubble) {
+      bubble.innerHTML = `<em>${_esc(scene)}</em><img class="rp-photo rp-photo-wide" src="${_esc(d.image_url)}" alt="${_esc(scene)}" loading="lazy">`;
+    } else if (bubble) { bubble.innerHTML = `<span class="rp-typing">Couldn't capture that scene — try again.</span>`; }
+  } catch (e) {
+    if (bubble) bubble.innerHTML = `<span class="rp-typing">The picture didn't come through — try again.</span>`;
+  } finally { _picBusy(false); _scrollChat(); }
 }
 
 // Seed a character's look with the user's own photos (IP-Adapter references), so
