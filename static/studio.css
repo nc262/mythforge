@@ -1246,6 +1246,16 @@ body.home-landing .gh-foot { display: flex; }
    become full sheets, overlays fit the small viewport, and everything stays
    reachable with a thumb. */
 @media (max-width: 768px) {
+  /* Topbar: brand + buttons stay on row 1; the tab pills drop to their own
+     full-width row that scrolls sideways instead of overflowing the header. */
+  .studio-topbar { flex-wrap: wrap; gap: 8px 10px; padding: 10px 12px; }
+  .studio-brand { font-size: 17px; gap: 7px; }
+  .studio-tabs {
+    order: 3; flex-basis: 100%; margin-left: 0;
+    overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  }
+  .studio-tabs::-webkit-scrollbar { display: none; }
+  .studio-tab { padding: 6px 13px; white-space: nowrap; flex: none; }
   .chat-banner { flex-wrap: wrap; gap: 10px; padding: 10px 12px; }
   .chat-banner .cb-portrait, .chat-banner .cb-portrait-fallback { width: 42px; height: 42px; }
   .chat-banner .cb-name { font-size: 16px; }
