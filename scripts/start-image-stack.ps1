@@ -16,7 +16,7 @@ $comfyDir    = if ($env:COMFY_DIR) { $env:COMFY_DIR } else {
   $sib = Split-Path -Parent $odysseusDir
   @("$sib\ComfyUI-Zluda", "$sib\ComfyUI") | Where-Object { Test-Path $_ } | Select-Object -First 1
 }
-if (-not $comfyDir) { throw "ComfyUI not found next to this repo — set COMFY_DIR or run scripts\install.ps1" }
+if (-not $comfyDir) { throw "ComfyUI not found next to this repo - set COMFY_DIR or run scripts\install.ps1" }
 $venvPython = Join-Path $odysseusDir 'venv\Scripts\python.exe'
 $bridge     = Join-Path $odysseusDir 'scripts\comfyui_openai_bridge.py'
 $ckpt       = 'DreamShaperXL_Turbo_v2_1.safetensors'
