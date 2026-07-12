@@ -1825,7 +1825,14 @@ function _stripFraming(content) {
     if (end < 0) { s = t; break; }   // unterminated — show as-is rather than eat everything
     s = t.slice(end + 1);
   }
-  return s.trim();
+  const out = s.trim();
+  if (out) return out;
+  // Everything was bracketed. If it's app-generated framing (kickoff / continue /
+  // group / context injection), keep it hidden; otherwise it was the player's own
+  // words ("[I hide in the shadows]") — show them rather than drop the message.
+  const orig = String(content || '').trim();
+  if (/^\[(?:we are continuing|this is a relaxed group|campaign memory|relevant past events|gm style|player character sheet|in-world time|the player is|between you and this player)/i.test(orig)) return '';
+  return orig.replace(/^\[/, '').replace(/\]\s*$/, '').trim();
 }
 
 async function _loadChatHistory() {
@@ -1889,7 +1896,11 @@ function _appendBubble(side, html, imgUrl, dbId) {
             ? `<div class="rp-avatar dm" aria-hidden="true">GM</div>`
             : `<div class="rp-avatar me-av" aria-hidden="true">${_esc(_initial(char.name))}</div>`));
   const photo = imgUrl ? `<img class="rp-photo" src="${_esc(imgUrl)}" alt="Shared image" loading="lazy">` : '';
-  const isPreHtml = typeof html === 'string' && html.startsWith('<');
+  // Only our own typing-indicator placeholder is trusted raw HTML. Deciding by a
+  // bare "starts with <" let any model/restored reply beginning with "<" (e.g.
+  // "<gasp>" or a crafted "<img onerror=…>") inject unescaped — everything else
+  // goes through _rp(), which escapes.
+  const isPreHtml = typeof html === 'string' && /^<span class="rp-typing"/.test(html);
   // Group chat: label each reply with the speaker (avatars alone get ambiguous).
   // The label sits OUTSIDE .rp-bubble (streaming rewrites the bubble's innerHTML).
   const nameLbl = (_chat.group && side !== 'me' && char.name) ? `<span class="rp-speaker-name">${_esc(char.name)}</span>` : '';
@@ -2446,7 +2457,8 @@ async function _streamAssistant(framed) {
         }
         _maybeAdvanceTime(cid);                // let the day drift forward as you play
         const _tod = _detectTimeOfDay(acc); if (_tod >= 0) _setClockTime(cid, _tod);   // keep the clock in step with the fiction
-        _updateHereFromText(cid, acc);         // and the atlas marker in step with the scene
+        if (_chat.skipHereScan) _chat.skipHereScan = false;   // just travelled — the destination stands; don't let the narration move it
+        else _updateHereFromText(cid, acc);    // and the atlas marker in step with the scene
         _checkFinale(cid, acc);                // did the tale just reach THE END?
         // The GM awarded Inspiration for good play?
         if (/\b(gain|earn(?:ed)?|grant(?:ed|s)?|award(?:ed|s)?|receive[ds]?)\s+(?:you\s+|yourself\s+)?(?:a point of\s+|a moment of\s+)?inspiration\b|you (?:now )?have inspiration\b/i.test(acc) && !/bardic/i.test(acc)) {
@@ -2926,7 +2938,9 @@ function _rechargeFeatures(cid, restKind) {
   const s = _loadSheet(cid); if (!s.featUses) return;
   Object.keys(s.featUses).forEach(k => {
     const fa = FEATURE_ACTIONS[k];
-    if (fa && (restKind === 'long' || fa.rest === 'short')) delete s.featUses[k];
+    // A long rest resets everything (even uses we don't have a table entry for,
+    // which otherwise stay stuck "used" forever); a short rest only its own.
+    if (restKind === 'long' || (fa && fa.rest === 'short')) delete s.featUses[k];
   });
   _saveSheet(cid, s);
 }
@@ -3245,6 +3259,7 @@ function _armInspiration(cid) {
 // Fold inspiration into a roll's advantage mode, consuming the token if armed.
 function _applyInspiration(cid, curMode) {
   if (!_inspArmed) return curMode;
+  if (curMode === 'adv') { _toast('Already at advantage — Inspiration held for later.'); return 'adv'; }   // don't burn it for nothing
   _inspArmed = false;
   const s = _loadSheet(cid); s.inspiration = false; _saveSheet(cid, s);
   _reflectInspiration(cid); _fxSpell('Inspiration', 0);
@@ -4737,7 +4752,9 @@ function _isSmallRace(s) { return /halfling|gnome|goblin|kobold|imp|sprite|fairy
 // Extra Attack), one Bonus action, one Reaction. Stored on the combat so it
 // resets each round (each combatant acts once per round in this model).
 function _pcBudget(cc, sheet) {
-  const attacks = (sheet.features || []).some(f => /extra attack/i.test(f)) ? 2 : 1;
+  // Extra Attack is 2 swings; a Fighter's climbs to 3 at 11th level and 4 at 20th.
+  const fLvl = _classLevelOf(sheet, 'Fighter');
+  const attacks = fLvl >= 20 ? 4 : fLvl >= 11 ? 3 : ((sheet.features || []).some(f => /extra attack/i.test(f)) ? 2 : 1);
   if (!cc._pcb || cc._pcb.round !== cc.round) cc._pcb = { round: cc.round, attacksLeft: attacks, attacksMax: attacks, bonusUsed: false, reactionUsed: false };
   return cc._pcb;
 }
@@ -4923,6 +4940,33 @@ function _resolveEnemyHit(cid, enemy, dmg, crit, note) {
   _appendBubble('me', `🗡 *The ${_esc(enemy.name)} hits you${crit ? ' — **CRIT!**' : ''}${note ? ` — *${_esc(note)}*` : ''} for **${dmg} damage** (${r.hp}/${r.hpMax} left).${r.extra || ''}${r.concMsg || ''}${down ? ' — **you go down!**' : ''}*`); _scrollChat();
   _afterEnemyRender(cid);
   if (_isDM(_chat.char)) { _chat.skipDmgScan = true; _streamAssistant(`[The ${enemy.name} hit me for ${dmg} (${r.hp}/${r.hpMax} HP).${down ? ' I am down and must roll death saves.' : ''} Narrate the blow briefly.]`); }   // HP already applied — don't let the narration re-scan it
+}
+// An ally companion takes its turn: a straightforward strike on a random living
+// foe. Attack/damage scale mildly with the companion's max HP as a rough proxy.
+// ponytail: no target-priority or ability use — good enough for a sidekick.
+function _companionTurn(cid, ally) {
+  const cc = _loadCombat(cid);
+  if ((ally.conditions || []).some(cd => /stunned|paralyz|unconscious|incapacitat|frozen|petrif/i.test(typeof cd === 'string' ? cd : (cd.name || '')))) {
+    _appendBubble('me', `😵 *${_esc(ally.name)} can't act.*`); _scrollChat(); return;
+  }
+  const foes = cc.combatants.filter(x => x.side === 'enemy' && x.hp > 0);
+  if (!foes.length) return;
+  const foe = foes[Math.floor(Math.random() * foes.length)];
+  const atkBonus = 3 + Math.floor((ally.hpMax || 10) / 20);
+  const roll = 1 + Math.floor(Math.random() * 20);
+  const total = roll + atkBonus, crit = roll === 20, fumble = roll === 1;
+  const ac = foe.ac || 13;
+  if (!(crit || (!fumble && total >= ac))) {
+    _appendBubble('me', `⚔ *${_esc(ally.name)} swings at the ${_esc(foe.name)} — ${total} vs AC ${ac} → misses.*`); _scrollChat(); return;
+  }
+  let dmg = 2 + Math.floor((ally.hpMax || 10) / 16);
+  for (let i = 0; i < (crit ? 2 : 1); i++) dmg += 1 + Math.floor(Math.random() * 6);
+  foe.hp = Math.max(0, foe.hp - dmg);
+  _saveCombat(cid, cc);
+  const fell = foe.hp <= 0;
+  _sfx('hit');
+  _appendBubble('me', `⚔ *${_esc(ally.name)} strikes the ${_esc(foe.name)}${crit ? ' — **CRIT!**' : ''} for **${dmg}**${fell ? ' — it falls!' : ` (${foe.hp}/${foe.hpMax} left)`}.*`); _scrollChat();
+  if (fell && !cc.combatants.some(x => x.side === 'enemy' && x.hp > 0)) _finishCombat(cid);
 }
 // Which reactions can the hero spend against this incoming hit? One per round,
 // tracked on the per-combat budget so it resets each round AND each new fight.
@@ -5148,9 +5192,13 @@ function renderCombatPanel() {
       }
       const n = cc.combatants.length || 1; cc.turn += 1; if (cc.turn >= n) { cc.turn = 0; cc.round += 1; }
       _saveCombat(cid, cc); renderCombatPanel();
-      // If it's now an enemy's turn, it acts against you automatically.
+      // If it's now an enemy's turn it strikes at you; an ally companion's turn
+      // it strikes a foe — both resolve automatically when you press Next.
       const now = _combatOrder(cc)[cc.turn % (cc.combatants.length || 1)];
-      if (now && now.side === 'enemy' && now.hp > 0) { _enemyTurn(cid, now); renderCombatPanel(); }
+      if (now && now.hp > 0) {
+        if (now.side === 'enemy') { _enemyTurn(cid, now); renderCombatPanel(); }
+        else if (now.id !== 'pc') { _companionTurn(cid, now); renderCombatPanel(); }
+      }
     });
     $('cb-end').addEventListener('click', () => _finishCombat(cid));
     panel.querySelectorAll('[data-attack]').forEach(b => b.addEventListener('click', () => _playerAttack(cid, b.dataset.attack)));
@@ -5709,8 +5757,10 @@ async function _updateQuests(cid) {
     let newlyDone = 0;
     d.quests.forEach(x => {
       const key = (x.title || '').toLowerCase(); if (!key) return; const p = byTitle[key];
-      if (p) { const wasDone = p.status === 'done'; p.desc = x.desc || p.desc; p.status = x.status || p.status; if (p.status === 'done' && !wasDone) newlyDone++; }
-      else { byTitle[key] = { id: 'q-' + key.replace(/[^a-z0-9]+/g, '-'), title: x.title, desc: x.desc || '', status: x.status || 'active' }; if (byTitle[key].status === 'done') newlyDone++; }
+      // `rewarded` guards XP: a quest the LLM flips done→active→done again must not
+      // pay out twice.
+      if (p) { const wasDone = p.status === 'done'; p.desc = x.desc || p.desc; p.status = x.status || p.status; if (p.status === 'done' && !wasDone && !p.rewarded) { newlyDone++; p.rewarded = true; } }
+      else { const nq = { id: 'q-' + key.replace(/[^a-z0-9]+/g, '-'), title: x.title, desc: x.desc || '', status: x.status || 'active' }; if (nq.status === 'done') { newlyDone++; nq.rewarded = true; } byTitle[key] = nq; }
     });
     _saveQuests(cid, { quests: Object.values(byTitle), at: _meCount() });
     _reflectObjective(cid);
@@ -6011,7 +6061,13 @@ function _showPlace(cid, i) {
   $('ap-travel').addEventListener('click', () => _travelTo(cid, p));
   $('ap-trade')?.addEventListener('click', () => _tradeAt(cid, p));
   $('ap-map')?.addEventListener('click', () => _openLocalMap(cid, p));
-  $('ap-del')?.addEventListener('click', () => { const ww = _loadWorldS(cid); ww.places.splice(i, 1); _saveWorldS(cid, ww); renderMap(); });
+  $('ap-del')?.addEventListener('click', () => {
+    // Match by name, not the render-time index — a background world update could
+    // have reordered places, and a stale index would remove the wrong one.
+    const ww = _loadWorldS(cid);
+    const k = (ww.places || []).findIndex(x => x && (x.name || '').toLowerCase() === (p.name || '').toLowerCase());
+    if (k >= 0) { ww.places.splice(k, 1); _saveWorldS(cid, ww); renderMap(); }
+  });
 }
 
 // Click into a place and see ITS map — a drawn floor plan for interiors, a
@@ -6061,6 +6117,7 @@ function _travelTo(cid, p) {
   // The road is not always safe: sometimes the journey itself becomes the scene.
   const risk = Math.random() < 0.2 ? ` On the way, run a brief encounter or striking event — perhaps ${_randEncounter().toLowerCase()}s, a traveler, or an omen — before I arrive.` : '';
   const who = ' On arrival, describe the layout of the place and NAME who is present (keepers, vendors, patrons, locals) so I know who I can talk to' + (p.shop ? ', and mention what wares are on display' : '') + '.';
+  _chat.skipHereScan = true;   // you're now at p.name — don't let the arrival narration re-detect a different place
   if (_isDM(_chat.char)) _streamAssistant(`[I travel to ${p.name}${p.note ? ` (${p.note})` : ''}${p.shop ? `, which trades in ${p.shop}` : ''}. Narrate the journey briefly and set the scene.${who}${risk}]`);
 }
 

@@ -203,6 +203,18 @@
   <div id="minimized-dock" class="minimized-dock" aria-label="Minimized windows"></div>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
+  <!-- This is the game, not the workspace: hide settings tabs for the tools
+       Mythforge doesn't ship (email, reminders, integrations, agent tools,
+       users, web search). Keeps Models / AI / Appearance / Shortcuts / Account
+       / System — the ones that matter for play. -->
+  <style>
+    #settings-modal .settings-nav-item[data-settings-tab="search"],
+    #settings-modal .settings-nav-item[data-settings-tab="integrations"],
+    #settings-modal .settings-nav-item[data-settings-tab="email"],
+    #settings-modal .settings-nav-item[data-settings-tab="reminders"],
+    #settings-modal .settings-nav-item[data-settings-tab="tools"],
+    #settings-modal .settings-nav-item[data-settings-tab="users"] { display: none !important; }
+  </style>
   <!-- Settings modal (from the SPA) — opened lazily by the title menu. -->
   <div id="settings-modal" class="modal hidden">
     <div class="modal-content settings-modal-content" role="dialog" aria-label="Settings">
