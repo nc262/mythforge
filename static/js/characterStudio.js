@@ -1954,12 +1954,22 @@ async function _regenBubble(wrap) {
   const thread = $('studio-thread');
   const lastThem = thread ? [...thread.querySelectorAll('.rp-msg.them')].pop() : null;
   if (lastThem && wrap !== lastThem) { _toast('You can only redo the most recent reply.'); return; }
-  const mid = wrap.dataset.mid;
-  if (mid) {
+  // Delete the assistant reply AND the user turn that prompted it — re-streaming
+  // re-sends that same framing, so without dropping the old user message the
+  // session would accumulate a duplicate prompt on every regenerate.
+  const ids = [];
+  if (wrap.dataset.mid) ids.push(wrap.dataset.mid);
+  try {
+    const msgs = ((await (await fetch(`${API_BASE}/api/history/${_chat.sessionId}`)).json()) || {}).history || [];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      if (msgs[i].role === 'user') { const uid = msgs[i].metadata && msgs[i].metadata._db_id; if (uid) ids.push(uid); break; }
+    }
+  } catch {}
+  if (ids.length) {
     try {
       await fetch(`${API_BASE}/api/session/${_chat.sessionId}/delete-messages`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ msg_ids: [mid] }),
+        body: JSON.stringify({ msg_ids: ids }),
       });
     } catch (e) { console.error('delete-message failed', e); }
   }
@@ -2416,19 +2426,32 @@ async function _streamAssistant(framed) {
       if (_upkeep && _meCount() - (_loadQuests(cid).at || 0) >= 3) _enqueueExtractor(() => _updateQuests(cid));
       _reflectObjective(cid);                // keep the objective chip current
       if (_upkeep && _meCount() - (_loadWorldS(cid).at || 0) >= 8) _enqueueExtractor(() => _updateWorldS(cid));
-      _renderLootPrompt(_detectLoot(acc));   // offer to pocket anything the GM handed over
-      _applyDetectedGold(cid, acc);          // update the purse from any gold changing hands
-      const _cs = _detectCombatStart(acc); if (_cs) _enterCombat(cid, _cs.enemy, acc);   // a fight breaks out
-      const _inc = _detectIncomingDamageRoll(acc);
-      if (_inc) { _renderRollPrompt(null); _rollIncoming(cid, _inc); }   // the GM's attack rolls itself
-      else _applyPlayerDamage(cid, acc);     // or a plain-number blow lands → roll, shake, apply HP
-      _maybeAdvanceTime(cid);                // let the day drift forward as you play
-      const _tod = _detectTimeOfDay(acc); if (_tod >= 0) _setClockTime(cid, _tod);   // keep the clock in step with the fiction
-      _updateHereFromText(cid, acc);         // and the atlas marker in step with the scene
-      _checkFinale(cid, acc);                // did the tale just reach THE END?
-      // The GM awarded Inspiration for good play?
-      if (/\b(gain|earn(?:ed)?|grant(?:ed|s)?|award(?:ed|s)?|receive[ds]?)\s+(?:you\s+|yourself\s+)?(?:a point of\s+|a moment of\s+)?inspiration\b|you (?:now )?have inspiration\b/i.test(acc) && !/bardic/i.test(acc)) {
-        if (_grantInspiration(cid)) { _sfx('level'); _toast('✨ You gain Inspiration — spend it for advantage on a roll.'); }
+      // Auto world-state detectors. Skipped entirely on a recap turn (continuing
+      // from a save point re-narrates past events — mining it would re-award old
+      // loot/gold). The damage scan is skipped once right after a mechanical combat
+      // hit, whose HP was already applied — otherwise the GM's "hits you for N"
+      // narration would double it.
+      if (_chat.recapTurn) {
+        _chat.recapTurn = false;
+      } else {
+        _renderLootPrompt(_detectLoot(acc));   // offer to pocket anything the GM handed over
+        _applyDetectedGold(cid, acc);          // update the purse from any gold changing hands
+        const _cs = _detectCombatStart(acc); if (_cs) _enterCombat(cid, _cs.enemy, acc);   // a fight breaks out
+        if (_chat.skipDmgScan) {
+          _chat.skipDmgScan = false;           // this turn narrates a hit already applied by the combat engine
+        } else {
+          const _inc = _detectIncomingDamageRoll(acc);
+          if (_inc) { _renderRollPrompt(null); _rollIncoming(cid, _inc); }   // the GM's attack rolls itself
+          else _applyPlayerDamage(cid, acc);   // or a plain-number blow lands → roll, shake, apply HP
+        }
+        _maybeAdvanceTime(cid);                // let the day drift forward as you play
+        const _tod = _detectTimeOfDay(acc); if (_tod >= 0) _setClockTime(cid, _tod);   // keep the clock in step with the fiction
+        _updateHereFromText(cid, acc);         // and the atlas marker in step with the scene
+        _checkFinale(cid, acc);                // did the tale just reach THE END?
+        // The GM awarded Inspiration for good play?
+        if (/\b(gain|earn(?:ed)?|grant(?:ed|s)?|award(?:ed|s)?|receive[ds]?)\s+(?:you\s+|yourself\s+)?(?:a point of\s+|a moment of\s+)?inspiration\b|you (?:now )?have inspiration\b/i.test(acc) && !/bardic/i.test(acc)) {
+          if (_grantInspiration(cid)) { _sfx('level'); _toast('✨ You gain Inspiration — spend it for advantage on a roll.'); }
+        }
       }
     }
     _scrollChat();
@@ -2666,6 +2689,7 @@ async function continueFromSnapshot(s) {
   renderChatShell(char);
   const thread = $('studio-thread'); if (thread) thread.innerHTML = '';
   const recap = `Story so far: ${s.story_so_far || '(a tale already underway)'}\nWorld state / what has changed:\n${s.world_changes || '(unrecorded)'}`;
+  _chat.recapTurn = true;   // this reply re-narrates past events — don't mine it for "new" loot/gold/damage
   await _streamAssistant(`[We are continuing a saved story. ${recap}\nPick the story up from here: re-establish the current scene and ${_isDM(char) ? 'end by asking what I do' : 'greet me in character'}. Do not speak or act for me.]`);
 }
 
@@ -4642,7 +4666,7 @@ function _syncCompanionsFromCombat(cid, combatants) {
   (combatants || []).forEach(m => {
     if (m.side !== 'ally' || m.id === 'pc') return;
     const c = s.companions.find(x => x.name.toLowerCase() === (m.name || '').toLowerCase());
-    if (c) { c.hp = Math.max(1, Math.min(c.hpMax, m.hp)); changed = true; }   // downed allies limp on at 1 HP
+    if (c) { c.hp = Math.max(0, Math.min(c.hpMax, m.hp)); changed = true; }   // a downed ally stays down (0 HP) until healed/rested — not silently revived
   });
   if (changed) { _saveSheet(cid, s); _renderPartyChips(cid); }
 }
@@ -4898,7 +4922,7 @@ function _resolveEnemyHit(cid, enemy, dmg, crit, note) {
   const down = r.hp <= 0;
   _appendBubble('me', `🗡 *The ${_esc(enemy.name)} hits you${crit ? ' — **CRIT!**' : ''}${note ? ` — *${_esc(note)}*` : ''} for **${dmg} damage** (${r.hp}/${r.hpMax} left).${r.extra || ''}${r.concMsg || ''}${down ? ' — **you go down!**' : ''}*`); _scrollChat();
   _afterEnemyRender(cid);
-  if (_isDM(_chat.char)) _streamAssistant(`[The ${enemy.name} hit me for ${dmg} (${r.hp}/${r.hpMax} HP).${down ? ' I am down and must roll death saves.' : ''} Narrate the blow briefly.]`);
+  if (_isDM(_chat.char)) { _chat.skipDmgScan = true; _streamAssistant(`[The ${enemy.name} hit me for ${dmg} (${r.hp}/${r.hpMax} HP).${down ? ' I am down and must roll death saves.' : ''} Narrate the blow briefly.]`); }   // HP already applied — don't let the narration re-scan it
 }
 // Which reactions can the hero spend against this incoming hit? One per round,
 // tracked on the per-combat budget so it resets each round AND each new fight.
@@ -6064,8 +6088,16 @@ function _updateHereFromText(cid, text) {
   if (!text) return;
   const w = _loadWorldS(cid); const t = text.toLowerCase();
   let best = null;
-  (w.places || []).forEach(p => { const n = (p.name || '').toLowerCase(); if (n && n.length > 3 && t.includes(n)) { if (!best || n.length > best.length) best = p.name; } });
+  // Whole-word match, not substring — else "Well" fires on "farewell", "Ember" on "embers".
+  (w.places || []).forEach(p => {
+    const n = (p.name || '').toLowerCase(); if (!n || n.length <= 3) return;
+    const re = new RegExp('\\b' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i');
+    if (re.test(t) && (!best || n.length > best.length)) best = p.name;
+  });
   if (best && best !== w.here) { w.here = best; _markVisited(w, best); _saveWorldS(cid, w); }
+  // No named place, but the scene explicitly leaves — clear the stale marker so
+  // the atlas doesn't keep you pinned to a spot you've departed.
+  else if (!best && w.here && /\byou\s+(?:leave|depart|set out|set off|travel|journey|ride out|walk out|head (?:out|off|into|for))\b/i.test(t)) { w.here = ''; _saveWorldS(cid, w); }
 }
 // ── Vendors: a real buy/sell counter ─────────────────────────────────────────
 // Wares and prices are deterministic (the UI is canon — no more "the shopkeep
@@ -6334,12 +6366,19 @@ function _mkItem(name, slot, qty) {
 function _equippedItem(inv, key) { const id = inv.equipped && inv.equipped[key]; return id ? (inv.items.find(x => x.id === id) || null) : null; }
 function _hasClass(s, cls) { return _classesOf(s).some(c => c.cls === cls); }
 function _hasBodyArmor(inv) { const eq = (inv && inv.equipped) || {}; return ['body', 'armor', 'chest', 'torso'].some(k => eq[k]); }
+function _bodyArmorItem(inv) { for (const k of ['body', 'armor', 'chest', 'torso']) { const it = _equippedItem(inv, k); if (it) return it; } return null; }
 // Base armor class = 10 + DEX, plus a class's Unarmored Defense when no body
 // armor is worn (Barbarian +CON, Monk +WIS). ponytail: worn armor still adds its
 // flat acBonus on top (the light additive item model) — a full armor-category
 // table with a heavy-armor DEX cap is the future refinement.
 function _baseAC(s, inv) {
-  let ac = 10 + _mod((s.abilities && s.abilities.DEX) || 10);
+  let dex = _mod((s.abilities && s.abilities.DEX) || 10);
+  // 5e armor caps DEX: heavy ignores it, medium caps at +2. We infer the armor's
+  // weight class from its flat acBonus (added on top in _effAC): plate ~+8, chain
+  // shirt ~+3, leather ~+1. Light armor (and none) keeps full DEX.
+  const body = _bodyArmorItem(inv);
+  if (body) { const b = body.acBonus || 0; if (b >= 6) dex = 0; else if (b >= 3) dex = Math.min(dex, 2); }
+  let ac = 10 + dex;
   if (!_hasBodyArmor(inv)) {
     if (_hasClass(s, 'Barbarian')) ac += Math.max(0, _mod((s.abilities && s.abilities.CON) || 10));
     else if (_hasClass(s, 'Monk')) ac += Math.max(0, _mod((s.abilities && s.abilities.WIS) || 10));
@@ -6552,8 +6591,12 @@ function _enterCombat(cid, enemy, sceneText) {
   const cc = _loadCombat(cid);
   if (cc.active) {   // already fighting — just make sure a new foe joins the board
     if (enemy && enemy !== 'Enemy' && !cc.combatants.some(x => x.side === 'enemy' && x.name.toLowerCase() === enemy.toLowerCase())) {
+      // cc.turn is a position in the init-sorted order; adding a combatant re-sorts
+      // it, so pin the current creature by id and restore its index after the push.
+      const ord0 = _combatOrder(cc); const curId = ord0.length ? (ord0[cc.turn % ord0.length] || {}).id : null;
       const hp = _enemyHpGuess(enemy); const eid = 'e' + cc.combatants.length + '_' + enemy.replace(/\s+/g, '');
       cc.combatants.push({ id: eid, name: enemy, hp, hpMax: hp, ac: null, init: 1 + Math.floor(Math.random() * 20), side: 'enemy', conditions: [] });
+      if (curId) { const idx = _combatOrder(cc).findIndex(x => x.id === curId); if (idx >= 0) cc.turn = idx; }
       _saveCombat(cid, cc); renderCombatPanel();
     }
     return;
@@ -6944,11 +6987,39 @@ function _setClockTime(cid, ti) {
 function _castSpell(cid, idx) {
   const s = _loadSheet(cid); const sp = s.spells[idx]; if (!sp) return;
   const lvl = sp.level || 0;
-  let castAt = 0;   // the slot level actually spent (may be upcast above the spell's level)
-  if (lvl > 0) {
-    for (let l = lvl; l <= 9; l++) { const sl = (s.slots || {})[l]; if (sl && (sl.used || 0) < (sl.max || 0)) { castAt = l; break; } }
-    if (castAt < lvl) { _appendBubble('me', `*No level ${lvl}+ slots left to cast ${_esc(sp.name)}.*`); _scrollChat(); return; }
-    s.slots[castAt].used = (s.slots[castAt].used || 0) + 1;
+  if (lvl <= 0) return _castSpellAt(cid, idx, 0);   // cantrip — no slot
+  // Which slot levels ≥ this spell's level still have a charge? More than one →
+  // let the player choose (upcast for power, or spend the lowest to conserve).
+  const avail = [];
+  for (let l = lvl; l <= 9; l++) { const sl = (s.slots || {})[l]; if (sl && (sl.used || 0) < (sl.max || 0)) avail.push(l); }
+  if (!avail.length) { _appendBubble('me', `*No level ${lvl}+ slots left to cast ${_esc(sp.name)}.*`); _scrollChat(); return; }
+  if (avail.length === 1) return _castSpellAt(cid, idx, avail[0]);
+  return _chooseCastSlot(cid, idx, sp, avail);
+}
+// Small chooser so casting can deliberately upcast instead of always burning the
+// lowest available slot.
+function _chooseCastSlot(cid, idx, sp, avail) {
+  const modal = $('studio-modal'); if (!modal) { _castSpellAt(cid, idx, avail[0]); return; }
+  const s = _loadSheet(cid); const lvl = sp.level || 1;
+  let ov = $('studio-slotmenu'); if (!ov) { ov = document.createElement('div'); ov.id = 'studio-slotmenu'; ov.className = 'chronicle-overlay'; modal.appendChild(ov); }
+  ov.innerHTML = `<div class="chronicle-sheet sk-sheet" role="dialog" aria-modal="true" aria-label="Choose a spell slot">
+    <div class="chronicle-bar"><h2>Cast ${_esc(sp.name)}</h2><button class="studio-close" id="slot-x" type="button" aria-label="Close">✕</button></div>
+    <div class="chronicle-list"><p class="cc-hint">Pick a slot — a higher one upcasts for a stronger effect.</p>
+      <div class="sk-grid">${avail.map(l => { const sl = (s.slots || {})[l] || {}; const left = Math.max(0, (sl.max || 0) - (sl.used || 0)); return `<button class="sk-item" data-slot="${l}" type="button"><span>Level ${l}${l > lvl ? ' · upcast' : ''}</span><em>${left} left</em></button>`; }).join('')}</div>
+    </div></div>`;
+  ov.style.display = 'flex';
+  const close = () => { ov.style.display = 'none'; };
+  $('slot-x').addEventListener('click', close);
+  ov.addEventListener('click', (e) => { if (e.target === ov) close(); });
+  ov.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { close(); _castSpellAt(cid, idx, parseInt(b.dataset.slot, 10)); }));
+}
+function _castSpellAt(cid, idx, castAt) {
+  const s = _loadSheet(cid); const sp = s.spells[idx]; if (!sp) return;
+  const lvl = sp.level || 0;
+  if (castAt > 0) {
+    const sl = (s.slots || {})[castAt];
+    if (!sl || (sl.used || 0) >= (sl.max || 0)) { _appendBubble('me', `*That slot is already spent.*`); _scrollChat(); return; }
+    s.slots[castAt].used = (sl.used || 0) + 1;
   }
   const upcast = castAt > lvl;
   // Concentration: a new concentration spell replaces any you were holding.
@@ -7308,11 +7379,14 @@ function _detectGold(text) {
   // object, not paying in currency. Extend this list, don't rebuild the parser.
   const NOTOBJ = '(?!\\s+(?:teeth|tooth|fang|fangs|ring|rings|crown|crowns|statue|statues|idol|idols|chain|chains|leaf|leaves|dust|trim|plate|plated|bar|bars|nugget|nuggets|vein|veins|ore|filigree|thread|threads|embroidery|band|bands|hilt|hilts|inlay|lettering|scale|scales|eyes?|hair|mane|fur|paint|light))';
   const clamp = (s) => Math.min(99999, Math.max(0, parseInt(s, 10) || 0));
+  // The transaction must be about the PLAYER — else "the merchant earned 500 gold"
+  // credits your purse. Require a first/second-person pronoun near the match.
+  const aboutPlayer = (idx, len) => /\b(you|your|yourself|i|me|my|we|us|our)\b/i.test(text.slice(Math.max(0, idx - 24), idx + len + 12));
   let gain = 0, spend = 0, m;
   const gainRe = new RegExp(`\\b(?:gain|receive[ds]?|find|found|earn(?:ed)?|loot(?:ed)?|award(?:ed)?|reward(?:ed)?|pocket(?:ed)?|collect(?:ed)?|are\\s+given|hands?\\s+you)\\b\\D{0,25}?(\\d{1,5})\\s*${CUR}\\b${NOTOBJ}`, 'gi');
   const spendRe = new RegExp(`\\b(?:pays?|paid|spend|spent|costs?|lose|lost|hand(?:s|ed)?\\s+over|part\\s+with|deduct(?:ed)?|charge[ds]?)\\b\\D{0,25}?(\\d{1,5})\\s*${CUR}\\b${NOTOBJ}`, 'gi');
-  while ((m = gainRe.exec(text))) gain += clamp(m[1]);
-  while ((m = spendRe.exec(text))) spend += clamp(m[1]);
+  while ((m = gainRe.exec(text))) { if (aboutPlayer(m.index, m[0].length)) gain += clamp(m[1]); }
+  while ((m = spendRe.exec(text))) { if (aboutPlayer(m.index, m[0].length)) spend += clamp(m[1]); }
   return gain - spend;
 }
 function _applyDetectedGold(cid, text) {
