@@ -131,6 +131,14 @@ _TIMEOUT_EXEMPT_PREFIXES = (
     "/api/image",           # diffusion proxies (inpaint/harmonize/upscale/etc.) — own 120s httpx timeout
     "/api/characters/studio/worldsmith",  # one-off long creative LLM call — own 180s timeout
     "/api/characters/studio/generate",    # SDXL image gen — 30-120s warm, up to 420s on cold ZLUDA load; own 300s httpx timeout
+    # Living-world LLM extractors: codex/quests/world-tick/suggest/describe all
+    # run a local-model completion that routinely exceeds 45s, so the middleware
+    # was 504'ing them and silently killing the codex/quest/world updates.
+    "/api/characters/studio/codex",
+    "/api/characters/studio/quests",
+    "/api/characters/studio/worldtick",
+    "/api/characters/studio/suggest",
+    "/api/characters/studio/describe",
 )
 
 
@@ -745,16 +753,13 @@ def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
 
 @app.get("/")
 async def serve_index(request: Request):
-    # Mythforge boots straight into the game (the lean standalone entry page),
-    # not the full Odysseus SPA. index.html is still served at /workspace for the
-    # legacy multi-tool surface if present.
-    game_path = abs_join(BASE_DIR, "static/mythforge.html")
-    if os.path.exists(game_path):
-        return _serve_html_with_nonce(request, game_path)
     static_path = abs_join(BASE_DIR, "static/index.html")
     if os.path.exists(static_path):
         return _serve_html_with_nonce(request, static_path)
-    raise HTTPException(404, "no entry page found")
+    root_path = abs_join(BASE_DIR, "index.html")
+    if os.path.exists(root_path):
+        return _serve_html_with_nonce(request, root_path)
+    raise HTTPException(404, "index.html not found")
 
 @app.get("/mythforge")
 async def serve_mythforge(request: Request):

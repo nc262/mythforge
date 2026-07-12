@@ -6631,10 +6631,15 @@ const _COMBAT_VERBS = 'attacks?|lunges?|charges?|strikes? at you|swings? at you|
 // "a spell to aid your attack" once spawned a combatant named "Spell To Aid Your".
 function _plausibleFoe(n) {
   if (!n || n.length < 3) return false;
+  // A foe is a short noun, not a clause. More than 3 words is a sentence
+  // fragment the regex grabbed ("the mine shaft as you charge" → "mine shaft
+  // as you"), so reject it outright.
+  if (n.trim().split(/\s+/).length > 3) return false;
   // Rules vocabulary and abstractions read like "<Name> attacks" to the regex
   // ("an opportunity attack…" once spawned a 12 HP foe named Opportunity).
   if (/\b(?:spell|strain|attack|attempt|effort|roll|save|check|throw|note|failure|failed|aid|magic|mayhem|blow|strike|swing|turn|round|damage|scene|story|moment|option|chance|way|plan|idea|question|opportunity|reaction|advantage|disadvantage|initiative|inspiration|perception|surprise|condition|action|bonus|movement|challenge|threat|danger|risk|possibility|memory|thought|feeling|instinct|urge|impulse)\b/i.test(n)) return false;
-  if (/\b(?:your|my|this|that|these|those|to|will|would|could|can)\b/i.test(n)) return false;
+  // Function words / pronouns betray a fragment rather than a creature name.
+  if (/\b(?:your|my|this|that|these|those|to|will|would|could|can|you|i|we|as|and|but|with|into|from|near|upon|while|when|where|here|there|is|are|was|were|has|have|had|shaft|entrance|wall|floor|ceiling|corridor|chamber|doorway)\b/i.test(n)) return false;
   return true;
 }
 function _detectCombatStart(text) {
@@ -7326,7 +7331,7 @@ function _showItemDetail(cid, id) {
   $('id-sell')?.addEventListener('click', () => _sellItem(cid, id));
   $('id-give')?.addEventListener('click', () => _giveItem(cid, id));
   $('id-craft')?.addEventListener('click', () => _craftItem(cid, id));
-  $('id-equip')?.addEventListener('click', () => { const v = _loadInv(cid); v.equipped = v.equipped || {}; if (isEquipped) { delete v.equipped[equipSlot.key]; } else { v.equipped[equipSlot.key] = id; } _saveInv(cid, v); renderInventory(); if (!isEquipped) _fxEquipShimmer(equipSlot.key); });
+  $('id-equip')?.addEventListener('click', () => { const v = _loadInv(cid); v.equipped = v.equipped || {}; if (isEquipped) { delete v.equipped[equipSlot.key]; } else { v.equipped[equipSlot.key] = id; } _saveInv(cid, v); renderInventory(); if (!isEquipped) _fxEquipShimmer(equipSlot.key); _showItemDetail(cid, id); });   // re-render the detail so the button flips Equip↔Unequip
   $('id-drop1')?.addEventListener('click', () => { const v = _loadInv(cid); const x = v.items.find(y => y.id === id); if (x) { x.qty--; if (x.qty <= 0) { v.items = v.items.filter(y => y.id !== id); Object.keys(v.equipped || {}).forEach(k => { if (v.equipped[k] === id) delete v.equipped[k]; }); } } _saveInv(cid, v); renderInventory(); });
   $('id-dropall')?.addEventListener('click', () => { const v = _loadInv(cid); v.items = v.items.filter(y => y.id !== id); Object.keys(v.equipped || {}).forEach(k => { if (v.equipped[k] === id) delete v.equipped[k]; }); _saveInv(cid, v); renderInventory(); });
   $('id-art')?.addEventListener('click', async () => {
