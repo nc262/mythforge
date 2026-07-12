@@ -2445,6 +2445,8 @@ async function _streamAssistant(framed) {
       if (_chat.recapTurn) {
         _chat.recapTurn = false;
       } else {
+        const _sp = _detectLearnedSpell(acc); if (_sp) _learnSpellFromDM(cid, _sp);   // GM granted a spell → scribe it
+        const _nj = _detectCompanionJoin(cid, acc); if (_nj) _joinCompanionFromDM(cid, _nj);   // GM had an NPC join → recruit them
         _renderLootPrompt(_detectLoot(acc));   // offer to pocket anything the GM handed over
         _applyDetectedGold(cid, acc);          // update the purse from any gold changing hands
         const _cs = _detectCombatStart(acc); if (_cs) _enterCombat(cid, _cs.enemy, acc);   // a fight breaks out
@@ -3491,7 +3493,9 @@ function renderSheetPanel() {
         ${s.concentration ? `<div class="conc-banner">🌀 Concentrating on <strong>${_esc(s.concentration.name)}</strong><button class="st-btn small ghost" id="sf-drop-conc" type="button">Drop</button></div>` : ''}
         <div class="slots-grid">${[1, 2, 3, 4, 5].map(l => { const sl = (s.slots && s.slots[l]) || { max: 0, used: 0 }; const avail = Math.max(0, (sl.max || 0) - (sl.used || 0)); const pips = (sl.max || 0) > 0 ? Array.from({ length: sl.max }, (_, i) => i < avail ? '●' : '○').join('') : '—'; return `<div class="slot-cell"><span class="slot-lvl">L${l}</span><span class="slot-pips">${pips}</span><span class="slot-ctl"><button class="slot-step" data-slot="${l}" data-d="-1" type="button">−</button><button class="slot-step" data-slot="${l}" data-d="1" type="button">+</button></span></div>`; }).join('')}</div>
         <ul class="spell-list">${(s.spells || []).length ? s.spells.map((sp, i) => `<li class="spell-row"><button class="st-btn small" data-cast="${i}" type="button">Cast</button><span class="spell-name">${_esc(sp.name)}</span><span class="spell-lvl">${sp.level ? 'L' + sp.level : 'cantrip'}</span><button class="rm" data-rmspell="${i}" type="button" aria-label="Remove">×</button></li>`).join('') : '<li class="spell-row empty">No spells known.</li>'}</ul>
-        <div class="add-row"><input type="text" id="spell-add" placeholder="Add a spell…"><input type="number" id="spell-lvl" value="1" min="0" max="9" title="Spell level (0 = cantrip)" style="width:54px"><button id="spell-add-btn" class="st-btn small" type="button">Add</button></div></div>
+        ${_gmMode()
+          ? `<div class="add-row"><input type="text" id="spell-add" placeholder="Add a spell (GM)…"><input type="number" id="spell-lvl" value="1" min="0" max="9" title="Spell level (0 = cantrip)" style="width:54px"><button id="spell-add-btn" class="st-btn small" type="button">Add</button></div>`
+          : `<div class="add-row">${_isDM(_chat.char) ? `<button id="spell-ask-btn" class="st-btn small ghost" type="button" title="Ask the GM to teach you a spell — they decide how">✦ Ask the GM to learn a spell…</button>` : ''}</div>`}</div>
       <div class="sheet-section"><h3>Proficiencies <span class="prof-bonus">+${_profBonus(s)} when trained</span></h3>
         <div class="prof-sub">Saving throws</div>
         <div class="prof-wrap">${ABILITIES.map(a => `<button class="prof-chip${(s.profSaves || []).includes(a) ? ' on' : ''}" data-prof-save="${a}" type="button">${a}</button>`).join('')}</div>
@@ -3541,8 +3545,9 @@ function renderSheetPanel() {
   $('cond-add').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addCond(); } });
   panel.querySelectorAll('[data-rm-cond]').forEach(b => b.addEventListener('click', () => { s.conditions.splice(Number(b.dataset.rmCond), 1); _saveSheet(cid, s); renderSheetPanel(); }));
   const addSpell = () => { const v = ($('spell-add').value || '').trim(); if (!v) return; const lvl = Math.max(0, Math.min(9, Number($('spell-lvl').value || 0))); s.spells = s.spells || []; s.spells.push({ name: v, level: lvl }); _saveSheet(cid, s); renderSheetPanel(); };
-  $('spell-add-btn').addEventListener('click', addSpell);
-  $('spell-add').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addSpell(); } });
+  $('spell-add-btn')?.addEventListener('click', addSpell);           // GM-mode free add only
+  $('spell-add')?.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); addSpell(); } });
+  $('spell-ask-btn')?.addEventListener('click', () => _askLearnSpell(cid));   // player: ask the GM to teach you
   panel.querySelectorAll('[data-cast]').forEach(b => b.addEventListener('click', () => _castSpell(cid, Number(b.dataset.cast))));
   panel.querySelectorAll('[data-rmspell]').forEach(b => b.addEventListener('click', () => { s.spells.splice(Number(b.dataset.rmspell), 1); _saveSheet(cid, s); renderSheetPanel(); }));
   panel.querySelectorAll('.slot-step').forEach(b => b.addEventListener('click', () => _setSlotMax(cid, Number(b.dataset.slot), Number(b.dataset.d))));
@@ -5419,7 +5424,15 @@ function openCodex() {
         <select class="codex-disp" data-dispsel="${i}" aria-label="Disposition toward you">${opts}</select>
         <textarea class="codex-note" data-note="${i}" rows="2" placeholder="What you know about them…">${_esc(n.note || '')}</textarea>
         <input class="codex-goal" data-goal="${i}" value="${_esc(n.goal || '')}" placeholder="🎯 what they want…">
-        ${_isDM(_chat.char) ? (() => { const inParty = _companions(cid).some(x => x.name.toLowerCase() === (n.name || '').toLowerCase()); return `<button class="st-btn small${inParty ? '' : ' ghost'}" data-recruit="${i}" type="button">${inParty ? '⚔ In your party — dismiss' : '⚔ Recruit as companion'}</button>`; })() : ''}
+        ${_isDM(_chat.char) ? (() => {
+            const inParty = _companions(cid).some(x => x.name.toLowerCase() === (n.name || '').toLowerCase());
+            // In party → dismiss. Otherwise a player ASKS them to join (the GM
+            // decides); only GM mode instantly recruits.
+            if (inParty) return `<button class="st-btn small" data-recruit="${i}" type="button">⚔ In your party — dismiss</button>`;
+            return _gmMode()
+              ? `<button class="st-btn small ghost" data-recruit="${i}" type="button">⚔ Recruit (GM)</button>`
+              : `<button class="st-btn small ghost" data-askjoin="${i}" type="button" title="Ask them to join — the GM decides if they will">✦ Ask them to join…</button>`;
+          })() : ''}
       </div></li>`;
   }).join('') : '<li class="codex-card empty">No one yet — the cast fills in as you meet people, or add someone you know.</li>';
   ov.innerHTML = `<div class="chronicle-sheet" role="dialog" aria-modal="true" aria-label="Cast codex">
@@ -5443,8 +5456,13 @@ function openCodex() {
   ov.querySelectorAll('[data-goal]').forEach(inp => inp.addEventListener('input', () => { const cc = _loadCodex(cid); const n = cc.npcs[Number(inp.dataset.goal)]; if (n) n.goal = inp.value; _saveCodex(cid, cc); }));
   ov.querySelectorAll('[data-recruit]').forEach(b => b.addEventListener('click', () => {
     const n = (_loadCodex(cid).npcs || [])[Number(b.dataset.recruit)]; if (!n || !n.name) return;
-    _toggleCompanion(cid, n);
+    _toggleCompanion(cid, n);   // GM instant-recruit, or dismiss someone already in the party
     openCodex();
+  }));
+  ov.querySelectorAll('[data-askjoin]').forEach(b => b.addEventListener('click', () => {
+    const n = (_loadCodex(cid).npcs || [])[Number(b.dataset.askjoin)]; if (!n || !n.name) return;
+    if (ov) ov.style.display = 'none';   // back to the scene to hear their answer
+    _askJoinParty(cid, n);
   }));
   ov.querySelectorAll('[data-genface]').forEach(b => b.addEventListener('click', async () => {
     const i = Number(b.dataset.genface); const cc = _loadCodex(cid); const n = cc.npcs[i]; if (!n) return;
@@ -7550,6 +7568,74 @@ function _renderLootPrompt(items) {
   $('loot-skip-btn').addEventListener('click', () => { _lootPending = null; bar.hidden = true; bar.innerHTML = ''; });
 }
 let _lootPending = null;
+
+// ── Earned, not poofed: spells and companions arrive through the fiction ─────
+// A player asks the GM ("I want to learn X" / "will you join me?"); the GM
+// adjudicates (a scroll, a teacher, a Persuasion check, a price); and only when
+// the GM GRANTS it in the narration does it become mechanical — same loop as
+// loot/gold/quests. The raw "just add it" controls stay behind GM mode.
+
+// The GM narrates a spell learned → read it back into the spellbook. Conservative:
+// a learn-verb next to a real compendium spell (so "she casts fireball" is ignored).
+function _detectLearnedSpell(text) {
+  if (!text) return null;
+  const m = /\b(?:learn(?:ed|s)?|scribe[ds]?|inscrib(?:e[ds]?|ing)|master(?:ed|s)?|copy|copied|record(?:ed)?|commit(?:ted)?\s+to\s+memory|add(?:ed)?)\b[^.\n]{0,40}?\b(?:the\s+)?(?:spell|cantrip)\s+(?:of\s+|called\s+|named\s+)?["“'‘]?([A-Za-z][A-Za-z'’ ]{2,26})["”'’]?/i.exec(text)
+        || /["“'‘]?\b([A-Za-z][A-Za-z'’ ]{2,26})\b["”'’]?\s+is\s+now\s+(?:in|part of|inscribed in)\s+your\s+(?:spellbook|repertoire|grimoire|book of shadows)/i.exec(text);
+  if (!m) return null;
+  // The capture can run past the name ("Fireball into your book"), so match the
+  // longest real compendium spell the phrase starts with — the GM can't grant vapor.
+  const raw = m[1].trim().toLowerCase();
+  const hit = SPELLS
+    .filter(sp => raw === sp.name.toLowerCase() || raw.startsWith(sp.name.toLowerCase() + ' '))
+    .sort((a, b) => b.name.length - a.name.length)[0];
+  return hit ? { name: hit.name, level: hit.level || 0 } : null;
+}
+function _learnSpellFromDM(cid, sp) {
+  const s = _loadSheet(cid);
+  if ((s.spells || []).some(x => x.name.toLowerCase() === sp.name.toLowerCase())) return;
+  s.spells = s.spells || []; s.spells.push({ name: sp.name, level: sp.level });
+  _saveSheet(cid, s);
+  _appendBubble('me', `📖 *You learn **${_esc(sp.name)}**${sp.level ? ` (level ${sp.level})` : ' (cantrip)'} — inscribed in your spellbook.*`); _scrollChat();
+  _fxSpell(sp.name, sp.level); _sfx('level');
+  const p = $('studio-sheet-panel'); if (p && p.classList.contains('open')) renderSheetPanel();
+}
+// The GM narrates an NPC throwing in with you → recruit them. Gated on: the NPC
+// is someone you've MET (in the codex) and isn't already in the party.
+function _detectCompanionJoin(cid, text) {
+  if (!text) return null;
+  const m = /\b([A-Z][A-Za-z'’]+(?:\s+[A-Z][A-Za-z'’]+)?)\s+(?:agrees?\s+to\s+(?:join|travel|accompany|come)|joins?\s+(?:you|your\s+party|the\s+party)|will\s+(?:join|travel with|accompany|come with|fight (?:alongside|beside|with))\s+you|throws?\s+in\s+(?:their|his|her)\s+lot\s+with\s+you|takes?\s+up\s+with\s+you|swears?\s+to\s+(?:follow|serve)\s+you)/i.exec(text);
+  if (!m) return null;
+  const name = m[1].trim();
+  const codex = _loadCodex(cid);
+  const npc = (codex.npcs || []).find(n => (n.name || '').toLowerCase() === name.toLowerCase() || (n.name || '').toLowerCase().startsWith(name.toLowerCase() + ' '));
+  if (!npc) return null;
+  if (_companions(cid).some(c => c.name.toLowerCase() === npc.name.toLowerCase())) return null;
+  return npc;
+}
+function _joinCompanionFromDM(cid, npc) {
+  const s = _loadSheet(cid); s.companions = s.companions || [];
+  if (s.companions.some(x => x.name.toLowerCase() === npc.name.toLowerCase())) return;
+  const cls = _companionClass(npc); const level = s.level || 1; const preset = CLASS_PRESETS[cls] || { hitDie: 8 };
+  const hpMax = preset.hitDie + 2 * level; const ac = preset.hitDie >= 10 ? 14 : 12;
+  s.companions.push({ name: npc.name, role: npc.role || '', cls, level, ac, hpMax, hp: hpMax });
+  _saveSheet(cid, s); _renderPartyChips(cid);
+  _appendBubble('me', `⚔ *${_esc(npc.name)} joins your party — a level ${level} ${cls}!*`); _scrollChat();
+}
+// Player-side "ask the GM": these send an adjudication request; the GM decides
+// feasibility and cost, and the detectors above apply the grant if it lands.
+async function _askLearnSpell(cid) {
+  if (_chat.streaming || !_isDM(_chat.char)) return;
+  let name;
+  try { name = window.styledPrompt ? await window.styledPrompt('What spell do you hope to learn? The GM decides whether — and how — you can.', '') : window.prompt('What spell?'); } catch { return; }
+  if (!name || !(name = name.trim())) return;
+  _appendBubble('me', `*You seek to learn **${_esc(name)}**.*`); _scrollChat();
+  _streamAssistant(`[I want to learn the spell "${name}". Adjudicate this like a Game Master: can I plausibly learn it right now — do I have access to a spell scroll, a willing teacher, or my own spellbook to study from, and am I capable of it for my class and level? If it's reasonable, describe how it happens (name any cost, downtime, or check first), and once it's done say clearly that I learn/scribe the spell. If it's out of reach, tell me exactly what I would need to learn it — don't just grant it.]`);
+}
+async function _askJoinParty(cid, npc) {
+  if (_chat.streaming || !_isDM(_chat.char)) return;
+  _appendBubble('me', `*You ask **${_esc(npc.name)}** to join you.*`); _scrollChat();
+  _streamAssistant(`[I ask ${npc.name} to travel with me as a companion. Adjudicate as a Game Master: are they willing, given who they are and how they feel about me? They may want something in return, set a condition, or need convincing (a Persuasion check). Play out their answer honestly — they might refuse. Only if they truly agree, say clearly that ${npc.name} joins me.]`);
+}
 
 // ── World clock (living-world primitive) ────────────────────────────────────
 const CLOCK_KEY = (cid) => `studio-clock-${cid}`;
