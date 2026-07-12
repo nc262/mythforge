@@ -108,10 +108,12 @@ def _safe_char(character: str) -> str:
 
 
 def _pick_reference(character: str):
-    """Return the LoadImage-relative path of the best reference photo for a
-    character (largest file = usually highest quality), or None if the folder
-    has no images. Path is relative to ComfyUI's input dir, e.g.
-    'characters/meg/gm6.jpg'."""
+    """Return LoadImage-relative paths of up to N reference photos for a
+    character (largest files first), or None if the folder has no images.
+    ALL of them feed the IP-Adapter as one averaged batch: identity is what
+    the photos share (the face), while pose/outfit/framing differ per photo
+    and cancel out — so one photo's pose can't dominate every render, which
+    is exactly what happened when only the single largest file was used."""
     from pathlib import Path as _P
     safe = _safe_char(character)
     if not safe:
@@ -122,8 +124,8 @@ def _pick_reference(character: str):
     imgs = [p for p in folder.iterdir() if p.suffix.lower() in _IMG_EXTS and p.is_file()]
     if not imgs:
         return None
-    best = max(imgs, key=lambda p: p.stat().st_size)
-    return f"characters/{safe}/{best.name}"
+    imgs.sort(key=lambda p: p.stat().st_size, reverse=True)
+    return [f"characters/{safe}/{p.name}" for p in imgs[:_args.ip_max_refs]]
 
 
 def _character_appearance(character: str) -> str:
@@ -272,21 +274,33 @@ def _build_regional_workflow(ckpt: str, regions: list, negative: str, w: int, h:
 
 
 def _build_ipadapter_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
-                              steps: int, seed: int, ref_image: str) -> dict:
-    """SDXL txt2img conditioned on a character reference photo via IP-Adapter,
+                              steps: int, seed: int, ref_images) -> dict:
+    """SDXL txt2img conditioned on a character's reference photos via IP-Adapter,
     so the same character look is reused for any scene the prompt describes.
+    All references are batched (ImageBatch chain — ComfyUI rescales mismatched
+    sizes to the first image) and averaged by combine_embeds, so the shared
+    identity survives while any single photo's pose/outfit does not dominate.
     Uses ComfyUI-Zluda's bundled IP-Adapter Plus nodes. cuDNN is forced off
     (same ZLUDA conv2d issue as the plain workflow)."""
+    if isinstance(ref_images, str):
+        ref_images = [ref_images]
     wf = {
         "ckpt": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": ckpt}},
         "cudnn": {"class_type": "CUDNNToggleAutoPassthrough",
                   "inputs": {"model": ["ckpt", 0], "enable_cudnn": False, "cudnn_benchmark": False}},
         "iploader": {"class_type": "IPAdapterUnifiedLoader",
                      "inputs": {"model": ["cudnn", 0], "preset": _args.ip_preset}},
-        "refimg": {"class_type": "LoadImage", "inputs": {"image": ref_image}},
+    }
+    for i, r in enumerate(ref_images):
+        wf[f"refimg{i}"] = {"class_type": "LoadImage", "inputs": {"image": r}}
+    ref_out = ["refimg0", 0]
+    for i in range(1, len(ref_images)):
+        wf[f"refbatch{i}"] = {"class_type": "ImageBatch", "inputs": {"image1": ref_out, "image2": [f"refimg{i}", 0]}}
+        ref_out = [f"refbatch{i}", 0]
+    wf.update({
         "ipadapter": {"class_type": "IPAdapterAdvanced",
                       "inputs": {"model": ["iploader", 0], "ipadapter": ["iploader", 1],
-                                 "image": ["refimg", 0], "weight": _args.ip_weight,
+                                 "image": ref_out, "weight": _args.ip_weight,
                                  "weight_type": _args.ip_weight_type, "combine_embeds": "average",
                                  "start_at": 0.0, "end_at": _args.ip_end_at, "embeds_scaling": "V only"}},
         "pos": {"class_type": "CLIPTextEncode", "inputs": {"text": prompt, "clip": ["ckpt", 1]}},
@@ -298,7 +312,7 @@ def _build_ipadapter_workflow(ckpt: str, prompt: str, negative: str, w: int, h: 
                                "cfg": _args.cfg, "sampler_name": _args.sampler,
                                "scheduler": _args.scheduler, "denoise": 1.0}},
         "decode": {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["ckpt", 2]}},
-    }
+    })
     # Optional FaceDetailer pass: detect the face and re-render just that region
     # at high detail using the IP-Adapter-conditioned model, so the sharper face
     # still matches the reference. FaceDetailer's sampler set doesn't include
@@ -529,6 +543,9 @@ if __name__ == "__main__":
                    default=os.environ.get("COMFY_INPUT_DIR") or _default_comfy_input(),
                    help="ComfyUI input dir (holds characters/<name>/ reference photos). "
                         "Defaults to the sibling ComfyUI(-Zluda) install; override with COMFY_INPUT_DIR.")
+    p.add_argument("--ip-max-refs", type=int, default=6,
+                   help="Max reference photos batched into the IP-Adapter (averaged). More refs = identity "
+                        "is what they share; any one photo's pose/outfit stops dominating the render.")
     p.add_argument("--ip-weight", type=float, default=0.62,
                    help="IP-Adapter weight (0..1+). Higher = stronger likeness but copies the reference pose/"
                         "framing more. ~0.6 keeps identity while letting the prompt drive pose; FaceDetailer "

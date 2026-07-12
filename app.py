@@ -260,6 +260,16 @@ if AUTH_ENABLED:
                 return False
         return True
 
+    def _login_url_for(path: str) -> str:
+        """Login URL that remembers where the visitor was headed, so signing in
+        on /mythforge lands back on /mythforge instead of the workspace SPA.
+        Only same-origin absolute paths are carried (no scheme/host = no open
+        redirect); the plain SPA root needs no round-trip."""
+        from urllib.parse import quote
+        if path and path.startswith("/") and not path.startswith("//") and path not in ("/", "/login"):
+            return f"/login?next={quote(path)}"
+        return "/login"
+
     class AuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             path = request.url.path
@@ -306,7 +316,7 @@ if AUTH_ENABLED:
             if not auth_manager.is_configured:
                 # No users yet — redirect to login for first-time setup
                 if not path.startswith("/api/"):
-                    return RedirectResponse(url="/login", status_code=302)
+                    return RedirectResponse(url=_login_url_for(path), status_code=302)
                 return JSONResponse(status_code=401, content={"error": "Setup required"})
 
             # --- Bearer token auth (API tokens for external integrations) ---
@@ -369,7 +379,7 @@ if AUTH_ENABLED:
             if not auth_manager.validate_token(token):
                 if path.startswith("/api/"):
                     return JSONResponse(status_code=401, content={"error": "Not authenticated"})
-                return RedirectResponse(url="/login", status_code=302)
+                return RedirectResponse(url=_login_url_for(path), status_code=302)
 
             # Attach current username to request state for downstream routes
             request.state.current_user = auth_manager.get_username_for_token(token)

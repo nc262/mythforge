@@ -297,6 +297,16 @@
 
 <script nonce="{{CSP_NONCE}}">
 (async () => {
+  // Where to land after signing in: the ?next= the auth middleware preserved
+  // (e.g. /mythforge on a phone), or the SPA root. Same-origin paths only.
+  function _postLoginDest() {
+    try {
+      const n = new URLSearchParams(window.location.search).get('next') || '';
+      if (n.startsWith('/') && !n.startsWith('//') && n !== '/login') return n;
+    } catch (e) {}
+    return '/';
+  }
+
   // Load version
   try {
     const vr = await fetch('/api/version');
@@ -362,7 +372,7 @@
     const res = await fetch('/api/auth/status', { credentials: 'same-origin' });
     const data = await res.json();
     if (data.authenticated) {
-      window.location.replace('/');
+      window.location.replace(_postLoginDest());
       return;
     }
     signupAllowed = !!data.signup_enabled;
@@ -468,7 +478,7 @@
         sessionStorage.setItem('ody-prefetch-sessions', JSON.stringify(sess));
         sessionStorage.setItem('ody-prefetch-features', JSON.stringify(feat));
         sessionStorage.setItem('ody-prefetch-settings', JSON.stringify(sett));
-      }).catch(() => {}).finally(() => { window.location.replace('/'); });
+      }).catch(() => {}).finally(() => { window.location.replace(_postLoginDest()); });
     }
     async function doLogin(totpCode) {
       const loginBody = { username, password, remember };
