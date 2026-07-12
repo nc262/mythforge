@@ -4815,10 +4815,16 @@ function _offhandAttack(cid, targetId, offName) {
     const fell = f2.hp <= 0; const enemies = cc2.combatants.filter(x => x.side === 'enemy');
     const won = fell && enemies.length && enemies.every(e => e.hp <= 0) && !cc2._won; if (won) cc2._won = true;
     _saveCombat(cid, cc2); _sfx(crit ? 'crit' : 'hit');
-    _appendBubble('me', `🗡 *Off-hand ${_esc(offName)}${crit ? ' — **CRIT!**' : ''} → **${dmg} damage**${resTag}${fell ? ` — the ${_esc(f2.name)} falls!` : ` (${f2.hp}/${f2.hpMax} left)`}.*`); _scrollChat();
+    const ohMsg = `🗡 *Off-hand ${_esc(offName)}${crit ? ' — **CRIT!**' : ''} → **${dmg} damage**${resTag}${fell ? ` — the ${_esc(f2.name)} falls!` : ` (${f2.hp}/${f2.hpMax} left)`}.*`;
+    _appendBubble('me', ohMsg); _scrollChat();
     renderCombatPanel();
     if (won) { _fxVictory(); setTimeout(() => _finishCombat(cid), 1800); }
-    if (_isDM(_chat.char)) _streamAssistant(`[My off-hand ${offName} hit for ${dmg}.]`);
+    if (_isDM(_chat.char)) {
+      if (fell) {   // an off-hand finish deserves the same cinematic question as a main-hand one
+        if (won) _chat.hdywtdt = true;
+        _howDoYouWantToDoThis(cid, f2.name, offName, ohMsg, won);
+      } else _streamAssistant(`[My off-hand ${offName} hit for ${dmg}.]`);
+    }
   });
 }
 

@@ -1288,7 +1288,11 @@ body.home-landing .gh-foot { display: flex; }
   .cb-chips { flex-wrap: wrap; }
   .chat-scroll { padding: 14px 10px; }
   .rp-msg { max-width: 96%; }
-  .chat-composer { padding: 10px 10px 12px; }
+  .chat-composer { padding: 10px 10px 12px; gap: 6px; }
+  /* Three pic buttons + send crowd a phone-width composer — slim the icons
+     (height stays ≥42px for touch) so the textarea keeps typing room. */
+  .chat-composer .pic-btn { width: 38px; font-size: 16px; }
+  .chat-composer .send-btn { padding-left: 12px; padding-right: 12px; }
   .dice-tray { padding: 8px 10px 0; }
   /* Side panels take the whole stage on a phone. */
   .sheet-panel, .combat-panel, .gm-panel, .inv-panel { width: 100%; }

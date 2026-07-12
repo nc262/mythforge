@@ -763,6 +763,15 @@ def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
 
 @app.get("/")
 async def serve_index(request: Request):
+    """The root IS the game now. The legacy workspace SPA stays reachable only
+    at /workspace (escape hatch for the email/notes/calendar tools)."""
+    p = abs_join(BASE_DIR, "static/mythforge.html")
+    if os.path.exists(p):
+        return _serve_html_with_nonce(request, p)
+    return await serve_workspace(request)
+
+@app.get("/workspace")
+async def serve_workspace(request: Request):
     static_path = abs_join(BASE_DIR, "static/index.html")
     if os.path.exists(static_path):
         return _serve_html_with_nonce(request, static_path)
@@ -812,11 +821,11 @@ async def shutdown_server(request: Request):
 
 @app.get("/notes")
 async def serve_notes(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/calendar")
 async def serve_calendar(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 # Per-tool deep-link routes — all serve the same SPA, the JS auto-opens
 # the matching modal based on window.location.pathname. Each route also
@@ -824,31 +833,31 @@ async def serve_calendar(request: Request):
 # bookmarks render with tool-specific icons.
 @app.get("/cookbook")
 async def serve_cookbook(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/email")
 async def serve_email(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/memory")
 async def serve_memory(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/gallery")
 async def serve_gallery(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/studio")
 async def serve_studio(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/tasks")
 async def serve_tasks(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/library")
 async def serve_library(request: Request):
-    return await serve_index(request)
+    return await serve_workspace(request)
 
 @app.get("/backgrounds")
 async def serve_backgrounds(request: Request):
