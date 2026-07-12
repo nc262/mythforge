@@ -2726,7 +2726,19 @@ function _addGold(cid, delta) { const s = _loadSheet(cid); s.gold = Math.max(0, 
 function _loadSheet(cid) {
   try {
     const s = JSON.parse(localStorage.getItem(SHEET_KEY(cid)) || 'null');
-    if (s && s.abilities) return { ..._defaultSheet(), ...s, abilities: { ..._defaultSheet().abilities, ...s.abilities } };
+    if (s && s.abilities) {
+      const sheet = { ..._defaultSheet(), ...s, abilities: { ..._defaultSheet().abilities, ...s.abilities } };
+      // Self-heal: a caster with spell slots but an empty spellbook (legacy saves
+      // or a creation path that seeded slots but skipped spells) gets its starting
+      // spells so a "Wizard with no spells" can actually cast.
+      if ((!sheet.spells || !sheet.spells.length)
+          && Object.values(sheet.slots || {}).some(sl => (sl && sl.max) > 0)
+          && (CLASS_SPELLS[sheet.cls] || []).length) {
+        sheet.spells = CLASS_SPELLS[sheet.cls].map(([name, level]) => ({ name, level }));
+        try { localStorage.setItem(SHEET_KEY(cid), JSON.stringify(sheet)); } catch {}
+      }
+      return sheet;
+    }
   } catch {}
   return _defaultSheet();
 }
@@ -5620,7 +5632,10 @@ function renderLevelUp() {
       <p class="gm-hint">You've grown stronger — level ${L.from} → ${L.to}.</p>
       ${L.multiOK ? (() => {
         const owned = _classesOf(s);
-        const chips = owned.map(c => `<button class="prof-chip lu-classpick${pick === c.cls ? ' on' : ''}" data-luclass="${_esc(c.cls)}" type="button">${c.cls === L.primary ? 'Advance' : 'Continue'} ${_esc(c.cls)} <em>${c.levels}→${c.levels + 1}</em></button>`).join('');
+        // The primary class was already bumped to the new level before the modal
+        // opened, so show the level being FINALIZED (L.from→L.to) to match the
+        // header — not c.levels→c.levels+1, which read one ahead ("Wizard 3→4").
+        const chips = owned.map(c => `<button class="prof-chip lu-classpick${pick === c.cls ? ' on' : ''}" data-luclass="${_esc(c.cls)}" type="button">${c.cls === L.primary ? 'Advance' : 'Continue'} ${_esc(c.cls)} <em>${c.cls === L.primary ? `${L.from}→${L.to}` : `${c.levels}→${c.levels + 1}`}</em></button>`).join('');
         const ownedNames = new Set(owned.map(c => c.cls));
         const newOpts = Object.keys(CLASS_PRESETS).filter(c => !ownedNames.has(c))
           .map(c => { const ok = _canMulticlass(s, c); return `<option value="${c}"${pick === c ? ' selected' : ''}${ok ? '' : ' disabled'}>${c}${CLASS_PRESETS[c].caster ? ' ✦' : ''}${ok ? '' : ` — needs ${_MC_ABILITY[c]} 13`}</option>`; }).join('');
