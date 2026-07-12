@@ -365,11 +365,12 @@ function renderWorldDetail(world) {
     const styles = await _fetchArtStyles();
     if (!styles.length) { sel.closest('.world-style-bar')?.remove(); return; }   // image gen not set up
     const saved = _loadWorldStyle(world.id);
-    const cur = styles.find(s => s.id === saved) ? saved : (styles.find(s => s.installed)?.id || styles[0].id);
+    // Only an INSTALLED style can be active — otherwise image gen silently falls
+    // back to the bridge default while the picker claims the chosen style is on.
+    const cur = styles.find(s => s.id === saved && s.installed) ? saved : (styles.find(s => s.installed)?.id || styles[0].id);
     _activeStyle = cur;
     sel.innerHTML = styles.map(s => `<option value="${_esc(s.id)}"${s.id === cur ? ' selected' : ''}>${_esc(s.label)}${s.installed ? '' : ` — download ~${s.size_gb} GB`}</option>`).join('');
     const setNote = (t) => { if (note) note.textContent = t || ''; };
-    if (!styles.find(s => s.id === cur)?.installed && cur !== _activeStyle) setNote('');
     sel.addEventListener('change', async () => {
       const id = sel.value;
       const st = (await _fetchArtStyles()).find(s => s.id === id);
@@ -1740,6 +1741,9 @@ function renderChatShell(char) {
   $('studio-seed-pic')?.addEventListener('click', () => _seedReferences());
   $('studio-ref-file')?.addEventListener('change', _onSeedFiles);
   $('studio-look-btn')?.addEventListener('click', () => openAppearance());
+  // A level earned while you were elsewhere (party play) left its ASI/feature
+  // choices pending — present the modal now that you're back in this adventure.
+  if (isDM) { const _pl = _loadSheet(char.id)._pendingLevelUp; if (_pl) setTimeout(() => { if (_chat.char && _chat.char.id === char.id) _openLevelUp(char.id, _pl.from, _pl.to); }, 700); }
 }
 
 // Adventures are Game-Master ("dm-*") sessions. Tag them server-side into an
@@ -2160,6 +2164,9 @@ async function _photoSolo(char, scene) {
 // suppress a spurious third figure in the seam.
 async function _photoGroup(A, B, scene) {
   scene = scene || 'together';
+  // Regional prompting is tuned for two subjects; a bigger group is drawn as
+  // just the first two rather than silently dropping the rest without a word.
+  if (_chat.group && _chat.group.length > 2) _toast(`Group photos show two at a time — picturing ${A.name} & ${B.name}.`);
   _picBusy(true);
   const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> setting up a photo of ${_esc(A.name)} & ${_esc(B.name)}…</span>`);
   const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
@@ -2325,7 +2332,13 @@ async function _streamAssistant(framed) {
 
   _chat.streaming = true;
   _chat.abort = new AbortController();
-  const _streamTimer = setTimeout(() => { try { _chat.abort.abort(); } catch {} }, 90000);   // a stalled model can't hang the turn forever
+  // Idle watchdog, not a wall-clock cap: abort only after a long GAP with no
+  // tokens (a truly stalled model), rearmed on every delta — so a long reply
+  // that keeps streaming is never cut off mid-sentence. First token on the slow
+  // local model can be ~50s, so the gap is generous.
+  let _streamTimer;
+  const _armIdle = () => { clearTimeout(_streamTimer); _streamTimer = setTimeout(() => { try { _chat.abort.abort(); } catch {} }, 75000); };
+  _armIdle();
   if (_party) _partySetBusy(true);   // claim the table while the GM answers you
   const sendBtn = $('studio-send'); if (sendBtn) sendBtn.disabled = true;
   let acc = '';
@@ -2350,6 +2363,7 @@ async function _streamAssistant(framed) {
           acc += json.delta;
           bubble.innerHTML = _rp(acc);
           _scrollChat();
+          _armIdle();   // tokens are flowing — reset the stall watchdog
         } else if (json.type === 'message_saved' && json.id) {
           bubbleWrap.dataset.mid = json.id;     // for edit / regenerate
         } else if (json.type === 'tool_output' && json.image_url) {
@@ -3818,7 +3832,8 @@ async function _fetchArtStyles(force) {
 }
 // Kick a download, then poll progress until done/error. onProg(pct, mb, total).
 async function _downloadStyle(id, onProg) {
-  try { await fetch(`${API_BASE}/api/characters/studio/art-styles/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); } catch { return false; }
+  try { const r0 = await fetch(`${API_BASE}/api/characters/studio/art-styles/download`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) }); if (!r0.ok) return false; } catch { return false; }
+  const t0 = Date.now();
   return new Promise((resolve) => {
     const tick = async () => {
       let p = {};
@@ -3826,6 +3841,7 @@ async function _downloadStyle(id, onProg) {
       if (onProg) onProg(p);
       if (p.state === 'done') { _artStyleCache = null; resolve(true); }
       else if (p.state === 'error') { resolve(false); }
+      else if (Date.now() - t0 > 45 * 60 * 1000) { resolve(false); }   // 45-min cap: a dead download must not disable the picker forever
       else setTimeout(tick, 1500);
     };
     tick();
@@ -5387,6 +5403,7 @@ function _awardXp(cid, amount, reason) {
   if (after > before) {
     for (let l = before; l < after; l++) s.hpMax += Math.max(1, dieAvg + conMod);  // baseline avg hit die + CON (re-rollable in the modal)
     s.level = after; s.hp = s.hpMax;                                               // a level-up restores you to full
+    s._pendingLevelUp = { from: before, to: after };   // so the ASI/feature modal isn't lost if this XP was earned off-screen (party play)
   }
   _saveSheet(cid, s);
   if (_chat.char && _chat.char.id === cid) {
@@ -5394,7 +5411,7 @@ function _awardXp(cid, amount, reason) {
     _scrollChat();
     const sp = $('studio-sheet-panel'); if (sp && sp.classList.contains('open')) renderSheetPanel();
     const ov = $('studio-quests-overlay'); if (ov && ov.style.display === 'flex') openQuests();
-    if (after > before) _openLevelUp(cid, before, after);
+    if (after > before) _openLevelUp(cid, before, after);   // clears _pendingLevelUp
   }
 }
 // A real level-up moment: the average HP is already applied; here you can roll
@@ -5426,6 +5443,7 @@ function _luChosenHp(L, s) {
 }
 function _openLevelUp(cid, from, to) {
   const s = _loadSheet(cid);
+  if (s._pendingLevelUp) { delete s._pendingLevelUp; _saveSheet(cid, s); }   // consumed — don't re-open on next chat load
   const conMod = _mod((s.abilities && s.abilities.CON) || 10);
   const die = s.hitDie || 8; const dieAvg = Math.floor(die / 2) + 1;
   const levels = to - from;
@@ -6542,7 +6560,7 @@ function _enterCombat(cid, enemy, sceneText) {
   }
   const sheet = _loadSheet(cid), hp0 = _enemyHpGuess(enemy);
   const player = { id: 'pc', name: sheet.name || 'You', hp: sheet.hp || 10, hpMax: sheet.hpMax || 10, ac: _effAC(cid), init: _initiative(sheet), side: 'ally', conditions: [] };
-  const allies = _companions(cid).map((c, i) => ({ id: 'cmp' + i, name: c.name, hp: Math.max(1, c.hp || c.hpMax), hpMax: c.hpMax, ac: c.ac || 12, init: 1 + Math.floor(Math.random() * 20), side: 'ally', conditions: [] }));
+  const allies = _companions(cid).map((c, i) => { const chp = (c.hp != null) ? c.hp : (c.hpMax || 1); return { id: 'cmp' + i, name: c.name, hp: Math.max(0, chp), hpMax: c.hpMax || chp || 1, ac: c.ac || 12, init: 1 + Math.floor(Math.random() * 20), side: 'ally', conditions: [] }; });
   const eid = 'e1_' + enemy.replace(/\s+/g, '');
   const foe = { id: eid, name: enemy, hp: hp0, hpMax: hp0, ac: null, init: 1 + Math.floor(Math.random() * 20), side: 'enemy', conditions: [] };
   _saveCombat(cid, { active: true, round: 1, turn: 0, combatants: [player, ...allies, foe] });
@@ -6627,12 +6645,17 @@ async function _genEnemyPortrait(cid, combatantId, name) {
 // Detect damage dealt TO the player and apply it — with a visible roll + shake.
 function _detectPlayerDamage(text) {
   if (!text) return 0;
-  let dmg = 0, m;
-  const re1 = /\byou(?:r character)?\s+(?:take|takes|taking|suffer|suffers|sustain|sustains|lose|loses|are dealt|is dealt|receive|receives)\s+(\d{1,3})\s+(?:points?\s+of\s+)?(?:damage|hit points?|hp)\b/gi;
-  while ((m = re1.exec(text))) dmg += Math.min(999, parseInt(m[1], 10) || 0);
-  const re2 = /\b(?:hits?|strikes?|slams?|claws?|bites?|catches?|deals?)\s+you\s+(?:for\s+)?(\d{1,3})\b/gi;
-  while ((m = re2.exec(text))) dmg += Math.min(999, parseInt(m[1], 10) || 0);
-  return dmg;
+  // "3 feet", "3 times", "3 gold" aren't damage — the number must not be a unit/count.
+  const NOTUNIT = '(?!\\s*(?:feet|foot|ft|inch|inches|yards?|paces?|steps?|times|seconds?|minutes?|hours?|rounds?|days?|weeks?|miles?|meters?|metres?|gold|silver|coins?|gp))';
+  let a = 0, b = 0, m;
+  const re1 = new RegExp(`\\byou(?:r character)?\\s+(?:take|takes|taking|suffer|suffers|sustain|sustains|lose|loses|are dealt|is dealt|receive|receives)\\s+(\\d{1,3})\\s+(?:points?\\s+of\\s+)?(?:damage|hit points?|hp)\\b`, 'gi');
+  while ((m = re1.exec(text))) a += Math.min(999, parseInt(m[1], 10) || 0);
+  const re2 = new RegExp(`\\b(?:hits?|strikes?|slams?|claws?|bites?|catches?|deals?)\\s+you\\s+(?:for\\s+)?(\\d{1,3})${NOTUNIT}\\b`, 'gi');
+  while ((m = re2.exec(text))) b += Math.min(999, parseInt(m[1], 10) || 0);
+  // ponytail: re1 ("you take N damage") and re2 ("X hits you for N") almost always
+  // restate the SAME blow two ways, so take the larger — not the sum. Undercounts
+  // the rare two-distinct-hits-in-one-message case, which is the player-friendly miss.
+  return Math.max(a, b);
 }
 // Apply a chunk of damage to the hero with the real 5e trimmings: Half-Orc
 // Relentless Endurance catches a killing blow once per rest, and any damage
