@@ -943,6 +943,23 @@
 .inv-item.rarity-rare { border-color: #5b8dd6; box-shadow: 0 0 6px rgba(91,141,214,.35); }
 .inv-item.rarity-epic { border-color: var(--st-amethyst); box-shadow: 0 0 7px rgba(183,156,246,.4); }
 .inv-item.rarity-legendary { border-color: var(--st-gold); box-shadow: 0 0 9px rgba(232,193,113,.5); }
+/* Legendary loot breathes — a slow golden pulse, AAA-style. */
+@media (prefers-reduced-motion: no-preference) {
+  .inv-item.rarity-legendary { animation: inv-legend 2.6s ease-in-out infinite; }
+  @keyframes inv-legend { 0%,100% { box-shadow: 0 0 6px rgba(232,193,113,.35); } 50% { box-shadow: 0 0 14px rgba(232,193,113,.7); } }
+}
+/* BG3-style hover item card: art, rarity-colored name & label, stat line. */
+.inv-tip {
+  position: fixed; z-index: 4000; display: none; width: 220px; pointer-events: none;
+  padding: 10px 12px 11px; border-radius: 12px; text-align: center;
+  background: linear-gradient(180deg, rgba(30,24,54,.98), rgba(16,12,32,.98));
+  border: 1px solid var(--st-border); box-shadow: 0 12px 34px rgba(0,0,0,.6);
+}
+.inv-tip .tip-art { width: 96px; height: 96px; object-fit: cover; border-radius: 10px; margin: 0 auto 7px; display: block; border: 1px solid var(--st-border-soft); }
+.inv-tip .tip-ico { font-size: 44px; line-height: 1.4; display: block; margin-bottom: 4px; }
+.inv-tip .tip-name { font-family: var(--st-serif); font-size: 14.5px; font-weight: 700; }
+.inv-tip .tip-rarity { font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; opacity: .85; margin: 1px 0 4px; }
+.inv-tip .tip-meta { font-size: 11.5px; color: var(--st-ink-dim); text-transform: capitalize; border-top: 1px solid var(--st-border-soft); padding-top: 5px; }
 .inv-detail { background: var(--st-night-2); border: 1px solid var(--st-border-soft); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 9px; }
 .id-head { display: flex; align-items: center; gap: 11px; }
 .ii-icon.big { font-size: 30px; }

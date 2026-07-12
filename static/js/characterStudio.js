@@ -3574,6 +3574,19 @@ function _defaultGM() { return { humor: 40, spice: 0, grit: 50, pace: 55, rules:
 function _loadGM(cid) { try { return { ..._defaultGM(), ...(JSON.parse(localStorage.getItem(GM_KEY(cid)) || 'null') || {}) }; } catch { return _defaultGM(); } }
 function _saveGM(cid, g) { try { localStorage.setItem(GM_KEY(cid), JSON.stringify(g)); } catch {} _pushState(cid, 'gm', g); }
 function _b(v, lo, mid, hi) { return v <= 25 ? lo : (v >= 75 ? hi : mid); }
+// The craft of a great table, distilled from how the best actual-play GMs run
+// (sensory narration, "you can try", roll only when failure is interesting,
+// fail forward, escalation, consequences and callbacks, NPC ownership). Rides
+// with the tone knobs on every DM turn.
+const _GM_CRAFT =
+  'Table craft: Narrate with the senses — turn every roll and hit into cinema (a near-miss shrieks off a helmet), never bare numbers. ' +
+  'Never flatly refuse an action: say "you can try", state the stakes, set a DC — the impossible may simply fail, interestingly. ' +
+  'Call for a roll ONLY when failure is interesting; let clever roleplay grant advantage or lower the DC, not skip the roll. ' +
+  'Failure moves the story forward (a cost, a complication, a worse position) — never a dead "nothing happens". Let situations escalate; pile complication on complication before relief. ' +
+  'Actions ripple: NPCs remember, attitudes shift, word spreads — call back to earlier deeds and let the world visibly change because of them. ' +
+  'NPCs have wants, voices, and verbal tics; let the player build real relationships they co-own. Give companions moments to shine. ' +
+  'Do not steer toward a "correct" choice or foreshadow your plans — keep a poker face and let genuine tension stand. ' +
+  'Reward bold, creative, in-character play (Inspiration, position, an opening) — make the cool thing possible, but always through a check or a cost, never free.';
 function _gmDirective(cid) {
   const g = _loadGM(cid);
   return [
@@ -3582,6 +3595,7 @@ function _gmDirective(cid) {
     _b(g.grit, 'Keep danger gentle; the player is rarely truly at risk.', 'Use real but fair stakes.', 'Make it brutal and deadly — high stakes, real wounds, real consequences.'),
     _b(g.pace, 'Move slowly; savor atmosphere and detail.', 'Keep a steady, balanced pace.', 'Keep it fast and action-packed; cut straight to the exciting beats.'),
     _b(g.rules, 'Be loose with the rules; favor story over dice.', 'Use 5e rules sensibly.', 'Enforce 5e rules strictly — call for rolls often and track HP, conditions, and inventory closely.'),
+    _GM_CRAFT,
   ].join(' ');
 }
 
@@ -4884,8 +4898,34 @@ function _playerAttack(cid, targetId) {
     const mo = $('studio-map-overlay'); if (mo && mo.style.display === 'flex') renderMap();
     if (won) { _fxVictory(); setTimeout(() => _finishCombat(cid), 1800); }
     else if (twoWeapon && !fell) { const cb = _loadCombat(cid); if (cb._pcb) cb._pcb.bonusUsed = true; _saveCombat(cid, cb); setTimeout(() => _offhandAttack(cid, targetId, off.name), 700); }   // bonus off-hand strike
-    if (_isDM(_chat.char)) _streamAssistant(msg);
+    if (_isDM(_chat.char)) {
+      if (fell) {
+        if (won) _chat.hdywtdt = true;   // HDYWTDT will carry the aftermath ask — _finishCombat must not stream a second one on top
+        _howDoYouWantToDoThis(cid, f2.name, wname, msg, won);   // the table's favorite question
+      } else _streamAssistant(msg);
+    }
   });
+}
+// The killing blow belongs to the player: when a foe drops, ask "How do you
+// want to do this?" and let them paint the finish — the GM then narrates it in
+// full cinema. Skipping the prompt hands the flourish to the GM. On the blow
+// that WINS the fight, the aftermath ask rides this same message (see the
+// _chat.hdywtdt flag in _finishCombat).
+async function _howDoYouWantToDoThis(cid, foeName, weaponName, mechMsg, won) {
+  let flourish = '';
+  try {
+    flourish = window.styledPrompt
+      ? await window.styledPrompt(`The ${foeName} is finished. How do you want to do this?`, '')
+      : window.prompt(`The ${foeName} is finished. How do you want to do this?`, '');
+  } catch { flourish = ''; }
+  flourish = (flourish || '').trim();
+  if (flourish) { _appendBubble('me', `⚔ *${_esc(flourish)}*`); _scrollChat(); }
+  const tail = won
+    ? ' The fight is over — after the blow lands, narrate the aftermath and anything worth looting from the fallen or the scene; if I take something, name the item plainly.'
+    : ' Then continue the scene.';
+  _streamAssistant(`${mechMsg}\n[The ${foeName} falls to that blow. ${flourish
+    ? `This is how I finish it: "${flourish}". Narrate my killing blow exactly as I described, in vivid slow-motion cinema — honor every detail.`
+    : `Narrate my killing blow with my ${weaponName} in vivid slow-motion cinema — make the finish unforgettable.`}${tail}]`);
 }
 // Discretion is a valid tactic: a DEX check against DC 12 to break away.
 function _playerFlee(cid) {
@@ -6743,7 +6783,8 @@ function _finishCombat(cid) {
       s2.hp = Math.min(s2.hpMax, (s2.hp || 0) + gain); _saveSheet(cid, s2);
       _appendBubble('me', `🔥 *Dark One's Blessing — your patron feeds on the kill: **+${gain} HP** (now ${s2.hp}/${s2.hpMax}).*`); _scrollChat();
     }
-    if (_isDM(_chat.char)) _streamAssistant(`[The fight is over — ${defeated} ${defeated > 1 ? 'foes lie' : 'foe lies'} fallen. Briefly narrate the aftermath and anything worth looting from the fallen or the scene; if I take something, name the item plainly.]`);
+    if (_chat.hdywtdt) _chat.hdywtdt = false;   // the killing-blow message already asked for the aftermath
+    else if (_isDM(_chat.char)) _streamAssistant(`[The fight is over — ${defeated} ${defeated > 1 ? 'foes lie' : 'foe lies'} fallen. Briefly narrate the aftermath and anything worth looting from the fallen or the scene; if I take something, name the item plainly.]`);
   }
 }
 
@@ -7202,8 +7243,31 @@ function _invAdd(cid, name, qty) {
 }
 function _itemArtPrompt(it, worldId) {
   const style = { embervale: 'painterly high-fantasy item icon, ornate', neonspire: 'cyberpunk sci-fi gadget icon, neon glow, holographic', everyday: 'clean modern product icon, realistic' }[worldId] || 'fantasy RPG item icon';
-  return `a single ${it.rarity !== 'common' ? it.rarity + ' ' : ''}${it.name}, ${it.type === 'misc' ? 'small object' : it.type}, ${style}, centered on a dark neutral background, game inventory icon, no text`;
+  // Rarer finds LOOK rarer — the aura scales with the tier, AAA-loot style.
+  const aura = { legendary: 'radiant golden aura, gleaming enchanted metal, masterwork engraving', epic: 'violet arcane glow, intricate enchanted detail', rare: 'cool sapphire shimmer, fine craftsmanship', uncommon: 'faint emerald gleam' }[it.rarity] || '';
+  return `a single ${it.rarity !== 'common' ? it.rarity + ' ' : ''}${it.name}, ${it.type === 'misc' ? 'small object' : it.type}, ${style}${aura ? `, ${aura}` : ''}, dramatic rim lighting, rich material detail, painterly AAA game inventory icon, centered on a dark neutral background, no text`;
 }
+// BG3-style hover card: art, rarity-colored name, rarity label, type & weight —
+// the pack reads like a video-game inventory, not a list with browser titles.
+function _invTipShow(cid, id, x, y) {
+  const inv = _loadInv(cid); const it = inv.items.find(i => i.id === id); if (!it) return;
+  let tip = $('inv-tip');
+  if (!tip) { tip = document.createElement('div'); tip.id = 'inv-tip'; tip.className = 'inv-tip'; ($('studio-modal') || document.body).appendChild(tip); }
+  tip.innerHTML = `
+    ${it.img ? `<img class="tip-art" src="${_esc(it.img)}" alt="">` : `<span class="tip-ico">${_itemIcon(it.type, it.name)}</span>`}
+    <div class="tip-name rt-${it.rarity}">${_esc(it.name)}</div>
+    <div class="tip-rarity rt-${it.rarity}">${_titleCase(it.rarity || 'common')}</div>
+    <div class="tip-meta">${_esc(it.type)} · ${it.wt == null ? _itemWeight(it.type) : it.wt} wt${it.qty > 1 ? ` · ×${it.qty}` : ''}${it.acBonus ? ` · +${it.acBonus} AC` : ''}${it.atk ? ` · +${it.atk} atk` : ''}${it.dmg ? ` · ${_esc(it.dmg)}` : ''}</div>`;
+  tip.style.display = 'block';
+  _invTipMove(x, y);
+}
+function _invTipMove(x, y) {
+  const tip = $('inv-tip'); if (!tip || tip.style.display === 'none') return;
+  tip.style.left = Math.min(window.innerWidth - 240, x + 14) + 'px';
+  tip.style.top = Math.min(window.innerHeight - 190, y + 12) + 'px';
+}
+function _invTipHide() { const tip = $('inv-tip'); if (tip) tip.style.display = 'none'; }
+
 async function _genItemArt(cid, id) {
   const v0 = _loadInv(cid); const it = v0.items.find(x => x.id === id); if (!it) return;
   const worldId = (_world && _world.id) || (_chat.char && _chat.char.world_id) || '';
@@ -7256,7 +7320,7 @@ function renderInventory() {
   const cells = [];
   for (let i = 0; i < inv.slots; i++) {
     const it = bySlot[i];
-    cells.push(`<div class="inv-slot" data-slot="${i}">${it ? `<div class="inv-item rarity-${it.rarity}${equippedIds.has(it.id) ? ' equipped' : ''}" draggable="true" data-item="${_esc(it.id)}" title="${_esc(it.name)}">${face(it)}${it.qty > 1 ? `<span class="ii-qty">${it.qty}</span>` : ''}</div>` : ''}</div>`);
+    cells.push(`<div class="inv-slot" data-slot="${i}">${it ? `<div class="inv-item rarity-${it.rarity}${equippedIds.has(it.id) ? ' equipped' : ''}" draggable="true" data-item="${_esc(it.id)}">${face(it)}${it.qty > 1 ? `<span class="ii-qty">${it.qty}</span>` : ''}</div>` : ''}</div>`);
   }
   const wt = Math.round(_invWeight(inv) * 10) / 10; const cap = _carryCap(cid); const over = wt > cap;
   const wpct = Math.max(0, Math.min(100, Math.round(wt / cap * 100)));
@@ -7296,6 +7360,16 @@ function renderInventory() {
     _toast(`🎨 Painting ${missing.length} item${missing.length === 1 ? '' : 's'} — they'll fill in as they finish.`);
   });
   panel.querySelectorAll('[data-sort]').forEach(b => b.addEventListener('click', () => { _invSort(cid, b.dataset.sort); renderInventory(); }));
+  // Hover item-card (delegated once — innerHTML re-renders wipe children, not the panel).
+  panel._tipCid = cid;
+  if (!panel._tipWired) {
+    panel._tipWired = true;
+    panel.addEventListener('mouseover', e => { const cell = e.target.closest('.inv-item'); if (!cell) return; const id = cell.dataset.item || cell.dataset.equipped; if (id) _invTipShow(panel._tipCid, id, e.clientX, e.clientY); });
+    panel.addEventListener('mouseout', e => { if (e.target.closest('.inv-item')) _invTipHide(); });
+    panel.addEventListener('mousemove', e => _invTipMove(e.clientX, e.clientY));
+    panel.addEventListener('dragstart', _invTipHide, true);
+    panel.addEventListener('click', _invTipHide, true);
+  }
   const add = () => { const v = ($('inv-additem').value || '').trim(); if (!v) return; _invAdd(cid, v, 1); renderInventory(); $('inv-additem')?.focus(); };
   $('inv-add-btn').addEventListener('click', add);
   $('inv-additem').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
