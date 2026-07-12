@@ -4951,8 +4951,14 @@ function _companionTurn(cid, ally) {
   }
   const foes = cc.combatants.filter(x => x.side === 'enemy' && x.hp > 0);
   if (!foes.length) return;
-  const foe = foes[Math.floor(Math.random() * foes.length)];
   const atkBonus = 3 + Math.floor((ally.hpMax || 10) / 20);
+  // Smart targeting (focus fire): finish a foe this hit can kill — a dead enemy
+  // deals no damage next round — else gang up on the weakest to secure the next
+  // kill, breaking ties toward the deadliest (highest max HP) foe.
+  const likelyDmg = 2 + Math.floor((ally.hpMax || 10) / 16) + 4;   // ~avg of the roll below
+  const killable = foes.filter(f => f.hp <= likelyDmg);
+  const pool = killable.length ? killable : foes;
+  const foe = pool.slice().sort((a, b) => (a.hp - b.hp) || ((b.hpMax || 0) - (a.hpMax || 0)))[0];
   const roll = 1 + Math.floor(Math.random() * 20);
   const total = roll + atkBonus, crit = roll === 20, fumble = roll === 1;
   const ac = foe.ac || 13;
