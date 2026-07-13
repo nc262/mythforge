@@ -4926,6 +4926,13 @@ async function _howDoYouWantToDoThis(cid, foeName, weaponName, mechMsg, won) {
   } catch { flourish = ''; }
   flourish = (flourish || '').trim();
   if (flourish) { _appendBubble('me', `⚔ *${_esc(flourish)}*`); _scrollChat(); }
+  // The fight's emotional peak paints itself: a cinematic frame of the finish
+  // renders in the background while the GM narrates (skipped while the art
+  // forge is cooling down from a failure — same breaker as NPC portraits).
+  if (Date.now() - _artFailAt >= 120000) {
+    const hero = (_loadSheet(cid).name || '').trim();
+    _photoScene(`${hero ? hero + "'s" : 'the hero’s'} killing blow against the ${foeName}${flourish ? `: ${flourish}` : ` with ${weaponName ? 'their ' + weaponName : 'their weapon'}`}, the decisive strike landing`);
+  }
   const tail = won
     ? ' The fight is over — after the blow lands, narrate the aftermath and anything worth looting from the fallen or the scene; if I take something, name the item plainly.'
     : ' Then continue the scene.';
