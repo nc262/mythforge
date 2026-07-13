@@ -1540,9 +1540,19 @@ function renderChatShell(char) {
         : `<div class="cb-portrait-fallback" aria-hidden="true">${_esc(_initial(char.name))}</div>`);
   // You ARE your hero; the only other voices you may speak with are the NPC
   // companions currently in your party (not other players, not the roster).
-  const _playAsOptions = () => [`<option value="">${_esc(_playerName())}</option>`]
-    .concat(_companions(char.id).filter(c => !c.guest).map(o => `<option value="${_esc(o.name)}"${_chat.playAs === o.name ? ' selected' : ''}>${_esc(o.name)}</option>`))
-    .join('');
+  // Who you speak/act as: yourself (the hero) + party companions + any other
+  // character you've created — so "you" isn't locked to a single name.
+  const _playAsOptions = () => {
+    const opts = [`<option value="">${_esc(_playerName())}</option>`];
+    const seen = new Set([(_playerName() || '').toLowerCase()]);
+    const add = (name, group) => {
+      const k = (name || '').toLowerCase(); if (!name || seen.has(k)) return; seen.add(k);
+      opts.push(`<option value="${_esc(name)}"${_chat.playAs === name ? ' selected' : ''}${group ? ` data-grp="${group}"` : ''}>${_esc(name)}</option>`);
+    };
+    _companions(char.id).filter(c => !c.guest).forEach(c => add(c.name));
+    (_chars || []).filter(t => t && !_isDM(t) && t.id !== char.id).forEach(t => add(t.name));
+    return opts.join('');
+  };
   const playAsOpts = _playAsOptions();
   const _mote = ({ embervale: 'rgba(232,193,113,.5)', neonspire: 'rgba(120,220,255,.5)', everyday: 'rgba(220,220,240,.32)' })[char.world_id] || 'rgba(232,193,113,.45)';
   root.innerHTML = `
@@ -1644,6 +1654,7 @@ function renderChatShell(char) {
               Chronicle — saved snapshots
             </button>
           </div></div>` : ''}
+          ${isDM ? '' : `<button type="button" id="studio-clearchat-btn" class="st-btn ghost small cb-act-btn" title="Clear this conversation and start fresh (companions are kept)">🧹 Clear chat</button>`}
         </div>
         <div class="playas-block">
           <label class="playas-label" for="studio-playas">Playing as</label>
@@ -1741,9 +1752,35 @@ function renderChatShell(char) {
   $('studio-seed-pic')?.addEventListener('click', () => _seedReferences());
   $('studio-ref-file')?.addEventListener('change', _onSeedFiles);
   $('studio-look-btn')?.addEventListener('click', () => openAppearance());
+  $('studio-clearchat-btn')?.addEventListener('click', () => _clearChat());
   // A level earned while you were elsewhere (party play) left its ASI/feature
   // choices pending — present the modal now that you're back in this adventure.
   if (isDM) { const _pl = _loadSheet(char.id)._pendingLevelUp; if (_pl) setTimeout(() => { if (_chat.char && _chat.char.id === char.id) _openLevelUp(char.id, _pl.from, _pl.to); }, 700); }
+}
+
+// Wipe this conversation and start fresh. Companion/group chats only (DM
+// adventures keep their history — that's what the Chronicle is for). Truncating
+// to zero empties the session server-side so a future reopen starts clean; the
+// character/companions themselves are untouched.
+async function _clearChat() {
+  if (_chat.streaming || _chat.groupBusy) return;
+  const who = _chat.group ? 'this group chat' : `your chat with ${_chat.char?.name || 'them'}`;
+  const ok = window.styledConfirm
+    ? await window.styledConfirm(`Clear ${who}? The conversation is erased — this can't be undone.`, { confirmText: 'Clear chat', danger: true })
+    : window.confirm(`Clear ${who}? This can't be undone.`);
+  if (!ok) return;
+  if (_chat.abort) { try { _chat.abort.abort(); } catch {} }
+  if (_chat.sessionId) {
+    try { await fetch(`${API_BASE}/api/session/${_chat.sessionId}/truncate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keep_count: 0 }) }); } catch {}
+  }
+  _chat.lastFramed = null;
+  const thread = $('studio-thread');
+  if (thread) {
+    thread.innerHTML = _chat.group
+      ? `<div class="rp-typing">${_esc(_chat.group.map(c => c.name).join(', '))} are here. Say something to get them talking.</div>`
+      : `<div class="rp-typing">${_chat.char?.scene ? _esc(_chat.char.scene) + ' — say something to begin.' : 'Fresh start. Say something to begin.'}</div>`;
+  }
+  _toast('🧹 Chat cleared.');
 }
 
 // Adventures are Game-Master ("dm-*") sessions. Tag them server-side into an
@@ -2497,8 +2534,16 @@ async function openGroupChat(chars) {
   renderChatShell(groupChar);
   _fxTitleCard(groupChar.name, `${chars.length} together`);
   const thread = $('studio-thread');
-  if (thread) thread.innerHTML = `<div class="rp-typing">${_esc(chars.map(c => c.name).join(', '))} are here. Say something to get them talking.</div>`;
-  for (const c of chars) { try { await _ensureSession(c); } catch {} }
+  if (thread) thread.innerHTML = `<div class="rp-typing">Opening the table…</div>`;
+  // The group gets its OWN session (keyed on grp-…). All banter saves here and
+  // NEVER into the companions' solo sessions — that cross-contamination was why
+  // a group chat's text later showed up in a one-on-one. Reopening replays this
+  // session, so a group is saved and can be rejoined.
+  try { await _ensureSession(groupChar); } catch {}
+  await _loadChatHistory();
+  if (thread && !thread.querySelector('.rp-msg')) {
+    thread.innerHTML = `<div class="rp-typing">${_esc(chars.map(c => c.name).join(', '))} are here. Say something to get them talking.</div>`;
+  }
 }
 
 async function _streamGroupTurn(userText) {
@@ -2506,14 +2551,17 @@ async function _streamGroupTurn(userText) {
   const groupChar = _chat.char, groupSid = _chat.sessionId;
   const names = group.map(c => c.name).join(', ');
   let transcript = `You: ${_stripTags(userText)}`;
+  // Persist the player's line to the GROUP session once, so a saved/rejoined
+  // group shows what you said (each reply below also saves to this session).
+  try { await fetch(`${API_BASE}/api/session/${groupSid}/message`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ role: 'user', content: _stripTags(userText) }) }); } catch {}
   // Each speaker's _streamAssistant flips _chat.streaming back to false in its
   // finally, so guard the whole multi-speaker turn with a separate flag that
   // sendChat also checks — otherwise a send in the gap between speakers re-enters.
   _chat.groupBusy = true;
   try {
     for (const c of group) {
-      _chat.char = c;
-      try { await _ensureSession(c); } catch {}   // sets _chat.sessionId to c's own session
+      _chat.char = c;                 // switch PERSONA (voice) for this reply…
+      _chat.sessionId = groupSid;     // …but keep saving to the GROUP session, not c's solo one
       const framed = `[This is a relaxed group conversation between ${names} and the player — not an adventure, just people talking. Here is what has just been said:\n${transcript}\nNow reply AS ${c.name}, fully in character and in your own voice, a few sentences. React naturally to the others and to the player. Never speak or act for anyone but ${c.name}.]`;
       let reply = '';
       try { reply = await _streamAssistant(framed); } catch {}
