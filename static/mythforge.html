@@ -1222,9 +1222,10 @@
       await characterStudio.open(false);   // open the studio, then jump to the companion picker
       document.querySelector('#studio-modal .studio-tab[data-view="roster"]')?.click();
     }));
-    $id('mf-settings').addEventListener('click', async () => {
-      // Lazy-load settings so a DOM mismatch there can't break the whole boot.
-      try { const s = await import('/static/js/settings.js'); (s.default || s).open(); }
+    $id('mf-settings').addEventListener('click', () => {
+      // Native game settings (GM model, sound, motion, account) — not the
+      // workspace settings modal, which has nothing to do with the game.
+      try { characterStudio.openSettings(); }
       catch (e) { console.warn('settings unavailable:', e); }
     });
 

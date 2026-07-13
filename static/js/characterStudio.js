@@ -211,7 +211,7 @@ function switchView(name) {
   $('studio-roster-view').hidden = name !== 'roster';
   $('studio-forge-view').hidden = name !== 'forge';
   $('studio-chat-view').hidden = name !== 'chat';
-  if (name !== 'chat') { _clearBackdrop(); _closeChatPanels(); }   // scene backdrop + HUD only behind the chat
+  if (name !== 'chat') { _clearBackdrop(); _closeChatPanels(); _stopAmbient(); }   // scene backdrop + HUD + soundscape only behind the chat
   document.querySelectorAll('#studio-modal .studio-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.view === name && name !== 'chat'));
   const vw = $(`studio-${name}-view`);
@@ -1500,6 +1500,7 @@ async function openChat(char) {
   applyWorldTheme(char.world_id || '');
   if (char.world_id) _applyBackdrop(char.world_id);
   _startMusic(char.world_id || '');   // per-world ambience (silent if no file present)
+  if (_isDM(char)) _applyAmbient(char.id);   // reactive soundscape for the current scene
   switchView('chat');
   if (_isDM(char)) _seedSheetFromPlayer(char.id);   // your default hero seeds the sheet
   renderChatShell(char);
@@ -1678,6 +1679,7 @@ function renderChatShell(char) {
       <input type="file" id="studio-ref-file" accept="image/*" multiple hidden>
       <button class="st-btn ghost pic-btn" id="studio-ask-pic" type="button" title="Ask ${_esc(char.name)} for a picture" aria-label="Ask ${_esc(char.name)} for a picture">📷</button>`}
       <button class="st-btn ghost pic-btn" id="studio-capture" type="button" title="${isDM ? 'Picture this moment — art of what\'s happening now' : `Picture what ${_esc(char.name)} is doing right now`}" aria-label="Capture the current moment as a picture">🎬</button>
+      ${isDM ? `<button class="st-btn ghost pic-btn" id="studio-attempt" type="button" title="Attempt anything — the GM sets a DC and you roll the right check" aria-label="Attempt an action with a dice roll">🎲</button>` : ''}
       <textarea id="studio-composer" rows="1" placeholder="${isDM ? 'What do you do?' : `Say something to ${_esc(char.name)}…`}"></textarea>
       <button class="st-btn primary send-btn" id="studio-send" type="button">Send</button>
     </div>`;
@@ -1753,6 +1755,7 @@ function renderChatShell(char) {
   $('studio-ref-file')?.addEventListener('change', _onSeedFiles);
   $('studio-look-btn')?.addEventListener('click', () => openAppearance());
   $('studio-clearchat-btn')?.addEventListener('click', () => _clearChat());
+  $('studio-attempt')?.addEventListener('click', () => _attemptAction());
   // A level earned while you were elsewhere (party play) left its ASI/feature
   // choices pending — present the modal now that you're back in this adventure.
   if (isDM) { const _pl = _loadSheet(char.id)._pendingLevelUp; if (_pl) setTimeout(() => { if (_chat.char && _chat.char.id === char.id) _openLevelUp(char.id, _pl.from, _pl.to); }, 700); }
@@ -1797,6 +1800,7 @@ function _tagAdventure(char, sid) {
 // Prefer a fast, fully-GPU-resident model for narration — a 14B model spilling to
 // CPU makes every turn crawl. Picks the best small model actually installed.
 function _narrationModel() {
+  try { const saved = JSON.parse(localStorage.getItem('studio-gm-model') || 'null'); if (saved && saved.model) return saved; } catch {}   // the player's chosen GM model wins
   try {
     const items = (window.modelsModule && window.modelsModule.getCachedItems) ? window.modelsModule.getCachedItems() : [];
     const prefs = ['llama3.1:8b', 'llama3:8b', 'qwen2.5:7b', 'qwen2.5:7b-instruct', 'mistral:7b', 'gemma2:9b'];
@@ -2023,6 +2027,28 @@ async function _regenBubble(wrap) {
   }
   wrap.remove();
   if (_chat.lastFramed) _streamAssistant(_chat.lastFramed);
+}
+
+// Roll to do ANYTHING: the composer text is your declared action. Instead of the
+// GM narrating a hand-waved outcome, it must set a DC and call for the exact
+// ability/skill check — which _detectCheck turns into a one-tap roll prompt. This
+// is the ask-the-DM → real-mechanic loop made tactile.
+async function _attemptAction() {
+  if (_chat.streaming || !_isDM(_chat.char)) return;
+  const ta = $('studio-composer');
+  let action = (ta?.value || '').trim();
+  if (!action) {
+    try { action = window.styledPrompt ? await window.styledPrompt('What do you attempt? (the GM will set the difficulty and you\'ll roll)', '') : window.prompt('What do you attempt?', ''); }
+    catch { action = null; }
+    if (action == null) return;
+    action = String(action).trim();
+    if (!action) return;
+  } else { ta.value = ''; ta.style.height = 'auto'; }
+  if (!_chat.group && !_chat.sessionId) { _toast('Still connecting — try again in a moment.'); return; }
+  _appendBubble('me', `🎲 *I attempt: ${_esc(action)}*`);
+  _scrollChat();
+  const framed = `[I attempt this: "${action}". Adjudicate it like a fair GM — if it can just succeed, say so; if it's impossible, tell me why; otherwise decide the single most fitting ability or skill check and a DC (name both explicitly, e.g. "make a DC 14 Dexterity (Stealth) check"), then wait for my roll. Do NOT narrate the outcome yet.]`;
+  await _streamAssistant(framed);
 }
 
 function _scrollChat() {
@@ -5235,8 +5261,30 @@ function _showRecap(cid) {
   const mem = _memText(cid); if (!mem || mem.length < 20) return;
   const thread = $('studio-thread'); if (!thread) return;
   const card = document.createElement('div'); card.className = 'recap-card';
-  card.innerHTML = `<span class="recap-title">✦ Previously…</span><span class="recap-body">${_esc(mem.slice(0, 400))}</span>`;
+  let art = ''; try { art = localStorage.getItem('studio-recap-art-' + cid) || ''; } catch {}
+  card.innerHTML = `<div class="recap-veil" aria-hidden="true"></div><div class="recap-inner"><span class="recap-title">✦ Previously…</span><span class="recap-body">${_esc(mem.slice(0, 360))}</span></div>`;
+  if (art) { card.style.backgroundImage = `url("${art}")`; card.classList.add('has-art'); }
   thread.insertBefore(card, thread.firstChild);
+  _refreshRecapArt(cid, mem, card);   // freshen the splash in the background when the story has moved on
+}
+async function _refreshRecapArt(cid, mem, card) {
+  if (Date.now() - _artFailAt < 120000) return;   // art forge cooling down
+  const nowSig = mem.slice(0, 120);
+  let sig = ''; try { sig = localStorage.getItem('studio-recap-sig-' + cid) || ''; } catch {}
+  if (sig === nowSig && card.classList.contains('has-art')) return;   // unchanged since last splash
+  try {
+    const wid = _chat.char && _chat.char.world_id;
+    const w = wid ? getWorld(wid) : null;
+    const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: `${mem.slice(0, 220)}${w ? `, in ${w.name} (${w.kind || 'fantasy'})` : ''}. Epic cinematic wide establishing shot, moody atmospheric lighting, richly detailed fantasy illustration, no text`, size: '1216x832' }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (d && d.image_url) {
+      try { localStorage.setItem('studio-recap-art-' + cid, d.image_url); localStorage.setItem('studio-recap-sig-' + cid, nowSig); } catch {}
+      if (card && card.parentNode) { card.style.backgroundImage = `url("${d.image_url}")`; card.classList.add('has-art'); }
+    }
+  } catch {}
 }
 function renderCombatPanel() {
   const modal = $('studio-modal'); if (!modal || !_chat.char) return;
@@ -6262,6 +6310,7 @@ function _travelTo(cid, p) {
   const risk = Math.random() < 0.2 ? ` On the way, run a brief encounter or striking event — perhaps ${_randEncounter().toLowerCase()}s, a traveler, or an omen — before I arrive.` : '';
   const who = ' On arrival, describe the layout of the place and NAME who is present (keepers, vendors, patrons, locals) so I know who I can talk to' + (p.shop ? ', and mention what wares are on display' : '') + '.';
   _chat.skipHereScan = true;   // you're now at p.name — don't let the arrival narration re-detect a different place
+  _applyAmbient(cid);   // new place → its soundscape (tavern murmur, cave drips, forest birds…)
   if (_isDM(_chat.char)) _streamAssistant(`[I travel to ${p.name}${p.note ? ` (${p.note})` : ''}${p.shop ? `, which trades in ${p.shop}` : ''}. Narrate the journey briefly and set the scene.${who}${risk}]`);
 }
 
@@ -6819,6 +6868,7 @@ function _enterCombat(cid, enemy, sceneText) {
 function _enterCombatMode(cid, enemy, sceneText) {
   const modal = $('studio-modal'); if (modal) modal.classList.add('in-combat');
   _startMusic('combat');
+  _applyAmbient(cid);   // swap the soundscape to the low combat rumble
   _sfx('crit');   // a sting to mark the shift
   _appendBubble('me', `⚔️ *Combat — ${_esc(enemy)}!*`); _scrollChat();
   _combatBackdrop(cid, enemy, sceneText);
@@ -6856,6 +6906,7 @@ function _finishCombat(cid) {
 function _exitCombatMode(cid) {
   const modal = $('studio-modal'); if (modal) modal.classList.remove('in-combat');
   if (_chat.char) _startMusic(_chat.char.world_id || '');
+  _applyAmbient(cid);   // combat over → back to the scene's ambience
   const wid = _chat.char && _chat.char.world_id;
   if (wid) { try { const u = localStorage.getItem(BACKDROP_KEY(wid)); const el = $('studio-backdrop'); if (u && el) { el.style.backgroundImage = `url("${u}")`; el.classList.add('active'); } } catch (e) {} }
 }
@@ -7022,7 +7073,7 @@ let _sfxLoaded = false;
 function _sfxOn() { try { return localStorage.getItem('studio-sfx') !== '0'; } catch (e) { return true; } }
 function _setSfx(on) { try { localStorage.setItem('studio-sfx', on ? '1' : '0'); } catch (e) {} }
 function _reflectSfxBtn() { const b = $('studio-sfx-btn'); if (!b) return; const on = _sfxOn(); b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false'); const ico = b.querySelector('.sfx-ico'); if (ico) ico.textContent = on ? '🔊' : '🔇'; }
-function _toggleSfx() { _setSfx(!_sfxOn()); _reflectSfxBtn(); if (_sfxOn()) { _sfx('loot'); if (_chat.char) _startMusic(_chat.char.world_id || ''); } else { _stopMusic(); } }
+function _toggleSfx() { _setSfx(!_sfxOn()); _reflectSfxBtn(); if (_sfxOn()) { _sfx('loot'); if (_chat.char) { _startMusic(_chat.char.world_id || ''); _applyAmbient(_chat.char.id); } } else { _stopMusic(); _stopAmbient(); } }
 function _ac() { if (!_audioCtx) { try { _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } return _audioCtx; }
 function _tone(ctx, freq, t0, dur, type, gain) {
   const o = ctx.createOscillator(), g = ctx.createGain();
@@ -7154,6 +7205,89 @@ function _startMusic(worldId) {
   }).catch(() => { /* autoplay blocked — starts on the next interaction via the toggle */ });
 }
 
+// ── Reactive ambient soundscape ──────────────────────────────────────────────
+// A generative bed (filtered noise + a sparse "detail" layer) that shifts with
+// the scene — time of day, where you are, and combat. No audio files: everything
+// is synthesized on the shared AudioContext, gated by the SFX toggle + its own
+// volume, and it rides UNDER the music pad.
+let _amb = null, _ambProfile = null;
+function _ambOn() { try { return localStorage.getItem('studio-ambient') !== '0'; } catch { return true; } }
+function _ambVol() { try { const v = parseFloat(localStorage.getItem('studio-ambient-vol')); return isNaN(v) ? 0.6 : Math.max(0, Math.min(1, v)); } catch { return 0.6; } }
+const _AMB_PROFILES = {
+  day:    { type: 'lowpass', cut: 520,  q: 0.6, vol: 0.09, wob: 0.06 },
+  night:  { type: 'bandpass', cut: 3200, q: 5,  vol: 0.05, wob: 0.03, detail: { every: 850, freq: 4200, dur: 0.07, gain: 0.05, jit: 0.5 } },  // crickets
+  rain:   { type: 'lowpass', cut: 1500, q: 0.7, vol: 0.16, wob: 0.02, detail: { every: 120, freq: 6000, dur: 0.02, gain: 0.02, jit: 1 } },   // patter
+  forest: { type: 'lowpass', cut: 720,  q: 0.5, vol: 0.10, wob: 0.09, detail: { every: 2600, freq: 2800, dur: 0.05, gain: 0.03, jit: 0.9 } },// birds/rustle
+  tavern: { type: 'lowpass', cut: 360,  q: 0.8, vol: 0.13, wob: 0.04, detail: { every: 1400, freq: 210, dur: 0.13, gain: 0.03, jit: 0.7 } }, // murmur
+  cave:   { type: 'lowpass', cut: 230,  q: 1.2, vol: 0.12, wob: 0.02, detail: { every: 3400, freq: 950, dur: 0.03, gain: 0.05, jit: 0.9 } }, // drips
+  combat: { type: 'lowpass', cut: 190,  q: 1.6, vol: 0.14, wob: 0.01, rumble: true },
+};
+function _noiseBuffer(ctx, secs) {
+  const buf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * secs), ctx.sampleRate), d = buf.getChannelData(0);
+  let last = 0;
+  for (let i = 0; i < d.length; i++) { const w = Math.random() * 2 - 1; last = (last + 0.02 * w) / 1.02; d[i] = last * 3.4; }   // brown-ish noise
+  return buf;
+}
+function _stopAmbient() {
+  if (!_amb) return;
+  const a = _amb; _amb = null; _ambProfile = null;
+  try { const ctx = _ac(); a.master.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.6); clearInterval(a.detailTimer);
+    setTimeout(() => { try { a.src.stop(); } catch {} try { a.lfo && a.lfo.stop(); } catch {} try { a.rumble && a.rumble.stop(); } catch {} }, 700);
+  } catch {}
+}
+function _startAmbient(name) {
+  const ctx = _ac(); if (!ctx) return;
+  if (_ambProfile === name && _amb) return;
+  const p = _AMB_PROFILES[name] || _AMB_PROFILES.day;
+  _stopAmbient(); _ambProfile = name;
+  try {
+    if (ctx.state === 'suspended') ctx.resume();
+    const master = ctx.createGain(); master.gain.value = 0; master.connect(ctx.destination);
+    const filter = ctx.createBiquadFilter(); filter.type = p.type; filter.frequency.value = p.cut; filter.Q.value = p.q; filter.connect(master);
+    const src = ctx.createBufferSource(); src.buffer = _noiseBuffer(ctx, 3); src.loop = true; src.connect(filter); src.start();
+    const lfo = ctx.createOscillator(); lfo.frequency.value = 0.07; const lg = ctx.createGain(); lg.gain.value = p.cut * p.wob; lfo.connect(lg); lg.connect(filter.frequency); lfo.start();
+    let rumble = null;
+    if (p.rumble) { rumble = ctx.createOscillator(); rumble.type = 'sawtooth'; rumble.frequency.value = 46; const rg = ctx.createGain(); rg.gain.value = 0.05; rumble.connect(rg); rg.connect(master); rumble.start(); }
+    let detailTimer = null;
+    if (p.detail) {
+      const dt = p.detail;
+      detailTimer = setInterval(() => {
+        if (!_amb || !_ambOn()) return;
+        _tone(ctx, dt.freq * (1 + (Math.random() - 0.5) * dt.jit), ctx.currentTime, dt.dur, 'sine', dt.gain * _ambVol());
+      }, dt.every * (0.6 + Math.random() * 0.8));
+    }
+    master.gain.linearRampToValueAtTime(p.vol * _ambVol(), ctx.currentTime + 1.5);
+    _amb = { master, src, lfo, rumble, detailTimer, base: p.vol };
+  } catch {}
+}
+// Read the current scene and pick the bed: combat > weather/place > time of day.
+function _ambientProfileFor(cid) {
+  if (!cid) return 'day';
+  try { if (_loadCombat(cid).active) return 'combat'; } catch {}
+  try {
+    const w = _loadWorldS(cid), here = (w.here || '').toLowerCase();
+    const place = (w.places || []).find(pp => (pp.name || '').toLowerCase() === here);
+    const kind = ((place && place.kind) || '') + ' ' + here;
+    if (/tavern|inn|pub|alehouse/.test(kind)) return 'tavern';
+    if (/cave|mine|dungeon|crypt|tomb|cellar|catacomb|sewer/.test(kind)) return 'cave';
+    if (/wood|forest|grove|wild|thicket|jungle/.test(kind)) return 'forest';
+  } catch {}
+  try { const c = _loadClock(cid); if (c.wx && /rain|storm|downpour|drizzle/i.test(c.wx.name || '')) return 'rain'; } catch {}
+  try { const ti = _loadClock(cid).ti || 0; if (ti >= 5) return 'night'; } catch {}   // Nightfall / Deep Night
+  return 'day';
+}
+function _applyAmbient(cid) {
+  if (!_ambOn()) { _stopAmbient(); return; }   // ambient is its own switch, independent of SFX blips
+  cid = cid || (_chat.char && _chat.char.id);
+  if (!cid || !_isDM(_chat.char)) { _stopAmbient(); return; }   // ambience is for adventures, not one-on-one chats
+  _startAmbient(_ambientProfileFor(cid));
+}
+function _setAmbient(on) { try { localStorage.setItem('studio-ambient', on ? '1' : '0'); } catch {} _applyAmbient(); }
+function _setAmbientVol(v) {
+  try { localStorage.setItem('studio-ambient-vol', String(v)); } catch {}
+  if (_amb) { const p = _AMB_PROFILES[_ambProfile] || _AMB_PROFILES.day; try { _amb.master.gain.setTargetAtTime(p.vol * _ambVol(), _ac().currentTime, 0.2); } catch {} }
+}
+
 // Combat won: a "VICTORY!" banner + fanfare when the last foe falls.
 function _fxVictory() {
   _sfx('victory');
@@ -7188,7 +7322,7 @@ function _detectTimeOfDay(text) {
   return -1;
 }
 function _setClockTime(cid, ti) {
-  const c = _loadClock(cid); if (c.ti === ti) return; c.ti = ti; _saveClock(cid, c); _reflectClock(); _applyTimeTint(cid);
+  const c = _loadClock(cid); if (c.ti === ti) return; c.ti = ti; _saveClock(cid, c); _reflectClock(); _applyTimeTint(cid); _applyAmbient(cid);   // day↔night shifts the bed
 }
 
 function _castSpell(cid, idx) {
@@ -8040,6 +8174,7 @@ async function _hydrateState(cid) {
 // ── Init ──────────────────────────────────────────────────────────────────────
 export function init(apiBase) {
   API_BASE = apiBase || '';
+  try { if (localStorage.getItem('studio-reduce-motion') === '1') document.documentElement.classList.add('mf-reduce-motion'); } catch {}   // honor the saved motion pref
   if (_ttsAvailable()) { _ttsVoices(); try { window.speechSynthesis.onvoiceschanged = () => { _ttsVoices(); }; } catch {} }
   $('studio-close')?.addEventListener('click', close);
   document.querySelectorAll('#studio-modal .studio-tab').forEach(tab =>
@@ -8077,6 +8212,88 @@ export function init(apiBase) {
   });
 }
 
-const characterStudio = { init, open, continueLast, lastAdventure, openJoinParty };
+// ── Game settings — the title-menu ⚙ (native to the game, not the workspace) ──
+// Replaces the imported workspace settings modal (models/email/reminders/etc.)
+// with only what a player needs: the GM's model, sound, motion, account, about.
+export async function openSettings() {
+  const host = document.body;
+  let ov = document.getElementById('mf-settings-overlay');
+  if (!ov) { ov = document.createElement('div'); ov.id = 'mf-settings-overlay'; ov.className = 'chronicle-overlay mf-settings-overlay'; host.appendChild(ov); }
+  // Make sure the model list is loaded so the GM-model picker has options.
+  try { if (window.modelsModule && window.modelsModule.refreshModels) await window.modelsModule.refreshModels(false); } catch {}
+  const items = (window.modelsModule && window.modelsModule.getCachedItems) ? (window.modelsModule.getCachedItems() || []) : [];
+  const online = items.filter(it => !it.offline);
+  const modelOpts = [];
+  let saved = null; try { saved = JSON.parse(localStorage.getItem('studio-gm-model') || 'null'); } catch {}
+  const savedModel = saved && saved.model;
+  online.forEach(it => {
+    (it.models || []).concat(it.models_extra || []).forEach(m => {
+      const sel = savedModel === m ? ' selected' : '';
+      modelOpts.push(`<option value="${_esc(m)}" data-url="${_esc(it.url || it.endpoint_url || '')}" data-eid="${_esc(it.endpoint_id || '')}"${sel}>${_esc(m)}</option>`);
+    });
+  });
+  const auto = _narrationModel();
+  const tts = _loadTTS();
+  const voices = (_ttsAvailable() ? window.speechSynthesis.getVoices() : []) || [];
+  const rm = (() => { try { return localStorage.getItem('studio-reduce-motion') === '1'; } catch { return false; } })();
+  let ver = ''; try { ver = (await (await fetch(`${API_BASE}/api/version`)).json()).version || ''; } catch {}
+  const row = (label, control, hint) => `<div class="mf-set-row"><div class="mf-set-label">${label}${hint ? `<span class="mf-set-hint">${hint}</span>` : ''}</div><div class="mf-set-ctl">${control}</div></div>`;
+  const toggle = (id, on) => `<button type="button" class="mf-switch${on ? ' on' : ''}" id="${id}" role="switch" aria-checked="${on}"><span></span></button>`;
+  ov.innerHTML = `<div class="chronicle-sheet mf-settings-sheet" role="dialog" aria-modal="true" aria-label="Settings">
+    <div class="chronicle-bar"><h2>⚙ Settings</h2><button class="studio-close" id="mf-set-close" type="button" aria-label="Close">✕</button></div>
+    <div class="chronicle-list mf-settings-list">
+      <div class="mf-set-group">Game Master</div>
+      ${row('AI model', modelOpts.length
+        ? `<select id="mf-gm-model" class="studio-select"><option value="">✨ Auto (${_esc((auto && auto.model) || 'best local')})</option>${modelOpts.join('')}</select>`
+        : `<span class="mf-set-note">No models found. <a href="/workspace" target="_blank" rel="noopener">Add one ›</a></span>`, 'The brain that runs your GM &amp; companions')}
+
+      <div class="mf-set-group">Sound &amp; motion</div>
+      ${row('Sound effects', toggle('mf-sfx', _sfxOn()))}
+      ${row('Ambient soundscape', toggle('mf-amb', _ambOn()), 'Wind, rain, tavern murmur, combat rumble')}
+      ${row('Ambient volume', `<input type="range" id="mf-amb-vol" min="0" max="100" step="5" value="${Math.round(_ambVol() * 100)}" class="mf-range">`)}
+      ${row('Narrate the story aloud', toggle('mf-tts', !!tts.on))}
+      ${_ttsAvailable() && voices.length ? row('Narrator voice', `<select id="mf-tts-voice" class="studio-select"><option value="">Default</option>${voices.map(v => `<option value="${_esc(v.name)}"${tts.voice === v.name ? ' selected' : ''}>${_esc(v.name)}</option>`).join('')}</select>`) : ''}
+      ${row('Reduce motion', toggle('mf-rm', rm), 'Calmer — fewer animations')}
+
+      <div class="mf-set-group">Account</div>
+      ${row('', `<button class="st-btn ghost small" id="mf-logout" type="button">Sign out</button> <a class="st-btn ghost small" href="/workspace" target="_blank" rel="noopener" style="text-decoration:none">Advanced settings ›</a>`)}
+
+      <div class="mf-set-group">About</div>
+      ${row('Mythforge', `<span class="mf-set-note">${ver ? 'v' + _esc(ver) : ''}</span>`)}
+      ${row('', `<button class="st-btn ghost small danger" id="mf-shutdown" type="button">⏻ Shut down the server</button>`, 'Stops the game server on this machine')}
+    </div></div>`;
+  ov.style.display = 'flex';
+  const close = () => { ov.style.display = 'none'; };
+  ov.querySelector('#mf-set-close').addEventListener('click', close);
+  ov.addEventListener('click', e => { if (e.target === ov) close(); });
+  // GM model
+  const mSel = ov.querySelector('#mf-gm-model');
+  mSel?.addEventListener('change', () => {
+    const o = mSel.selectedOptions[0];
+    if (!mSel.value) { try { localStorage.removeItem('studio-gm-model'); } catch {} _toast('GM model: Auto'); return; }
+    try { localStorage.setItem('studio-gm-model', JSON.stringify({ model: mSel.value, url: o.dataset.url || '', endpoint_id: o.dataset.eid || '' })); } catch {}
+    _toast(`GM model → ${mSel.value}`);
+    if (_chat.sessionId) _applyNarrationModel(_chat.sessionId);
+  });
+  // Sound & motion
+  const bindSwitch = (id, get, set) => { const b = ov.querySelector('#' + id); b?.addEventListener('click', () => { const nv = !get(); set(nv); b.classList.toggle('on', nv); b.setAttribute('aria-checked', String(nv)); }); };
+  bindSwitch('mf-sfx', _sfxOn, v => { _setSfx(v); _reflectSfxBtn(); if (v) { _sfx('loot'); if (_chat.char) { _startMusic(_chat.char.world_id || ''); _applyAmbient(_chat.char.id); } } else { _stopMusic(); _stopAmbient(); } });
+  bindSwitch('mf-amb', _ambOn, v => _setAmbient(v));
+  ov.querySelector('#mf-amb-vol')?.addEventListener('input', e => _setAmbientVol((+e.target.value) / 100));
+  bindSwitch('mf-tts', () => !!_loadTTS().on, v => { const t = _loadTTS(); t.on = v; _saveTTS(t); _reflectTTSBtn && _reflectTTSBtn(); if (!v) _stopSpeech(); });
+  ov.querySelector('#mf-tts-voice')?.addEventListener('change', e => { const t = _loadTTS(); t.voice = e.target.value; _saveTTS(t); });
+  bindSwitch('mf-rm', () => { try { return localStorage.getItem('studio-reduce-motion') === '1'; } catch { return false; } }, v => { try { localStorage.setItem('studio-reduce-motion', v ? '1' : '0'); } catch {} document.documentElement.classList.toggle('mf-reduce-motion', v); });
+  // Account
+  ov.querySelector('#mf-logout')?.addEventListener('click', async () => {
+    try { await fetch(`${API_BASE}/api/auth/logout`, { method: 'POST', credentials: 'same-origin' }); } catch {}
+    window.location.href = '/login';
+  });
+  ov.querySelector('#mf-shutdown')?.addEventListener('click', async () => {
+    if (!window.confirm('Shut down the Mythforge server? Anyone playing will be disconnected.')) return;
+    try { const r = await fetch(`${API_BASE}/api/shutdown`, { method: 'POST' }); if (!r.ok) { window.alert('Only the host machine can shut down the server.'); return; } document.body.innerHTML = '<div style="display:grid;place-items:center;height:100vh;font:600 20px/1.6 system-ui;color:#e8c171;background:#14121f;text-align:center">✦ Mythforge is shutting down.<br><span style="font-size:14px;color:#9a93b5">You can close this tab.</span></div>'; } catch (e) { window.alert('Shutdown failed: ' + e); }
+  });
+}
+
+const characterStudio = { init, open, continueLast, lastAdventure, openJoinParty, openSettings };
 window.characterStudio = characterStudio;
 export default characterStudio;
