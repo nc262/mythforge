@@ -2212,9 +2212,11 @@ async function _photoGroup(A, B, scene) {
   } finally { _picBusy(false); _scrollChat(); }
 }
 
-// GM mode: the world and its action, not one character's portrait. No single-
-// subject face anchor — the whole moment is the subject.
-async function _photoScene(scene) {
+// GM mode: the world and its action, not one character's portrait. Optional
+// `character`: anchor the scene's protagonist on that character's reference
+// photos (heroes get theirs when a portrait is saved) — the bridge falls back
+// to plain generation when no references exist, so passing it is always safe.
+async function _photoScene(scene, character) {
   _picBusy(true);
   const wrap = _appendBubble('them', `<span class="rp-typing"><span class="dot">✦</span> capturing the scene…</span>`);
   const bubble = wrap ? wrap.querySelector('.rp-bubble') : null;
@@ -2223,7 +2225,7 @@ async function _photoScene(scene) {
     const prompt = `${scene}. Epic cinematic wide establishing shot, dynamic action, dramatic volumetric lighting, richly detailed fantasy illustration, sharp focus, highly detailed.`;
     const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, size: '1216x832' }),
+      body: JSON.stringify({ prompt, size: '1216x832', ...(character ? { character } : {}) }),
     });
     const d = await r.json().catch(() => ({}));
     if (d && d.image_url && bubble) {
@@ -4931,7 +4933,9 @@ async function _howDoYouWantToDoThis(cid, foeName, weaponName, mechMsg, won) {
   // forge is cooling down from a failure — same breaker as NPC portraits).
   if (Date.now() - _artFailAt >= 120000) {
     const hero = (_loadSheet(cid).name || '').trim();
-    _photoScene(`${hero ? hero + "'s" : 'the hero’s'} killing blow against the ${foeName}${flourish ? `: ${flourish}` : ` with ${weaponName ? 'their ' + weaponName : 'their weapon'}`}, the decisive strike landing`);
+    // Anchored on the hero's reference photos when they have them (portrait
+    // saves seed those), so the finish frame shows YOUR hero landing the blow.
+    _photoScene(`${hero ? hero + "'s" : 'the hero’s'} killing blow against the ${foeName}${flourish ? `: ${flourish}` : ` with ${weaponName ? 'their ' + weaponName : 'their weapon'}`}, the decisive strike landing`, hero || undefined);
   }
   const tail = won
     ? ' The fight is over — after the blow lands, narrate the aftermath and anything worth looting from the fallen or the scene; if I take something, name the item plainly.'
