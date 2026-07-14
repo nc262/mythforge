@@ -1,0 +1,73 @@
+[gd_scene load_steps=3 format=3 uid="uid://mythforge_menu"]
+
+[ext_resource type="Script" path="res://scripts/main_menu.gd" id="1"]
+[ext_resource type="PackedScene" path="res://scenes/ui/backdrop.tscn" id="2"]
+
+[node name="MainMenu" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Backdrop" parent="." instance=ExtResource("2")]
+layout_mode = 1
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Box" type="VBoxContainer" parent="Center"]
+layout_mode = 2
+theme_override_constants/separation = 10
+
+[node name="Title" type="Label" parent="Center/Box"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+theme_override_font_sizes/font_size = 64
+text = "✦ MYTHFORGE"
+horizontal_alignment = 1
+
+[node name="Tag" type="Label" parent="Center/Box"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+text = "Every world is a door. The dice are real."
+horizontal_alignment = 1
+
+[node name="Gap" type="Control" parent="Center/Box"]
+custom_minimum_size = Vector2(0, 18)
+layout_mode = 2
+
+[node name="Continue" type="Button" parent="Center/Box"]
+visible = false
+layout_mode = 2
+theme_type_variation = &"AccentButton"
+text = "▶ Continue"
+
+[node name="Gap2" type="Control" parent="Center/Box"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="Sub" type="Label" parent="Center/Box"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+text = "ADVENTURES"
+horizontal_alignment = 1
+
+[node name="Scroll" type="ScrollContainer" parent="Center/Box"]
+custom_minimum_size = Vector2(860, 380)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="Grid" type="GridContainer" parent="Center/Box/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 2
+theme_override_constants/h_separation = 14
+theme_override_constants/v_separation = 14
+
+[node name="Status" type="Label" parent="Center/Box"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+horizontal_alignment = 1

@@ -1,6 +1,6 @@
 extends Control
 
-const SELECT_SCENE := "res://scenes/character_select.tscn"
+const SELECT_SCENE := "res://scenes/main_menu.tscn"
 
 
 func _ready() -> void:
