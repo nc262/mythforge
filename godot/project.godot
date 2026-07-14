@@ -9,6 +9,7 @@ config/features=PackedStringArray("4.7")
 
 [autoload]
 
+Ui="*res://autoload/skin.gd"
 Api="*res://autoload/api_client.gd"
 GameState="*res://autoload/game_state.gd"
 Rules="*res://autoload/rules_engine.gd"
