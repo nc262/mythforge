@@ -63,16 +63,26 @@ func _stream(framed: String) -> void:
 
 func _on_delta(t: String) -> void:
 	_acc += t
-	# Print only up to the first "[[" — tags are parsed on done, never shown.
-	var safe := _acc.substr(_shown)
-	var cut := safe.find("[[")
-	if cut >= 0:
-		_log_text(_bb(safe.substr(0, cut)))
-		_shown += cut
-		return
-	var hold := 1 if safe.ends_with("[") else 0
-	_log_text(_bb(safe.substr(0, safe.length() - hold)))
-	_shown += safe.length() - hold
+	_flush_stream()
+
+
+## Print new narration, skipping over [[tags]] as they complete so a mid-reply
+## tag never freezes the display. Incomplete tags at the tail are held back.
+func _flush_stream() -> void:
+	while true:
+		var safe := _acc.substr(_shown)
+		var i := safe.find("[[")
+		if i == -1:
+			var hold := 1 if safe.ends_with("[") else 0
+			_log_text(_bb(safe.substr(0, safe.length() - hold)))
+			_shown += safe.length() - hold
+			return
+		_log_text(_bb(safe.substr(0, i)))
+		_shown += i
+		var j := safe.find("]]", i)
+		if j == -1:
+			return  # tag still streaming in — hold
+		_shown += (j + 2) - i  # skip the completed tag; done() re-parses _acc
 
 
 func _on_event(d: Dictionary) -> void:

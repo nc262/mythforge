@@ -15,12 +15,15 @@ func _ready() -> void:
 
 func _load() -> void:
 	$Margin/Box/Status.text = "Summoning the roster…"
-	_chars = await Api.list_characters()
+	# Adventures only (dm-* templates, same test as the web client's _isDM):
+	# they own the hero sheet, world state, and GM rules. Plain personas are
+	# chat companions, not games.
+	_chars = (await Api.list_characters()).filter(func(c): return str(c.get("id", "")).begins_with("dm-"))
 	$Margin/Box/List.clear()
 	for c in _chars:
 		var world := str(c.get("world_id", ""))
 		$Margin/Box/List.add_item(str(c.get("name", "Unnamed")) + ("   ·  %s" % world if world != "" else ""))
-	$Margin/Box/Status.text = "" if not _chars.is_empty() else "No characters found — forge one in the web studio first."
+	$Margin/Box/Status.text = "" if not _chars.is_empty() else "No adventures found — start one in the web studio first."
 
 
 func _play() -> void:

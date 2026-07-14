@@ -162,13 +162,22 @@ func stream_chat(message: String, session_id: String) -> void:
 		await get_tree().process_frame
 	# Byte buffer, not String: a UTF-8 char can straddle two chunks.
 	var buf := PackedByteArray()
+	# Idle watchdog (mirrors the web client): abort only after a long gap with
+	# no tokens — first token on a slow local model can take ~50s.
+	var last_data := Time.get_ticks_msec()
 	while client.get_status() == HTTPClient.STATUS_BODY:
 		client.poll()
 		var chunk := client.read_response_body_chunk()
 		if chunk.size() > 0:
 			buf.append_array(chunk)
 			buf = _drain_lines(buf)
+			last_data = Time.get_ticks_msec()
 		else:
+			if Time.get_ticks_msec() - last_data > 75_000:
+				push_warning("SSE stalled for 75s — aborting stream")
+				client.close()
+				sse_done.emit(false)
+				return
 			await get_tree().process_frame
 	_drain_lines(buf)
 	sse_done.emit(true)
