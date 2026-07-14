@@ -1,6 +1,6 @@
 extends Control
-## The adventure screen. Streamed narration, structured [[tag]] checks
-## resolved by the Rules engine, read-only sheet panel — in the world's skin.
+## The adventure screen: bubbled narration, streamed tokens, structured
+## [[tag]] mechanics, the dice moment, and generated art as a living backdrop.
 
 var _streaming := false
 var _acc := ""          # full raw GM reply
@@ -8,13 +8,18 @@ var _shown := 0         # chars of _acc already printed (tags are held back)
 var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
 var _conjuring := false
+var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
 
-@onready var _log: RichTextLabel = $Margin/Split/ChatBox/Log
+@onready var _thread: VBoxContainer = $Margin/Split/ChatBox/Scroll/Thread
+@onready var _scroll: ScrollContainer = $Margin/Split/ChatBox/Scroll
+@onready var _combat_panel: RichTextLabel = $Margin/Split/ChatBox/CombatPanel
 @onready var _roll_bar: Button = $Margin/Split/ChatBox/RollBar
 @onready var _msg: LineEdit = $Margin/Split/ChatBox/Input/Msg
 @onready var _send_btn: Button = $Margin/Split/ChatBox/Input/Send
 @onready var _sheet_panel: RichTextLabel = $Margin/Split/Sheet
-@onready var _combat_panel: RichTextLabel = $Margin/Split/ChatBox/CombatPanel
+@onready var _scene_art: TextureRect = $SceneArt
+@onready var _battle_tint: ColorRect = $BattleTint
+@onready var _die_layer: CenterContainer = $DieLayer
 
 
 func _ready() -> void:
@@ -28,29 +33,74 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
-	_build_dice_menu()
-	Chronicle.reset()
+	_roll_bar.pressed.connect(_roll_pending)
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
 	Combat.changed.connect(_render_combat)
-	_roll_bar.pressed.connect(_roll_pending)
+	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
 		("  ·  " + world) if world != "" else ""]
 	await GameState.hydrate()
+	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
-	_log_text("[i]The tale of %s begins…[/i]\n" % _bb(str(GameState.character.get("name", "?"))))
+	_say_system("The tale of %s begins…" % str(GameState.character.get("name", "?")))
 
 
-func _you() -> String:
-	return "[color=%s][b]You[/b][/color]" % Ui.c("gold").to_html(false)
+# ── Bubbles ──────────────────────────────────────────────────────────────────
+## kind: "me" (gold, right) | "gm" (parchment, left). Returns the text node.
+func _bubble(kind: String) -> RichTextLabel:
+	var row := HBoxContainer.new()
+	var panel := PanelContainer.new()
+	panel.theme_type_variation = "BubbleMe" if kind == "me" else "BubbleGm"
+	var rt := RichTextLabel.new()
+	rt.bbcode_enabled = true
+	rt.fit_content = true
+	rt.selection_enabled = true
+	rt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rt.add_theme_stylebox_override("normal", StyleBoxEmpty.new())  # the bubble panel is the only frame
+	panel.add_child(rt)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if kind == "me":
+		spacer.size_flags_stretch_ratio = 1.0
+		panel.size_flags_stretch_ratio = 2.6
+		row.add_child(spacer)
+		row.add_child(panel)
+	else:
+		panel.size_flags_stretch_ratio = 8.0
+		spacer.size_flags_stretch_ratio = 1.0
+		row.add_child(panel)
+		row.add_child(spacer)
+	_thread.add_child(row)
+	_scroll_bottom()
+	return rt
 
 
-func _gm() -> String:
-	return "[color=%s][b]GM[/b][/color]" % Ui.c("amethyst").to_html(false)
+func _say_me(bb: String) -> void:
+	_bubble("me").append_text(bb)
 
 
+func _say_system(text: String) -> void:
+	var l := Label.new()
+	l.theme_type_variation = "HintLabel"
+	l.text = text
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_thread.add_child(l)
+	_scroll_bottom()
+
+
+func _scroll_bottom() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_scroll.scroll_vertical = int(_scroll.get_v_scroll_bar().max_value)
+
+
+# ── Sending / streaming ──────────────────────────────────────────────────────
 func _send(raw: String) -> void:
 	if _streaming:
 		return
@@ -59,23 +109,26 @@ func _send(raw: String) -> void:
 		return
 	_msg.text = ""
 	_set_check({})
-	_log_text("\n%s  %s\n\n%s  " % [_you(), _bb(msg), _gm()])
+	_say_me(_bb(msg))
 	_last_player_msg = msg
 	var beats: Array = await Chronicle.recall(msg)
 	_stream(Composer.envelope(msg, beats))
 
 
-## Roll results go to the GM with the envelope too, so state stays fresh.
 func _stream(framed: String) -> void:
 	_streaming = true
 	_acc = ""
 	_shown = 0
 	_send_btn.disabled = true
+	_gm_rt = _bubble("gm")
+	_gm_rt.append_text("[color=%s]✦ ✦ ✦[/color]" % Ui.c("ink_dim").to_html(false))
 	await Api.activate(GameState.cid(), str(GameState.character.get("name", "")))
 	Api.stream_chat(framed, GameState.session_id)
 
 
 func _on_delta(t: String) -> void:
+	if _acc == "" and _gm_rt != null:
+		_gm_rt.clear()  # first token replaces the typing glyphs
 	_acc += t
 	_flush_stream()
 
@@ -83,15 +136,18 @@ func _on_delta(t: String) -> void:
 ## Print new narration, skipping over [[tags]] as they complete so a mid-reply
 ## tag never freezes the display. Incomplete tags at the tail are held back.
 func _flush_stream() -> void:
+	if _gm_rt == null:
+		return
 	while true:
 		var safe := _acc.substr(_shown)
 		var i := safe.find("[[")
 		if i == -1:
 			var hold := 1 if safe.ends_with("[") else 0
-			_log_text(_bb(safe.substr(0, safe.length() - hold)))
+			_gm_rt.append_text(_bb(safe.substr(0, safe.length() - hold)))
 			_shown += safe.length() - hold
+			_scroll_bottom()
 			return
-		_log_text(_bb(safe.substr(0, i)))
+		_gm_rt.append_text(_bb(safe.substr(0, i)))
 		_shown += i
 		var j := safe.find("]]", i)
 		if j == -1:
@@ -101,73 +157,33 @@ func _flush_stream() -> void:
 
 func _on_event(d: Dictionary) -> void:
 	if d.get("type", "") == "error" or d.has("error"):
-		_log_text("[color=%s]%s[/color]" % [Ui.c("danger").to_html(false), _bb(str(d.get("error", "stream error")))])
+		if _gm_rt != null:
+			_gm_rt.append_text("[color=%s]%s[/color]" % [Ui.c("danger").to_html(false), _bb(str(d.get("error", "stream error")))])
 	elif d.get("type", "") == "tool_output" and str(d.get("image_url", "")) != "":
 		_show_image(str(d["image_url"]))
-
-
-## Pull a generated image off the backend and paint it into the tale.
-func _show_image(url: String) -> void:
-	var path := url.trim_prefix(Api.BASE)
-	var bytes := await Api.fetch_bytes(path)
-	if bytes.is_empty():
-		return
-	var img := Image.new()
-	var err := img.load_png_from_buffer(bytes)
-	if err != OK:
-		err = img.load_jpg_from_buffer(bytes)
-	if err != OK or img.is_empty():
-		return
-	var w := 520
-	if img.get_width() > w:
-		img.resize(w, img.get_height() * w / img.get_width(), Image.INTERPOLATE_LANCZOS)
-	_log_text("\n")
-	_log.add_image(ImageTexture.create_from_image(img))
-	_log_text("\n")
-
-
-## 🖼 Conjure a painting of the current scene from the last GM narration.
-func _conjure_scene() -> void:
-	if _conjuring:
-		return
-	var last_gm := str(Tags.parse(_acc)["clean"]).strip_edges()
-	if last_gm == "":
-		var t: Array = Chronicle.transcript.filter(func(m): return m.get("role") == "assistant")
-		if not t.is_empty():
-			last_gm = str(t[-1].get("content", ""))
-	if last_gm == "":
-		_system_line("Nothing to paint yet — play a scene first.")
-		return
-	_conjuring = true
-	_system_line("🖼 The scene paints itself…")
-	var prompt := "The current scene: %s. Cinematic %s illustration, dramatic lighting, no text." % [
-		last_gm.left(400), {"neonspire": "cyberpunk sci-fi", "everyday": "warm slice-of-life"}.get(GameState.world_id(), "high fantasy")]
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
-	_conjuring = false
-	if r.get("_status", 0) == 200 and str(r.get("image_url", "")) != "":
-		await _show_image(str(r["image_url"]))
-	else:
-		_system_line("The art forge sputters — no image this time.")
 
 
 func _on_done(_ok: bool) -> void:
 	_streaming = false
 	_send_btn.disabled = false
-	# Flush the held-back tail with tags stripped, then act on the tags.
 	var tail: Dictionary = Tags.parse(_acc.substr(_shown))
-	if str(tail["clean"]) != "":
-		_log_text(_bb(tail["clean"]))
-	_log_text("\n")
-	var parsed: Dictionary = Tags.parse(_acc)  # ALL tags, incl. mid-reply ones
+	if _gm_rt != null:
+		if str(tail["clean"]) != "":
+			_gm_rt.append_text(_bb(tail["clean"]))
+		if _acc.strip_edges() == "":
+			_gm_rt.clear()
+			_gm_rt.append_text("[color=%s][i]The GM falls silent — try again or rephrase.[/i][/color]" % Ui.c("ink_dim").to_html(false))
+	var parsed: Dictionary = Tags.parse(_acc)
 	_apply_world_tags(parsed["tags"])
 	Chronicle.record(_last_player_msg, str(parsed["clean"]))
 	var check: Dictionary = Tags.check_from_tags(parsed["tags"])
 	if check.is_empty():
-		check = Tags.detect_check(parsed["clean"])  # prose fallback
+		check = Tags.detect_check(str(parsed["clean"]))
 	_set_check(check)
+	_scroll_bottom()
 
 
-## Non-roll tags mutate state immediately: gold, loot, learned spells, time.
+# ── World tags → state ───────────────────────────────────────────────────────
 func _apply_world_tags(tags: Array) -> void:
 	for t in tags:
 		var a: Dictionary = t["attrs"]
@@ -176,29 +192,28 @@ func _apply_world_tags(tags: Array) -> void:
 				var delta := int(str(a.get("delta", "0")).replace("+", ""))
 				if delta != 0:
 					var total := GameState.add_gold(delta)
-					_system_line("%s gold %+d — purse now %d" % ["💰" if delta > 0 else "🪙", delta, total])
+					_say_system("%s gold %+d — purse now %d" % ["💰" if delta > 0 else "🪙", delta, total])
 			"loot":
 				var nm := str(a.get("name", "")).strip_edges()
 				if nm != "":
 					GameState.add_item(nm, str(a.get("rarity", "common")), maxi(1, int(a.get("qty", 1))))
-					_system_line("🎒 %s added to your pack" % nm)
+					_say_system("🎒 %s added to your pack" % nm)
 			"spell-learned":
 				var sp := str(a.get("name", "")).strip_edges()
 				if sp != "" and GameState.learn_spell(sp):
-					_system_line("📖 You learn %s" % sp)
+					_say_system("📖 You learn %s" % sp)
 			"time":
 				GameState.advance_time(maxi(1, int(a.get("advance", 1))))
 				var c: Dictionary = GameState.clock()
-				_system_line("🕰 %s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])])
+				_say_system("🕰 %s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])])
 			"xp":
 				var r: Dictionary = GameState.award_xp(int(str(a.get("delta", a.get("amount", "0"))).replace("+", "")), str(a.get("reason", "")))
 				if str(r["note"]) != "":
-					_system_line(str(r["note"]).replace("*", ""))
+					_say_system(str(r["note"]).replace("*", ""))
 			"combat-start":
 				_start_combat(str(a.get("foes", a.get("foe", "Enemy"))))
 			"combat-end":
 				_end_combat()
-	# Prose fallback: a fight the GM narrated but forgot to tag.
 	if not Combat.active():
 		var foe := Tags.detect_combat_start(Tags.parse(_acc)["clean"])
 		if foe != "":
@@ -206,7 +221,6 @@ func _apply_world_tags(tags: Array) -> void:
 	_render_sheet()
 
 
-## foes like "goblin x3, goblin boss" — first spawns the fight, rest reinforce.
 func _start_combat(foes: String) -> void:
 	var first := true
 	for part in foes.split(","):
@@ -223,7 +237,7 @@ func _start_combat(foes: String) -> void:
 			if first:
 				var line := Combat.enter(label)
 				if line != "":
-					_system_line(line.replace("*", ""))
+					_say_system(line.replace("*", ""))
 				first = false
 			else:
 				Combat.add_foe(label)
@@ -233,15 +247,26 @@ func _start_combat(foes: String) -> void:
 func _end_combat() -> void:
 	var r: Dictionary = Combat.finish()
 	if str(r["note"]) != "":
-		_system_line(str(r["note"]).replace("*", ""))
+		_say_system(str(r["note"]).replace("*", ""))
 	_render_combat()
 	_render_sheet()
 
 
-func _system_line(text: String) -> void:
-	_log_text("[color=%s][i]%s[/i][/color]\n" % [Ui.c("gold").to_html(false), _bb(text)])
+# ── The dice moment ──────────────────────────────────────────────────────────
+func _animate_die(sides: int, final_roll: int, caption: String) -> void:
+	var num: Label = $DieLayer/DiePanel/Box/Num
+	var cap: Label = $DieLayer/DiePanel/Box/Caption
+	cap.text = caption
+	_die_layer.visible = true
+	for i in 11:
+		num.text = str(randi_range(1, sides))
+		await get_tree().create_timer(0.05 + i * 0.012).timeout
+	num.text = str(final_roll)
+	await get_tree().create_timer(0.75).timeout
+	_die_layer.visible = false
 
 
+# ── Rolls ────────────────────────────────────────────────────────────────────
 func _set_check(check: Dictionary) -> void:
 	_pending_check = check
 	_roll_bar.visible = not check.is_empty()
@@ -270,24 +295,25 @@ func _roll_pending() -> void:
 		var dr: Dictionary = Combat.death_save()
 		if dr.is_empty():
 			return
+		await _animate_die(20, 20 if bool(dr["revived"]) else randi_range(1, 20), "death save")
 		_render_sheet()
-		_log_text("\n%s  %s\n" % [_you(), _md(str(dr["msg"]))])
+		_say_me(_md(str(dr["msg"])))
+		_last_player_msg = str(dr["msg"])
 		if bool(dr["dead"]):
-			_system_line("☠ THE TALE ENDS HERE — three failures. A long rest starts a new dawn… if the GM allows it.")
-			_log_text("\n%s  " % _gm())
-			_last_player_msg = str(dr["msg"])
+			_say_system("☠ THE TALE ENDS HERE — three failures. A long rest starts a new dawn… if the GM allows it.")
 			_stream(Composer.envelope("[Three death saves failed — I am dying, my tale at its end. Narrate my final moment with the weight it deserves.]"))
 		else:
-			_log_text("\n%s  " % _gm())
-			_last_player_msg = str(dr["msg"])
 			_stream(Composer.envelope(str(dr["msg"])))
 		return
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
-	# Damage/healing the GM called for lands on the sheet the moment it's rolled.
+	var caption := "d%d" % int(res.get("sides", 20))
+	if check.get("type", "") == "damage":
+		caption = "%dd%d" % [int(check["n"]), int(check["sides"])]
+	await _animate_die(int(res.get("sides", 20)), int(res.get("roll", res["total"])), caption)
 	if check.get("type", "") == "damage":
 		GameState.apply_hp(int(res["total"]) if check.get("heal", false) else -int(res["total"]))
 		_render_sheet()
-	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
+	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope(str(res["text"])))
 
@@ -332,13 +358,13 @@ func _free_check(id: int) -> void:
 		check = {"ability": meta["abil"], "skill": ""}
 		label = "%s check" % meta["abil"]
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
-	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
+	await _animate_die(20, int(res.get("roll", res["total"])), label)
+	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.]" % [label, int(res["total"])]))
 
 
-## Sheet-panel links: cast:<name>, equip:<id>, sell:<id>. Casting and selling
-## are narrated to the GM; equipping is silent kit management.
+# ── Sheet actions ────────────────────────────────────────────────────────────
 func _on_sheet_action(meta) -> void:
 	var parts := str(meta).split(":", true, 1)
 	if parts.size() != 2 or _streaming:
@@ -358,22 +384,22 @@ func _on_sheet_action(meta) -> void:
 		return
 	_render_sheet()
 	if tell_gm:
-		_log_text("\n%s  %s\n\n%s  " % [_you(), _md(note), _gm()])
+		_say_me(_md(note))
 		_last_player_msg = note
 		_stream(Composer.envelope(note))
 	else:
-		_system_line(note.replace("*", ""))
+		_say_system(note.replace("*", ""))
 
 
-## Combat-panel links: atk:<id>, cnext, cend.
+# ── Combat actions ───────────────────────────────────────────────────────────
 func _on_combat_action(meta) -> void:
 	if _streaming:
 		return
 	var m := str(meta)
 	if m == "cend":
 		_end_combat()
+		_last_player_msg = "The fight ends."
 		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.]"))
-		_log_text("\n%s  " % _gm())
 		return
 	if m == "cnext":
 		Combat.next_turn()
@@ -381,46 +407,48 @@ func _on_combat_action(meta) -> void:
 		var cur: Dictionary = Combat.current(c)
 		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
 			var r: Dictionary = Combat.enemy_turn(cur)
-			_log_text("\n%s  %s\n" % [_you(), _md(str(r["msg"]))])
+			_say_me(_md(str(r["msg"])))
 			_render_sheet()
+			_render_combat()
 			if str(r["gm"]) != "":
-				_log_text("\n%s  " % _gm())
 				_last_player_msg = str(r["msg"])
 				_stream(Composer.envelope(str(r["gm"])))
 		elif str(cur.get("id", "")).begins_with("cmp"):
 			var cr: Dictionary = Combat.companion_turn(cur)
 			if str(cr["msg"]) != "":
-				_log_text("\n%s  %s\n" % [_you(), _md(str(cr["msg"]))])
+				_say_me(_md(str(cr["msg"])))
 		elif str(cur.get("id", "")) == "pc":
-			_system_line("Round %d — your turn." % int(c.get("round", 1)))
+			_say_system("Round %d — your turn." % int(c.get("round", 1)))
 		return
 	if m.begins_with("atk:"):
 		var r2: Dictionary = Combat.player_attack(m.substr(4))
 		if not bool(r2["spent"]):
-			_system_line(str(r2["msg"]).replace("*", ""))
+			_say_system(str(r2["msg"]).replace("*", ""))
 			return
 		if str(r2["msg"]) == "":
 			return
-		_log_text("\n%s  %s\n" % [_you(), _md(str(r2["msg"]))])
+		_say_me(_md(str(r2["msg"])))
 		if bool(r2["won"]):
 			_end_combat()
-			_log_text("\n%s  " % _gm())
+			_last_player_msg = str(r2["msg"])
 			_stream(Composer.envelope("%s\n[Victory — the last foe falls! Narrate the killing blow in full cinema, then the aftermath.]" % str(r2["msg"])))
 		elif bool(r2["fell"]):
-			_log_text("\n%s  " % _gm())
+			_last_player_msg = str(r2["msg"])
 			_stream(Composer.envelope("%s\n[The foe falls — narrate the finish with cinema.]" % str(r2["msg"])))
 		else:
-			_log_text("\n%s  " % _gm())
 			_last_player_msg = str(r2["msg"])
 			_stream(Composer.envelope(str(r2["msg"])))
 
 
 func _render_combat() -> void:
 	var c: Dictionary = Combat.data()
-	_combat_panel.visible = bool(c.get("active", false))
-	if not _combat_panel.visible:
+	var fighting := bool(c.get("active", false))
+	_combat_panel.visible = fighting
+	# The room darkens toward ember-red while steel is out.
+	var tween := create_tween()
+	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
+	if not fighting:
 		return
-	# Downed hero: the only roll that matters now is the death save.
 	if not Combat.pc_down().is_empty():
 		_pending_check = {"type": "death"}
 		_roll_bar.text = "☠ Roll a death save"
@@ -436,8 +464,8 @@ func _render_combat() -> void:
 		var hp_max := maxi(1, int(m.get("hpMax", 1)))
 		var bar_n := clampi(roundi(10.0 * hp / hp_max), 0, 10)
 		var color := gold if m.get("side") == "ally" else danger
-		var row := "%s[color=%s]%s[/color]  [%s%s] %d/%d" % [here, color, _bb(str(m.get("name", "?"))),
-			"█".repeat(bar_n), "░".repeat(10 - bar_n), hp, hp_max]
+		var row := "%s[color=%s]%s[/color]  [color=%s]%s[/color][color=%s]%s[/color] %d/%d" % [here, color, _bb(str(m.get("name", "?"))),
+			color, "▰".repeat(bar_n), Ui.c("ink_dim").to_html(false), "▱".repeat(10 - bar_n), hp, hp_max]
 		if m.get("side") == "enemy" and hp > 0:
 			row += "   [url=atk:%s]⚔ attack[/url]" % str(m.get("id"))
 		elif hp <= 0:
@@ -446,16 +474,68 @@ func _render_combat() -> void:
 	_combat_panel.text = "\n".join(lines)
 
 
+# ── Rests ────────────────────────────────────────────────────────────────────
 func _rest(kind: String) -> void:
 	if _streaming:
 		return
 	var r: Dictionary = GameState.short_rest() if kind == "short" else GameState.long_rest()
 	_render_sheet()
-	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(r["note"])), _gm()])
+	_say_me(_md(str(r["note"])))
 	_last_player_msg = str(r["note"])
 	_stream(Composer.envelope(str(r["gm"])))
 
 
+# ── Images ───────────────────────────────────────────────────────────────────
+## Paint a generated image into the tale AND behind it (the living backdrop).
+func _show_image(url: String) -> void:
+	var path := url.trim_prefix(Api.BASE)
+	var bytes := await Api.fetch_bytes(path)
+	if bytes.is_empty():
+		return
+	var img := Image.new()
+	var err := img.load_png_from_buffer(bytes)
+	if err != OK:
+		err = img.load_jpg_from_buffer(bytes)
+	if err != OK or img.is_empty():
+		return
+	# Backdrop first: the full image, faded in low behind the parchment.
+	_scene_art.texture = ImageTexture.create_from_image(img)
+	var tw := create_tween()
+	tw.tween_property(_scene_art, "modulate:a", 0.45, 1.4)
+	# Then inline, sized to the thread.
+	var inline := img.duplicate()
+	var w := 520
+	if inline.get_width() > w:
+		inline.resize(w, inline.get_height() * w / inline.get_width(), Image.INTERPOLATE_LANCZOS)
+	var rt := _bubble("gm")
+	rt.add_image(ImageTexture.create_from_image(inline))
+	_scroll_bottom()
+
+
+func _conjure_scene() -> void:
+	if _conjuring:
+		return
+	var last_gm := str(Tags.parse(_acc)["clean"]).strip_edges()
+	if last_gm == "":
+		var t: Array = Chronicle.transcript.filter(func(m): return m.get("role") == "assistant")
+		if not t.is_empty():
+			last_gm = str(t[-1].get("content", ""))
+	if last_gm == "":
+		_say_system("Nothing to paint yet — play a scene first.")
+		return
+	_conjuring = true
+	_say_system("🖼 The scene paints itself…")
+	var prompt := "The current scene: %s. Cinematic %s illustration, dramatic lighting, no text." % [
+		last_gm.left(400), {"neonspire": "cyberpunk sci-fi", "everyday": "warm slice-of-life"}.get(GameState.world_id(), "high fantasy")]
+	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
+	_conjuring = false
+	if r.get("_status", 0) == 200 and str(r.get("image_url", "")) != "":
+		await _show_image(str(r["image_url"]))
+	else:
+		_say_system("The art forge sputters — no image this time.")
+
+
+# ── Sheet panel ──────────────────────────────────────────────────────────────
 func _render_sheet() -> void:
 	var s := GameState.sheet()
 	var gold := Ui.c("gold_soft").to_html(false)
@@ -463,8 +543,12 @@ func _render_sheet() -> void:
 	lines.append("[color=%s][b]%s[/b][/color]" % [gold, _bb(str(s.get("name", "?")))])
 	lines.append("%s %s, level %d" % [_bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))), int(s.get("level", 1))])
 	lines.append("")
-	lines.append("HP [b]%d / %d[/b]    AC [b]%d[/b]" % [int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv())])
-	lines.append("Gold [b]%d[/b]    Passive Perception [b]%d[/b]" % [int(s.get("gold", 0)), Rules.passive_perception(s)])
+	var hp := int(s.get("hp", 10))
+	var hp_max := maxi(1, int(s.get("hpMax", 10)))
+	var hb := clampi(roundi(12.0 * hp / hp_max), 0, 12)
+	var hp_col := gold if hp * 2 >= hp_max else Ui.c("danger").to_html(false)
+	lines.append("HP [b]%d / %d[/b]  [color=%s]%s[/color][color=%s]%s[/color]" % [hp, hp_max, hp_col, "▰".repeat(hb), Ui.c("ink_dim").to_html(false), "▱".repeat(12 - hb)])
+	lines.append("AC [b]%d[/b]    Gold [b]%d[/b]    Perception [b]%d[/b]" % [Rules.eff_ac(s, GameState.inv()), int(s.get("gold", 0)), Rules.passive_perception(s)])
 	lines.append("")
 	for k in Rules.ABILITIES:
 		var v := int(s.get("abilities", {}).get(k, 10))
@@ -506,12 +590,12 @@ func _render_sheet() -> void:
 		lines.append("[color=%s][b]Pack[/b][/color]  (%d/%d slots)" % [gold, items.size(), int(inv.get("slots", 24))])
 		for it in items:
 			var q := int(it.get("qty", 1))
-			var id := str(it.get("id", ""))
+			var iid := str(it.get("id", ""))
 			var row := "  %s%s%s" % [_bb(str(it.get("name", ""))), (" ×%d" % q) if q > 1 else "",
-				"  [color=%s]● worn[/color]" % gold if id in worn else ""]
+				"  [color=%s]● worn[/color]" % gold if iid in worn else ""]
 			if str(it.get("type", "")) in ["weapon", "armor", "shield"]:
-				row += "  [url=equip:%s]%s[/url]" % [id, "unequip" if id in worn else "equip"]
-			row += "  [url=sell:%s]sell %d[/url]" % [id, Rules.sell_value(str(it.get("rarity", "common")))]
+				row += "  [url=equip:%s]%s[/url]" % [iid, "unequip" if iid in worn else "equip"]
+			row += "  [url=sell:%s]sell %d[/url]" % [iid, Rules.sell_value(str(it.get("rarity", "common")))]
 			lines.append(row)
 	var feats: Array = s.get("feats", [])
 	if not feats.is_empty():
@@ -526,16 +610,13 @@ func _render_sheet() -> void:
 	_sheet_panel.text = "\n".join(lines)
 
 
-func _log_text(bbcode: String) -> void:
-	_log.append_text(bbcode)
-
-
+# ── Text helpers ─────────────────────────────────────────────────────────────
 ## Escape model/user text so it can't inject BBCode.
 func _bb(s: String) -> String:
 	return s.replace("[", "[lb]")
 
 
-## Roll-result lines use markdown ** ** — show them bold in our log.
+## Roll-result lines use markdown ** ** — show them bold in our bubbles.
 func _md(s: String) -> String:
 	var out := _bb(s)
 	var parts := out.split("**")

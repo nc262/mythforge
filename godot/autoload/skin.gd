@@ -125,3 +125,24 @@ func _build() -> void:
 	theme.set_type_variation("HintLabel", "Label")
 	theme.set_color("font_color", "HintLabel", c("ink_dim"))
 	theme.set_font_size("font_size", "HintLabel", 13)
+
+	# Chat bubbles — the studio's parchment GM / candle-gold player look.
+	theme.set_type_variation("BubbleGm", "PanelContainer")
+	var gm_sb := _flat(Color(c("sheet"), 0.92), c("border_soft"), 14, 1, 14)
+	gm_sb.corner_radius_top_left = 4  # speech points back at the teller
+	theme.set_stylebox("panel", "BubbleGm", gm_sb)
+	theme.set_type_variation("BubbleMe", "PanelContainer")
+	var me_sb := _flat(Color(c("gold"), 0.10), Color(c("gold"), 0.55), 14, 1, 14)
+	me_sb.corner_radius_top_right = 4
+	theme.set_stylebox("panel", "BubbleMe", me_sb)
+
+	# The dice overlay — a candle-lit card the roll tumbles on.
+	theme.set_type_variation("DicePanel", "PanelContainer")
+	var dice_sb := _flat(c("surface2"), c("gold"), 18, 2, 26)
+	dice_sb.shadow_color = Color(c("gold"), 0.25)
+	dice_sb.shadow_size = 24
+	theme.set_stylebox("panel", "DicePanel", dice_sb)
+	theme.set_type_variation("DieLabel", "Label")
+	theme.set_font("font", "DieLabel", serif)
+	theme.set_font_size("font_size", "DieLabel", 54)
+	theme.set_color("font_color", "DieLabel", c("gold_soft"))

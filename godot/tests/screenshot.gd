@@ -19,7 +19,10 @@ func _ready() -> void:
 		Combat.add_foe("Goblin")
 		scene.call("_render_combat")
 		scene.call("_render_sheet")
-		scene.call("_log_text", "\n[color=%s][b]GM[/b][/color]  The chapel door splinters — goblins pour through the gap, their boss bellowing behind them. Steel glints in the candlelight.\n" % Ui.c("amethyst").to_html(false))
+		var gm_rt: RichTextLabel = scene.call("_bubble", "gm")
+		gm_rt.append_text("The chapel door splinters — goblins pour through the gap, their boss bellowing behind them. Steel glints in the candlelight. [i]Roll for initiative![/i]")
+		scene.call("_say_me", "I hurl my lantern at the boss and draw my silvered dagger!")
+		scene.call("_say_system", "⚔️ Combat — Goblin Boss!")
 	await get_tree().create_timer(2.5).timeout
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out)

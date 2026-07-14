@@ -263,7 +263,7 @@ func resolve_check(check: Dictionary, sheet: Dictionary, inv: Dictionary = {}) -
 		elif check.get("ac") != null:
 			var ac := int(check["ac"])
 			verdict = (" — **hit!** (AC %d)" if total >= ac else " — **miss** (AC %d)") % ac
-		return {"text": "⚔ *attack roll* → %s %+d = **%d**%s" % [d20_text(r), am, total, verdict], "total": total}
+		return {"text": "⚔ *attack roll* → %s %+d = **%d**%s" % [d20_text(r), am, total, verdict], "total": total, "roll": r["roll"], "sides": 20}
 	if check.get("type", "") == "damage":
 		var n := int(check.get("n", 1))
 		var sides := int(check.get("sides", 6))
@@ -278,7 +278,7 @@ func resolve_check(check: Dictionary, sheet: Dictionary, inv: Dictionary = {}) -
 		var expr := "%dd%d (%s)%s" % [n, sides, ", ".join(rolls.map(func(x): return str(x))),
 			(" + %d" % bonus) if bonus > 0 else ((" − %d" % absi(bonus)) if bonus < 0 else "")]
 		var kind := "healing" if check.get("heal", false) else "damage"
-		return {"text": "🎲 *%s* → %s = **%d** %s" % [kind, expr, total, "healed" if check.get("heal", false) else "damage"], "total": total}
+		return {"text": "🎲 *%s* → %s = **%d** %s" % [kind, expr, total, "healed" if check.get("heal", false) else "damage"], "total": total, "roll": total, "sides": sides}
 	# Plain ability/skill check or save.
 	var mod := check_mod(sheet, check)
 	var prof := is_proficient(sheet, check)
@@ -289,4 +289,4 @@ func resolve_check(check: Dictionary, sheet: Dictionary, inv: Dictionary = {}) -
 		var dc := int(check["dc"])
 		verdict2 = (" — **success!** (DC %d)" if total2 >= dc else " — **failure** (DC %d)") % dc
 	return {"text": "🎲 *%s%s* → %s %+d = **%d**%s" % [check_label(check),
-		" (proficient)" if prof else "", d20_text(r2), mod, total2, verdict2], "total": total2}
+		" (proficient)" if prof else "", d20_text(r2), mod, total2, verdict2], "total": total2, "roll": r2["roll"], "sides": 20}
