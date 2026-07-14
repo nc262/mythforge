@@ -88,6 +88,28 @@ func _adv_mode(text: String) -> String:
 	return ""
 
 
+# ── Combat-start prose fallback (port of _detectCombatStart) ────────────────
+const _COMBAT_VERBS := "attacks?|lunges?|charges?|strikes? at you|swings? at you|springs?|pounces?|snarls?|growls?|roars?|blocks? your|bars? your|emerges?|draws? (?:a |its |his |her )?(?:weapon|blade|sword)|rushes? (?:at |toward )you|ambush(?:es)?|attacks!"
+var _init_call_re := RegEx.create_from_string("(?i)\\broll(?:ing)?\\s+(?:for\\s+)?initiative\\b|combat begins|the fight is on|battle is joined")
+var _foe_re := RegEx.create_from_string("(?i)\\b(?:a|an|the)\\s+([a-z][a-z' -]{2,32}?)\\s+(?:%s)" % _COMBAT_VERBS)
+var _foe_adj_re := RegEx.create_from_string("(?i)^(?:sudden|nearby|massive|huge|towering|hulking|snarling|angry|hostile|great|dark|shadowy|looming|fierce|wild)\\s+")
+var _foe_bad_re := RegEx.create_from_string("(?i)\\b(?:spell|strain|attack|attempt|effort|roll|save|check|throw|note|failure|failed|aid|magic|blow|strike|swing|turn|round|damage|scene|story|moment|option|chance|way|plan|idea|question|opportunity|reaction|advantage|disadvantage|initiative|inspiration|perception|surprise|condition|action|bonus|movement|challenge|threat|danger|risk|memory|thought|feeling|instinct|your|my|this|that|these|those|to|will|would|could|can|you|i|we|as|and|but|with|into|from|near|upon|while|when|where|here|there|is|are|was|were|has|have|had|air|wind|door|gate|voice|silence|tension|figure|shape|sound|noise|smell|shiver|chill|storm|world|ground|floor|shaft|entrance|wall|ceiling|corridor|chamber|doorway|realization)\\b")
+
+
+func detect_combat_start(text: String) -> String:
+	if text == "":
+		return ""
+	var initiative := _init_call_re.search(text) != null
+	var m := _foe_re.search(text)
+	var enemy := m.get_string(1).strip_edges() if m else ""
+	enemy = _foe_adj_re.sub(enemy, "").strip_edges()
+	if enemy != "" and (enemy.split(" ").size() > 3 or _foe_bad_re.search(enemy)):
+		enemy = ""
+	if enemy == "":
+		return "Enemy" if initiative else ""
+	return enemy.capitalize()
+
+
 func detect_check(text: String) -> Dictionary:
 	if text == "":
 		return {}

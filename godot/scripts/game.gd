@@ -12,6 +12,7 @@ var _pending_check := {}
 @onready var _msg: LineEdit = $Margin/Split/ChatBox/Input/Msg
 @onready var _send_btn: Button = $Margin/Split/ChatBox/Input/Send
 @onready var _sheet_panel: RichTextLabel = $Margin/Split/Sheet
+@onready var _combat_panel: RichTextLabel = $Margin/Split/ChatBox/CombatPanel
 
 
 func _ready() -> void:
@@ -25,12 +26,15 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
+	_combat_panel.meta_clicked.connect(_on_combat_action)
+	Combat.changed.connect(_render_combat)
 	_roll_bar.pressed.connect(_roll_pending)
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
 		("  ·  " + world) if world != "" else ""]
 	await GameState.hydrate()
 	_render_sheet()
+	_render_combat()  # a fight persisted mid-round resumes where it stood
 	_log_text("[i]The tale of %s begins…[/i]\n" % _bb(str(GameState.character.get("name", "?"))))
 
 
@@ -136,6 +140,47 @@ func _apply_world_tags(tags: Array) -> void:
 				var r: Dictionary = GameState.award_xp(int(str(a.get("delta", a.get("amount", "0"))).replace("+", "")), str(a.get("reason", "")))
 				if str(r["note"]) != "":
 					_system_line(str(r["note"]).replace("*", ""))
+			"combat-start":
+				_start_combat(str(a.get("foes", a.get("foe", "Enemy"))))
+			"combat-end":
+				_end_combat()
+	# Prose fallback: a fight the GM narrated but forgot to tag.
+	if not Combat.active():
+		var foe := Tags.detect_combat_start(Tags.parse(_acc)["clean"])
+		if foe != "":
+			_start_combat(foe)
+	_render_sheet()
+
+
+## foes like "goblin x3, goblin boss" — first spawns the fight, rest reinforce.
+func _start_combat(foes: String) -> void:
+	var first := true
+	for part in foes.split(","):
+		var nm := part.strip_edges()
+		var count := 1
+		var xm := RegEx.create_from_string("(?i)^(.*?)\\s*[x×]\\s*(\\d+)$").search(nm)
+		if xm:
+			nm = xm.get_string(1).strip_edges()
+			count = clampi(int(xm.get_string(2)), 1, 6)
+		if nm == "":
+			continue
+		for i in count:
+			var label := nm.capitalize() if count == 1 else "%s %d" % [nm.capitalize(), i + 1]
+			if first:
+				var line := Combat.enter(label)
+				if line != "":
+					_system_line(line.replace("*", ""))
+				first = false
+			else:
+				Combat.add_foe(label)
+	_render_combat()
+
+
+func _end_combat() -> void:
+	var r: Dictionary = Combat.finish()
+	if str(r["note"]) != "":
+		_system_line(str(r["note"]).replace("*", ""))
+	_render_combat()
 	_render_sheet()
 
 
@@ -201,6 +246,80 @@ func _on_sheet_action(meta) -> void:
 		_stream(Composer.envelope(note))
 	else:
 		_system_line(note.replace("*", ""))
+
+
+## Combat-panel links: atk:<id>, cnext, cend.
+func _on_combat_action(meta) -> void:
+	if _streaming:
+		return
+	var m := str(meta)
+	if m == "cend":
+		_end_combat()
+		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.]"))
+		_log_text("\n%s  " % _gm())
+		return
+	if m == "cnext":
+		Combat.next_turn()
+		var c: Dictionary = Combat.data()
+		var cur: Dictionary = Combat.current(c)
+		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
+			var r: Dictionary = Combat.enemy_turn(cur)
+			_log_text("\n%s  %s\n" % [_you(), _md(str(r["msg"]))])
+			_render_sheet()
+			if str(r["gm"]) != "":
+				_log_text("\n%s  " % _gm())
+				_stream(Composer.envelope(str(r["gm"])))
+		elif str(cur.get("id", "")).begins_with("cmp"):
+			var cr: Dictionary = Combat.companion_turn(cur)
+			if str(cr["msg"]) != "":
+				_log_text("\n%s  %s\n" % [_you(), _md(str(cr["msg"]))])
+		elif str(cur.get("id", "")) == "pc":
+			_system_line("Round %d — your turn." % int(c.get("round", 1)))
+		return
+	if m.begins_with("atk:"):
+		var r2: Dictionary = Combat.player_attack(m.substr(4))
+		if not bool(r2["spent"]):
+			_system_line(str(r2["msg"]).replace("*", ""))
+			return
+		if str(r2["msg"]) == "":
+			return
+		_log_text("\n%s  %s\n" % [_you(), _md(str(r2["msg"]))])
+		if bool(r2["won"]):
+			_end_combat()
+			_log_text("\n%s  " % _gm())
+			_stream(Composer.envelope("%s\n[Victory — the last foe falls! Narrate the killing blow in full cinema, then the aftermath.]" % str(r2["msg"])))
+		elif bool(r2["fell"]):
+			_log_text("\n%s  " % _gm())
+			_stream(Composer.envelope("%s\n[The foe falls — narrate the finish with cinema.]" % str(r2["msg"])))
+		else:
+			_log_text("\n%s  " % _gm())
+			_stream(Composer.envelope(str(r2["msg"])))
+
+
+func _render_combat() -> void:
+	var c: Dictionary = Combat.data()
+	_combat_panel.visible = bool(c.get("active", false))
+	if not _combat_panel.visible:
+		return
+	var gold := Ui.c("gold_soft").to_html(false)
+	var danger := Ui.c("danger").to_html(false)
+	var cur: Dictionary = Combat.current(c)
+	var lines: Array[String] = []
+	lines.append("[color=%s][b]⚔ COMBAT — Round %d[/b][/color]    [url=cnext]Next ›[/url]    [url=cend]End combat[/url]" % [gold, int(c.get("round", 1))])
+	for m in Combat.order(c):
+		var here := "▶ " if str(m.get("id")) == str(cur.get("id")) else "   "
+		var hp := int(m.get("hp", 0))
+		var hp_max := maxi(1, int(m.get("hpMax", 1)))
+		var bar_n := clampi(roundi(10.0 * hp / hp_max), 0, 10)
+		var color := gold if m.get("side") == "ally" else danger
+		var row := "%s[color=%s]%s[/color]  [%s%s] %d/%d" % [here, color, _bb(str(m.get("name", "?"))),
+			"█".repeat(bar_n), "░".repeat(10 - bar_n), hp, hp_max]
+		if m.get("side") == "enemy" and hp > 0:
+			row += "   [url=atk:%s]⚔ attack[/url]" % str(m.get("id"))
+		elif hp <= 0:
+			row += "   ✝"
+		lines.append(row)
+	_combat_panel.text = "\n".join(lines)
 
 
 func _rest(kind: String) -> void:

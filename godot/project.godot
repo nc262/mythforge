@@ -15,6 +15,7 @@ GameState="*res://autoload/game_state.gd"
 Rules="*res://autoload/rules_engine.gd"
 Tags="*res://autoload/tag_parser.gd"
 Composer="*res://autoload/prompt_composer.gd"
+Combat="*res://autoload/combat.gd"
 
 [display]
 

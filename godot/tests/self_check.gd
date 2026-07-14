@@ -94,5 +94,52 @@ func _ready() -> void:
 	# Spell save DC: level 5 Wizard INT 16 → 8 + 3 + 3 = 14
 	assert(Rules.spell_save_dc({"cls": "Wizard", "level": 5, "abilities": {"INT": 16}}) == 14)
 
+	# Phase 3: combat helpers
+	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
+	assert(Combat.weapon_dmg_type("Longbow") == "piercing")
+	assert(Combat.weapon_dmg_type("Greatsword") == "slashing")
+	assert(Combat.bestiary_for("a rattling skeleton warrior")["vuln"].has("bludgeoning"))
+	assert(Combat.weapon_props("Rapier")["finesse"] == true)
+	assert(Combat.weapon_props("Longbow")["ranged"] == true)
+	assert(str(Combat.weapon_props("Longsword")["versatile"]) == "1d10")
+	var hp := Combat.enemy_hp_guess("goblin")
+	assert(hp >= 6 and hp <= 30)
+	# Combat-start prose fallback
+	assert(Tags.detect_combat_start("A goblin lunges from the shadows!") == "Goblin")
+	assert(Tags.detect_combat_start("Roll for initiative!") == "Enemy")
+	assert(Tags.detect_combat_start("An opportunity attack strikes at you") == "")
+	assert(Tags.detect_combat_start("You walk into the tavern.") == "")
+	# Tag: combat-start foes parse via check_from_tags path
+	var ct := Tags.parse('[[combat-start foes="goblin x3, goblin boss"]]')
+	assert(ct["tags"][0]["name"] == "combat-start" and str(ct["tags"][0]["attrs"]["foes"]).contains("x3"))
+
+	# Full simulated fight: enter, swing until victory, finish, collect XP.
+	GameState.character = {"id": "godot-selfcheck", "name": "Test"}
+	GameState.state = {"sheet": {"name": "Test Fighter", "cls": "Fighter", "level": 3, "hp": 24, "hpMax": 24,
+		"xp": 300, "abilities": {"STR": 16, "DEX": 12, "CON": 14}, "profSkills": [], "profSaves": [],
+		"hitDie": 10, "conditions": [], "spells": [], "slots": {}, "features": [], "gold": 0}}
+	assert(Combat.enter("Goblin") != "")
+	assert(Combat.active())
+	var cdat := Combat.data()
+	assert(cdat["combatants"].size() == 2)
+	var gob_id := ""
+	for m in cdat["combatants"]:
+		if m["side"] == "enemy":
+			gob_id = str(m["id"])
+	var won := false
+	for i in 200:
+		var r: Dictionary = Combat.player_attack(gob_id)
+		if bool(r["won"]):
+			won = true
+			break
+		if not bool(r["spent"]):
+			Combat.next_turn()  # cycle the round so the action budget refreshes
+			Combat.next_turn()
+	assert(won, "fighter should eventually drop a goblin")
+	var fin := Combat.finish()
+	assert(int(fin["xp"]) >= 25)
+	assert(not Combat.active())
+	assert(int(GameState.sheet()["xp"]) > 300)  # victory XP landed
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

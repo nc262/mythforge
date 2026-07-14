@@ -11,7 +11,9 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[gold delta=+15]] or [[gold delta=-10]] when the player gains or spends money.
 [[loot name="Iron Dagger" rarity=common]] when the player picks up or is given an item (rarity: common/uncommon/rare/epic/legendary).
 [[spell-learned name="Misty Step"]] when the player learns a spell. [[time advance=1]] when notable in-world time passes.
-[[xp delta=50 reason="outwitted the toll-keeper"]] when the player earns experience (25-75 for a scene, 100+ for a major victory).
+[[xp delta=50 reason="outwitted the toll-keeper"]] when the player earns experience (25-75 for a scene; combat XP is automatic — never tag xp for kills).
+[[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. [[combat-end]] only when foes flee or surrender (victory ends it automatically).
+During combat the game resolves ALL attacks, damage, and HP — narrate around the numbers the player reports, never invent your own.
 Never write dice results, totals, remaining HP, or the success/failure of a player's roll in prose — the game rolls and reports the result in the player's next message. Use one tag per mechanical effect, each on its own line.]"""
 
 

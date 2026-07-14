@@ -42,6 +42,13 @@ bbcode_enabled = true
 scroll_following = true
 selection_enabled = true
 
+[node name="CombatPanel" type="RichTextLabel" parent="Margin/Split/ChatBox"]
+visible = false
+custom_minimum_size = Vector2(0, 170)
+layout_mode = 2
+bbcode_enabled = true
+fit_content = true
+
 [node name="RollBar" type="Button" parent="Margin/Split/ChatBox"]
 visible = false
 layout_mode = 2
