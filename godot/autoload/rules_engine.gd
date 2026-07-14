@@ -14,6 +14,30 @@ const SKILL2AB := {
 	"deception": "CHA", "intimidation": "CHA", "performance": "CHA", "persuasion": "CHA",
 }
 
+# Extracted game data (scripts/extract_studio_data.mjs → res://data/*.json):
+# tables = classes/heritages/conditions/feats/…, spells + bestiary separate.
+var tables: Dictionary = {}
+var spells: Array = []
+var bestiary: Array = []
+
+
+func _ready() -> void:
+	tables = _load_json("res://data/tables.json")
+	spells = _load_json("res://data/spells.json").get("spells", [])
+	bestiary = _load_json("res://data/bestiary.json").get("entries", [])
+
+
+func _load_json(path: String) -> Dictionary:
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary else {}
+
+
+func spell_named(nm: String) -> Dictionary:
+	for sp in spells:
+		if str(sp.get("name", "")).nocasecmp_to(nm.strip_edges()) == 0:
+			return sp
+	return {}
+
 
 func ability_mod(score: int) -> int:
 	return floori((score - 10) / 2.0)

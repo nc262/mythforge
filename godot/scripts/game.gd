@@ -22,6 +22,8 @@ func _ready() -> void:
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
 	$Margin/Split/ChatBox/Input/SheetBtn.toggled.connect(func(on): _sheet_panel.visible = on)
+	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
+	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	_roll_bar.pressed.connect(_roll_pending)
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
@@ -94,14 +96,46 @@ func _on_done(_ok: bool) -> void:
 	_streaming = false
 	_send_btn.disabled = false
 	# Flush the held-back tail with tags stripped, then act on the tags.
-	var parsed: Dictionary = Tags.parse(_acc.substr(_shown))
-	if str(parsed["clean"]) != "":
-		_log_text(_bb(parsed["clean"]))
+	var tail: Dictionary = Tags.parse(_acc.substr(_shown))
+	if str(tail["clean"]) != "":
+		_log_text(_bb(tail["clean"]))
 	_log_text("\n")
+	var parsed: Dictionary = Tags.parse(_acc)  # ALL tags, incl. mid-reply ones
+	_apply_world_tags(parsed["tags"])
 	var check: Dictionary = Tags.check_from_tags(parsed["tags"])
 	if check.is_empty():
-		check = Tags.detect_check(Tags.parse(_acc)["clean"])  # prose fallback
+		check = Tags.detect_check(parsed["clean"])  # prose fallback
 	_set_check(check)
+
+
+## Non-roll tags mutate state immediately: gold, loot, learned spells, time.
+func _apply_world_tags(tags: Array) -> void:
+	for t in tags:
+		var a: Dictionary = t["attrs"]
+		match str(t["name"]):
+			"gold":
+				var delta := int(str(a.get("delta", "0")).replace("+", ""))
+				if delta != 0:
+					var total := GameState.add_gold(delta)
+					_system_line("%s gold %+d — purse now %d" % ["💰" if delta > 0 else "🪙", delta, total])
+			"loot":
+				var nm := str(a.get("name", "")).strip_edges()
+				if nm != "":
+					GameState.add_item(nm, str(a.get("rarity", "common")), maxi(1, int(a.get("qty", 1))))
+					_system_line("🎒 %s added to your pack" % nm)
+			"spell-learned":
+				var sp := str(a.get("name", "")).strip_edges()
+				if sp != "" and GameState.learn_spell(sp):
+					_system_line("📖 You learn %s" % sp)
+			"time":
+				GameState.advance_time(maxi(1, int(a.get("advance", 1))))
+				var c: Dictionary = GameState.clock()
+				_system_line("🕰 %s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])])
+	_render_sheet()
+
+
+func _system_line(text: String) -> void:
+	_log_text("[color=%s][i]%s[/i][/color]\n" % [Ui.c("gold").to_html(false), _bb(text)])
 
 
 func _set_check(check: Dictionary) -> void:
@@ -129,8 +163,21 @@ func _roll_pending() -> void:
 	var check := _pending_check
 	_set_check({})
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet())
+	# Damage/healing the GM called for lands on the sheet the moment it's rolled.
+	if check.get("type", "") == "damage":
+		GameState.apply_hp(int(res["total"]) if check.get("heal", false) else -int(res["total"]))
+		_render_sheet()
 	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
 	_stream(Composer.envelope(str(res["text"])))
+
+
+func _rest(kind: String) -> void:
+	if _streaming:
+		return
+	var r: Dictionary = GameState.short_rest() if kind == "short" else GameState.long_rest()
+	_render_sheet()
+	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(r["note"])), _gm()])
+	_stream(Composer.envelope(str(r["gm"])))
 
 
 func _render_sheet() -> void:
@@ -146,6 +193,10 @@ func _render_sheet() -> void:
 	for k in Rules.ABILITIES:
 		var v := int(s.get("abilities", {}).get(k, 10))
 		lines.append("%s  [b]%d[/b]  (%+d)" % [k, v, Rules.ability_mod(v)])
+	var pool := int(s.get("level", 1))
+	lines.append("Hit Dice [b]%d / %d[/b] (d%d)" % [pool - int(s.get("hitDiceUsed", 0)), pool, int(s.get("hitDie", 8))])
+	if int(s.get("exhaustion", 0)) > 0:
+		lines.append("[color=%s]Exhaustion level %d[/color]" % [Ui.c("danger").to_html(false), int(s["exhaustion"])])
 	var prof: Array = s.get("profSkills", [])
 	if not prof.is_empty():
 		lines.append("")
@@ -154,6 +205,40 @@ func _render_sheet() -> void:
 	if not conds.is_empty():
 		lines.append("")
 		lines.append("[color=%s][b]Conditions[/b][/color]  %s" % [gold, _bb(", ".join(conds.map(func(c): return str(c.get("name", c)) if c is Dictionary else str(c))))])
+	var spells: Array = s.get("spells", [])
+	if not spells.is_empty():
+		lines.append("")
+		lines.append("[color=%s][b]Spells[/b][/color]" % gold)
+		for sp in spells:
+			var lv := int(sp.get("level", 0))
+			lines.append("  %s %s" % [_bb(str(sp.get("name", ""))), ("(lvl %d)" % lv) if lv > 0 else "(cantrip)"])
+		var slots: Dictionary = s.get("slots", {})
+		var slot_parts: Array[String] = []
+		var slot_keys := slots.keys()
+		slot_keys.sort()
+		for l in slot_keys:
+			if slots[l] is Dictionary and int(slots[l].get("max", 0)) > 0:
+				slot_parts.append("L%s %d/%d" % [l, maxi(0, int(slots[l]["max"]) - int(slots[l].get("used", 0))), int(slots[l]["max"])])
+		if not slot_parts.is_empty():
+			lines.append("  Slots: %s" % "  ".join(slot_parts))
+	var inv: Dictionary = GameState.inv()
+	var items: Array = inv.get("items", [])
+	if not items.is_empty():
+		lines.append("")
+		lines.append("[color=%s][b]Pack[/b][/color]  (%d/%d slots)" % [gold, items.size(), int(inv.get("slots", 24))])
+		for it in items:
+			var q := int(it.get("qty", 1))
+			lines.append("  %s%s" % [_bb(str(it.get("name", ""))), (" ×%d" % q) if q > 1 else ""])
+	var feats: Array = s.get("feats", [])
+	if not feats.is_empty():
+		lines.append("")
+		lines.append("[color=%s][b]Feats[/b][/color]  %s" % [gold, _bb(", ".join(feats.map(func(x): return str(x))))])
+	var features: Array = s.get("features", [])
+	if not features.is_empty():
+		lines.append("")
+		lines.append("[color=%s][b]Class features[/b][/color]" % gold)
+		for f in features:
+			lines.append("  %s" % _bb(str(f)))
 	_sheet_panel.text = "\n".join(lines)
 
 

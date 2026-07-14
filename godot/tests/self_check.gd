@@ -60,5 +60,13 @@ func _ready() -> void:
 	assert(c["ability"] == "WIS" and str(c["skill"]).contains("sav"))
 	assert(Tags.detect_check("You walk into the tavern.").is_empty())
 
+	# Extracted data tables loaded and queryable
+	assert(Rules.spells.size() > 50)
+	assert(Rules.bestiary.size() > 50)
+	for t in ["class_presets", "heritages", "condition_fx", "feats", "caster_slots", "vendor_stock"]:
+		assert(Rules.tables.has(t), "missing table " + t)
+	assert(not Rules.spell_named("misty step").is_empty())  # case-insensitive
+	assert(Rules.spell_named("Totally Fake Spell").is_empty())
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

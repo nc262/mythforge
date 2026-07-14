@@ -8,7 +8,10 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[check ability=DEX skill=Stealth dc=13]]  (ability: STR/DEX/CON/INT/WIS/CHA; skill optional, or skill=save for saving throws; add adv=1 or dis=1 when circumstances grant it)
 [[attack ac=14]] when the player swings at a foe.
 [[damage roll=2d6+3]] when the player takes damage. [[heal roll=1d8+2]] when they receive healing.
-Never write dice results, totals, remaining HP, or the success/failure of a player's roll in prose — the game rolls and reports the result in the player's next message. At most one tag per reply.]"""
+[[gold delta=+15]] or [[gold delta=-10]] when the player gains or spends money.
+[[loot name="Iron Dagger" rarity=common]] when the player picks up or is given an item (rarity: common/uncommon/rare/epic/legendary).
+[[spell-learned name="Misty Step"]] when the player learns a spell. [[time advance=1]] when notable in-world time passes.
+Never write dice results, totals, remaining HP, or the success/failure of a player's roll in prose — the game rolls and reports the result in the player's next message. Use one tag per mechanical effect, each on its own line.]"""
 
 
 func envelope(player_msg: String) -> String:
@@ -16,6 +19,10 @@ func envelope(player_msg: String) -> String:
 	var summary := sheet_summary(GameState.sheet())
 	if summary != "":
 		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s]" % summary)
+	parts.append("[%s]" % GameState.clock_text())
+	for extra in [GameState.inv_text(), GameState.spell_text()]:
+		if str(extra) != "":
+			parts.append("[%s]" % extra)
 	parts.append(PROTOCOL)
 	parts.append(player_msg)
 	return "\n".join(parts)
