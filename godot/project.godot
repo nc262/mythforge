@@ -16,6 +16,7 @@ Rules="*res://autoload/rules_engine.gd"
 Tags="*res://autoload/tag_parser.gd"
 Composer="*res://autoload/prompt_composer.gd"
 Combat="*res://autoload/combat.gd"
+Chronicle="*res://autoload/chronicle.gd"
 
 [display]
 

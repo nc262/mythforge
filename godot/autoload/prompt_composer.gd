@@ -17,13 +17,14 @@ During combat the game resolves ALL attacks, damage, and HP — narrate around t
 Never write dice results, totals, remaining HP, or the success/failure of a player's roll in prose — the game rolls and reports the result in the player's next message. Use one tag per mechanical effect, each on its own line.]"""
 
 
-func envelope(player_msg: String) -> String:
+func envelope(player_msg: String, beats: Array = []) -> String:
 	var parts: Array[String] = []
 	var summary := sheet_summary(GameState.sheet())
 	if summary != "":
 		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s]" % summary)
 	parts.append("[%s]" % GameState.clock_text())
-	for extra in [GameState.inv_text(), GameState.spell_text()]:
+	for extra in [GameState.inv_text(), GameState.spell_text(),
+			Chronicle.recall_text(beats), Chronicle.codex_text(), Chronicle.quests_text()]:
 		if str(extra) != "":
 			parts.append("[%s]" % extra)
 	parts.append(PROTOCOL)

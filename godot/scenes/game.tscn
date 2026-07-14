@@ -73,6 +73,11 @@ layout_mode = 2
 toggle_mode = true
 text = "Sheet"
 
+[node name="Scene" type="Button" parent="Margin/Split/ChatBox/Input"]
+layout_mode = 2
+tooltip_text = "Conjure a painting of the current scene"
+text = "🖼"
+
 [node name="ShortRest" type="Button" parent="Margin/Split/ChatBox/Input"]
 layout_mode = 2
 tooltip_text = "Short rest — spend a Hit Die to heal"

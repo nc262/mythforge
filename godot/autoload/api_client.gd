@@ -85,6 +85,18 @@ func _urlencode(fields: Dictionary) -> String:
 	return "&".join(parts)
 
 
+## Raw bytes (images). Empty array on any failure.
+func fetch_bytes(path: String) -> PackedByteArray:
+	var req := HTTPRequest.new()
+	add_child(req)
+	if req.request(BASE + path, _headers()) != OK:
+		req.queue_free()
+		return PackedByteArray()
+	var res: Array = await req.request_completed
+	req.queue_free()
+	return res[3] if res[1] == 200 else PackedByteArray()
+
+
 # ── Auth ────────────────────────────────────────────────────────────────────
 func login(username: String, password: String) -> Dictionary:
 	return await call_json(HTTPClient.METHOD_POST, "/api/auth/login",

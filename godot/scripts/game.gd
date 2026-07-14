@@ -6,6 +6,8 @@ var _streaming := false
 var _acc := ""          # full raw GM reply
 var _shown := 0         # chars of _acc already printed (tags are held back)
 var _pending_check := {}
+var _last_player_msg := ""  # the visible player line, paired into memory beats
+var _conjuring := false
 
 @onready var _log: RichTextLabel = $Margin/Split/ChatBox/Log
 @onready var _roll_bar: Button = $Margin/Split/ChatBox/RollBar
@@ -25,6 +27,8 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/SheetBtn.toggled.connect(func(on): _sheet_panel.visible = on)
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
+	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
+	Chronicle.reset()
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
 	Combat.changed.connect(_render_combat)
@@ -55,7 +59,9 @@ func _send(raw: String) -> void:
 	_msg.text = ""
 	_set_check({})
 	_log_text("\n%s  %s\n\n%s  " % [_you(), _bb(msg), _gm()])
-	_stream(Composer.envelope(msg))
+	_last_player_msg = msg
+	var beats: Array = await Chronicle.recall(msg)
+	_stream(Composer.envelope(msg, beats))
 
 
 ## Roll results go to the GM with the envelope too, so state stays fresh.
@@ -95,6 +101,52 @@ func _flush_stream() -> void:
 func _on_event(d: Dictionary) -> void:
 	if d.get("type", "") == "error" or d.has("error"):
 		_log_text("[color=%s]%s[/color]" % [Ui.c("danger").to_html(false), _bb(str(d.get("error", "stream error")))])
+	elif d.get("type", "") == "tool_output" and str(d.get("image_url", "")) != "":
+		_show_image(str(d["image_url"]))
+
+
+## Pull a generated image off the backend and paint it into the tale.
+func _show_image(url: String) -> void:
+	var path := url.trim_prefix(Api.BASE)
+	var bytes := await Api.fetch_bytes(path)
+	if bytes.is_empty():
+		return
+	var img := Image.new()
+	var err := img.load_png_from_buffer(bytes)
+	if err != OK:
+		err = img.load_jpg_from_buffer(bytes)
+	if err != OK or img.is_empty():
+		return
+	var w := 520
+	if img.get_width() > w:
+		img.resize(w, img.get_height() * w / img.get_width(), Image.INTERPOLATE_LANCZOS)
+	_log_text("\n")
+	_log.add_image(ImageTexture.create_from_image(img))
+	_log_text("\n")
+
+
+## 🖼 Conjure a painting of the current scene from the last GM narration.
+func _conjure_scene() -> void:
+	if _conjuring:
+		return
+	var last_gm := str(Tags.parse(_acc)["clean"]).strip_edges()
+	if last_gm == "":
+		var t: Array = Chronicle.transcript.filter(func(m): return m.get("role") == "assistant")
+		if not t.is_empty():
+			last_gm = str(t[-1].get("content", ""))
+	if last_gm == "":
+		_system_line("Nothing to paint yet — play a scene first.")
+		return
+	_conjuring = true
+	_system_line("🖼 The scene paints itself…")
+	var prompt := "The current scene: %s. Cinematic %s illustration, dramatic lighting, no text." % [
+		last_gm.left(400), {"neonspire": "cyberpunk sci-fi", "everyday": "warm slice-of-life"}.get(GameState.world_id(), "high fantasy")]
+	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
+	_conjuring = false
+	if r.get("_status", 0) == 200 and str(r.get("image_url", "")) != "":
+		await _show_image(str(r["image_url"]))
+	else:
+		_system_line("The art forge sputters — no image this time.")
 
 
 func _on_done(_ok: bool) -> void:
@@ -107,6 +159,7 @@ func _on_done(_ok: bool) -> void:
 	_log_text("\n")
 	var parsed: Dictionary = Tags.parse(_acc)  # ALL tags, incl. mid-reply ones
 	_apply_world_tags(parsed["tags"])
+	Chronicle.record(_last_player_msg, str(parsed["clean"]))
 	var check: Dictionary = Tags.check_from_tags(parsed["tags"])
 	if check.is_empty():
 		check = Tags.detect_check(parsed["clean"])  # prose fallback
@@ -218,6 +271,7 @@ func _roll_pending() -> void:
 		GameState.apply_hp(int(res["total"]) if check.get("heal", false) else -int(res["total"]))
 		_render_sheet()
 	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
+	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope(str(res["text"])))
 
 
@@ -243,6 +297,7 @@ func _on_sheet_action(meta) -> void:
 	_render_sheet()
 	if tell_gm:
 		_log_text("\n%s  %s\n\n%s  " % [_you(), _md(note), _gm()])
+		_last_player_msg = note
 		_stream(Composer.envelope(note))
 	else:
 		_system_line(note.replace("*", ""))
@@ -268,6 +323,7 @@ func _on_combat_action(meta) -> void:
 			_render_sheet()
 			if str(r["gm"]) != "":
 				_log_text("\n%s  " % _gm())
+				_last_player_msg = str(r["msg"])
 				_stream(Composer.envelope(str(r["gm"])))
 		elif str(cur.get("id", "")).begins_with("cmp"):
 			var cr: Dictionary = Combat.companion_turn(cur)
@@ -293,6 +349,7 @@ func _on_combat_action(meta) -> void:
 			_stream(Composer.envelope("%s\n[The foe falls — narrate the finish with cinema.]" % str(r2["msg"])))
 		else:
 			_log_text("\n%s  " % _gm())
+			_last_player_msg = str(r2["msg"])
 			_stream(Composer.envelope(str(r2["msg"])))
 
 
@@ -328,6 +385,7 @@ func _rest(kind: String) -> void:
 	var r: Dictionary = GameState.short_rest() if kind == "short" else GameState.long_rest()
 	_render_sheet()
 	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(r["note"])), _gm()])
+	_last_player_msg = str(r["note"])
 	_stream(Composer.envelope(str(r["gm"])))
 
 
