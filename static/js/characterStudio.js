@@ -5311,7 +5311,7 @@ function renderCombatPanel() {
       return `<div class="cb-row ${m.id === (cur && cur.id) ? 'cur' : ''} ${m.side}${down ? ' down' : ''}">
         <div class="cb-head"><span class="cb-init">${m.init}</span><span class="cb-name">${_esc(m.name)}</span>${m.ac ? `<span class="cb-ac">AC ${m.ac}</span>` : ''}<button class="rm cb-del" type="button" data-del="${m.id}" aria-label="Remove">×</button></div>
         <div class="cb-hpbar"><div class="cb-hpfill${down ? ' down' : ''}" style="width:${pct}%"></div><span class="cb-hptext">${m.hp}/${m.hpMax}</span></div>
-        <div class="cb-actions"><button class="st-btn small" type="button" data-dmg="${m.id}">− dmg</button><input type="number" class="cb-amt" data-amt="${m.id}" value="1" min="1"><button class="st-btn small" type="button" data-heal="${m.id}">+ heal</button><button class="st-btn small ghost" type="button" data-addc="${m.id}">+ status</button></div>
+        <div class="cb-actions">${_gmMode() ? `<button class="st-btn small" type="button" data-dmg="${m.id}">− dmg</button><input type="number" class="cb-amt" data-amt="${m.id}" value="1" min="1"><button class="st-btn small" type="button" data-heal="${m.id}">+ heal</button>` : ''}<button class="st-btn small ghost" type="button" data-addc="${m.id}">+ status</button></div>
         ${dsBlock}
         ${conds ? `<div class="cond-wrap">${conds}</div>` : ''}
       </div>`;
@@ -5341,10 +5341,28 @@ function renderCombatPanel() {
         ${econ}
         ${livingFoes.map(f => `<button class="st-btn small primary" type="button" data-attack="${_esc(f.id)}"${budget.attacksLeft <= 0 ? ' disabled title="Action spent — press Next"' : ''}>⚔ Attack ${_esc(f.name)}</button>`).join('')}
         <button class="st-btn small ghost" type="button" id="cb-flee">🏃 Flee</button>
-        <span class="cb-wpn">${wpn ? `wielding ${_esc(wpn.name)} (${_esc(wpn.dmg || '1d4')})` : 'unarmed (1d4)'}</span>
       </div>` : '';
+    // Your kit, ALWAYS visible so you can read your loadout even between turns.
+    const off = _equippedItem(_loadInv(cid), 'offhand');
+    const wprops = _weaponProps(wpn ? wpn.name : 'unarmed');
+    const twoH = !off && !!wprops.versatileDie;
+    const wdmg = twoH ? wprops.versatileDie : ((wpn && wpn.dmg) || wprops.die || '1d4');
+    const atkAbil = (wprops.ranged || (wprops.finesse && _mod(sheet.abilities.DEX || 10) > _mod(sheet.abilities.STR || 10))) ? 'DEX' : 'STR';
+    const atkBonus = _mod(sheet.abilities[atkAbil] || 10) + _profBonus(sheet) + ((wpn && wpn.atk) || 0);
+    const slotStr = Object.keys(sheet.slots || {}).filter(l => (sheet.slots[l].max || 0) > 0)
+      .map(l => `L${l} ${Math.max(0, (sheet.slots[l].max || 0) - (sheet.slots[l].used || 0))}/${sheet.slots[l].max}`).join(' · ');
+    const feats = (sheet.features || []).filter(f => /extra attack|second wind|action surge|rage|sneak attack|divine smite|ki|bardic|channel|uncanny|superiority/i.test(f)).slice(0, 3);
+    const kitBar = `<div class="cb-kit">
+      <span class="cb-kit-item weapon" title="Attack: d20 ${atkBonus >= 0 ? '+' : ''}${atkBonus} to hit, ${wdmg}${twoH ? ' two-handed' : ''}">⚔ ${wpn ? _esc(wpn.name) : 'Unarmed'} <em>${atkBonus >= 0 ? '+' : ''}${atkBonus} · ${_esc(wdmg)}</em></span>
+      ${off ? `<span class="cb-kit-item" title="Off-hand — a bonus-action strike">🗡 ${_esc(off.name)}</span>` : ''}
+      <span class="cb-kit-item">🛡 AC ${_effAC(cid)}</span>
+      ${slotStr ? `<span class="cb-kit-item spells" title="Spell slots remaining — cast from your Sheet">✦ ${slotStr}</span>` : ''}
+      ${feats.map(f => `<span class="cb-kit-item feat">${_esc(f.split(' (')[0])}</span>`).join('')}
+    </div>`;
     body = `${stage}<div class="cb-turnbar"><span>Round ${c.round} — ${turnLabel}</span><span style="display:flex;gap:6px"><button class="st-btn small primary" id="cb-next" type="button">Next ›</button><button class="st-btn small" id="cb-end" type="button">End</button></span></div>
+      ${kitBar}
       ${playerBar}
+      ${_gmMode() ? '' : `<p class="cb-note">HP changes through the fight — take hits, quaff a potion, cast a spell, or rest to heal. <span class="cb-note-gm">Manual HP is in GM mode.</span></p>`}
       <div class="cb-list">${rows}</div>
       <div class="sheet-section"><h3>Add a foe</h3><div class="add-row"><input type="text" id="cb-add-name" placeholder="Goblin"><input type="number" id="cb-add-hp" placeholder="HP" style="width:62px"><input type="number" id="cb-add-ac" placeholder="AC" style="width:62px"><button class="st-btn small" id="cb-add-btn" type="button">Add</button></div></div>`;
   }
@@ -5494,6 +5512,17 @@ function _npcFacesFor(cid, text) {
   return out.slice(0, 4);
 }
 // Codex NPCs named in a passage regardless of whether they have a portrait yet.
+// A codex entry you can actually take on as a companion: a person, not a beast.
+// Known bestiary monsters, monstrous names/roles, and anyone hostile are out
+// (GM mode can still force-recruit past this).
+function _isRecruitable(n) {
+  if (!n || !n.name) return false;
+  const s = (n.name + ' ' + (n.role || '')).toLowerCase();
+  if (_bestiaryFor(n.name)) return false;
+  if (/\b(ogre|goblin|orc|troll|dragon|drake|wyvern|wolf|wolves|bear|boar|rat|spider|snake|skeleton|zombie|ghoul|ghost|wraith|spectre|specter|revenant|lich|vampire|werewolf|bandit|brigand|thug|raider|cultist|kobold|gnoll|hobgoblin|slime|ooze|golem|construct|demon|devil|imp|fiend|elemental|beast|creature|monster|hag|harpy|minotaur|cyclops|giant|gargoyle|mimic|beholder|undead|swarm)\b/.test(s)) return false;
+  if ((n.disposition || 'neutral') === 'hostile') return false;
+  return true;
+}
 function _namedCodexNpcs(cid, text) {
   const c = _loadCodex(cid); const t = (text || '').toLowerCase();
   return (c.npcs || []).filter(n => { const first = (n.name || '').toLowerCase().split(/\s+/)[0]; return first.length >= 3 && t.includes(first); });
@@ -5580,8 +5609,10 @@ function openCodex() {
         ${_isDM(_chat.char) ? (() => {
             const inParty = _companions(cid).some(x => x.name.toLowerCase() === (n.name || '').toLowerCase());
             // In party → dismiss. Otherwise a player ASKS them to join (the GM
-            // decides); only GM mode instantly recruits.
+            // decides); only GM mode instantly recruits. A monster or a hostile
+            // isn't offered as a companion at all (unless GM mode overrides).
             if (inParty) return `<button class="st-btn small" data-recruit="${i}" type="button">⚔ In your party — dismiss</button>`;
+            if (!_isRecruitable(n)) return _gmMode() ? `<button class="st-btn small ghost" data-recruit="${i}" type="button">⚔ Recruit (GM)</button>` : '';
             return _gmMode()
               ? `<button class="st-btn small ghost" data-recruit="${i}" type="button">⚔ Recruit (GM)</button>`
               : `<button class="st-btn small ghost" data-askjoin="${i}" type="button" title="Ask them to join — the GM decides if they will">✦ Ask them to join…</button>`;
@@ -6445,18 +6476,22 @@ function renderBattle(content, cid) {
   const turnBar = c.active ? `<div class="map-turnbar"><span>⚔ Round ${c.round} — ${cur ? (cur.id === 'pc' ? '<strong>Your turn</strong>' : `<strong>${_esc(cur.name)}</strong>'s turn`) : '—'}</span><span class="map-turn-btns"><button class="st-btn small primary" id="map-next-turn" type="button">Next ›</button><button class="st-btn small" id="map-end-combat" type="button">End</button></span></div>` : '';
   let cells = '';
   for (let gy = 0; gy < MAP_ROWS; gy++) for (let gx = 0; gx < MAP_COLS; gx++) { const t = m.tiles[gx + ',' + gy]; cells += `<div class="map-cell${t ? ' t-' + t : ''}" data-cell="${gx},${gy}"></div>`; }
-  const palette = TERRAINS.map(t => `<button class="terr-btn t-${t.k}${_mapBrush === t.k ? ' on' : ''}" data-brush="${t.k}" type="button">${t.label}</button>`).join('');
+  // The terrain-tile painter is cosmetic (tiles carry no mechanics), so it's a
+  // GM/prep tool — hidden from players, who get the auto-painted underlay +
+  // draggable tokens. GM mode brings the brushes back.
+  const gm = _gmMode();
+  const palette = gm ? TERRAINS.map(t => `<button class="terr-btn t-${t.k}${_mapBrush === t.k ? ' on' : ''}" data-brush="${t.k}" type="button">${t.label}</button>`).join('') : '';
   content.innerHTML = `
     ${turnBar}
-    <div class="map-tools"><span class="terr-palette">${palette}</span>
-      <button class="st-btn small ghost" id="map-terrain-btn" type="button">🖼 AI underlay</button>${m.terrain ? `<button class="st-btn small ghost" id="map-terrain-clear" type="button">Clear img</button>` : ''}
-      <button class="st-btn small ghost" id="map-tiles-clear" type="button">Clear terrain</button><button class="st-btn small ghost" id="map-reset" type="button">Reset tokens</button></div>
-    <div class="map-stage" id="map-stage">
+    <div class="map-tools">${gm ? `<span class="terr-palette">${palette}</span>` : ''}
+      <button class="st-btn small ghost" id="map-terrain-btn" type="button">🖼 ${m.terrain ? 'Repaint map' : 'Paint the map'}</button>${m.terrain ? `<button class="st-btn small ghost" id="map-terrain-clear" type="button">Clear img</button>` : ''}
+      ${gm ? `<button class="st-btn small ghost" id="map-tiles-clear" type="button">Clear terrain</button>` : ''}<button class="st-btn small ghost" id="map-reset" type="button">Reset tokens</button></div>
+    <div class="map-stage${m.terrain ? ' has-underlay' : ''}" id="map-stage">
       ${m.terrain ? `<img class="map-terrain" src="${_esc(m.terrain)}" alt="" aria-hidden="true">` : ''}
       <div class="map-cells" id="map-cells">${cells}</div>
       ${tokenEls}
     </div>
-    <p class="gm-hint">Pick a terrain and drag across the grid to build rooms. Drag tokens to move them; the cast syncs from combat.</p>`;
+    <p class="gm-hint">Drag tokens to move them; the cast syncs from combat.${gm ? ' Pick a terrain and drag across the grid to sketch rooms.' : ''}</p>`;
   content.querySelectorAll('.map-token').forEach(el => _wireTokenDrag(el, cid));
   content.querySelectorAll('[data-brush]').forEach(b => b.addEventListener('click', () => { _mapBrush = (_mapBrush === b.dataset.brush ? '' : b.dataset.brush); renderMap(); }));
   _wireTilePaint(cid);
@@ -6487,15 +6522,31 @@ function renderBattle(content, cid) {
   $('map-tiles-clear')?.addEventListener('click', () => { const mm = _loadBmap(cid); mm.tiles = {}; _saveBmap(cid, mm); renderMap(); });
   $('map-terrain-clear')?.addEventListener('click', () => { const mm = _loadBmap(cid); mm.terrain = ''; _saveBmap(cid, mm); renderMap(); });
   $('map-terrain-btn')?.addEventListener('click', async () => {
-    const btn = $('map-terrain-btn'); btn.disabled = true; btn.textContent = 'Conjuring…';
-    try {
-      const flavor = (_world && _world.id === 'neonspire') ? 'gritty neon-lit city street' : (_world && _world.id === 'everyday') ? 'modern indoor floor plan' : 'stone dungeon and cavern floor';
-      const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: `top-down tabletop RPG battle map, ${flavor}, overhead, muted, no characters, no tokens, no text, no grid lines` }) });
-      const gd = await r.json();
-      if (gd.ok && gd.image_url) { const mm = _loadBmap(cid); mm.terrain = gd.image_url; _saveBmap(cid, mm); }
-    } catch {}
+    const btn = $('map-terrain-btn'); btn.disabled = true; btn.textContent = 'Painting…';
+    const mm = _loadBmap(cid); mm.terrain = ''; mm.terrainSig = ''; _saveBmap(cid, mm);   // force a fresh, scene-matched paint
+    const cc = _loadCombat(cid); const foe = (cc.combatants || []).find(x => x.side === 'enemy');
+    await _ensureBattleUnderlay(cid, foe ? foe.name : '', '');
     renderMap();
   });
+}
+// Auto-paint the battle map to look like WHERE the fight is happening (the
+// current place, or the scene text) instead of a generic dungeon room. Cached by
+// place so the same location reuses its map; skipped while the art forge cools.
+async function _ensureBattleUnderlay(cid, enemy, sceneText) {
+  if (Date.now() - _artFailAt < 120000) return;
+  let here = '', note = '';
+  try { const w = _loadWorldS(cid); here = w.here || ''; const p = (w.places || []).find(pp => (pp.name || '').toLowerCase() === here.toLowerCase()); note = (p && (p.note || p.kind)) || ''; } catch {}
+  const scene = here ? `${here}${note ? ` — ${note}` : ''}` : (sceneText || '').replace(/\s+/g, ' ').slice(0, 120);
+  const sig = (scene || 'field').toLowerCase().slice(0, 60);
+  const mm = _loadBmap(cid);
+  if (mm.terrain && mm.terrainSig === sig) return;   // already have this place's map
+  const wid = _chat.char && _chat.char.world_id; const w = wid ? getWorld(wid) : null;
+  try {
+    const prompt = `top-down tabletop RPG battle map of ${scene || 'an open fighting ground'}${w ? `, ${w.kind || 'high fantasy'} world` : ''}, overhead bird's-eye view, hand-painted, muted natural colors, clear open floor for miniatures, atmospheric, no characters, no tokens, no text, no grid lines`;
+    const r = await _artFetch(`${API_BASE}/api/characters/studio/generate`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt, size: '1024x1024' }) });
+    const gd = await r.json().catch(() => ({}));
+    if (gd.ok && gd.image_url) { const m2 = _loadBmap(cid); m2.terrain = gd.image_url; m2.terrainSig = sig; _saveBmap(cid, m2); const ov = $('studio-map-overlay'); if (ov && ov.style.display === 'flex' && _mapTab === 'battle') renderMap(); }
+  } catch {}
 }
 function _wireTilePaint(cid) {
   const cells = $('map-cells'); if (!cells) return;
@@ -6869,6 +6920,7 @@ function _enterCombatMode(cid, enemy, sceneText) {
   const modal = $('studio-modal'); if (modal) modal.classList.add('in-combat');
   _startMusic('combat');
   _applyAmbient(cid);   // swap the soundscape to the low combat rumble
+  _ensureBattleUnderlay(cid, enemy, sceneText);   // paint a map of the ACTUAL place, not a generic room
   _sfx('crit');   // a sting to mark the shift
   _appendBubble('me', `⚔️ *Combat — ${_esc(enemy)}!*`); _scrollChat();
   _combatBackdrop(cid, enemy, sceneText);
