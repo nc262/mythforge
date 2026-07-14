@@ -11,6 +11,9 @@ config/features=PackedStringArray("4.7")
 
 Api="*res://autoload/api_client.gd"
 GameState="*res://autoload/game_state.gd"
+Rules="*res://autoload/rules_engine.gd"
+Tags="*res://autoload/tag_parser.gd"
+Composer="*res://autoload/prompt_composer.gd"
 
 [display]
 
