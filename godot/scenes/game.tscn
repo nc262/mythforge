@@ -73,6 +73,11 @@ layout_mode = 2
 toggle_mode = true
 text = "Sheet"
 
+[node name="Dice" type="MenuButton" parent="Margin/Split/ChatBox/Input"]
+layout_mode = 2
+tooltip_text = "Roll any check — the total goes to the GM"
+text = "🎲"
+
 [node name="Scene" type="Button" parent="Margin/Split/ChatBox/Input"]
 layout_mode = 2
 tooltip_text = "Conjure a painting of the current scene"

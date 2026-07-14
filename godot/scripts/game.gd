@@ -28,6 +28,7 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
+	_build_dice_menu()
 	Chronicle.reset()
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
@@ -265,6 +266,22 @@ func _roll_pending() -> void:
 		return
 	var check := _pending_check
 	_set_check({})
+	if check.get("type", "") == "death":
+		var dr: Dictionary = Combat.death_save()
+		if dr.is_empty():
+			return
+		_render_sheet()
+		_log_text("\n%s  %s\n" % [_you(), _md(str(dr["msg"]))])
+		if bool(dr["dead"]):
+			_system_line("☠ THE TALE ENDS HERE — three failures. A long rest starts a new dawn… if the GM allows it.")
+			_log_text("\n%s  " % _gm())
+			_last_player_msg = str(dr["msg"])
+			_stream(Composer.envelope("[Three death saves failed — I am dying, my tale at its end. Narrate my final moment with the weight it deserves.]"))
+		else:
+			_log_text("\n%s  " % _gm())
+			_last_player_msg = str(dr["msg"])
+			_stream(Composer.envelope(str(dr["msg"])))
+		return
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
 	# Damage/healing the GM called for lands on the sheet the moment it's rolled.
 	if check.get("type", "") == "damage":
@@ -273,6 +290,51 @@ func _roll_pending() -> void:
 	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope(str(res["text"])))
+
+
+## 🎲 Roll-anything menu: every skill (with your real modifier) + raw abilities.
+func _build_dice_menu() -> void:
+	var pop: PopupMenu = $Margin/Split/ChatBox/Input/Dice.get_popup()
+	pop.clear()
+	var s := GameState.sheet()
+	var skills := Rules.SKILL2AB.keys()
+	skills.sort()
+	var idx := 0
+	for k in skills:
+		var prof: bool = k in s.get("profSkills", [])
+		var mod := Rules.ability_mod(int(s["abilities"].get(Rules.SKILL2AB[k], 10))) + (Rules.prof_bonus(s) if prof else 0)
+		pop.add_item("%s  %+d%s" % [str(k).capitalize(), mod, "  ●" if prof else ""], idx)
+		pop.set_item_metadata(idx, {"skill": k})
+		idx += 1
+	pop.add_separator("Raw ability")
+	idx += 1
+	for a in Rules.ABILITIES:
+		pop.add_item("%s  %+d" % [a, Rules.ability_mod(int(s["abilities"].get(a, 10)))], idx)
+		pop.set_item_metadata(idx, {"abil": a})
+		idx += 1
+	if not pop.id_pressed.is_connected(_free_check):
+		pop.id_pressed.connect(_free_check)
+
+
+func _free_check(id: int) -> void:
+	if _streaming:
+		return
+	var pop: PopupMenu = $Margin/Split/ChatBox/Input/Dice.get_popup()
+	var meta = pop.get_item_metadata(pop.get_item_index(id))
+	if meta == null:
+		return
+	var check := {}
+	var label := ""
+	if meta.has("skill"):
+		check = {"ability": Rules.SKILL2AB[meta["skill"]], "skill": str(meta["skill"]).capitalize()}
+		label = "%s check" % str(meta["skill"]).capitalize()
+	else:
+		check = {"ability": meta["abil"], "skill": ""}
+		label = "%s check" % meta["abil"]
+	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
+	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
+	_last_player_msg = str(res["text"])
+	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.]" % [label, int(res["total"])]))
 
 
 ## Sheet-panel links: cast:<name>, equip:<id>, sell:<id>. Casting and selling
@@ -358,6 +420,11 @@ func _render_combat() -> void:
 	_combat_panel.visible = bool(c.get("active", false))
 	if not _combat_panel.visible:
 		return
+	# Downed hero: the only roll that matters now is the death save.
+	if not Combat.pc_down().is_empty():
+		_pending_check = {"type": "death"}
+		_roll_bar.text = "☠ Roll a death save"
+		_roll_bar.visible = true
 	var gold := Ui.c("gold_soft").to_html(false)
 	var danger := Ui.c("danger").to_html(false)
 	var cur: Dictionary = Combat.current(c)

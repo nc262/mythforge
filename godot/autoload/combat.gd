@@ -259,6 +259,63 @@ func companion_turn(ally: Dictionary) -> Dictionary:
 		int(foe["hp"]), int(foe["hpMax"]), " — it falls!" if int(foe["hp"]) <= 0 else ""]}
 
 
+## Death saves at 0 HP (port of _rollDeathSave): 10+ succeeds, nat 20 revives
+## at 1 HP, nat 1 counts double; 3 successes stabilize, 3 failures kill.
+## → {msg, dead, stable, revived} or {} when no save is due.
+func death_save() -> Dictionary:
+	var c := data()
+	var pc := {}
+	for x in c["combatants"]:
+		if str(x.get("id", "")) == "pc":
+			pc = x
+			break
+	if pc.is_empty():
+		return {}
+	if not (pc.get("ds") is Dictionary):
+		pc["ds"] = {"s": 0, "f": 0}
+	var ds: Dictionary = pc["ds"]
+	if bool(ds.get("stable", false)) or bool(ds.get("dead", false)):
+		return {}
+	var roll := randi_range(1, 20)
+	var msg: String
+	if roll == 20:
+		pc["hp"] = 1
+		pc["ds"] = {"s": 0, "f": 0}
+		GameState.apply_hp(1)
+		msg = "🎲 *death save → natural 20! You gasp back to life at 1 HP.*"
+	elif roll == 1:
+		ds["f"] = int(ds["f"]) + 2
+		msg = "🎲 *death save → natural 1 — two failures (%d/3).*" % mini(3, int(ds["f"]))
+	elif roll >= 10:
+		ds["s"] = int(ds["s"]) + 1
+		msg = "🎲 *death save → %d, a success (%d/3).*" % [roll, mini(3, int(ds["s"]))]
+	else:
+		ds["f"] = int(ds["f"]) + 1
+		msg = "🎲 *death save → %d, a failure (%d/3).*" % [roll, mini(3, int(ds["f"]))]
+	if int(ds.get("s", 0)) >= 3:
+		ds["stable"] = true
+		msg += " **You stabilize**, clinging to life."
+	if int(ds.get("f", 0)) >= 3:
+		ds["dead"] = true
+		msg += " **You have fallen.**"
+	save(c)
+	return {"msg": msg, "dead": bool(ds.get("dead", false)),
+		"stable": bool(ds.get("stable", false)), "revived": roll == 20}
+
+
+## The hero needs a death save this beat?
+func pc_down() -> Dictionary:
+	var c := data()
+	if not bool(c.get("active", false)):
+		return {}
+	for x in c["combatants"]:
+		if str(x.get("id", "")) == "pc" and int(x.get("hp", 1)) <= 0:
+			var ds: Dictionary = x.get("ds", {})
+			if not bool(ds.get("stable", false)) and not bool(ds.get("dead", false)):
+				return x
+	return {}
+
+
 func next_turn() -> void:
 	var c := data()
 	var n := order(c).size()
