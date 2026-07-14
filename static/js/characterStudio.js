@@ -5359,12 +5359,22 @@ function renderCombatPanel() {
       ${slotStr ? `<span class="cb-kit-item spells" title="Spell slots remaining — cast from your Sheet">✦ ${slotStr}</span>` : ''}
       ${feats.map(f => `<span class="cb-kit-item feat">${_esc(f.split(' (')[0])}</span>`).join('')}
     </div>`;
+    // Your spells, castable right here on your turn — cantrips always, leveled
+    // ones only while a slot ≥ their level remains (Cast routes through the real
+    // slot/upcast flow and tells the GM to adjudicate the effect in the fight).
+    const spellsList = sheet.spells || [];
+    const spellBar = (isPcTurn && spellsList.length) ? `<div class="cb-spells"><span class="cb-spells-lbl">✦ Cast</span>${spellsList.map((sp, i) => {
+      const lvl = sp.level || 0;
+      const canCast = lvl === 0 || Object.keys(sheet.slots || {}).some(l => (+l) >= lvl && (sheet.slots[l].max || 0) > (sheet.slots[l].used || 0));
+      return `<button class="st-btn small cb-spell${canCast ? '' : ' ghost'}" type="button" data-castspell="${i}"${canCast ? '' : ' disabled title="No slot left for this spell"'}>${_esc(sp.name)} <em>${lvl ? 'L' + lvl : 'cantrip'}</em></button>`;
+    }).join('')}</div>` : '';
     body = `${stage}<div class="cb-turnbar"><span>Round ${c.round} — ${turnLabel}</span><span style="display:flex;gap:6px"><button class="st-btn small primary" id="cb-next" type="button">Next ›</button><button class="st-btn small" id="cb-end" type="button">End</button></span></div>
       ${kitBar}
       ${playerBar}
+      ${spellBar}
       ${_gmMode() ? '' : `<p class="cb-note">HP changes through the fight — take hits, quaff a potion, cast a spell, or rest to heal. <span class="cb-note-gm">Manual HP is in GM mode.</span></p>`}
       <div class="cb-list">${rows}</div>
-      <div class="sheet-section"><h3>Add a foe</h3><div class="add-row"><input type="text" id="cb-add-name" placeholder="Goblin"><input type="number" id="cb-add-hp" placeholder="HP" style="width:62px"><input type="number" id="cb-add-ac" placeholder="AC" style="width:62px"><button class="st-btn small" id="cb-add-btn" type="button">Add</button></div></div>`;
+      ${_gmMode() ? `<div class="sheet-section"><h3>Add a foe</h3><div class="add-row"><input type="text" id="cb-add-name" placeholder="Goblin"><input type="number" id="cb-add-hp" placeholder="HP" style="width:62px"><input type="number" id="cb-add-ac" placeholder="AC" style="width:62px"><button class="st-btn small" id="cb-add-btn" type="button">Add</button></div></div>` : ''}`;
   }
   panel.innerHTML = `<div class="sheet-head"><h2>Combat</h2><button class="studio-close" id="cb-close" type="button" aria-label="Close">✕</button></div><div class="sheet-body">${body}</div>`;
   panel.classList.add('open');
@@ -5396,8 +5406,9 @@ function renderCombatPanel() {
     });
     $('cb-end').addEventListener('click', () => _finishCombat(cid));
     panel.querySelectorAll('[data-attack]').forEach(b => b.addEventListener('click', () => _playerAttack(cid, b.dataset.attack)));
+    panel.querySelectorAll('[data-castspell]').forEach(b => b.addEventListener('click', () => { _castSpell(cid, Number(b.dataset.castspell)); setTimeout(() => renderCombatPanel(), 60); }));   // cast in combat; refresh slots
     $('cb-flee')?.addEventListener('click', () => _playerFlee(cid));
-    $('cb-add-btn').addEventListener('click', () => {
+    $('cb-add-btn')?.addEventListener('click', () => {   // GM-only; guarded by ?. since players don't see it
       const nm = ($('cb-add-name').value || '').trim(); if (!nm) return;
       const hp = Number($('cb-add-hp').value || 10); const ac = Number($('cb-add-ac').value || 0);
       const cc = _loadCombat(cid);
@@ -6161,8 +6172,27 @@ function _mapTokens(cid) {
   return [{ id: 'pc', name: s.name || 'You', side: 'ally', hp: s.hp, hpMax: s.hpMax, down: false }];
 }
 function _placeToken(el, gx, gy) { el.style.left = ((gx + 0.5) / MAP_COLS * 100) + '%'; el.style.top = ((gy + 0.5) / MAP_ROWS * 100) + '%'; }
+const FEET_PER_CELL = 5;   // a 5-ft grid square, D&D standard
+function _tokenSpeed(m, sheet) { if (m && m.id === 'pc') return (sheet && sheet.speed) || 30; return (m && m.speed) || 30; }
+// Movement left for whoever's turn it is (resets each turn). Chebyshev distance
+// (a diagonal costs the same 5 ft) keeps it simple and generous.
+function _moveBudget(cc, sheet) {
+  const order = _combatOrder(cc); const cur = order[cc.turn % (order.length || 1)];
+  if (!cur) return { id: null, left: 0, max: 0 };
+  if (!cc._move || cc._move.id !== cur.id) { const sp = _tokenSpeed(cur, sheet); cc._move = { id: cur.id, left: sp, max: sp }; }
+  return cc._move;
+}
+// Who the PLAYER may move: only their own side, only on that token's turn.
+// Enemies are never player-movable (a shove/knockback would be its own action).
+// GM mode frees everything.
+function _canDragToken(cc, tok) {
+  if (_gmMode()) return true;
+  if (!cc.active || !tok || tok.side !== 'ally' || tok.hp <= 0) return false;
+  const order = _combatOrder(cc); const cur = order[cc.turn % (order.length || 1)];
+  return !!(cur && cur.id === tok.id);
+}
 function _wireTokenDrag(el, cid) {
-  let stage = null, dragging = false;
+  let stage = null, dragging = false, start = null;
   const move = (e) => {
     if (!dragging || !stage) return;
     const r = stage.getBoundingClientRect();
@@ -6176,10 +6206,26 @@ function _wireTokenDrag(el, cid) {
     const px = parseFloat(el.style.left), py = parseFloat(el.style.top);
     let gx = Math.round(px / 100 * MAP_COLS - 0.5), gy = Math.round(py / 100 * MAP_ROWS - 0.5);
     gx = Math.max(0, Math.min(MAP_COLS - 1, gx)); gy = Math.max(0, Math.min(MAP_ROWS - 1, gy));
+    const cc = _loadCombat(cid), sheet = _loadSheet(cid);
+    const dist = Math.max(Math.abs(gx - start.gx), Math.abs(gy - start.gy)) * FEET_PER_CELL;
+    if (cc.active && !_gmMode()) {   // spend movement; snap back if over budget
+      const mb = _moveBudget(cc, sheet);
+      if (dist > mb.left) { _placeToken(el, start.gx, start.gy); _toast(`⚡ Too far — ${mb.left} ft of movement left this turn.`); return; }
+      mb.left -= dist; _saveCombat(cid, cc);
+    }
     const m = _loadBmap(cid); m.pos[el.dataset.tok] = { gx, gy }; _saveBmap(cid, m);
     _placeToken(el, gx, gy);
+    if (cc.active && !_gmMode() && dist > 0) renderMap();   // refresh the "move left" readout
   };
   el.addEventListener('pointerdown', (e) => {
+    const cc = _loadCombat(cid);
+    const tok = (cc.combatants || []).find(x => x.id === el.dataset.tok);
+    if (cc.active && !_canDragToken(cc, tok)) {   // not yours to move
+      if (tok && tok.side === 'enemy') _toast('You can\'t move an enemy — that\'s the ogre\'s to control.');
+      else _toast('You can move on your own turn.');
+      return;
+    }
+    const m = _loadBmap(cid); start = (m.pos && m.pos[el.dataset.tok]) || { gx: 0, gy: 0 };
     stage = $('map-stage'); dragging = true; el.classList.add('dragging');
     try { el.setPointerCapture(e.pointerId); } catch {}
     e.preventDefault();
@@ -6465,15 +6511,20 @@ function renderBattle(content, cid) {
   const order = c.active && c.combatants && c.combatants.length ? _combatOrder(c) : [];
   const cur = order.length ? order[c.turn % order.length] : null;
   let ai = 0, ei = 0;
+  const gmMode = _gmMode();
   const tokenEls = tokens.map(t => {
     let p = m.pos[t.id];
     if (!p) { if (t.side === 'enemy') { p = { gx: 4 + (ei % 8), gy: 1 + Math.floor(ei / 8) }; ei++; } else { p = { gx: 4 + (ai % 8), gy: MAP_ROWS - 2 - Math.floor(ai / 8) }; ai++; } }
     const init = (t.name || '?').slice(0, 1).toUpperCase();
     const pct = t.hpMax ? Math.max(0, Math.min(100, Math.round((t.hp / t.hpMax) * 100))) : 100;
-    return `<div class="map-token side-${_esc(t.side || 'ally')}${t.down ? ' down' : ''}${cur && t.id === cur.id ? ' cur' : ''}" data-tok="${_esc(t.id)}" style="left:${(p.gx + 0.5) / MAP_COLS * 100}%;top:${(p.gy + 0.5) / MAP_ROWS * 100}%" title="${_esc(t.name)} — ${t.hp}/${t.hpMax} HP">
+    const movable = !c.active || _canDragToken(c, t);   // enemies show as locked to the player
+    return `<div class="map-token side-${_esc(t.side || 'ally')}${t.down ? ' down' : ''}${cur && t.id === cur.id ? ' cur' : ''}${movable ? ' movable' : ' locked'}" data-tok="${_esc(t.id)}" style="left:${(p.gx + 0.5) / MAP_COLS * 100}%;top:${(p.gy + 0.5) / MAP_ROWS * 100}%" title="${_esc(t.name)} — ${t.hp}/${t.hpMax} HP${t.side === 'enemy' && !gmMode ? ' (enemy — not yours to move)' : ''}">
       <span class="mt-init">${_esc(init)}</span><span class="mt-hp"><span class="mt-hpfill" style="width:${pct}%"></span></span><span class="mt-name">${_esc(t.name)}</span></div>`;
   }).join('');
-  const turnBar = c.active ? `<div class="map-turnbar"><span>⚔ Round ${c.round} — ${cur ? (cur.id === 'pc' ? '<strong>Your turn</strong>' : `<strong>${_esc(cur.name)}</strong>'s turn`) : '—'}</span><span class="map-turn-btns"><button class="st-btn small primary" id="map-next-turn" type="button">Next ›</button><button class="st-btn small" id="map-end-combat" type="button">End</button></span></div>` : '';
+  // Movement readout for whoever's turn it is — real speed, spent by dragging.
+  let moveTag = '';
+  if (c.active && cur && !gmMode) { const mb = _moveBudget(c, _loadSheet(cid)); moveTag = `<span class="map-move" title="Movement left this turn — drag your token to spend it (5 ft per square)">🥾 ${mb.left}/${mb.max} ft</span>`; }
+  const turnBar = c.active ? `<div class="map-turnbar"><span>⚔ Round ${c.round} — ${cur ? (cur.id === 'pc' ? '<strong>Your turn</strong>' : `<strong>${_esc(cur.name)}</strong>'s turn`) : '—'} ${moveTag}</span><span class="map-turn-btns"><button class="st-btn small primary" id="map-next-turn" type="button">Next ›</button><button class="st-btn small" id="map-end-combat" type="button">End</button></span></div>` : '';
   let cells = '';
   for (let gy = 0; gy < MAP_ROWS; gy++) for (let gx = 0; gx < MAP_COLS; gx++) { const t = m.tiles[gx + ',' + gy]; cells += `<div class="map-cell${t ? ' t-' + t : ''}" data-cell="${gx},${gy}"></div>`; }
   // The terrain-tile painter is cosmetic (tiles carry no mechanics), so it's a
