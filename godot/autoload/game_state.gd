@@ -106,9 +106,133 @@ func add_item(nm: String, rarity := "common", qty := 1) -> void:
 			it["qty"] = int(it.get("qty", 1)) + qty
 			save_kind("inv", v)
 			return
-	v["items"].append({"id": "%s-%d" % [nm.to_lower().replace(" ", "-"), randi() % 10000],
-		"name": nm, "qty": qty, "rarity": rarity})
+	v["items"].append(Rules.mk_item(nm, rarity, qty))
 	save_kind("inv", v)
+
+
+func item_by_id(id: String) -> Dictionary:
+	for it in inv().get("items", []):
+		if str(it.get("id", "")) == id:
+			return it
+	return {}
+
+
+## Equip into its type slot (weapon/armor/shield); same id again unequips.
+## → note text, or "" if the item can't be worn.
+func toggle_equip(id: String) -> String:
+	var v := inv()
+	var it := {}
+	for x in v["items"]:
+		if str(x.get("id", "")) == id:
+			it = x
+			break
+	if it.is_empty():
+		return ""
+	var slot := str(it.get("type", "gear"))
+	if not slot in ["weapon", "armor", "shield"]:
+		return ""
+	var eq: Dictionary = v.get("equipped", {})
+	if str(eq.get(slot, "")) == id:
+		eq.erase(slot)
+		save_kind("inv", v)
+		return "You put away the %s." % it["name"]
+	eq[slot] = id
+	v["equipped"] = eq
+	save_kind("inv", v)
+	return "You ready the %s%s." % [it["name"],
+		(" (%s, %+d to hit)" % [it.get("dmg", ""), int(it.get("atk", 0))]) if slot == "weapon" and int(it.get("atk", 0)) > 0
+		else (" (+%d AC)" % int(it.get("acBonus", 0))) if it.get("acBonus") != null else ""]
+
+
+## Sell one of the item at half value. → note text.
+func sell_item(id: String) -> String:
+	var v := inv()
+	for i in v["items"].size():
+		var it: Dictionary = v["items"][i]
+		if str(it.get("id", "")) == id:
+			var price := Rules.sell_value(str(it.get("rarity", "common")))
+			if int(it.get("qty", 1)) > 1:
+				it["qty"] = int(it["qty"]) - 1
+			else:
+				var eq: Dictionary = v.get("equipped", {})
+				for k in eq.keys():
+					if str(eq[k]) == id:
+						eq.erase(k)
+				v["items"].remove_at(i)
+			save_kind("inv", v)
+			var total := add_gold(price)
+			return "You sell the %s for %d gold — purse now %d." % [it["name"], price, total]
+	return ""
+
+
+## Cast a known spell, spending the lowest fitting slot. → note, or "" on fail.
+func cast_spell(nm: String) -> String:
+	var s := sheet()
+	var known := {}
+	for sp in s.get("spells", []):
+		if str(sp.get("name", "")).nocasecmp_to(nm) == 0:
+			known = sp
+			break
+	if known.is_empty():
+		return ""
+	var lv := int(known.get("level", 0))
+	var cast_note := ""
+	if lv > 0:
+		var slots: Dictionary = s.get("slots", {})
+		var found := ""
+		var keys := slots.keys()
+		keys.sort()
+		for l in keys:
+			if int(str(l)) >= lv and slots[l] is Dictionary \
+					and int(slots[l].get("used", 0)) < int(slots[l].get("max", 0)):
+				found = str(l)
+				break
+		if found == "":
+			return "✋ *No spell slot left for %s — a long rest restores your magic.*" % nm
+		slots[found]["used"] = int(slots[found]["used"]) + 1
+		set_sheet(s)
+		cast_note = " (L%s slot spent, %d/%d left)" % [found,
+			int(slots[found]["max"]) - int(slots[found]["used"]), int(slots[found]["max"])]
+	var dc := Rules.spell_save_dc(s)
+	var stat := (" Spell save DC %d, spell attack %+d." % [dc, Rules.spell_attack(s)]) if dc > 0 else ""
+	return "✨ *You cast **%s**%s.%s*" % [known.get("name", nm), cast_note, stat]
+
+
+## Port of _awardXp: average hit-die HP per level, full heal, auto-features.
+## → {note, leveled: bool}
+func award_xp(amount: int, reason := "") -> Dictionary:
+	if amount <= 0:
+		return {"note": "", "leveled": false}
+	var s := sheet()
+	var before := int(s.get("level", 1))
+	s["xp"] = int(s.get("xp", 0)) + amount
+	var after := Rules.level_for_xp(int(s["xp"]))
+	var note := "✨ *Gained %d XP%s.*" % [amount, (" — " + reason) if reason != "" else ""]
+	if after > before:
+		var con := Rules.ability_mod(int(s["abilities"].get("CON", 10)))
+		var die_avg := int(s.get("hitDie", 8)) / 2 + 1
+		for l in range(before, after):
+			s["hpMax"] = int(s["hpMax"]) + maxi(1, die_avg + con)
+		s["level"] = after
+		s["hp"] = s["hpMax"]
+		# Auto-grant class features for the new levels (choice UI comes later).
+		var gained: Array[String] = []
+		var feats_map: Dictionary = Rules.tables.get("class_features", {}).get(str(s.get("cls", "")), {})
+		for l in range(before + 1, after + 1):
+			for f in feats_map.get(str(l), []):
+				gained.append(str(f))
+		if not gained.is_empty():
+			var have: Array = s.get("features", [])
+			have.append_array(gained)
+			s["features"] = have
+		# Casters climb the slot table with their level.
+		var preset: Dictionary = Rules.tables.get("class_presets", {}).get(str(s.get("cls", "")), {})
+		if preset.get("caster", false):
+			s["slots"] = Rules.full_caster_slots(after)
+		note += "\n🎉 *LEVEL UP — you are now level %d! HP restored to %d.%s*" % [after, int(s["hpMax"]),
+			(" New: " + ", ".join(gained)) if not gained.is_empty() else ""]
+	set_sheet(s)
+	return {"note": note, "leveled": after > before}
 
 
 func inv_text() -> String:

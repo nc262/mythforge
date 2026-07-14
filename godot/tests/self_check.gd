@@ -68,5 +68,31 @@ func _ready() -> void:
 	assert(not Rules.spell_named("misty step").is_empty())  # case-insensitive
 	assert(Rules.spell_named("Totally Fake Spell").is_empty())
 
+	# Phase 2b: items, AC, XP, casting math
+	var dagger := Rules.mk_item("Rusty Dagger", "rare")
+	assert(dagger["type"] == "weapon" and dagger["dmg"] == "1d4" and dagger["atk"] == 1)
+	var plate := Rules.mk_item("Full Plate", "common")
+	assert(plate["type"] == "armor" and plate["acBonus"] == 6)
+	assert(Rules.mk_item("Oak Shield")["acBonus"] == 2)
+	assert(Rules.sell_value("rare") == 32)
+	# eff_ac: plate (+6, DEX zeroed) + shield (+2) on a DEX 16 sheet = 18
+	var s2 := {"cls": "Fighter", "abilities": {"DEX": 16, "CON": 14, "WIS": 10}}
+	var inv2 := {"items": [plate, Rules.mk_item("Oak Shield")], "equipped": {"armor": plate["id"], "shield": Rules.mk_item("Oak Shield")["id"]}}
+	inv2["equipped"]["shield"] = inv2["items"][1]["id"]
+	assert(Rules.eff_ac(s2, inv2) == 18)
+	# Unarmored Barbarian: 10 + DEX 3 + CON 2 = 15
+	assert(Rules.eff_ac({"cls": "Barbarian", "abilities": {"DEX": 16, "CON": 14}}, {"items": [], "equipped": {}}) == 15)
+	# Weapon atk feeds attack_mod
+	var winv := {"items": [dagger], "equipped": {"weapon": dagger["id"]}}
+	assert(Rules.attack_mod(sheet, winv) == 7)  # 6 + rare dagger's +1
+	# XP curve: level 2 at 100, level 3 at 300
+	assert(Rules.xp_for_level(2) == 100 and Rules.xp_for_level(3) == 300)
+	assert(Rules.level_for_xp(299) == 2 and Rules.level_for_xp(300) == 3)
+	# Caster slots at level 5 include L3
+	var slots5 := Rules.full_caster_slots(5)
+	assert(int(slots5["3"]["max"]) > 0 and int(slots5["4"]["max"]) == 0)
+	# Spell save DC: level 5 Wizard INT 16 → 8 + 3 + 3 = 14
+	assert(Rules.spell_save_dc({"cls": "Wizard", "level": 5, "abilities": {"INT": 16}}) == 14)
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

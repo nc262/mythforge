@@ -11,6 +11,7 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[gold delta=+15]] or [[gold delta=-10]] when the player gains or spends money.
 [[loot name="Iron Dagger" rarity=common]] when the player picks up or is given an item (rarity: common/uncommon/rare/epic/legendary).
 [[spell-learned name="Misty Step"]] when the player learns a spell. [[time advance=1]] when notable in-world time passes.
+[[xp delta=50 reason="outwitted the toll-keeper"]] when the player earns experience (25-75 for a scene, 100+ for a major victory).
 Never write dice results, totals, remaining HP, or the success/failure of a player's roll in prose — the game rolls and reports the result in the player's next message. Use one tag per mechanical effect, each on its own line.]"""
 
 
@@ -40,10 +41,12 @@ func sheet_summary(s: Dictionary) -> String:
 	var cond_names: Array[String] = []
 	for c in conds:
 		cond_names.append(str(c.get("name", c)) if c is Dictionary else str(c))
-	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s." % [
+	var dc := Rules.spell_save_dc(s)
+	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s" % [
 		str(s.get("name", "the hero")), int(s.get("level", 1)), str(s.get("cls", "Adventurer")),
-		int(s.get("hp", 10)), int(s.get("hpMax", 10)), int(s.get("ac", 10)),
+		int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv()),
 		Rules.passive_perception(s), int(s.get("gold", 0)),
 		", ".join(ab_parts),
 		", ".join(cond_names) if not cond_names.is_empty() else "none",
+		(" Spell save DC %d, spell attack +%d (enemies roll saves against this; use these numbers)." % [dc, Rules.spell_attack(s)]) if dc > 0 else "",
 	])

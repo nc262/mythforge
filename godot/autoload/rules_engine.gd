@@ -39,6 +39,139 @@ func spell_named(nm: String) -> Dictionary:
 	return {}
 
 
+# ── Items (ports of _weaponDie / _armorAcBonus / _mkItem / _itemValue) ──────
+var _weapon_re := RegEx.create_from_string("(?i)dagger|knife|sickle|dart|greatsword|greataxe|maul|halberd|glaive|pike|claymore|longsword|battleaxe|warhammer|morningstar|flail|longbow|trident|crossbow|broadsword|shortsword|scimitar|rapier|shortbow|handaxe|mace|spear|whip|club|staff|quarterstaff|sword|axe|bow|blade|pistol|rifle|blaster")
+var _shield_re := RegEx.create_from_string("(?i)shield|buckler")
+var _armor_re := RegEx.create_from_string("(?i)plate|chain ?mail|chain shirt|splint|banded|scale|brigandine|ring mail|hide armor|leather|padded|studded|breastplate|armor|cuirass")
+
+
+func weapon_die(nm: String) -> String:
+	var n := nm.to_lower()
+	for pat in [["dagger|knife|sickle|dart", "1d4"], ["greatsword|greataxe|maul|halberd|glaive|pike|claymore", "1d12"],
+			["longsword|battleaxe|warhammer|morningstar|flail|longbow|trident|crossbow|broadsword", "1d8"]]:
+		if RegEx.create_from_string("(?i)" + pat[0]).search(n):
+			return pat[1]
+	return "1d6"
+
+
+func armor_ac_bonus(nm: String) -> int:
+	var n := nm.to_lower()
+	for pat in [["full plate|^plate|plate armor", 6], ["half.?plate|breastplate|chain ?mail|splint|banded", 4],
+			["scale|chain shirt|brigandine|ring mail|hide", 3], ["leather|padded|studded", 2],
+			["shield|buckler", 2], ["cloak|robe|cloth", 1]]:
+		if RegEx.create_from_string("(?i)" + str(pat[0])).search(n):
+			return pat[1]
+	return 2
+
+
+func item_type(nm: String) -> String:
+	if _shield_re.search(nm):
+		return "shield"
+	if _weapon_re.search(nm):
+		return "weapon"
+	if _armor_re.search(nm):
+		return "armor"
+	return "gear"
+
+
+func item_value(rarity: String) -> int:
+	return {"common": 6, "uncommon": 20, "rare": 65, "epic": 175, "legendary": 500}.get(rarity, 6)
+
+
+func sell_value(rarity: String) -> int:
+	return maxi(1, item_value(rarity) / 2)
+
+
+## Full item from a bare name — weapon dice, magic atk bonus, armor AC.
+func mk_item(nm: String, rarity := "common", qty := 1) -> Dictionary:
+	var it := {"id": "it-%d" % (randi() % 1000000), "name": nm.strip_edges(), "qty": qty,
+		"type": item_type(nm), "rarity": rarity}
+	if it["type"] == "weapon":
+		it["dmg"] = weapon_die(nm)
+		it["atk"] = {"rare": 1, "epic": 1, "legendary": 2}.get(rarity, 0)
+	elif it["type"] in ["armor", "shield"]:
+		var ac := 2 if it["type"] == "shield" else armor_ac_bonus(nm)
+		ac += {"epic": 1, "legendary": 2}.get(rarity, 0)
+		it["acBonus"] = ac
+	return it
+
+
+# ── AC (port of _baseAC/_effAC: DEX caps by armor weight, unarmored defense) ─
+func eff_ac(s: Dictionary, inv: Dictionary) -> int:
+	var equipped: Dictionary = inv.get("equipped", {})
+	var items: Array = inv.get("items", [])
+	var find := func(id):
+		for it in items:
+			if str(it.get("id", "")) == str(id):
+				return it
+		return null
+	var body = find.call(equipped.get("armor"))
+	var dex := ability_mod(int(s["abilities"].get("DEX", 10)))
+	if body != null:
+		var b := int(body.get("acBonus", 0))
+		if b >= 6:
+			dex = 0
+		elif b >= 3:
+			dex = mini(dex, 2)
+	var ac := 10 + dex
+	if body == null:
+		var cls := str(s.get("cls", ""))
+		if cls == "Barbarian":
+			ac += maxi(0, ability_mod(int(s["abilities"].get("CON", 10))))
+		elif cls == "Monk":
+			ac += maxi(0, ability_mod(int(s["abilities"].get("WIS", 10))))
+	for key in equipped:
+		var it = find.call(equipped[key])
+		if it != null:
+			ac += int(it.get("acBonus", 0))
+	return ac
+
+
+# ── Casting / XP ─────────────────────────────────────────────────────────────
+const CAST_ABIL := {"Wizard": "INT", "Cleric": "WIS", "Druid": "WIS", "Bard": "CHA",
+	"Sorcerer": "CHA", "Warlock": "CHA", "Paladin": "CHA", "Ranger": "WIS", "Artificer": "INT"}
+
+
+func cast_ability(s: Dictionary) -> String:
+	return CAST_ABIL.get(str(s.get("cls", "")), "")
+
+
+func spell_save_dc(s: Dictionary) -> int:
+	var ab := cast_ability(s)
+	if ab == "":
+		return -1
+	return 8 + prof_bonus(s) + ability_mod(int(s["abilities"].get(ab, 10)))
+
+
+func spell_attack(s: Dictionary) -> int:
+	var ab := cast_ability(s)
+	if ab == "":
+		return -1
+	return prof_bonus(s) + ability_mod(int(s["abilities"].get(ab, 10)))
+
+
+func xp_for_level(lvl: int) -> int:
+	var t := 0
+	for i in range(1, lvl):
+		t += i * 100
+	return t
+
+
+func level_for_xp(xp: int) -> int:
+	var lvl := 1
+	while xp >= xp_for_level(lvl + 1):
+		lvl += 1
+	return lvl
+
+
+func full_caster_slots(level: int) -> Dictionary:
+	var m: Dictionary = tables.get("caster_slots", {}).get(str(clampi(level, 1, 9)), {})
+	var out := {}
+	for l in [1, 2, 3, 4, 5]:
+		out[str(l)] = {"max": int(m.get(str(l), 0)), "used": 0}
+	return out
+
+
 func ability_mod(score: int) -> int:
 	return floori((score - 10) / 2.0)
 
@@ -65,12 +198,18 @@ func check_mod(sheet: Dictionary, check: Dictionary) -> int:
 	return mod
 
 
-# ponytail: no equipped-weapon atk bonus yet — inventory lands in Phase 2.
-func attack_mod(sheet: Dictionary) -> int:
+func attack_mod(sheet: Dictionary, inv: Dictionary = {}) -> int:
 	var abilities: Dictionary = sheet.get("abilities", {})
 	var s := ability_mod(int(abilities.get("STR", 10)))
 	var d := ability_mod(int(abilities.get("DEX", 10)))
-	return maxi(s, d) + prof_bonus(sheet)
+	var m := maxi(s, d) + prof_bonus(sheet)
+	var wid = inv.get("equipped", {}).get("weapon")
+	if wid != null:
+		for it in inv.get("items", []):
+			if str(it.get("id", "")) == str(wid):
+				m += int(it.get("atk", 0))
+				break
+	return m
 
 
 func passive_perception(sheet: Dictionary) -> int:
@@ -110,10 +249,10 @@ func check_label(c: Dictionary) -> String:
 ## Resolve any check dict (from a [[tag]] or the prose fallback) against the
 ## sheet. Returns {"text": markdown line for the GM, "total": int}. Message
 ## formats mirror the web client so the GM reads them identically.
-func resolve_check(check: Dictionary, sheet: Dictionary) -> Dictionary:
+func resolve_check(check: Dictionary, sheet: Dictionary, inv: Dictionary = {}) -> Dictionary:
 	var mode := str(check.get("adv", ""))
 	if check.get("type", "") == "attack":
-		var am := attack_mod(sheet)
+		var am := attack_mod(sheet, inv)
 		var r := roll_d20(mode)
 		var total: int = r["roll"] + am
 		var verdict := ""

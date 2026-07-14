@@ -24,6 +24,7 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/SheetBtn.toggled.connect(func(on): _sheet_panel.visible = on)
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
+	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_roll_bar.pressed.connect(_roll_pending)
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
@@ -131,6 +132,10 @@ func _apply_world_tags(tags: Array) -> void:
 				GameState.advance_time(maxi(1, int(a.get("advance", 1))))
 				var c: Dictionary = GameState.clock()
 				_system_line("🕰 %s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])])
+			"xp":
+				var r: Dictionary = GameState.award_xp(int(str(a.get("delta", a.get("amount", "0"))).replace("+", "")), str(a.get("reason", "")))
+				if str(r["note"]) != "":
+					_system_line(str(r["note"]).replace("*", ""))
 	_render_sheet()
 
 
@@ -145,7 +150,7 @@ func _set_check(check: Dictionary) -> void:
 		return
 	var sheet := GameState.sheet()
 	if check.get("type", "") == "attack":
-		_roll_bar.text = "⚔ Roll to hit  d20 %+d%s" % [Rules.attack_mod(sheet),
+		_roll_bar.text = "⚔ Roll to hit  d20 %+d%s" % [Rules.attack_mod(sheet, GameState.inv()),
 			("  vs AC %d" % int(check["ac"])) if check.get("ac") != null else ""]
 	elif check.get("type", "") == "damage":
 		_roll_bar.text = "🎲 Roll %s  %dd%d%s" % ["healing" if check.get("heal", false) else "damage",
@@ -162,13 +167,40 @@ func _roll_pending() -> void:
 		return
 	var check := _pending_check
 	_set_check({})
-	var res: Dictionary = Rules.resolve_check(check, GameState.sheet())
+	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
 	# Damage/healing the GM called for lands on the sheet the moment it's rolled.
 	if check.get("type", "") == "damage":
 		GameState.apply_hp(int(res["total"]) if check.get("heal", false) else -int(res["total"]))
 		_render_sheet()
 	_log_text("\n%s  %s\n\n%s  " % [_you(), _md(str(res["text"])), _gm()])
 	_stream(Composer.envelope(str(res["text"])))
+
+
+## Sheet-panel links: cast:<name>, equip:<id>, sell:<id>. Casting and selling
+## are narrated to the GM; equipping is silent kit management.
+func _on_sheet_action(meta) -> void:
+	var parts := str(meta).split(":", true, 1)
+	if parts.size() != 2 or _streaming:
+		return
+	var note := ""
+	var tell_gm := false
+	match parts[0]:
+		"cast":
+			note = GameState.cast_spell(parts[1].uri_decode())
+			tell_gm = not note.begins_with("✋")
+		"equip":
+			note = GameState.toggle_equip(parts[1])
+		"sell":
+			note = GameState.sell_item(parts[1])
+			tell_gm = true
+	if note == "":
+		return
+	_render_sheet()
+	if tell_gm:
+		_log_text("\n%s  %s\n\n%s  " % [_you(), _md(note), _gm()])
+		_stream(Composer.envelope(note))
+	else:
+		_system_line(note.replace("*", ""))
 
 
 func _rest(kind: String) -> void:
@@ -187,7 +219,7 @@ func _render_sheet() -> void:
 	lines.append("[color=%s][b]%s[/b][/color]" % [gold, _bb(str(s.get("name", "?")))])
 	lines.append("%s %s, level %d" % [_bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))), int(s.get("level", 1))])
 	lines.append("")
-	lines.append("HP [b]%d / %d[/b]    AC [b]%d[/b]" % [int(s.get("hp", 10)), int(s.get("hpMax", 10)), int(s.get("ac", 10))])
+	lines.append("HP [b]%d / %d[/b]    AC [b]%d[/b]" % [int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv())])
 	lines.append("Gold [b]%d[/b]    Passive Perception [b]%d[/b]" % [int(s.get("gold", 0)), Rules.passive_perception(s)])
 	lines.append("")
 	for k in Rules.ABILITIES:
@@ -211,7 +243,8 @@ func _render_sheet() -> void:
 		lines.append("[color=%s][b]Spells[/b][/color]" % gold)
 		for sp in spells:
 			var lv := int(sp.get("level", 0))
-			lines.append("  %s %s" % [_bb(str(sp.get("name", ""))), ("(lvl %d)" % lv) if lv > 0 else "(cantrip)"])
+			lines.append("  %s %s  [url=cast:%s]✦ cast[/url]" % [_bb(str(sp.get("name", ""))),
+				("(lvl %d)" % lv) if lv > 0 else "(cantrip)", str(sp.get("name", "")).uri_encode()])
 		var slots: Dictionary = s.get("slots", {})
 		var slot_parts: Array[String] = []
 		var slot_keys := slots.keys()
@@ -224,11 +257,18 @@ func _render_sheet() -> void:
 	var inv: Dictionary = GameState.inv()
 	var items: Array = inv.get("items", [])
 	if not items.is_empty():
+		var worn: Array = inv.get("equipped", {}).values()
 		lines.append("")
 		lines.append("[color=%s][b]Pack[/b][/color]  (%d/%d slots)" % [gold, items.size(), int(inv.get("slots", 24))])
 		for it in items:
 			var q := int(it.get("qty", 1))
-			lines.append("  %s%s" % [_bb(str(it.get("name", ""))), (" ×%d" % q) if q > 1 else ""])
+			var id := str(it.get("id", ""))
+			var row := "  %s%s%s" % [_bb(str(it.get("name", ""))), (" ×%d" % q) if q > 1 else "",
+				"  [color=%s]● worn[/color]" % gold if id in worn else ""]
+			if str(it.get("type", "")) in ["weapon", "armor", "shield"]:
+				row += "  [url=equip:%s]%s[/url]" % [id, "unequip" if id in worn else "equip"]
+			row += "  [url=sell:%s]sell %d[/url]" % [id, Rules.sell_value(str(it.get("rarity", "common")))]
+			lines.append(row)
 	var feats: Array = s.get("feats", [])
 	if not feats.is_empty():
 		lines.append("")
