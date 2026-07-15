@@ -15,6 +15,7 @@ var _shop_markup := 1.0  # haggling moves the keeper's prices
 @onready var _thread: VBoxContainer = $Margin/Split/ChatBox/Scroll/Thread
 @onready var _scroll: ScrollContainer = $Margin/Split/ChatBox/Scroll
 @onready var _combat_panel: RichTextLabel = $Margin/Split/ChatBox/CombatPanel
+@onready var _battle_grid: Control = $Margin/Split/ChatBox/BattleGrid
 @onready var _roll_bar: Button = $Margin/Split/ChatBox/RollBar
 @onready var _msg: LineEdit = $Margin/Split/ChatBox/Input/Msg
 @onready var _send_btn: Button = $Margin/Split/ChatBox/Input/Send
@@ -54,6 +55,8 @@ func _ready() -> void:
 	_roll_bar.pressed.connect(_roll_pending)
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
+	_battle_grid.cell_clicked.connect(_on_grid_move)
+	_battle_grid.token_clicked.connect(_on_grid_token)
 	Combat.changed.connect(_render_combat)
 	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
@@ -762,6 +765,12 @@ func _on_combat_action(meta) -> void:
 		var c: Dictionary = Combat.data()
 		var cur: Dictionary = Combat.current(c)
 		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
+			var eid := str(cur.get("id", ""))
+			if not Combat.adjacent(eid, "pc"):
+				var moved := Combat.enemy_approach(eid)
+				if not Combat.adjacent(eid, "pc"):
+					_say_system("The %s closes in — %d ft nearer." % [str(cur.get("name", "?")), moved * Combat.FEET_PER_CELL])
+					return
 			var r: Dictionary = Combat.enemy_turn(cur)
 			if r.has("pending"):
 				_reaction_overlay(r["pending"], r["reactions"])
@@ -858,10 +867,48 @@ func _deliver_enemy_result(r: Dictionary) -> void:
 		_stream(Composer.envelope(str(r["gm"])))
 
 
+## Click an open square on your turn: move there (spends the round's budget).
+func _on_grid_move(cell: Array) -> void:
+	if not Mode.can("combat_action"):
+		return
+	var c: Dictionary = Combat.data()
+	if str(Combat.current(c).get("id", "")) != "pc":
+		_say_system("Not your turn — press Next › to advance.")
+		return
+	if Combat.move_pc(cell):
+		var left := int(Combat.move_budget(Combat.data()).get("left", 0))
+		_say_system("You move — %d ft of movement left." % (left * Combat.FEET_PER_CELL))
+	else:
+		_say_system("Too far, or the square is taken.")
+
+
+## Click a foe's token: attack if you can reach it (melee adjacency or ranged).
+func _on_grid_token(id: String) -> void:
+	if not Mode.can("combat_action"):
+		return
+	var c: Dictionary = Combat.data()
+	var m := {}
+	for x in c.get("combatants", []):
+		if str(x.get("id", "")) == id:
+			m = x
+	if m.is_empty() or m.get("side") != "enemy" or int(m.get("hp", 0)) <= 0:
+		return
+	var wpn := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get("weapon", "")))
+	var ranged: bool = Combat.weapon_props(str(wpn.get("name", "fists")))["ranged"]
+	if not ranged and not Combat.adjacent("pc", id):
+		_say_system("The %s is %d ft away — move in, or ready a ranged weapon." % [str(m.get("name", "?")),
+			Combat.distance(Combat.cell_of("pc"), Combat.cell_of(id)) * Combat.FEET_PER_CELL])
+		return
+	_on_combat_action("atk:" + id)
+
+
 func _render_combat() -> void:
 	var c: Dictionary = Combat.data()
 	var fighting := bool(c.get("active", false))
 	_combat_panel.visible = fighting
+	_battle_grid.visible = fighting
+	if fighting:
+		Combat.ensure_positions()
 	# The room darkens toward ember-red while steel is out.
 	var tween := create_tween()
 	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)

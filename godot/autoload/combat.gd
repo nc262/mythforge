@@ -353,6 +353,120 @@ func pc_down() -> Dictionary:
 	return {}
 
 
+# ── The battle grid (bmap kind): positions matter — 5 ft per cell ───────────
+const MAP_COLS := 16
+const MAP_ROWS := 10
+const FEET_PER_CELL := 5
+
+
+func positions() -> Dictionary:
+	return GameState._merged("bmap", {"pos": {}}).get("pos", {})
+
+
+func save_positions(pos: Dictionary) -> void:
+	GameState.save_kind("bmap", {"pos": pos})
+	changed.emit()
+
+
+## Seat everyone who lacks a square: allies file in on the left, foes right.
+## Saves ONLY when seating changed — save emits `changed`, and an
+## unconditional save here recursed through every render. (RCA'd live.)
+func ensure_positions() -> Dictionary:
+	var pos := positions()
+	var c := data()
+	var dirty := false
+	var ally_row := 0
+	var foe_row := 0
+	for m in order(c):
+		var id := str(m.get("id", ""))
+		if pos.has(id):
+			continue
+		if m.get("side") == "ally":
+			pos[id] = [2, 2 + (ally_row * 2) % (MAP_ROWS - 3)]
+			ally_row += 1
+		else:
+			pos[id] = [MAP_COLS - 3, 2 + (foe_row * 2) % (MAP_ROWS - 3)]
+			foe_row += 1
+		dirty = true
+	# Sweep the seats of the fallen-and-removed.
+	for id in pos.keys():
+		if not c["combatants"].any(func(x): return str(x.get("id", "")) == str(id)):
+			pos.erase(id)
+			dirty = true
+	if dirty:
+		save_positions(pos)
+	return pos
+
+
+func cell_of(id: String) -> Array:
+	return positions().get(id, [0, 0])
+
+
+## Chebyshev distance in cells (diagonals count 1, like the original board).
+func distance(a: Array, b: Array) -> int:
+	return maxi(absi(int(a[0]) - int(b[0])), absi(int(a[1]) - int(b[1])))
+
+
+func adjacent(id_a: String, id_b: String) -> bool:
+	return distance(cell_of(id_a), cell_of(id_b)) <= 1
+
+
+## Hero speed in cells per round (heritage speed, 30 ft default).
+func pc_move_cells() -> int:
+	var race := str(GameState.sheet().get("race", ""))
+	var speed := int(Rules.tables.get("heritages", {}).get(race, {}).get("speed", 30))
+	return maxi(1, speed / FEET_PER_CELL)
+
+
+func move_budget(c: Dictionary) -> Dictionary:
+	if not (c.get("_move") is Dictionary) or int(c["_move"].get("round", -1)) != int(c["round"]):
+		c["_move"] = {"round": int(c["round"]), "left": pc_move_cells()}
+	return c["_move"]
+
+
+## Move the hero if the cell is free and within budget. → true on success.
+func move_pc(to: Array) -> bool:
+	var c := data()
+	var pos := positions()
+	if int(to[0]) < 0 or int(to[0]) >= MAP_COLS or int(to[1]) < 0 or int(to[1]) >= MAP_ROWS:
+		return false
+	for id in pos:
+		if int(pos[id][0]) == int(to[0]) and int(pos[id][1]) == int(to[1]):
+			return false
+	var budget := move_budget(c)
+	var cost := distance(cell_of("pc"), to)
+	if cost > int(budget["left"]):
+		return false
+	budget["left"] = int(budget["left"]) - cost
+	save(c)
+	pos["pc"] = [int(to[0]), int(to[1])]
+	save_positions(pos)
+	return true
+
+
+## An enemy closes toward the hero (up to its move). → cells actually moved.
+func enemy_approach(enemy_id: String, cells := 6) -> int:
+	var pos := positions()
+	if not pos.has(enemy_id) or not pos.has("pc"):
+		return 0
+	var e: Array = pos[enemy_id]
+	var p: Array = pos["pc"]
+	var moved := 0
+	while moved < cells and distance(e, p) > 1:
+		var step := [int(e[0]) + signi(int(p[0]) - int(e[0])), int(e[1]) + signi(int(p[1]) - int(e[1]))]
+		var blocked := false
+		for id in pos:
+			if str(id) != enemy_id and int(pos[id][0]) == step[0] and int(pos[id][1]) == step[1]:
+				blocked = true
+		if blocked:
+			break
+		e = step
+		moved += 1
+	pos[enemy_id] = e
+	save_positions(pos)
+	return moved
+
+
 func next_turn() -> void:
 	var c := data()
 	var n := order(c).size()
@@ -383,6 +497,7 @@ func finish() -> Dictionary:
 		s["companions"] = comps
 		GameState.set_sheet(s)
 	save({"active": false, "round": 1, "turn": 0, "combatants": []})
+	save_positions({})  # the board clears with the field
 	var note := ""
 	if xp > 0:
 		note = str(GameState.award_xp(xp, "%d foe%s defeated" % [slain.size(), "" if slain.size() == 1 else "s"])["note"])

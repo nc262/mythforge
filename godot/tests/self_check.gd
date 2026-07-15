@@ -136,9 +136,25 @@ func _ready() -> void:
 			Combat.next_turn()  # cycle the round so the action budget refreshes
 			Combat.next_turn()
 	assert(won, "fighter should eventually drop a goblin")
+	# Battle grid: seating, distance, movement budget, enemy approach
+	var pos := Combat.ensure_positions()
+	assert(pos.has("pc") and pos.has(gob_id), "everyone gets a seat")
+	assert(Combat.distance([0, 0], [3, 4]) == 4)  # Chebyshev
+	var start_cell: Array = Combat.cell_of("pc")
+	var budget0 := int(Combat.move_budget(Combat.data()).get("left", 0))
+	assert(budget0 >= 5, "hero has a real move budget")
+	assert(Combat.move_pc([start_cell[0] + 1, start_cell[1]]), "one step is legal")
+	assert(int(Combat.move_budget(Combat.data()).get("left", 0)) == budget0 - 1)
+	assert(not Combat.move_pc(Combat.cell_of(gob_id)), "occupied squares refuse")
+	var d0 := Combat.distance(Combat.cell_of(gob_id), Combat.cell_of("pc"))
+	if d0 > 1:
+		Combat.enemy_approach(gob_id, 3)
+		assert(Combat.distance(Combat.cell_of(gob_id), Combat.cell_of("pc")) < d0, "foes close in")
+
 	var fin := Combat.finish()
 	assert(int(fin["xp"]) >= 25)
 	assert(not Combat.active())
+	assert(Combat.positions().is_empty(), "the board clears with the field")
 	assert(int(GameState.sheet()["xp"]) > 300)  # victory XP landed
 
 	# FSM: transitions, action gating, busy blocking
