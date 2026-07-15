@@ -9,6 +9,7 @@ var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
 var _conjuring := false
 var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
+var _panel_mode := "sheet"  # what the right panel shows: sheet | codex
 
 @onready var _thread: VBoxContainer = $Margin/Split/ChatBox/Scroll/Thread
 @onready var _scroll: ScrollContainer = $Margin/Split/ChatBox/Scroll
@@ -29,7 +30,21 @@ func _ready() -> void:
 	Api.sse_done.connect(_on_done)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
-	$Margin/Split/ChatBox/Input/SheetBtn.toggled.connect(func(on): _sheet_panel.visible = on)
+	$Margin/Split/ChatBox/Input/SheetBtn.toggled.connect(func(on):
+		_panel_mode = "sheet"
+		$Margin/Split/ChatBox/Input/CodexBtn.set_pressed_no_signal(false)
+		_sheet_panel.visible = on
+		if on:
+			_render_sheet())
+	$Margin/Split/ChatBox/Input/CodexBtn.toggled.connect(func(on):
+		_panel_mode = "codex" if on else "sheet"
+		$Margin/Split/ChatBox/Input/SheetBtn.set_pressed_no_signal(false)
+		_sheet_panel.visible = on
+		if on:
+			_render_codex())
+	Chronicle.chronicle_updated.connect(func():
+		if _panel_mode == "codex" and _sheet_panel.visible:
+			_render_codex())
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
@@ -318,11 +333,13 @@ func _apply_world_tags(tags: Array) -> void:
 				var delta := int(str(a.get("delta", "0")).replace("+", ""))
 				if delta != 0:
 					var total := GameState.add_gold(delta)
+					Sfx.play("chime")
 					_say_system("%s gold %+d — purse now %d" % ["💰" if delta > 0 else "🪙", delta, total])
 			"loot":
 				var nm := str(a.get("name", "")).strip_edges()
 				if nm != "":
 					GameState.add_item(nm, str(a.get("rarity", "common")), maxi(1, int(a.get("qty", 1))))
+					Sfx.play("chime")
 					_say_system("🎒 %s added to your pack" % nm)
 			"spell-learned":
 				var sp := str(a.get("name", "")).strip_edges()
@@ -365,6 +382,7 @@ func _start_combat(foes: String) -> void:
 		for i in count:
 			var label := nm.capitalize() if count == 1 else "%s %d" % [nm.capitalize(), i + 1]
 			if first:
+				Sfx.play("sting")
 				var line := Combat.enter(label)
 				if line != "":
 					_say_system(line.replace("*", ""))
@@ -388,6 +406,7 @@ func _animate_die(sides: int, final_roll: int, caption: String) -> void:
 	var cap: Label = $DieLayer/DiePanel/Box/Caption
 	cap.text = caption
 	_die_layer.visible = true
+	Sfx.play("dice")
 	for i in 11:
 		num.text = str(randi_range(1, sides))
 		await get_tree().create_timer(0.05 + i * 0.012).timeout
@@ -521,6 +540,9 @@ func _on_sheet_action(meta) -> void:
 		"feat":
 			note = GameState.use_feature(parts[1].uri_decode())
 			tell_gm = note != ""
+		"portrait":
+			_conjure_portrait(parts[1].uri_decode())
+			return
 		"buy":
 			var bits := parts[1].split("|")
 			var price := int(bits[1]) if bits.size() > 1 else 0
@@ -558,6 +580,8 @@ func _on_combat_action(meta) -> void:
 		var cur: Dictionary = Combat.current(c)
 		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
 			var r: Dictionary = Combat.enemy_turn(cur)
+			if str(r["msg"]).contains("hits you"):
+				Sfx.play("hit")
 			_say_me(_md(str(r["msg"])))
 			_render_sheet()
 			_render_combat()
@@ -573,6 +597,8 @@ func _on_combat_action(meta) -> void:
 		return
 	if m.begins_with("atk:"):
 		var r2: Dictionary = Combat.player_attack(m.substr(4))
+		if str(r2.get("msg", "")).contains("damage"):
+			Sfx.play("hit")
 		if not bool(r2["spent"]):
 			_say_system(str(r2["msg"]).replace("*", ""))
 			return
@@ -710,6 +736,9 @@ func _conjure_scene() -> void:
 
 # ── Sheet panel ──────────────────────────────────────────────────────────────
 func _render_sheet() -> void:
+	if _panel_mode == "codex" and _sheet_panel.visible:
+		_render_codex()
+		return
 	var s := GameState.sheet()
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
@@ -807,6 +836,67 @@ func _open_shop() -> void:
 	var rt := _bubble("gm")
 	rt.append_text("\n".join(lines))
 	rt.meta_clicked.connect(_on_sheet_action)
+
+
+# ── The codex panel: the cast you've met and the threads you're pulling ─────
+func _render_codex() -> void:
+	var gold := Ui.c("gold_soft").to_html(false)
+	_sheet_panel.clear()
+	_sheet_panel.append_text("[color=%s][b]📜 The Cast[/b][/color]\n" % gold)
+	var codex = GameState.state.get("codex", [])
+	var any := false
+	if codex is Array:
+		for n in codex:
+			if not (n is Dictionary) or str(n.get("name", "")) == "":
+				continue
+			any = true
+			var tex := Art.texture_for("npc-" + str(n["name"]).to_lower().replace(" ", "-"))
+			if tex != null:
+				var img: Image = tex.get_image()
+				img.resize(48, 48 * img.get_height() / maxi(1, img.get_width()))
+				_sheet_panel.add_image(ImageTexture.create_from_image(img))
+				_sheet_panel.append_text("  ")
+			_sheet_panel.append_text("[b]%s[/b] — %s" % [_bb(str(n["name"])), _bb(str(n.get("role", "")))])
+			var disp := str(n.get("disposition", ""))
+			if disp != "":
+				var dcol := gold if disp in ["ally", "friendly", "warm"] else (Ui.c("danger").to_html(false) if disp in ["hostile", "enemy"] else Ui.c("ink_dim").to_html(false))
+				_sheet_panel.append_text("  [color=%s]● %s[/color]" % [dcol, disp])
+			if tex == null:
+				_sheet_panel.append_text("  [url=portrait:%s]🖼[/url]" % str(n["name"]).uri_encode())
+			var note := str(n.get("note", ""))
+			if note != "":
+				_sheet_panel.append_text("\n[color=%s]%s[/color]" % [Ui.c("ink_dim").to_html(false), _bb(note)])
+			_sheet_panel.append_text("\n\n")
+	if not any:
+		_sheet_panel.append_text("[color=%s]No one of note yet — the codex writes itself as you meet people.[/color]\n\n" % Ui.c("ink_dim").to_html(false))
+	_sheet_panel.append_text("[color=%s][b]Quests[/b][/color]\n" % gold)
+	var quests = GameState.state.get("quests", [])
+	var anyq := false
+	if quests is Array:
+		for q in quests:
+			if q is Dictionary and str(q.get("title", "")) != "":
+				anyq = true
+				var done: bool = str(q.get("status", "active")) == "done"
+				_sheet_panel.append_text("%s %s%s\n" % ["✓" if done else "◈", _bb(str(q["title"])),
+					(" — " + _bb(str(q.get("desc", "")))) if str(q.get("desc", "")) != "" else ""])
+	if not anyq:
+		_sheet_panel.append_text("[color=%s]No threads yet — make a promise, take a job, swear revenge.[/color]\n" % Ui.c("ink_dim").to_html(false))
+
+
+## Give a codex NPC a face: generate from their appearance anchor, cache, redraw.
+func _conjure_portrait(nm: String) -> void:
+	var entry := {}
+	for n in GameState.state.get("codex", []):
+		if n is Dictionary and str(n.get("name", "")).nocasecmp_to(nm) == 0:
+			entry = n
+			break
+	var look := str(entry.get("appearance", entry.get("note", "")))
+	_say_system("🖼 Painting %s…" % nm)
+	await Art.ensure("npc-" + nm.to_lower().replace(" ", "-"),
+		"portrait of %s, %s. %s character portrait, painterly, head and shoulders" % [nm, look,
+		{"neonspire": "cyberpunk", "everyday": "contemporary"}.get(GameState.world_id(), "fantasy")])
+	if _panel_mode == "codex":
+		_render_codex()
 
 
 # ── Text helpers ─────────────────────────────────────────────────────────────

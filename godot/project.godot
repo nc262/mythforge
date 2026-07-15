@@ -18,6 +18,7 @@ Composer="*res://autoload/prompt_composer.gd"
 Combat="*res://autoload/combat.gd"
 Chronicle="*res://autoload/chronicle.gd"
 Art="*res://autoload/art_cache.gd"
+Sfx="*res://autoload/sfx.gd"
 
 [display]
 

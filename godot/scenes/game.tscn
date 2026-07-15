@@ -101,6 +101,12 @@ layout_mode = 2
 toggle_mode = true
 text = "Sheet"
 
+[node name="CodexBtn" type="Button" parent="Margin/Split/ChatBox/Input"]
+layout_mode = 2
+toggle_mode = true
+tooltip_text = "The cast and your quests"
+text = "📜"
+
 [node name="Dice" type="MenuButton" parent="Margin/Split/ChatBox/Input"]
 layout_mode = 2
 tooltip_text = "Roll any check — the total goes to the GM"
