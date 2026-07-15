@@ -63,6 +63,7 @@ func _ready() -> void:
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
 		("  ·  " + world) if world != "" else ""]
+	Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
 	# The world's key art is the room you sit in from the first breath.
 	var world_tex := Art.texture_for(world)
 	if world_tex != null:
@@ -1051,6 +1052,10 @@ func _render_combat() -> void:
 	# The room darkens toward ember-red while steel is out.
 	var tween := create_tween()
 	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
+	if fighting:
+		Sfx.music("combat")
+	else:
+		Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
 	if not fighting:
 		return
 	if Mode.state in ["Exploration", "Victory", "Loading"]:
@@ -1167,6 +1172,7 @@ func _conjure_scene() -> void:
 
 # ── Sheet panel ──────────────────────────────────────────────────────────────
 func _render_sheet() -> void:
+	_render_chips()
 	if _panel_mode == "codex" and _sheet_panel.visible:
 		_render_codex()
 		return
@@ -1469,6 +1475,48 @@ func _travel_to(place: String) -> void:
 		_stream(Composer.envelope("[I travel to %s — but something finds me on the road. Run a brief encounter (a threat, a stranger, or a wonder), then let me arrive.]" % place))
 	else:
 		_stream(Composer.envelope("[I travel to %s. Describe the journey briefly and my arrival — who is about, what I notice first.]" % place))
+
+
+## The banner chips: time · weather · place · quest · party wounds.
+func _render_chips() -> void:
+	var c: Dictionary = GameState.clock()
+	var bits: Array[String] = []
+	var wx := str(c.get("wx", {}).get("ico", "")) if c.get("wx") is Dictionary else ""
+	bits.append("🕰 %s · Day %d %s" % [GameState.TIMES[clampi(int(c.get("ti", 0)), 0, GameState.TIMES.size() - 1)], int(c.get("day", 1)), wx])
+	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+	if here != "":
+		bits.append("🧭 " + here)
+	var quests = GameState.state.get("quests", [])
+	if quests is Array:
+		for q in quests:
+			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+				bits.append("◈ " + str(q["title"]).left(36))
+				break
+	for cmp in GameState.sheet().get("companions", []):
+		if cmp is Dictionary:
+			var chp := int(cmp.get("hp", 0))
+			var cmax := maxi(1, int(cmp.get("hpMax", 1)))
+			bits.append("%s⚔ %s %d/%d" % ["🩸 " if chp * 3 < cmax else "", str(cmp.get("name", "")), chp, cmax])
+	$Margin/Split/ChatBox/Chips.text = "    ".join(bits)
+
+
+## Keyboard: Ctrl+S sheet · Ctrl+L codex · Ctrl+R retell · Space next turn
+## (combat, when not typing) · Esc back to the message box.
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not (event is InputEventKey) or not event.pressed or event.echo:
+		return
+	if event.ctrl_pressed and event.keycode == KEY_S:
+		var btn: Button = $Margin/Split/ChatBox/Input/SheetBtn
+		btn.button_pressed = not btn.button_pressed
+	elif event.ctrl_pressed and event.keycode == KEY_L:
+		var btn2: Button = $Margin/Split/ChatBox/Input/CodexBtn
+		btn2.button_pressed = not btn2.button_pressed
+	elif event.ctrl_pressed and event.keycode == KEY_R:
+		_regen()
+	elif event.keycode == KEY_SPACE and Mode.is_state("Combat") and not _msg.has_focus():
+		_on_combat_action("cnext")
+	elif event.keycode == KEY_ESCAPE:
+		_msg.grab_focus()
 
 
 # ── Text helpers ─────────────────────────────────────────────────────────────

@@ -72,7 +72,32 @@ def chime():
     return out
 
 
+def pad(freqs, n_sec, wobble=0.15, noise=0.0, lp=None):
+    """A looping ambient pad: detuned sines + slow amplitude LFO (+ optional
+    filtered noise for rain/wind). Start/end at zero-crossings for looping."""
+    n = int(SR * n_sec)
+    out = []
+    lp_state = 0.0
+    for i in range(n):
+        t = i / SR
+        lfo = 1.0 + wobble * math.sin(2 * math.pi * t / n_sec)  # whole-loop LFO
+        s = sum(0.16 * math.sin(2 * math.pi * f * t) + 0.06 * math.sin(2 * math.pi * (f * 1.005) * t) for f in freqs)
+        if noise > 0:
+            lp_state += 0.04 * (random.uniform(-1, 1) - lp_state)  # cheap low-pass
+            s += noise * lp_state
+        # gentle fade at the very ends so the loop seam is silent
+        env = min(1.0, i / (SR * 0.05), (n - i) / (SR * 0.05))
+        out.append(s * lfo * 0.7 * env)
+    return out
+
+
 write("dice", dice())
 write("hit", hit())
 write("sting", sting())
 write("chime", chime())
+# Ambient loops — one mood per world, one for battle.
+write("amb_embervale", pad([110.0, 164.81, 220.0], 8.0, 0.18))            # warm hearth drone
+write("amb_neonspire", pad([98.0, 146.83], 8.0, 0.10, noise=0.35))         # dark fifth + rain
+write("amb_everyday", pad([130.81, 196.0, 261.63], 8.0, 0.12))             # soft daylight pad
+write("amb_arcane", pad([103.83, 155.56, 207.65], 8.0, 0.2))               # violet mystery
+write("amb_combat", pad([73.42, 110.0], 6.0, 0.45, noise=0.12))            # war drums breathing

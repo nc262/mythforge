@@ -62,6 +62,11 @@ layout_mode = 2
 theme_type_variation = &"TitleLabel"
 text = "✦"
 
+[node name="Chips" type="Label" parent="Margin/Split/ChatBox"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+text = ""
+
 [node name="Scroll" type="ScrollContainer" parent="Margin/Split/ChatBox"]
 layout_mode = 2
 size_flags_vertical = 3

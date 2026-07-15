@@ -318,6 +318,19 @@ func _show_settings() -> void:
 	sfx.button_pressed = bool(cfg.get_value("settings", "sfx", true))
 	sfx.toggled.connect(func(on): _set_setting("sfx", on); Sfx.enabled = on)
 	_content.add_child(sfx)
+	var amb := CheckButton.new()
+	amb.text = "Ambient score — hearth drones, neon rain, war drums"
+	amb.button_pressed = bool(cfg.get_value("settings", "ambient", true))
+	var vol := HSlider.new()
+	vol.min_value = 0.05
+	vol.max_value = 1.0
+	vol.step = 0.05
+	vol.value = float(cfg.get_value("settings", "ambient_vol", 0.6))
+	vol.custom_minimum_size = Vector2(320, 0)
+	amb.toggled.connect(func(on): _set_setting("ambient", on); Sfx.set_ambient(on, vol.value))
+	vol.value_changed.connect(func(v): _set_setting("ambient_vol", v); Sfx.set_ambient(amb.button_pressed, v))
+	_content.add_child(amb)
+	_content.add_child(vol)
 	var motion := CheckButton.new()
 	motion.text = "Reduce motion — calmer, fewer animations"
 	motion.button_pressed = bool(cfg.get_value("settings", "reduce_motion", false))
@@ -348,6 +361,8 @@ func _load_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
 	Sfx.enabled = bool(cfg.get_value("settings", "sfx", true))
+	Sfx.ambient_enabled = bool(cfg.get_value("settings", "ambient", true))
+	Sfx.ambient_volume = float(cfg.get_value("settings", "ambient_vol", 0.6))
 	Ui.reduce_motion = bool(cfg.get_value("settings", "reduce_motion", false))
 
 
