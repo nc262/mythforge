@@ -41,11 +41,134 @@ func _ready() -> void:
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
 		("  ·  " + world) if world != "" else ""]
+	# The world's key art is the room you sit in from the first breath.
+	var world_tex := Art.texture_for(world)
+	if world_tex != null:
+		_scene_art.texture = world_tex
+		_scene_art.modulate.a = 0.35
 	await GameState.hydrate()
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
-	_say_system("The tale of %s begins…" % str(GameState.character.get("name", "?")))
+	if str(GameState.sheet().get("name", "")) == "":
+		_hero_forge()  # a fresh adventure begins with a hero, not a nobody
+	else:
+		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
+		_recap()
+
+
+## "Previously, in <adventure>…" — the campaign memory recalls the thread.
+func _recap() -> void:
+	var beats: Array = await Chronicle.recall("the most important recent events of our story")
+	if beats.is_empty():
+		return
+	var lines: Array[String] = []
+	for b in beats.slice(0, 3):
+		var t := str(b.get("text", "")).replace("\n", " · ").left(160)
+		if t != "":
+			lines.append("• " + t)
+	if not lines.is_empty():
+		var rt := _bubble("gm")
+		rt.append_text("[color=%s][b]Previously…[/b][/color]\n%s" % [Ui.c("gold_soft").to_html(false), _bb("\n".join(lines))])
+
+
+# ── Hero forge: character creation is the door into a new adventure ─────────
+func _hero_forge() -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "⚒ Forge your hero"
+	dlg.ok_button_text = "Begin the tale"
+	dlg.get_cancel_button().visible = false
+	dlg.min_size = Vector2i(480, 320)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 10)
+	var name_in := LineEdit.new()
+	name_in.placeholder_text = "Your hero's name"
+	var race_in := OptionButton.new()
+	var races: Array = Rules.tables.get("heritages", {}).keys()
+	races.sort()
+	for r in races:
+		race_in.add_item(str(r))
+	var cls_in := OptionButton.new()
+	var classes: Array = Rules.tables.get("class_presets", {}).keys()
+	classes.sort()
+	for c in classes:
+		cls_in.add_item(str(c))
+	var stats_l := Label.new()
+	stats_l.theme_type_variation = "HintLabel"
+	var rolled: Array[int] = []
+	var reroll := func():
+		rolled.clear()
+		for i in 6:
+			var d := [randi_range(1, 6), randi_range(1, 6), randi_range(1, 6), randi_range(1, 6)]
+			d.sort()
+			rolled.append(d[1] + d[2] + d[3])
+		rolled.sort()
+		rolled.reverse()
+		stats_l.text = "Destiny rolled (4d6, best assigned to your class): %s" % ", ".join(rolled.map(func(x): return str(x)))
+	reroll.call()
+	var roll_btn := Button.new()
+	roll_btn.text = "🎲 Reroll destiny"
+	roll_btn.pressed.connect(reroll)
+	for n in [name_in, race_in, cls_in, roll_btn, stats_l]:
+		box.add_child(n)
+	dlg.add_child(box)
+	add_child(dlg)
+	dlg.popup_centered()
+	name_in.grab_focus()
+	dlg.confirmed.connect(func():
+		var nm := name_in.text.strip_edges()
+		_create_hero(nm if nm != "" else "The Nameless",
+			race_in.get_item_text(race_in.selected), cls_in.get_item_text(cls_in.selected), rolled)
+		dlg.queue_free())
+
+
+func _create_hero(nm: String, race: String, cls: String, rolled: Array[int]) -> void:
+	var preset: Dictionary = Rules.tables.get("class_presets", {}).get(cls, {"hitDie": 8})
+	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(race, {})
+	# Best scores where the class wants them: cast ability or STR/DEX first, CON second.
+	var prio: Array[String] = []
+	var cast_ab: String = Rules.CAST_ABIL.get(cls, "")
+	if cast_ab != "":
+		prio.append(cast_ab)
+	for a in (["DEX", "STR"] if cls in ["Rogue", "Ranger", "Monk"] else ["STR", "DEX"]):
+		if not a in prio:
+			prio.append(a)
+	if not "CON" in prio:
+		prio.insert(1, "CON")
+	for a in Rules.ABILITIES:
+		if not a in prio:
+			prio.append(a)
+	var abilities := {}
+	for i in 6:
+		abilities[prio[i]] = rolled[i] if i < rolled.size() else 10
+	for a in heritage.get("abil", {}):
+		abilities[a] = int(abilities.get(a, 10)) + int(heritage["abil"][a])
+	var s: Dictionary = GameState.DEFAULT_SHEET.duplicate(true)
+	s["name"] = nm
+	s["race"] = race
+	s["cls"] = cls
+	s["abilities"] = abilities
+	s["hitDie"] = int(preset.get("hitDie", 8))
+	s["hpMax"] = int(preset.get("hitDie", 8)) + Rules.ability_mod(int(abilities.get("CON", 10)))
+	s["hp"] = s["hpMax"]
+	s["gold"] = 10 + randi_range(1, 20)
+	s["profSaves"] = preset.get("saves", [])
+	s["profSkills"] = preset.get("skills", []) + heritage.get("skills", [])
+	var traits: Array = heritage.get("traits", [])
+	s["features"] = traits.duplicate()
+	if bool(preset.get("caster", false)):
+		s["slots"] = Rules.full_caster_slots(1)
+		var seed: Array = Rules.tables.get("class_spells", {}).get(cls, [])
+		s["spells"] = []
+		for sp in seed:
+			if sp is Array and sp.size() >= 2 and int(sp[1]) <= 1:
+				s["spells"].append({"name": str(sp[0]), "level": int(sp[1])})
+	GameState.set_sheet(s)
+	_build_dice_menu()
+	_render_sheet()
+	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])
+	_last_player_msg = "I arrive."
+	_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls]))
 
 
 # ── Bubbles ──────────────────────────────────────────────────────────────────
@@ -75,7 +198,9 @@ func _bubble(kind: String) -> RichTextLabel:
 		spacer.size_flags_stretch_ratio = 1.0
 		row.add_child(panel)
 		row.add_child(spacer)
+	row.modulate.a = 0.0
 	_thread.add_child(row)
+	create_tween().tween_property(row, "modulate:a", 1.0, 0.35)
 	_scroll_bottom()
 	return rt
 
@@ -214,6 +339,10 @@ func _apply_world_tags(tags: Array) -> void:
 				_start_combat(str(a.get("foes", a.get("foe", "Enemy"))))
 			"combat-end":
 				_end_combat()
+			"scene":
+				var place := str(a.get("place", "")).strip_edges()
+				if place != "" and not _conjuring:
+					_repaint_scene(place)
 	if not Combat.active():
 		var foe := Tags.detect_combat_start(Tags.parse(_acc)["clean"])
 		if foe != "":
@@ -510,6 +639,28 @@ func _show_image(url: String) -> void:
 	var rt := _bubble("gm")
 	rt.add_image(ImageTexture.create_from_image(inline))
 	_scroll_bottom()
+
+
+## The GM moved us somewhere new — quietly repaint the backdrop (no inline).
+func _repaint_scene(place: String) -> void:
+	_conjuring = true
+	var prompt := "%s, in the world of %s. Atmospheric %s establishing scene, cinematic lighting, no people, no text." % [
+		place, str(GameState.character.get("name", "")).split(":")[0],
+		{"neonspire": "cyberpunk sci-fi", "everyday": "slice-of-life"}.get(GameState.world_id(), "high fantasy")]
+	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
+	_conjuring = false
+	if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":
+		return
+	var bytes := await Api.fetch_bytes(str(r["image_url"]).trim_prefix(Api.BASE))
+	if bytes.is_empty():
+		return
+	var img := Image.new()
+	if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
+		return
+	_scene_art.texture = ImageTexture.create_from_image(img)
+	var tw := create_tween()
+	_scene_art.modulate.a = 0.0
+	tw.tween_property(_scene_art, "modulate:a", 0.45, 1.8)
 
 
 func _conjure_scene() -> void:

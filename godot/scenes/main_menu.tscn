@@ -45,6 +45,10 @@ layout_mode = 2
 theme_type_variation = &"AccentButton"
 text = "▶ Continue"
 
+[node name="Forge" type="Button" parent="Center/Box"]
+layout_mode = 2
+text = "⚒ Forge a world"
+
 [node name="Gap2" type="Control" parent="Center/Box"]
 custom_minimum_size = Vector2(0, 10)
 layout_mode = 2

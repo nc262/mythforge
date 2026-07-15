@@ -17,6 +17,7 @@ Tags="*res://autoload/tag_parser.gd"
 Composer="*res://autoload/prompt_composer.gd"
 Combat="*res://autoload/combat.gd"
 Chronicle="*res://autoload/chronicle.gd"
+Art="*res://autoload/art_cache.gd"
 
 [display]
 
