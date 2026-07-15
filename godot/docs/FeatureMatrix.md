@@ -17,7 +17,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Campaign smith (mode=story) | openCampaignsmith :651 | ✅ | P2 | — | M | preview shows hook ✅; cstories registry simplified to world graft |
 | Companion 1-to-1 chat (no HUD) | openChat non-DM | ✅ | P2 | — | M | seed-photos 📷 ask-pic buttons 🔲; clear-chat 🔲 |
 | Settings (native panel) | openSettings :8321 | 🟡 | P2 | — | M | done: sfx/motion/signout/version; missing: GM model picker, ambient+TTS toggles/volume, shutdown button |
-| Session Zero tone knobs | _sessionZero :3680 | ✅ | P1 | — | S | re-tune mid-game (GM panel) 🔲 |
+| Session Zero tone knobs | _sessionZero :3680 | ✅ + 🎛 mid-game retune | P1 | — | S | |
 | GM forge (dm-custom-* personas) | renderForge gm | 🔲 | P3 | — | M | custom GM personalities |
 | Character/persona forge (portrait+suggest+describe) | renderForge :1216 | 🔲 | P3 | /generate /describe /suggest | L | create-your-own companions |
 | World import/export (.world.json) | :278/:396 | 🔲 | P3 | FileDialog | S | |
@@ -59,7 +59,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Clock/weather/waning conditions | :8017 | ✅ | P1 | — | M | auto-advance every 3 turns 🔲; clock chip UI 🔲; time-of-day tint 🔲 |
 | Rests (hit dice, ambush, slots) | :6747/:7488 | ✅ | P1 | — | M | rest FX 🔲 |
 | Vendors: stock + buy/sell + haggle | openVendor :6447 | ✅ | P2 | — | M | location-aware vendors 🔲; currency naming 🔲 |
-| Travel/atlas ("you are here", encounters) | _travelTo :6380 | 🔲 | **P2** | locations data ✅ | L | |
+| Travel/atlas ("you are here", encounters) | _travelTo :6380 | ✅ v1 (list, travel, 1-in-5 road encounters, here-marker, scene repaint) | P2 | — | L | x/y world map render 🔲; auto here-tracking from prose 🔲 |
 | Worldtick ("Meanwhile…" between days) | :8060 | 🔲 | P3 | endpoint live | S | |
 | Finale / THE END | _checkFinale :6105 | ✅ detection+card | P2 | — | S | complete badge on saves 🔲; auto-snapshot 🔲 |
 | Loot prompt (Add to pack / Ignore) | :7935 | 🟡 auto-add via tag | P3 | — | S | opt-in prompt variant |
@@ -71,12 +71,12 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Campaign memory beats+recall | §4.C | ✅ | P1 | embeddings | M | — |
 | Codex / quests extractors + panels | :848/:929 | ✅ | P1 | — | M | — |
 | Recap card (+art) | _showRecap :5260 | ✅ text | P2 | — | S | recap art 🔲 |
-| Snapshots/Chronicle UI | :2671 | 🔲 | **P2** | endpoints live | M | |
+| Snapshots/Chronicle UI | :2671 | ✅ save/list/resume-from-chapter | P2 | — | M | campaign export/import 🔲 |
 | NPC portraits in codex | (portraits) | ✅ on-demand | P2 | — | M | auto-conjure on meet 🔲 |
 | Scene backdrops ([[scene]] + 🖼) | _combatBackdrop etc | ✅ | P2 | — | M | Ken Burns anim 🔲 |
 | Ask-GM: learn spell / recruit | :8002/:8010 | ✅ | P2 | — | S | — |
 | Edit / regenerate messages | :1958 | 🟡 ↻ retell button live | P2 | edit-message API | M | inline edit 🔲 |
-| GM model picker | settings | 🔲 | P2 | /models | S | |
+| GM model picker | settings | ✅ (applies to new sessions) | P2 | — | S | |
 | TTS narration (server) | :6114 (browser) | 🔲 | P3 | /api/tts | M | |
 | STT input | voiceRecorder.js | 🔲 | P4 | /api/stt | M | |
 

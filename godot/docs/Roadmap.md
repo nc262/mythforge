@@ -14,17 +14,16 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
 - ✅ Reactions overlay (Shield / Uncanny Dodge / Parry / take the hit)
 - Docs system (this set) + FeatureMatrix as living truth ✅
 
-## M2 — Combat & progression complete (current)
+## M2 — Combat & progression complete ✅ COMPLETE
 - ✅ **Tactical battle grid**: 16×10 board, tokens, movement budgets,
   melee adjacency/ranged rules, enemy approach, `bmap` persistence (terrain → M3)
 - ✅ **Level-up ceremony**: HP roll-vs-average, feats/ASI at milestones,
   subclass at 3 with grants, spell picks by circle
-- Chronicle/snapshots UI (save slots: list, continue-from-here)
-- Travel atlas v1: places list, travel action, road encounters, "you are
-  here", location-aware vendors
-- GM panel: re-tune tone knobs mid-campaign; GM model picker in Settings
+- ✅ Chronicle/snapshots UI (save chapter, list, resume-from-chapter)
+- ✅ Travel atlas v1: places list, travel action, road encounters, here-marker
+- ✅ GM panel: 🎛 mid-campaign retune; GM model picker in Settings
 
-## M3 — The AAA presentation pass
+## M3 — The AAA presentation pass (current)
 - Controller navigation + keyboard shortcut map (rides the FSM)
 - Drag-and-drop inventory grid + equipment paper doll; merchant window
 - Quest journal window with search; world map + minimap (atlas v2)

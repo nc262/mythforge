@@ -842,6 +842,24 @@ func _on_sheet_action(meta) -> void:
 		"portrait":
 			_conjure_portrait(parts[1].uri_decode())
 			return
+		"tune":
+			_session_zero_retune()
+			return
+		"snap":
+			_save_snapshot()
+			return
+		"chron":
+			_open_chronicle()
+			return
+		"atlas":
+			_open_atlas()
+			return
+		"travel":
+			_travel_to(parts[1].uri_decode())
+			return
+		"snaprecall":
+			_recall_snapshot(parts[1].uri_decode())
+			return
 		"haggle":
 			var hres: Dictionary = Rules.resolve_check({"ability": "CHA", "skill": "Persuasion", "dc": 12}, GameState.sheet(), GameState.inv())
 			await _animate_die(20, int(hres.get("roll", 10)), "Persuasion")
@@ -1155,6 +1173,8 @@ func _render_sheet() -> void:
 	var s := GameState.sheet()
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
+	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]")
+	lines.append("")
 	lines.append("[color=%s][b]%s[/b][/color]" % [gold, _bb(str(s.get("name", "?")))])
 	lines.append("%s %s, level %d" % [_bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))), int(s.get("level", 1))])
 	lines.append("")
@@ -1320,6 +1340,135 @@ func _conjure_portrait(nm: String) -> void:
 		{"neonspire": "cyberpunk", "everyday": "contemporary"}.get(GameState.world_id(), "fantasy")])
 	if _panel_mode == "codex":
 		_render_codex()
+
+
+# ── M2: tune / snapshots / atlas ─────────────────────────────────────────────
+## Re-open the Session Zero knobs mid-campaign; saved live to the gm kind.
+func _session_zero_retune() -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "🎛 Tune the GM"
+	dlg.ok_button_text = "So be it"
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	var knobs: Dictionary = GameState.state.get("gm", {}) if GameState.state.get("gm") is Dictionary else {}
+	var sliders := {}
+	for k in GM_KNOBS:
+		var row := Label.new()
+		row.theme_type_variation = "HintLabel"
+		row.text = "%s   %s ↔ %s" % [k[1], k[2], k[3]]
+		box.add_child(row)
+		var sl := HSlider.new()
+		sl.min_value = 0
+		sl.max_value = 100
+		sl.step = 5
+		sl.value = int(knobs.get(k[0], k[4]))
+		sl.custom_minimum_size = Vector2(400, 0)
+		box.add_child(sl)
+		sliders[k[0]] = sl
+	dlg.add_child(box)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(func():
+		var out := {}
+		for key in sliders:
+			out[key] = int(sliders[key].value)
+		GameState.save_kind("gm", out)
+		dlg.queue_free()
+		_say_system("🎛 The table's tone shifts."))
+
+
+## 💾 A chapter marker: the backend distills the recent tale into a snapshot.
+func _save_snapshot() -> void:
+	if Chronicle.transcript.is_empty():
+		_say_system("Nothing to chronicle yet — play a little first.")
+		return
+	_say_system("💾 The chronicler sets down this chapter…")
+	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/snapshot", {
+		"character_id": GameState.cid(), "character_name": str(GameState.character.get("name", "")),
+		"world_id": GameState.world_id(), "transcript": Chronicle.transcript})
+	if r.get("_status", 0) == 200:
+		var snap: Dictionary = r.get("snapshot", r)
+		_say_system("💾 Chapter saved: %s" % str(snap.get("title", "untitled")))
+	else:
+		_say_system("The chronicler's ink ran dry (%s)." % str(r.get("_status", 0)))
+
+
+## 📜 Chronicle: every saved chapter of this adventure.
+func _open_chronicle() -> void:
+	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
+	var snaps: Array = r.get("snapshots", r.get("data", [])) if r.get("_status", 0) == 200 else []
+	var rt := _bubble("gm")
+	if snaps.is_empty():
+		rt.append_text("[i]The chronicle is blank — 💾 save a chapter when a moment deserves remembering.[/i]")
+		return
+	var gold := Ui.c("gold_soft").to_html(false)
+	rt.append_text("[color=%s][b]📜 The Chronicle[/b][/color]\n" % gold)
+	for sn in snaps:
+		if not (sn is Dictionary):
+			continue
+		rt.append_text("\n[b]%s[/b]\n%s\n" % [_bb(str(sn.get("title", "untitled"))), _bb(str(sn.get("story_so_far", "")))])
+		var wc := str(sn.get("world_changes", ""))
+		if wc != "":
+			rt.append_text("[color=%s]%s[/color]\n" % [Ui.c("ink_dim").to_html(false), _bb(wc.left(220))])
+		rt.append_text("[url=snaprecall:%s]▶ resume from this chapter[/url]\n" % str(sn.get("id", "")).uri_encode())
+	rt.meta_clicked.connect(_on_sheet_action)
+
+
+## Resume from a chapter: its summary re-anchors the GM's context.
+func _recall_snapshot(id: String) -> void:
+	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
+	for sn in r.get("snapshots", r.get("data", [])):
+		if sn is Dictionary and str(sn.get("id", "")) == id:
+			_say_me(_bb("We pick the tale back up at: %s" % str(sn.get("title", ""))))
+			_last_player_msg = "We resume from a saved chapter."
+			_stream(Composer.envelope("[We resume from this saved chapter — treat it as where the story stands: %s. Re-set the scene and continue.]" % str(sn.get("story_so_far", ""))))
+			return
+
+
+const KIND_ICO := {"tavern": "🍺", "shop": "🛒", "landmark": "🏛", "wilds": "🌲", "home": "🏠"}
+
+
+## 🧭 The atlas: the world's places; travel repaints the world (and risks it).
+func _open_atlas() -> void:
+	var locs: Array = Rules.world_locations(GameState.world_id())
+	if locs.is_empty():
+		var g2 := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+		for w in g2.get("state", {}).get("cworlds", []):
+			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
+				locs = w.get("locations") if w.get("locations") is Array else []
+	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+	var rt := _bubble("gm")
+	var gold := Ui.c("gold_soft").to_html(false)
+	rt.append_text("[color=%s][b]🧭 The Atlas[/b][/color]\n" % gold)
+	if locs.is_empty():
+		rt.append_text("[i]No charted places — the GM's narration is your map for now.[/i]")
+		return
+	for l in locs:
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		rt.append_text("\n%s [b]%s[/b]%s — %s\n" % [KIND_ICO.get(str(l.get("kind", "")), "📍"), _bb(nm),
+			"  [color=%s]● you are here[/color]" % gold if nm == here else "", _bb(str(l.get("lore", "")).left(90))])
+		if nm != here:
+			rt.append_text("[url=travel:%s]set off →[/url]\n" % nm.uri_encode())
+	rt.meta_clicked.connect(_on_sheet_action)
+
+
+func _travel_to(place: String) -> void:
+	if not Mode.can("send_message"):
+		return
+	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	world["here"] = place
+	GameState.save_kind("world", world)
+	GameState.advance_time(1)
+	_say_system("🧭 You set off for %s." % place)
+	_repaint_scene(place)
+	_last_player_msg = "I travel to %s." % place
+	# The road is never guaranteed: 1-in-5 journeys meet something.
+	if randf() < 0.2:
+		_stream(Composer.envelope("[I travel to %s — but something finds me on the road. Run a brief encounter (a threat, a stranger, or a wonder), then let me arrive.]" % place))
+	else:
+		_stream(Composer.envelope("[I travel to %s. Describe the journey briefly and my arrival — who is about, what I notice first.]" % place))
 
 
 # ── Text helpers ─────────────────────────────────────────────────────────────

@@ -290,6 +290,28 @@ func _show_settings() -> void:
 	_show_sub("⚙ Settings", "")
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
+	_content.add_child(_section("GAME MASTER"))
+	var model_in := OptionButton.new()
+	model_in.custom_minimum_size = Vector2(420, 0)
+	model_in.add_item("✨ Auto — the account default")
+	var picks: Array = []
+	var mods := await Api.call_json(HTTPClient.METHOD_GET, "/api/models")
+	for host in mods.get("items", []):
+		for mn in host.get("models", []):
+			picks.append({"url": str(host.get("url", "")), "model": str(mn)})
+			model_in.add_item(str(mn))
+	var saved_pick = JSON.parse_string(str(cfg.get_value("settings", "gm_model", "")))
+	if saved_pick is Dictionary:
+		for i in picks.size():
+			if picks[i]["model"] == str(saved_pick.get("model", "")):
+				model_in.selected = i + 1
+	model_in.item_selected.connect(func(idx):
+		_set_setting("gm_model", "" if idx == 0 else JSON.stringify(picks[idx - 1])))
+	var model_hint := Label.new()
+	model_hint.theme_type_variation = "HintLabel"
+	model_hint.text = "The narrator's mind — applies to newly opened adventures."
+	_content.add_child(model_in)
+	_content.add_child(model_hint)
 	_content.add_child(_section("SOUND & MOTION"))
 	var sfx := CheckButton.new()
 	sfx.text = "Sound effects — dice, blows, stings, chimes"

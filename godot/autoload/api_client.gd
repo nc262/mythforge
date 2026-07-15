@@ -130,9 +130,17 @@ func ensure_session(char_id: String, char_name: String) -> String:
 		var r := await call_json(HTTPClient.METHOD_GET, "/api/history/" + sid)
 		if r.get("_status", 0) == 200:
 			return sid
+	# The chosen GM model (Settings) beats the account default.
+	var cfg2 := ConfigFile.new()
+	cfg2.load(COOKIE_FILE)
+	var pick = JSON.parse_string(str(cfg2.get_value("settings", "gm_model", "")))
 	var ep := await call_json(HTTPClient.METHOD_GET, "/api/default-chat")
 	var fields := {"name": char_name}
-	if str(ep.get("endpoint_url", "")) != "":
+	if pick is Dictionary and str(pick.get("url", "")) != "":
+		fields["endpoint_url"] = pick["url"]
+		fields["model"] = pick.get("model", "")
+		fields["skip_validation"] = "true"
+	elif str(ep.get("endpoint_url", "")) != "":
 		fields["endpoint_url"] = ep["endpoint_url"]
 		fields["model"] = ep.get("model", "")
 		fields["endpoint_id"] = ep.get("endpoint_id", "")
