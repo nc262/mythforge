@@ -3,18 +3,18 @@
 Milestones are shippable; each ends with the harnesses green, FeatureMatrix
 updated, and a playable build. Order chosen by play-impact per the matrix.
 
-## M1 — Foundations for scale (current)
+## M1 — Foundations for scale ✅ COMPLETE
 - ✅ **Finite state machine** (`Mode` autoload): MainMenu, CharacterCreation,
   Exploration, Conversation, Combat, Inventory, Merchant, Crafting, Camp,
   Travel, Cutscene, GameOver. Each mode declares allowed actions, blocked
   input, visible UI. All existing booleans (`_streaming`, `Combat.active`)
   fold into it. *Prerequisite for controller support and every new mode.*
-- ↻ retell button surfaced in the input row (func exists)
-- Prebuilt heroes + backgrounds in the hero forge (data present)
-- Reactions overlay (Shield / Uncanny Dodge / Parry / take the hit)
+- ✅ ↻ retell button surfaced in the input row
+- ✅ Prebuilt heroes + backgrounds in the hero forge
+- ✅ Reactions overlay (Shield / Uncanny Dodge / Parry / take the hit)
 - Docs system (this set) + FeatureMatrix as living truth ✅
 
-## M2 — Combat & progression complete
+## M2 — Combat & progression complete (current)
 - **Tactical battle grid** (the XL item): 16×10 board, tokens, movement
   budgets by speed, melee adjacency/ranged rules, terrain, `bmap` persistence
 - **Level-up ceremony**: HP roll-vs-average, feats/ASI at milestones,

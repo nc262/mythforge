@@ -28,8 +28,8 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
 | Hero forge (name/heritage/class/4d6) | openPlayerEditor gate | ✅ | P1 | tables.json | M | — |
-| Prebuilt heroes (4 one-click) | :3826 | 🔲 | P2 | — | S | Brakka/Elara/Finch/Maren |
-| Backgrounds (8, +2 skills + hook) | :3796 | 🔲 | P2 | data present | S | |
+| Prebuilt heroes (4 one-click) | :3826 | ✅ | P2 | — | S | — |
+| Backgrounds (8, +2 skills + hook) | :3796 | ✅ picker + hook into session zero | P2 | — | S | |
 | Portrait in hero forge | :3826 | 🔲 | P3 | /generate | M | |
 | Standard array + editable grid | :3807 | 🔲 | P3 | — | S | |
 | Level-up ceremony (roll HP, feats/ASI, subclass, spells) | renderLevelUp :5825 | 🔲 | **P1** | tables present | L | auto-level works; choices absent |
@@ -45,7 +45,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Player attack math (full port) | _playerAttack :4911 | ✅ | P1 | — | L | small-race heavy disadvantage 🔲 |
 | Two-weapon / off-hand bonus strike | _offhandAttack :4870 | 🔲 | P2 | offhand slot | M | |
 | Enemy AI turns → real sheet | _enemyTurn :5051 | ✅ | P1 | — | M | — |
-| Reactions overlay (Shield/Uncanny Dodge/Parry) | :5128 | 🔲 | **P1** | features+slots | M | designed; next combat item |
+| Reactions overlay (Shield/Uncanny Dodge/Parry) | :5128 | ✅ pend→choose→resolve | P1 | — | M | escape/OK = take the hit, never voids |
 | Companions fight + persist wounds | _companionTurn | ✅ | P1 | — | M | — |
 | Death saves + epitaph | _rollDeathSave :5178 | ✅ | P1 | — | M | game-over overlay w/ load-save & cling-to-life buttons 🟡 (revive path = long rest) |
 | Victory: auto-finish, XP, killing-blow cinema | _finishCombat | ✅ | P1 | — | M | HDYWTDT player flourish input 🔲; victory frame FX 🔲 |
@@ -75,7 +75,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | NPC portraits in codex | (portraits) | ✅ on-demand | P2 | — | M | auto-conjure on meet 🔲 |
 | Scene backdrops ([[scene]] + 🖼) | _combatBackdrop etc | ✅ | P2 | — | M | Ken Burns anim 🔲 |
 | Ask-GM: learn spell / recruit | :8002/:8010 | ✅ | P2 | — | S | — |
-| Edit / regenerate messages | :1958 | 🟡 retell only | P2 | edit-message API | M | inline edit 🔲; ↻ needs UI button (wired func, button pending) |
+| Edit / regenerate messages | :1958 | 🟡 ↻ retell button live | P2 | edit-message API | M | inline edit 🔲 |
 | GM model picker | settings | 🔲 | P2 | /models | S | |
 | TTS narration (server) | :6114 (browser) | 🔲 | P3 | /api/tts | M | |
 | STT input | voiceRecorder.js | 🔲 | P4 | /api/stt | M | |

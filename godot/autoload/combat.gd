@@ -207,7 +207,30 @@ func player_attack(target_id: String) -> Dictionary:
 	return {"msg": msg, "fell": fell, "won": won, "spent": true}
 
 
-## One enemy acts against the hero. → {msg, gm, down}
+## Reactions the hero can take against an incoming hit (port of
+## _availableReactions): Shield needs the spell + a slot + the hit inside
+## +5; Uncanny Dodge is a feature; Parry rides Combat Maneuver uses.
+func available_reactions(total: int, ac: int) -> Array:
+	var s := GameState.sheet()
+	var out: Array = []
+	var knows_shield: bool = s.get("spells", []).any(func(sp): return str(sp.get("name", "")).nocasecmp_to("Shield") == 0)
+	var has_slot := false
+	for l in s.get("slots", {}).values():
+		if l is Dictionary and int(l.get("used", 0)) < int(l.get("max", 0)):
+			has_slot = true
+	if knows_shield and has_slot and total < ac + 5:
+		out.append("shield")
+	if s.get("features", []).any(func(f): return str(f).matchn("*uncanny dodge*")):
+		out.append("dodge")
+	var has_maneuver: bool = s.get("features", []).any(func(f): return str(f).begins_with("Combat Maneuver"))
+	if has_maneuver and GameState.feature_uses_left("Combat Maneuver") > 0:
+		out.append("parry")
+	return out
+
+
+## One enemy acts against the hero. On a hit with reactions available the
+## blow PENDS: → {pending: {enemy,dmg,crit,total,ac}, reactions:[…]} and
+## nothing is applied until resolve_enemy_hit. Otherwise → {msg, gm, down}.
 func enemy_turn(enemy: Dictionary) -> Dictionary:
 	if enemy.get("conditions", []).any(func(cd): return _incap_re.search(str(cd.get("name", cd) if cd is Dictionary else cd)) != null):
 		return {"msg": "😵 *The %s can't act.*" % enemy["name"], "gm": "", "down": false}
@@ -224,6 +247,19 @@ func enemy_turn(enemy: Dictionary) -> Dictionary:
 	for i in (2 if crit else 1):
 		dmg += randi_range(1, 6)
 	dmg = maxi(1, dmg)
+	var reactions := available_reactions(total, ac)
+	if not reactions.is_empty():
+		return {"pending": {"enemy": enemy, "dmg": dmg, "crit": crit, "total": total, "ac": ac},
+			"reactions": reactions, "msg": "", "gm": "", "down": false}
+	return resolve_enemy_hit(enemy, dmg, crit, "")
+
+
+## Apply a landed enemy hit (possibly softened by a reaction). → {msg, gm, down}
+func resolve_enemy_hit(enemy: Dictionary, dmg: int, crit: bool, note: String) -> Dictionary:
+	dmg = maxi(0, dmg)
+	if dmg <= 0:
+		return {"msg": "🛡 *%s — no damage gets through.*" % (note if note != "" else "You turn the blow aside"),
+			"gm": "[The %s's blow was turned aside — no damage. Narrate it briefly.]" % enemy["name"], "down": false}
 	var after := GameState.apply_hp(-dmg)
 	var down := int(after["hp"]) <= 0
 	var c := data()
@@ -231,8 +267,9 @@ func enemy_turn(enemy: Dictionary) -> Dictionary:
 		if str(x.get("id", "")) == "pc":
 			x["hp"] = int(after["hp"])
 	save(c)
-	return {"msg": "🗡 *The %s hits you%s for **%d damage** (%d/%d left).%s*" % [enemy["name"],
-			" — **CRIT!**" if crit else "", dmg, int(after["hp"]), int(after["hpMax"]),
+	return {"msg": "🗡 *The %s hits you%s%s for **%d damage** (%d/%d left).%s*" % [enemy["name"],
+			" — **CRIT!**" if crit else "", (" — " + note) if note != "" else "", dmg,
+			int(after["hp"]), int(after["hpMax"]),
 			" — **you go down!**" if down else ""],
 		"gm": "[The %s hit me for %d (%d/%d HP).%s Narrate the blow briefly.]" % [enemy["name"], dmg,
 			int(after["hp"]), int(after["hpMax"]), " I am down and must roll death saves." if down else ""],

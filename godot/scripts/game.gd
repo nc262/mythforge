@@ -50,6 +50,7 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
 	$Margin/Split/ChatBox/Input/Shop.pressed.connect(_open_shop)
+	$Margin/Split/ChatBox/Input/Retell.pressed.connect(_regen)
 	_roll_bar.pressed.connect(_roll_pending)
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
@@ -109,6 +110,14 @@ func _hero_forge() -> void:
 	box.add_theme_constant_override("separation", 10)
 	var name_in := LineEdit.new()
 	name_in.placeholder_text = "Your hero's name"
+	# One-click legends (the original's prebuilts) — or start fresh below.
+	const PREBUILT := [
+		["Brakka Ironhide", "Half-Orc", "Fighter", "Soldier"],
+		["Elara Venn", "Elf", "Wizard", "Sage"],
+		["Finch", "Halfling", "Rogue", "Criminal"],
+		["Sister Maren", "Human", "Cleric", "Acolyte"],
+	]
+	var pre_row := HFlowContainer.new()
 	var race_in := OptionButton.new()
 	var races: Array = Rules.tables.get("heritages", {}).keys()
 	races.sort()
@@ -119,6 +128,38 @@ func _hero_forge() -> void:
 	classes.sort()
 	for c in classes:
 		cls_in.add_item(str(c))
+	var bg_in := OptionButton.new()
+	var bgs: Array = Rules.tables.get("backgrounds", {}).keys()
+	bgs.sort()
+	for bgn in bgs:
+		bg_in.add_item(str(bgn))
+	var bg_hint := Label.new()
+	bg_hint.theme_type_variation = "HintLabel"
+	bg_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	bg_hint.custom_minimum_size = Vector2(420, 0)
+	var refresh_bg := func():
+		var bgd: Dictionary = Rules.tables.get("backgrounds", {}).get(bg_in.get_item_text(bg_in.selected), {})
+		bg_hint.text = "%s — trained in %s" % [str(bgd.get("line", "")), ", ".join(bgd.get("skills", []))]
+	bg_in.item_selected.connect(func(_i): refresh_bg.call())
+	refresh_bg.call()
+	var pick := func(idx: int):
+		name_in.text = str(PREBUILT[idx][0])
+		for i in race_in.item_count:
+			if race_in.get_item_text(i) == str(PREBUILT[idx][1]):
+				race_in.selected = i
+		for i in cls_in.item_count:
+			if cls_in.get_item_text(i) == str(PREBUILT[idx][2]):
+				cls_in.selected = i
+		for i in bg_in.item_count:
+			if bg_in.get_item_text(i) == str(PREBUILT[idx][3]):
+				bg_in.selected = i
+		refresh_bg.call()
+	for pi in PREBUILT.size():
+		var pb := Button.new()
+		pb.text = "%s — %s %s" % [PREBUILT[pi][0], PREBUILT[pi][1], PREBUILT[pi][2]]
+		pb.add_theme_font_size_override("font_size", 12)
+		pb.pressed.connect(pick.bind(pi))
+		pre_row.add_child(pb)
 	var stats_l := Label.new()
 	stats_l.theme_type_variation = "HintLabel"
 	var rolled: Array[int] = []
@@ -135,7 +176,7 @@ func _hero_forge() -> void:
 	var roll_btn := Button.new()
 	roll_btn.text = "🎲 Reroll destiny"
 	roll_btn.pressed.connect(reroll)
-	for n in [name_in, race_in, cls_in, roll_btn, stats_l]:
+	for n in [pre_row, name_in, race_in, cls_in, bg_in, bg_hint, roll_btn, stats_l]:
 		box.add_child(n)
 	dlg.add_child(box)
 	add_child(dlg)
@@ -144,11 +185,12 @@ func _hero_forge() -> void:
 	dlg.confirmed.connect(func():
 		var nm := name_in.text.strip_edges()
 		_create_hero(nm if nm != "" else "The Nameless",
-			race_in.get_item_text(race_in.selected), cls_in.get_item_text(cls_in.selected), rolled)
+			race_in.get_item_text(race_in.selected), cls_in.get_item_text(cls_in.selected), rolled,
+			bg_in.get_item_text(bg_in.selected))
 		dlg.queue_free())
 
 
-func _create_hero(nm: String, race: String, cls: String, rolled: Array[int]) -> void:
+func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], background := "") -> void:
 	var preset: Dictionary = Rules.tables.get("class_presets", {}).get(cls, {"hitDie": 8})
 	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(race, {})
 	# Best scores where the class wants them: cast ability or STR/DEX first, CON second.
@@ -179,7 +221,9 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int]) -> 
 	s["hp"] = s["hpMax"]
 	s["gold"] = 10 + randi_range(1, 20)
 	s["profSaves"] = preset.get("saves", [])
-	s["profSkills"] = preset.get("skills", []) + heritage.get("skills", [])
+	var bgd: Dictionary = Rules.tables.get("backgrounds", {}).get(background, {})
+	s["background"] = background
+	s["profSkills"] = preset.get("skills", []) + heritage.get("skills", []) + bgd.get("skills", [])
 	var traits: Array = heritage.get("traits", [])
 	s["features"] = traits.duplicate()
 	if bool(preset.get("caster", false)):
@@ -193,7 +237,7 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int]) -> 
 	_build_dice_menu()
 	_render_sheet()
 	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])
-	_session_zero(nm, race, cls)
+	_session_zero(nm, race, cls, background)
 
 
 ## Session Zero — Step 3 of 3: set the table's tone before the first scene.
@@ -206,7 +250,7 @@ const GM_KNOBS := [
 ]
 
 
-func _session_zero(nm: String, race: String, cls: String) -> void:
+func _session_zero(nm: String, race: String, cls: String, background := "") -> void:
 	var dlg := ConfirmationDialog.new()
 	dlg.title = "Session Zero — set the tone"
 	dlg.ok_button_text = "Begin the adventure ›"
@@ -239,7 +283,7 @@ func _session_zero(nm: String, race: String, cls: String) -> void:
 		dlg.queue_free()
 		Mode.enter("Exploration")
 		_last_player_msg = "I arrive."
-		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls])))
+		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s%s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls, (", " + str(Rules.tables.get("backgrounds", {}).get(background, {}).get("line", ""))) if background != "" else ""])))
 
 
 # ── Bubbles ──────────────────────────────────────────────────────────────────
@@ -361,7 +405,7 @@ func _flush_stream() -> void:
 
 ## ↻ Retell: drop the last GM reply and stream the same framed message again.
 func _regen() -> void:
-	if _streaming or _last_framed == "" or _gm_rt == null:
+	if not Mode.can("retell") or _last_framed == "" or _gm_rt == null:
 		return
 	var row := _gm_rt.get_parent().get_parent()  # rt -> panel -> row
 	if row != null and row.get_parent() == _thread:
@@ -719,14 +763,10 @@ func _on_combat_action(meta) -> void:
 		var cur: Dictionary = Combat.current(c)
 		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
 			var r: Dictionary = Combat.enemy_turn(cur)
-			if str(r["msg"]).contains("hits you"):
-				Sfx.play("hit")
-			_say_me(_md(str(r["msg"])))
-			_render_sheet()
-			_render_combat()
-			if str(r["gm"]) != "":
-				_last_player_msg = str(r["msg"])
-				_stream(Composer.envelope(str(r["gm"])))
+			if r.has("pending"):
+				_reaction_overlay(r["pending"], r["reactions"])
+				return
+			_deliver_enemy_result(r)
 		elif str(cur.get("id", "")).begins_with("cmp"):
 			var cr: Dictionary = Combat.companion_turn(cur)
 			if str(cr["msg"]) != "":
@@ -754,6 +794,68 @@ func _on_combat_action(meta) -> void:
 		else:
 			_last_player_msg = str(r2["msg"])
 			_stream(Composer.envelope(str(r2["msg"])))
+
+
+## ⚡ Reaction! The blow pends while you choose: Shield / Uncanny Dodge /
+## Parry / take the hit. Closing the dialog takes the hit — never voids it.
+func _reaction_overlay(pend: Dictionary, reactions: Array) -> void:
+	var enemy: Dictionary = pend["enemy"]
+	var dlg := AcceptDialog.new()
+	dlg.title = "⚡ Reaction!"
+	dlg.ok_button_text = "Take the hit"
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	var lbl := Label.new()
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.custom_minimum_size = Vector2(380, 0)
+	lbl.text = "The %s's blow is coming in — %d vs your AC %d, %d damage%s." % [
+		str(enemy.get("name", "?")), int(pend["total"]), int(pend["ac"]), int(pend["dmg"]),
+		" (CRIT)" if bool(pend["crit"]) else ""]
+	box.add_child(lbl)
+	var resolve := func(dmg: int, note: String):
+		dlg.queue_free()
+		var r: Dictionary = Combat.resolve_enemy_hit(enemy, dmg, bool(pend["crit"]), note)
+		_deliver_enemy_result(r)
+	if reactions.has("shield"):
+		var b1 := Button.new()
+		b1.text = "🛡 Shield — +5 AC, spends a slot"
+		b1.pressed.connect(func():
+			GameState.cast_spell("Shield")
+			if int(pend["total"]) < int(pend["ac"]) + 5:
+				resolve.call(0, "your Shield flares — the blow glances off")
+			else:
+				resolve.call(int(pend["dmg"]), "even the ward can't stop this one"))
+		box.add_child(b1)
+	if reactions.has("dodge"):
+		var b2 := Button.new()
+		b2.text = "🌀 Uncanny Dodge — halve the damage"
+		b2.pressed.connect(func(): resolve.call(ceili(int(pend["dmg"]) / 2.0), "you twist away at the last instant"))
+		box.add_child(b2)
+	if reactions.has("parry"):
+		var b3 := Button.new()
+		b3.text = "🎖 Parry — superiority die + mod off the damage"
+		b3.pressed.connect(func():
+			GameState.use_feature("Combat Maneuver")
+			var s := GameState.sheet()
+			var red := randi_range(1, 8) + maxi(Rules.ability_mod(int(s["abilities"].get("STR", 10))), Rules.ability_mod(int(s["abilities"].get("DEX", 10))))
+			resolve.call(maxi(0, int(pend["dmg"]) - red), "your parry turns %d of it aside" % red))
+		box.add_child(b3)
+	dlg.add_child(box)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(func(): dlg.queue_free(); resolve.call(int(pend["dmg"]), ""))
+
+
+func _deliver_enemy_result(r: Dictionary) -> void:
+	if str(r.get("msg", "")).contains("hits you"):
+		Sfx.play("hit")
+	if str(r.get("msg", "")) != "":
+		_say_me(_md(str(r["msg"])))
+	_render_sheet()
+	_render_combat()
+	if str(r.get("gm", "")) != "":
+		_last_player_msg = str(r["msg"])
+		_stream(Composer.envelope(str(r["gm"])))
 
 
 func _render_combat() -> void:

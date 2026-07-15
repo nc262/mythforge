@@ -96,6 +96,11 @@ placeholder_text = "What do you do?"
 layout_mode = 2
 text = "Send"
 
+[node name="Retell" type="Button" parent="Margin/Split/ChatBox/Input"]
+layout_mode = 2
+tooltip_text = "Retell — the GM takes another pass at its last reply"
+text = "↻"
+
 [node name="SheetBtn" type="Button" parent="Margin/Split/ChatBox/Input"]
 layout_mode = 2
 toggle_mode = true
