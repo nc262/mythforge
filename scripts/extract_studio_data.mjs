@@ -20,6 +20,14 @@ writeFileSync(join(outDir, 'spells.json'), JSON.stringify({ spells: comp.SPELLS,
 writeFileSync(join(outDir, 'class_lore.json'), JSON.stringify(comp.CLASS_LORE, null, 1));
 console.log('compendium: bestiary=%d spells=%d', comp.BESTIARY.length, comp.SPELLS.length);
 
+// Built-in worlds: lore, cast, stories, locations, backdrop prompts.
+const w = await import(pathToFileURL(join(root, 'static/js/studioWorlds.js')).href);
+writeFileSync(join(outDir, 'worlds.json'), JSON.stringify({
+  worlds: w.WORLDS, stories: w.STORIES, locations: w.LOCATIONS,
+  backdrops: w.BACKDROPS, gm_portraits: w.GM_PORTRAITS,
+}, null, 1));
+console.log('worlds: %d built-in', w.WORLDS.length);
+
 // ── 2. characterStudio.js tables — slice `const NAME = {...};` and eval ────
 const src = readFileSync(join(root, 'static/js/characterStudio.js'), 'utf8');
 

@@ -62,6 +62,12 @@ func _ready() -> void:
 	if world_tex != null:
 		_scene_art.texture = world_tex
 		_scene_art.modulate.a = 0.35
+	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
+	if not GameState.is_dm():
+		for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "ShortRest", "LongRest", "Scene"]:
+			$Margin/Split/ChatBox/Input.get_node(btn).visible = false
+		_say_system("You sit down with %s." % str(GameState.character.get("name", "?")))
+		return
 	await GameState.hydrate()
 	_build_dice_menu()
 	_render_sheet()
@@ -183,8 +189,52 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int]) -> 
 	_build_dice_menu()
 	_render_sheet()
 	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])
-	_last_player_msg = "I arrive."
-	_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls]))
+	_session_zero(nm, race, cls)
+
+
+## Session Zero — Step 3 of 3: set the table's tone before the first scene.
+const GM_KNOBS := [
+	["humor", "Humor", "Serious", "Comedic", 40],
+	["spice", "Romance & spice", "None", "Bold", 0],
+	["grit", "Grit & danger", "Gentle", "Brutal", 50],
+	["pace", "Pace", "Slow", "Fast", 55],
+	["rules", "Rules", "Loose", "Strict 5e", 50],
+]
+
+
+func _session_zero(nm: String, race: String, cls: String) -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "Session Zero — set the tone"
+	dlg.ok_button_text = "Begin the adventure ›"
+	dlg.get_cancel_button().visible = false
+	dlg.min_size = Vector2i(460, 300)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	var sliders := {}
+	for k in GM_KNOBS:
+		var row := Label.new()
+		row.theme_type_variation = "HintLabel"
+		row.text = "%s   %s ↔ %s" % [k[1], k[2], k[3]]
+		box.add_child(row)
+		var sl := HSlider.new()
+		sl.min_value = 0
+		sl.max_value = 100
+		sl.step = 5
+		sl.value = k[4]
+		sl.custom_minimum_size = Vector2(400, 0)
+		box.add_child(sl)
+		sliders[k[0]] = sl
+	dlg.add_child(box)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(func():
+		var knobs := {}
+		for key in sliders:
+			knobs[key] = int(sliders[key].value)
+		GameState.save_kind("gm", knobs)
+		dlg.queue_free()
+		_last_player_msg = "I arrive."
+		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls])))
 
 
 # ── Bubbles ──────────────────────────────────────────────────────────────────
@@ -252,6 +302,9 @@ func _send(raw: String) -> void:
 	_set_check({})
 	_say_me(_bb(msg))
 	_last_player_msg = msg
+	if not GameState.is_dm():
+		_stream(msg)  # companions get your words, not a rules envelope
+		return
 	var beats: Array = await Chronicle.recall(msg)
 	_stream(Composer.envelope(msg, beats))
 
@@ -314,6 +367,9 @@ func _on_done(_ok: bool) -> void:
 		if _acc.strip_edges() == "":
 			_gm_rt.clear()
 			_gm_rt.append_text("[color=%s][i]The GM falls silent — try again or rephrase.[/i][/color]" % Ui.c("ink_dim").to_html(false))
+	if not GameState.is_dm():
+		_scroll_bottom()  # pure conversation: no tags, no rolls, no chronicling
+		return
 	var parsed: Dictionary = Tags.parse(_acc)
 	_apply_world_tags(parsed["tags"])
 	Chronicle.record(_last_player_msg, str(parsed["clean"]))

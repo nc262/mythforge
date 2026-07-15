@@ -2,6 +2,7 @@ extends Node
 ## Sfx — the game's small sounds: dice clatter, hit thud, combat sting,
 ## reward chime. Synthesized assets (scripts/make_sfx.py), played politely.
 
+var enabled := true
 var _players := {}
 
 
@@ -18,5 +19,5 @@ func _ready() -> void:
 
 
 func play(n: String) -> void:
-	if _players.has(n):
+	if enabled and _players.has(n):
 		_players[n].play()

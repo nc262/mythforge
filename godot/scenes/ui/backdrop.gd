@@ -68,6 +68,8 @@ func _radial(col: Color, center: Vector2) -> GradientTexture2D:
 
 
 func _process(delta: float) -> void:
+	if Ui.reduce_motion:
+		return
 	_drift = fmod(_drift + delta * 4.0, 10000.0)  # ~4px/s upward, the CSS st-drift
 	queue_redraw()
 

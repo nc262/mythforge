@@ -1,202 +1,545 @@
 extends Control
-## The title screen: the brand, Continue, world-tinted adventure cards with
-## generated key art, and the World Forge — co-create a world with the AI
-## and its campaigns become playable cards.
+## The original shell, native: title screen (Continue · New Adventure ·
+## Companion chat · Settings), the worlds gallery → world detail flow
+## (free roam / campaigns / craft-a-campaign / the cast), the guided
+## pillar-form World Forge with a refine loop, and settings.
 
 const GAME_SCENE := "res://scenes/game.tscn"
-const WORLD_LINES := {
-	"embervale": "High fantasy — candlelight and old roads",
-	"neonspire": "Sci-fi — neon rain over the spire",
-	"everyday": "Slice of life — the quiet hours",
-}
+const SMITH_GUIDE := [
+	["Magic system", ["Forbidden & feared", "Elemental pacts", "Tech-grafted mods", "Divine bargains", "Wild & untamed", "None — mundane grit"]],
+	["Technology", ["Medieval", "Steam & clockwork", "Modern day", "Neon cyberpunk", "Starfaring"]],
+	["Era & timeline", ["A golden age fading", "After the cataclysm", "Frontier boom", "A long peace cracking", "Under occupation"]],
+	["Beast variants", ["Corrupted wildlife", "Ancient constructs", "Spirits & shades", "Bio-engineered horrors", "Dragons & their kin"]],
+	["Tone", ["Grim & gritty", "Heroic & bright", "Whimsical", "Noir & conspiratorial"]],
+]
 
 var _busy := false
-var _worlds: Dictionary = {}  # world_id -> custom world dict (for art prompts)
+var _cworlds: Array = []
+var _templates: Array = []
+
+@onready var _title: CenterContainer = $Title
+@onready var _sub: Control = $Sub
+@onready var _content: VBoxContainer = $Sub/Margin/Box/Scroll/Content
+@onready var _heading: Label = $Sub/Margin/Box/Bar/Heading
+@onready var _step: Label = $Sub/Margin/Box/Bar/Step
+@onready var _sub_status: Label = $Sub/Margin/Box/SubStatus
 
 
 func _ready() -> void:
 	theme = Ui.theme
 	Ui.apply("")
-	$Center/Box/Continue.pressed.connect(_continue_last)
-	$Center/Box/Forge.pressed.connect(_open_forge)
-	Art.art_ready.connect(func(_wid): _load())
-	_load()
+	_load_settings()
+	$Title/Box/Continue.pressed.connect(_continue_last)
+	$Title/Box/NewAdv.pressed.connect(_show_worlds)
+	$Title/Box/Companion.pressed.connect(_show_companions)
+	$Title/Box/Settings.pressed.connect(_show_settings)
+	$Sub/Margin/Box/Bar/Back.pressed.connect(_show_title)
+	Art.art_ready.connect(func(_w): if _sub.visible and _heading.text == "Choose a world": _show_worlds())
+	_refresh()
 
 
-func _load() -> void:
-	$Center/Box/Status.text = "Summoning the realms…"
-	# Custom worlds live in the global state kind 'cworlds'.
+func _refresh() -> void:
+	$Title/Box/Status.text = "Reaching the realm…"
+	_templates = await Api.list_characters()
 	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	_worlds = {}
-	if g.get("state") is Dictionary and g["state"].get("cworlds") is Array:
-		for w in g["state"]["cworlds"]:
-			if w is Dictionary and str(w.get("id", "")) != "":
-				_worlds[str(w["id"])] = w
-	var advs: Array = (await Api.list_characters()).filter(func(c): return str(c.get("id", "")).begins_with("dm-"))
-	var grid: GridContainer = $Center/Box/Scroll/Grid
-	for child in grid.get_children():
-		child.queue_free()
-	for c in advs:
-		grid.add_child(_card(c))
-		var wid := str(c.get("world_id", ""))
-		Art.ensure(wid, str(_worlds.get(wid, {}).get("backdrop", "")))  # backfill key art quietly
-	$Center/Box/Status.text = "" if not advs.is_empty() else "No adventures yet — forge a world below."
+	_cworlds = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	$Title/Box/Status.text = ""
+	# Continue: the last adventure, with its save-file caption.
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
 	var last = JSON.parse_string(str(cfg.get_value("last", "adventure", "")))
-	if last is Dictionary and advs.any(func(c): return str(c.get("id")) == str(last.get("id"))):
-		var btn: Button = $Center/Box/Continue
-		btn.text = "▶ Continue — %s" % str(last.get("name", "?"))
-		btn.visible = true
-		btn.set_meta("char", last)
+	if last is Dictionary and _templates.any(func(c): return str(c.get("id")) == str(last.get("id"))):
+		var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + str(last["id"]).uri_encode())
+		var sheet: Dictionary = st.get("state", {}).get("sheet", {}) if st.get("state") is Dictionary else {}
+		var clock: Dictionary = st.get("state", {}).get("clock", {}) if st.get("state") is Dictionary else {}
+		if not (sheet is Dictionary):
+			sheet = {}
+		if not (clock is Dictionary):
+			clock = {}
+		$Title/Box/Continue.text = "▶ Continue — %s" % str(last.get("name", "?"))
+		$Title/Box/ContinueMeta.text = "%s · Level %d · Day %d" % [str(sheet.get("name", "a new hero")),
+			int(sheet.get("level", 1)), int(clock.get("day", 1))]
+		$Title/Box/Continue.visible = true
+		$Title/Box/ContinueMeta.visible = true
+		$Title/Box/Continue.set_meta("char", last)
+		var tex := Art.texture_for(str(last.get("world_id", "")))
+		if tex != null:
+			$KeyArt.texture = tex
 
 
-func _card(c: Dictionary) -> Button:
-	var world := str(c.get("world_id", ""))
-	var pal: Dictionary = Ui.PALETTES.get(world if Ui.PALETTES.has(world) else "arcane", Ui.PALETTES["arcane"])
-	var accent: Color = pal["gold"]
-	var btn := Button.new()
-	btn.custom_minimum_size = Vector2(410, 92)
+# ── View plumbing ────────────────────────────────────────────────────────────
+func _show_title() -> void:
+	_sub.visible = false
+	_title.visible = true
+	Ui.apply("")
+
+
+func _show_sub(heading: String, step := "") -> void:
+	_title.visible = false
+	_sub.visible = true
+	_heading.text = heading
+	_step.text = step
+	_sub_status.text = ""
+	for c in _content.get_children():
+		c.queue_free()
+
+
+func _all_worlds() -> Array:
+	return Rules.builtin_worlds() + _cworlds
+
+
+func _world_by_id(wid: String) -> Dictionary:
+	for w in _all_worlds():
+		if str(w.get("id", "")) == wid:
+			return w
+	return {}
+
+
+# ── Worlds gallery (New Adventure · step 1) ──────────────────────────────────
+func _show_worlds() -> void:
+	_show_sub("Choose a world", "New adventure · Step 1 of 3 — world › campaign › hero")
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	for w in _all_worlds():
+		grid.add_child(_world_card(w))
+		Art.ensure(str(w.get("id", "")), str(w.get("backdrop", "")))
+	var forge := _big_card("✦  Forge a new world", "The smith writes lore, places, people, beasts, and campaigns from your idea.", Ui.pal["gold"])
+	forge.pressed.connect(_open_world_forge)
+	grid.add_child(forge)
+	_content.add_child(grid)
+
+
+func _world_card(w: Dictionary) -> Button:
+	var wid := str(w.get("id", ""))
+	var pal: Dictionary = Ui.PALETTES.get(wid if Ui.PALETTES.has(wid) else "arcane", Ui.PALETTES["arcane"])
+	var btn := _big_card("%s\n" % str(w.get("name", "?")), "", pal["gold"])
 	btn.clip_contents = true
-	var sb := StyleBoxFlat.new()
-	sb.bg_color = Color(pal["surface"], 0.9)
-	sb.border_color = Color(accent, 0.35)
-	sb.set_border_width_all(1)
-	sb.border_width_left = 4
-	sb.set_corner_radius_all(14)
-	sb.set_content_margin_all(16)
-	var sb_hover: StyleBoxFlat = sb.duplicate()
-	sb_hover.border_color = accent
-	sb_hover.bg_color = Color(pal["surface2"], 0.95)
-	btn.add_theme_stylebox_override("normal", sb)
-	btn.add_theme_stylebox_override("hover", sb_hover)
-	btn.add_theme_stylebox_override("pressed", sb_hover)
-	# Key art behind the text, dimmed to keep the name readable.
-	var tex := Art.texture_for(world)
+	var tex := Art.texture_for(wid)
 	if tex != null:
 		var art := TextureRect.new()
 		art.texture = tex
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		art.set_anchors_preset(Control.PRESET_FULL_RECT)
-		art.modulate = Color(0.62, 0.6, 0.7, 0.5)
+		art.modulate = Color(0.6, 0.58, 0.68, 0.5)
 		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		btn.add_child(art)
-	var flavor: String = WORLD_LINES.get(world,
-		str(_worlds.get(world, {}).get("tagline", "A forged world — its own rules, its own dawn")))
+		btn.move_child(art, 0)
 	var box := VBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var kind := Label.new()
+	kind.theme_type_variation = "HintLabel"
+	kind.text = str(w.get("kind", "")).to_upper()
 	var name_l := Label.new()
-	name_l.text = str(c.get("name", "Unnamed"))
-	name_l.add_theme_color_override("font_color", Color(accent).lightened(0.2))
+	name_l.text = str(w.get("name", "?"))
 	name_l.add_theme_font_override("font", Ui.serif)
-	name_l.add_theme_font_size_override("font_size", 20)
-	var line_l := Label.new()
-	line_l.text = flavor.left(58)
-	line_l.theme_type_variation = "HintLabel"
-	box.add_child(name_l)
-	box.add_child(line_l)
+	name_l.add_theme_font_size_override("font_size", 22)
+	name_l.add_theme_color_override("font_color", Color(pal["gold"]).lightened(0.2))
+	var tag := Label.new()
+	tag.theme_type_variation = "HintLabel"
+	tag.text = str(w.get("tagline", "")).left(64)
+	tag.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	tag.custom_minimum_size = Vector2(320, 0)
+	for n in [kind, name_l, tag]:
+		box.add_child(n)
 	box.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	box.position = Vector2(18, 0)
+	box.position = Vector2(18, 8)
 	box.grow_vertical = Control.GROW_DIRECTION_BOTH
 	btn.add_child(box)
-	btn.pressed.connect(func(): _play(c))
+	btn.text = ""
+	btn.pressed.connect(func(): _show_detail(w))
 	return btn
 
 
-# ── The World Forge ──────────────────────────────────────────────────────────
-func _open_forge() -> void:
-	var dlg := AcceptDialog.new()
-	dlg.title = "⚒ Forge a world"
-	dlg.ok_button_text = "Forge it"
-	dlg.min_size = Vector2i(520, 200)
-	var box := VBoxContainer.new()
-	var hint := Label.new()
-	hint.theme_type_variation = "HintLabel"
-	hint.text = "Describe the world you want — genre, mood, one striking image.\nThe forge writes its lore, places, people, beasts, and two campaigns."
-	var input := LineEdit.new()
-	input.placeholder_text = "e.g. a drowned kingdom where lighthouse keepers bargain with the tide"
-	box.add_child(hint)
-	box.add_child(input)
-	dlg.add_child(box)
-	add_child(dlg)
-	dlg.popup_centered()
-	input.grab_focus()
-	var go := func():
-		var idea := input.text.strip_edges()
-		dlg.queue_free()
-		if idea != "":
-			_forge(idea)
-	dlg.confirmed.connect(go)
-	input.text_submitted.connect(func(_t): dlg.hide(); go.call())
+func _big_card(title: String, sub: String, accent: Color) -> Button:
+	var btn := Button.new()
+	btn.custom_minimum_size = Vector2(360, 118)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(Ui.c("surface"), 0.9)
+	sb.border_color = Color(accent, 0.35)
+	sb.set_border_width_all(1)
+	sb.border_width_left = 4
+	sb.set_corner_radius_all(14)
+	sb.set_content_margin_all(16)
+	var hov: StyleBoxFlat = sb.duplicate()
+	hov.border_color = accent
+	hov.bg_color = Color(Ui.c("surface2"), 0.95)
+	btn.add_theme_stylebox_override("normal", sb)
+	btn.add_theme_stylebox_override("hover", hov)
+	btn.add_theme_stylebox_override("pressed", hov)
+	if title != "" and sub != "":
+		btn.text = ""
+		var box := VBoxContainer.new()
+		box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var t := Label.new()
+		t.text = title
+		t.add_theme_color_override("font_color", Color(accent).lightened(0.2))
+		var s := Label.new()
+		s.theme_type_variation = "HintLabel"
+		s.text = sub
+		s.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		s.custom_minimum_size = Vector2(300, 0)
+		box.add_child(t)
+		box.add_child(s)
+		box.set_anchors_preset(Control.PRESET_CENTER_LEFT)
+		box.position = Vector2(18, 8)
+		box.grow_vertical = Control.GROW_DIRECTION_BOTH
+		btn.add_child(box)
+	else:
+		btn.text = title
+	return btn
 
 
-func _forge(idea: String) -> void:
+# ── World detail (step 2: pick a campaign, or meet the cast) ─────────────────
+func _show_detail(w: Dictionary) -> void:
+	var wid := str(w.get("id", ""))
+	_show_sub(str(w.get("name", "?")), "New adventure · Step 2 of 3 — world › campaign › hero")
+	Ui.apply(wid)
+	var lore := Label.new()
+	lore.theme_type_variation = "HintLabel"
+	lore.text = str(w.get("lore", ""))
+	lore.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(lore)
+	_content.add_child(_section("ADVENTURES — a Dungeon Master narrates & drives the story"))
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	var free := _big_card("Free Roam", "No script — the GM improvises around whatever you chase.", Ui.pal["gold"])
+	free.pressed.connect(func(): _start_adventure(w, {}))
+	grid.add_child(free)
+	var stories: Array = w.get("stories") if w.get("stories") is Array else Rules.world_stories(wid)
+	for st in stories:
+		if st is Dictionary and str(st.get("title", "")) != "":
+			var card := _big_card(str(st["title"]), str(st.get("premise", "")).left(110), Ui.pal["amethyst"])
+			card.pressed.connect(func(): _start_adventure(w, st))
+			grid.add_child(card)
+	var craft := _big_card("✦  Craft a campaign", "Tell the smith the story you want in this world.", Ui.pal["gold"])
+	craft.pressed.connect(func(): _open_campaign_forge(w))
+	grid.add_child(craft)
+	_content.add_child(grid)
+	var cast: Array = w.get("cast") if w.get("cast") is Array else []
+	if not cast.is_empty():
+		_content.add_child(_section("THE CAST — sit with them one-on-one, no dice"))
+		var cgrid := GridContainer.new()
+		cgrid.columns = 3
+		cgrid.add_theme_constant_override("h_separation", 14)
+		cgrid.add_theme_constant_override("v_separation", 14)
+		for c in cast:
+			if c is Dictionary and str(c.get("name", "")) != "":
+				var cc := _big_card(str(c["name"]), str(c.get("role", "")), Ui.pal["ink_soft"])
+				cc.custom_minimum_size = Vector2(360, 84)
+				cc.pressed.connect(func(): _chat_companion(w, c))
+				cgrid.add_child(cc)
+		_content.add_child(cgrid)
+
+
+func _section(text: String) -> Label:
+	var l := Label.new()
+	l.theme_type_variation = "HintLabel"
+	l.text = text
+	return l
+
+
+# ── Companions (title-screen entry: every non-DM persona) ────────────────────
+func _show_companions() -> void:
+	_show_sub("Companions", "A quiet table for two — no dice, just talk")
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	var any := false
+	for c in _templates:
+		var id := str(c.get("id", ""))
+		if id.begins_with("dm-"):
+			continue
+		any = true
+		var card := _big_card(str(c.get("name", "Unnamed")), str(c.get("relationship", c.get("world", ""))).left(60), Ui.pal["amethyst"])
+		card.custom_minimum_size = Vector2(360, 84)
+		card.pressed.connect(func(): _play({"id": id, "name": c.get("name", ""), "world_id": c.get("world_id", "")}))
+		grid.add_child(card)
+	if not any:
+		_content.add_child(_section("No companions yet — meet a world's cast (New Adventure › a world › The Cast)."))
+	_content.add_child(grid)
+
+
+func _chat_companion(w: Dictionary, c: Dictionary) -> void:
 	if _busy:
 		return
 	_busy = true
-	$Center/Box/Status.text = "⚒ The forge burns — shaping a world (about a minute)…"
-	var w := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith",
-		{"idea": idea, "mode": "world"})
-	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
-		$Center/Box/Status.text = "The forge sputtered (%s) — try again." % str(w.get("_status", 0))
-		_busy = false
+	_sub_status.text = "Waking %s…" % str(c.get("name", ""))
+	var wid := str(w.get("id", ""))
+	var id := "wc-%s-%s" % [wid, str(c.get("slug", str(c.get("name", "")).to_lower().replace(" ", "-")))]
+	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
+		"id": id, "name": str(c.get("name", "")),
+		"personality": "%s\nThe world you live in: %s — %s" % [str(c.get("persona", "")), str(w.get("name", "")), str(w.get("lore", ""))],
+		"relationship": str(c.get("role", "")),
+		"world_id": wid,
+	})
+	_busy = false
+	_play({"id": id, "name": c.get("name", ""), "world_id": wid})
+
+
+# ── Settings ─────────────────────────────────────────────────────────────────
+func _show_settings() -> void:
+	_show_sub("⚙ Settings", "")
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	_content.add_child(_section("SOUND & MOTION"))
+	var sfx := CheckButton.new()
+	sfx.text = "Sound effects — dice, blows, stings, chimes"
+	sfx.button_pressed = bool(cfg.get_value("settings", "sfx", true))
+	sfx.toggled.connect(func(on): _set_setting("sfx", on); Sfx.enabled = on)
+	_content.add_child(sfx)
+	var motion := CheckButton.new()
+	motion.text = "Reduce motion — calmer, fewer animations"
+	motion.button_pressed = bool(cfg.get_value("settings", "reduce_motion", false))
+	motion.toggled.connect(func(on): _set_setting("reduce_motion", on); Ui.reduce_motion = on)
+	_content.add_child(motion)
+	_content.add_child(_section("ACCOUNT"))
+	var out := Button.new()
+	out.text = "Sign out"
+	out.custom_minimum_size = Vector2(240, 0)
+	out.pressed.connect(func():
+		await Api.call_json(HTTPClient.METHOD_POST, "/api/auth/logout")
+		Api.cookie = ""
+		Api._save_cookie()
+		get_tree().change_scene_to_file("res://scenes/login.tscn"))
+	_content.add_child(out)
+	var ver := await Api.call_json(HTTPClient.METHOD_GET, "/api/version")
+	_content.add_child(_section("Mythforge desktop · backend %s" % str(ver.get("version", ver.get("data", "?")))))
+
+
+func _set_setting(key: String, val) -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	cfg.set_value("settings", key, val)
+	cfg.save(Api.COOKIE_FILE)
+
+
+func _load_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	Sfx.enabled = bool(cfg.get_value("settings", "sfx", true))
+	Ui.reduce_motion = bool(cfg.get_value("settings", "reduce_motion", false))
+
+
+# ── The World Forge (pillar form + refine loop) ──────────────────────────────
+func _open_world_forge() -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "✦ Forge a new world"
+	dlg.ok_button_text = "✦ Forge it"
+	dlg.min_size = Vector2i(640, 560)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	var idea := TextEdit.new()
+	idea.placeholder_text = "e.g. A drowned Venice of sky-whales and salvage guilds, melancholy but hopeful…"
+	idea.custom_minimum_size = Vector2(0, 72)
+	box.add_child(idea)
+	var pillar_inputs := {}
+	for pillar in SMITH_GUIDE:
+		var lbl := Label.new()
+		lbl.theme_type_variation = "HintLabel"
+		lbl.text = str(pillar[0])
+		box.add_child(lbl)
+		var input := LineEdit.new()
+		input.placeholder_text = "anything you like — or tap a suggestion"
+		box.add_child(input)
+		pillar_inputs[pillar[0]] = input
+		var chips := HFlowContainer.new()
+		for sug in pillar[1]:
+			var chip := Button.new()
+			chip.text = str(sug)
+			chip.add_theme_font_size_override("font_size", 12)
+			chip.pressed.connect(func(): input.text = str(sug))
+			chips.add_child(chip)
+		box.add_child(chips)
+	var surprise := Button.new()
+	surprise.text = "🎲 Surprise me"
+	surprise.pressed.connect(func():
+		for pillar in SMITH_GUIDE:
+			pillar_inputs[pillar[0]].text = str(pillar[1][randi() % pillar[1].size()]))
+	box.add_child(surprise)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(600, 480)
+	scroll.add_child(box)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dlg.add_child(scroll)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(func():
+		var fields := {}
+		for pillar in SMITH_GUIDE:
+			var v: String = pillar_inputs[pillar[0]].text.strip_edges()
+			if v != "":
+				fields[pillar[0]] = v
+		var txt := idea.text.strip_edges()
+		dlg.queue_free()
+		if txt != "" or not fields.is_empty():
+			_forge_world(txt if txt != "" else "a world built from these pillars", fields, null))
+
+
+## One smith call; preview with Create / Refine / Another take.
+func _forge_world(idea: String, fields: Dictionary, prior) -> void:
+	if _busy:
 		return
+	_busy = true
+	_sub_status.text = "⚒ The forge burns — shaping the world (about a minute)…"
+	var payload := {"idea": idea, "mode": "world", "fields": fields}
+	if prior is Dictionary:
+		payload["prior"] = prior
+	var w := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", payload)
+	_busy = false
+	_sub_status.text = ""
+	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
+		_sub_status.text = "The forge sputtered (%s) — try again." % str(w.get("_status", 0))
+		return
+	_preview_world(w, fields)
+
+
+func _preview_world(w: Dictionary, fields: Dictionary) -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "✦ %s — %s" % [str(w.get("name", "?")), str(w.get("kind", ""))]
+	dlg.ok_button_text = "Create this world ›"
+	dlg.min_size = Vector2i(620, 480)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 8)
+	var body := RichTextLabel.new()
+	body.bbcode_enabled = true
+	body.fit_content = true
+	body.custom_minimum_size = Vector2(560, 0)
+	var casts: Array = w.get("cast") if w.get("cast") is Array else []
+	var stories: Array = w.get("stories") if w.get("stories") is Array else []
+	var locs: Array = w.get("locations") if w.get("locations") is Array else []
+	var beasts: Array = w.get("creatures") if w.get("creatures") is Array else []
+	body.append_text("[i]%s[/i]\n\n%s\n\n[b]Campaigns:[/b] %s\n[b]The cast:[/b] %s\n[b]Places:[/b] %s\n[b]Beasts:[/b] %d setting-specific threats" % [
+		str(w.get("tagline", "")).replace("[", "[lb]"), str(w.get("lore", "")).replace("[", "[lb]"),
+		", ".join(stories.map(func(s): return str(s.get("title", "?")))),
+		", ".join(casts.map(func(c): return str(c.get("name", "?")))),
+		", ".join(locs.map(func(l): return str(l.get("name", "?")))), beasts.size()])
+	box.add_child(body)
+	var refine := LineEdit.new()
+	refine.placeholder_text = "✎ What should change? e.g. darker tone, add a pirate faction, rename it…"
+	box.add_child(refine)
+	var again := Button.new()
+	again.text = "↻ Forge another take"
+	box.add_child(again)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(580, 420)
+	scroll.add_child(box)
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dlg.add_child(scroll)
+	add_child(dlg)
+	dlg.popup_centered()
+	refine.text_submitted.connect(func(t):
+		dlg.queue_free()
+		if t.strip_edges() != "":
+			_forge_world(t.strip_edges(), fields, w))
+	again.pressed.connect(func():
+		dlg.queue_free()
+		_forge_world("another take on the same idea, fresh names and angles", fields, null))
+	dlg.confirmed.connect(func():
+		dlg.queue_free()
+		_create_world(w))
+
+
+func _create_world(w: Dictionary) -> void:
+	_busy = true
+	_sub_status.text = "⚒ Binding its campaigns…"
 	var wid := "cw-%s-%04x" % [str(w["name"]).to_lower().replace(" ", "-").left(20), randi() % 65536]
 	var world := {"id": wid, "custom": true}
 	for k in ["name", "kind", "tagline", "lore", "backdrop", "locations", "cast", "stories", "creatures"]:
 		world[k] = w.get(k)
-	# Persist the world into the global codex of forged worlds.
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var cworlds: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary else []
-	if not (cworlds is Array):
-		cworlds = []
-	cworlds.append(world)
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
-	# Free roam + each forged campaign become playable adventures.
-	$Center/Box/Status.text = "⚒ Binding its campaigns…"
-	await _save_adventure("dm-%s-freeroam" % wid, "%s: Free Roam" % str(world["name"]), world, {})
-	var stories: Array = world.get("stories") if world.get("stories") is Array else []
-	for st in stories:
-		if st is Dictionary and str(st.get("title", "")) != "":
-			var slug := str(st["title"]).to_lower().replace(" ", "-").left(24)
-			await _save_adventure("dm-%s-%s" % [wid, slug], str(st["title"]), world, st)
-	$Center/Box/Status.text = "⚒ Painting its sky…"
+	_cworlds.append(world)
+	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+	_sub_status.text = "⚒ Painting its sky…"
 	await Art.ensure(wid, str(world.get("backdrop", "")))
-	$Center/Box/Status.text = "%s stands ready." % str(world["name"])
 	_busy = false
-	_load()
+	_show_detail(world)
 
 
-func _save_adventure(id: String, name: String, world: Dictionary, story: Dictionary) -> void:
-	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
-		"id": id, "name": name,
-		"personality": Composer.compose_world_gm(world, story),
-		"relationship": "Dungeon Master",
-		"world_id": str(world["id"]),
-	})
+# ── Campaign forge (worldsmith mode=story) ───────────────────────────────────
+func _open_campaign_forge(w: Dictionary) -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "✦ Craft a campaign — %s" % str(w.get("name", ""))
+	dlg.ok_button_text = "✦ Draft it"
+	dlg.min_size = Vector2i(560, 220)
+	var idea := TextEdit.new()
+	idea.placeholder_text = "e.g. I want to infiltrate the Thorn Court masquerade and steal back a stolen name…"
+	idea.custom_minimum_size = Vector2(520, 100)
+	dlg.add_child(idea)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(func():
+		var txt := idea.text.strip_edges()
+		dlg.queue_free()
+		if txt == "":
+			return
+		_busy = true
+		_sub_status.text = "✦ Drafting the campaign…"
+		var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", {
+			"idea": txt, "mode": "story",
+			"world": {"name": w.get("name", ""), "kind": w.get("kind", ""), "lore": w.get("lore", "")}})
+		_busy = false
+		_sub_status.text = ""
+		if r.get("_status", 0) != 200 or str(r.get("title", "")) == "":
+			_sub_status.text = "The smith lost the thread — try again."
+			return
+		var story := {"slug": str(r["title"]).to_lower().replace(" ", "-").left(24),
+			"title": r["title"], "premise": r.get("premise", ""), "hook": r.get("hook", "")}
+		# Graft onto the world so it shows as a card from now on.
+		if bool(w.get("custom", false)):
+			var ws: Array = w.get("stories") if w.get("stories") is Array else []
+			ws.append(story)
+			w["stories"] = ws
+			await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+		_start_adventure(w, story))
 
 
 # ── Play ─────────────────────────────────────────────────────────────────────
+func _start_adventure(w: Dictionary, story: Dictionary) -> void:
+	if _busy:
+		return
+	_busy = true
+	var wid := str(w.get("id", ""))
+	var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
+	var name := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(w.get("name", ""))
+	_sub_status.text = "Opening %s…" % name
+	var full := w.duplicate(true)
+	if not (full.get("locations") is Array) or full.get("locations", []).is_empty():
+		full["locations"] = Rules.world_locations(wid)
+	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
+		"id": "dm-%s-%s" % [wid, slug], "name": name,
+		"personality": Composer.compose_world_gm(full, story),
+		"relationship": "Dungeon Master", "world_id": wid,
+	})
+	_busy = false
+	_play({"id": "dm-%s-%s" % [wid, slug], "name": name, "world_id": wid})
+
+
 func _continue_last() -> void:
-	_play($Center/Box/Continue.get_meta("char"))
+	_play($Title/Box/Continue.get_meta("char"))
 
 
 func _play(c: Dictionary) -> void:
 	if _busy:
 		return
 	_busy = true
-	$Center/Box/Status.text = "Opening %s…" % str(c.get("name", ""))
+	var status := _sub_status if _sub.visible else $Title/Box/Status
+	status.text = "Opening %s…" % str(c.get("name", ""))
 	GameState.character = c
 	Ui.apply(str(c.get("world_id", "")))
 	GameState.session_id = await Api.ensure_session(str(c.get("id", "")), str(c.get("name", "")))
 	if GameState.session_id == "":
-		$Center/Box/Status.text = "Could not create a session (is a chat model endpoint configured?)."
+		status.text = "Could not create a session (is a chat model endpoint configured?)."
 		Ui.apply("")
 		_busy = false
 		return
-	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
-	cfg.set_value("last", "adventure", JSON.stringify({"id": c.get("id"), "name": c.get("name"), "world_id": c.get("world_id", "")}))
-	cfg.save(Api.COOKIE_FILE)
+	if str(c.get("id", "")).begins_with("dm-"):
+		var cfg := ConfigFile.new()
+		cfg.load(Api.COOKIE_FILE)
+		cfg.set_value("last", "adventure", JSON.stringify({"id": c.get("id"), "name": c.get("name"), "world_id": c.get("world_id", "")}))
+		cfg.save(Api.COOKIE_FILE)
 	get_tree().change_scene_to_file(GAME_SCENE)

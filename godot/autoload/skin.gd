@@ -37,6 +37,7 @@ const PALETTES := {
 }
 
 var world_id := ""
+var reduce_motion := false
 var pal: Dictionary = PALETTES["arcane"]
 var theme := Theme.new()
 var serif := SystemFont.new()

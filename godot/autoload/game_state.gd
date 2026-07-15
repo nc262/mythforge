@@ -32,6 +32,11 @@ func world_id() -> String:
 	return str(character.get("world_id", ""))
 
 
+## DM adventures carry the game systems; everything else is pure conversation.
+func is_dm() -> bool:
+	return cid().begins_with("dm-")
+
+
 func hydrate() -> void:
 	state = {}
 	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid().uri_encode())

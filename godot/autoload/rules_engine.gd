@@ -21,10 +21,26 @@ var spells: Array = []
 var bestiary: Array = []
 
 
+var worlds_json: Dictionary = {}
+
+
 func _ready() -> void:
 	tables = _load_json("res://data/tables.json")
 	spells = _load_json("res://data/spells.json").get("spells", [])
 	bestiary = _load_json("res://data/bestiary.json").get("entries", [])
+	worlds_json = _load_json("res://data/worlds.json")
+
+
+func builtin_worlds() -> Array:
+	return worlds_json.get("worlds", [])
+
+
+func world_stories(wid: String) -> Array:
+	return worlds_json.get("stories", {}).get(wid, [])
+
+
+func world_locations(wid: String) -> Array:
+	return worlds_json.get("locations", {}).get(wid, [])
 
 
 func _load_json(path: String) -> Dictionary:

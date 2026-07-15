@@ -12,66 +12,133 @@ script = ExtResource("1")
 [node name="Backdrop" parent="." instance=ExtResource("2")]
 layout_mode = 1
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="KeyArt" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+expand_mode = 1
+stretch_mode = 6
+modulate = Color(1, 1, 1, 0.22)
+mouse_filter = 2
+
+[node name="Scrim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0.047, 0.039, 0.11, 0.45)
+mouse_filter = 2
+
+[node name="Title" type="CenterContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 
-[node name="Box" type="VBoxContainer" parent="Center"]
+[node name="Box" type="VBoxContainer" parent="Title"]
 layout_mode = 2
-theme_override_constants/separation = 10
+theme_override_constants/separation = 12
 
-[node name="Title" type="Label" parent="Center/Box"]
+[node name="Brand" type="Label" parent="Title/Box"]
 layout_mode = 2
 theme_type_variation = &"TitleLabel"
-theme_override_font_sizes/font_size = 64
+theme_override_font_sizes/font_size = 68
 text = "✦ MYTHFORGE"
 horizontal_alignment = 1
 
-[node name="Tag" type="Label" parent="Center/Box"]
+[node name="Tag" type="Label" parent="Title/Box"]
 layout_mode = 2
 theme_type_variation = &"HintLabel"
-text = "Every world is a door. The dice are real."
+text = "A local Game Master. Your table, your tale."
 horizontal_alignment = 1
 
-[node name="Gap" type="Control" parent="Center/Box"]
-custom_minimum_size = Vector2(0, 18)
+[node name="Gap" type="Control" parent="Title/Box"]
+custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 
-[node name="Continue" type="Button" parent="Center/Box"]
+[node name="Continue" type="Button" parent="Title/Box"]
 visible = false
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 theme_type_variation = &"AccentButton"
 text = "▶ Continue"
 
-[node name="Forge" type="Button" parent="Center/Box"]
-layout_mode = 2
-text = "⚒ Forge a world"
-
-[node name="Gap2" type="Control" parent="Center/Box"]
-custom_minimum_size = Vector2(0, 10)
-layout_mode = 2
-
-[node name="Sub" type="Label" parent="Center/Box"]
+[node name="ContinueMeta" type="Label" parent="Title/Box"]
+visible = false
 layout_mode = 2
 theme_type_variation = &"HintLabel"
-text = "ADVENTURES"
 horizontal_alignment = 1
 
-[node name="Scroll" type="ScrollContainer" parent="Center/Box"]
-custom_minimum_size = Vector2(860, 380)
+[node name="NewAdv" type="Button" parent="Title/Box"]
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
+text = "✦ New Adventure"
+
+[node name="Companion" type="Button" parent="Title/Box"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+text = "💬 Chat with a Companion"
+
+[node name="Settings" type="Button" parent="Title/Box"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+text = "⚙ Settings"
+
+[node name="Status" type="Label" parent="Title/Box"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+horizontal_alignment = 1
+
+[node name="Sub" type="Control" parent="."]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Margin" type="MarginContainer" parent="Sub"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+theme_override_constants/margin_left = 48
+theme_override_constants/margin_top = 28
+theme_override_constants/margin_right = 48
+theme_override_constants/margin_bottom = 28
+
+[node name="Box" type="VBoxContainer" parent="Sub/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Bar" type="HBoxContainer" parent="Sub/Margin/Box"]
+layout_mode = 2
+theme_override_constants/separation = 14
+
+[node name="Back" type="Button" parent="Sub/Margin/Box/Bar"]
+layout_mode = 2
+text = "‹ Menu"
+
+[node name="Heading" type="Label" parent="Sub/Margin/Box/Bar"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "Choose a world"
+
+[node name="Step" type="Label" parent="Sub/Margin/Box/Bar"]
+layout_mode = 2
+theme_type_variation = &"HintLabel"
+text = ""
+
+[node name="Scroll" type="ScrollContainer" parent="Sub/Margin/Box"]
+layout_mode = 2
+size_flags_vertical = 3
 horizontal_scroll_mode = 0
 
-[node name="Grid" type="GridContainer" parent="Center/Box/Scroll"]
+[node name="Content" type="VBoxContainer" parent="Sub/Margin/Box/Scroll"]
 layout_mode = 2
 size_flags_horizontal = 3
-columns = 2
-theme_override_constants/h_separation = 14
-theme_override_constants/v_separation = 14
+theme_override_constants/separation = 14
 
-[node name="Status" type="Label" parent="Center/Box"]
+[node name="SubStatus" type="Label" parent="Sub/Margin/Box"]
 layout_mode = 2
 theme_type_variation = &"HintLabel"
-horizontal_alignment = 1

@@ -25,12 +25,34 @@ func envelope(player_msg: String, beats: Array = []) -> String:
 		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s]" % summary)
 	parts.append("[%s]" % GameState.clock_text())
 	for extra in [GameState.inv_text(), GameState.spell_text(),
-			Chronicle.recall_text(beats), Chronicle.codex_text(), Chronicle.quests_text()]:
+			Chronicle.recall_text(beats), Chronicle.codex_text(), Chronicle.quests_text(),
+			gm_directive()]:
 		if str(extra) != "":
 			parts.append("[%s]" % extra)
 	parts.append(PROTOCOL)
 	parts.append(player_msg)
 	return "\n".join(parts)
+
+
+## Session Zero's tone knobs → one style line per turn (port of _gmDirective).
+func gm_directive() -> String:
+	var k = GameState.state.get("gm")
+	if not (k is Dictionary) or k.is_empty():
+		return ""
+	var bits: Array[String] = []
+	var lohi := func(v: int, lo: String, hi: String):
+		if v <= 25:
+			bits.append(lo)
+		elif v >= 75:
+			bits.append(hi)
+	lohi.call(int(k.get("humor", 40)), "keep the tone earnest and serious", "weave in real wit and levity")
+	lohi.call(int(k.get("spice", 0)), "keep romance offscreen", "romance and heat are welcome when the story invites them")
+	lohi.call(int(k.get("grit", 50)), "keep danger gentle and forgiving", "the world is brutal — wounds, costs, and consequences bite")
+	lohi.call(int(k.get("pace", 55)), "linger in scenes; let moments breathe", "keep scenes brisk and cut hard to the action")
+	lohi.call(int(k.get("rules", 50)), "rule loosely and favor the story", "run the rules strictly by the book")
+	if bits.is_empty():
+		return ""
+	return "GM style — " + "; ".join(bits) + "."
 
 
 ## The persona prompt for a forged world's GM (port of _composeDMPrompt's
