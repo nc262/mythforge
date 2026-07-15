@@ -180,6 +180,33 @@ func level_for_xp(xp: int) -> int:
 	return lvl
 
 
+## Highest spell circle a class reaches at a level (port of _maxCircle).
+func max_circle(cls: String, level: int) -> int:
+	var preset: Dictionary = tables.get("class_presets", {}).get(cls, {})
+	if bool(preset.get("caster", false)):
+		return mini(5, ceili(clampi(level, 1, 9) / 2.0))
+	if cls in ["Ranger", "Paladin"]:
+		return 3 if level >= 9 else (2 if level >= 5 else (1 if level >= 2 else 0))
+	return 0
+
+
+## Spells this hero could learn right now (class list, reachable circle, unknown).
+func learnable_spells(s: Dictionary) -> Array:
+	var cls := str(s.get("cls", ""))
+	var circle := max_circle(cls, int(s.get("level", 1)))
+	if circle == 0:
+		return []
+	var known := {}
+	for sp in s.get("spells", []):
+		known[str(sp.get("name", "")).to_lower()] = true
+	var out: Array = []
+	for sp in spells:
+		if sp.get("classes", []).has(cls) and int(sp.get("level", 9)) <= circle \
+				and not known.has(str(sp.get("name", "")).to_lower()):
+			out.append(sp)
+	return out
+
+
 func full_caster_slots(level: int) -> Dictionary:
 	var m: Dictionary = tables.get("caster_slots", {}).get(str(clampi(level, 1, 9)), {})
 	var out := {}

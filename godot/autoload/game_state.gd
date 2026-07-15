@@ -19,6 +19,8 @@ const WEATHERS := {
 	"_": [["☀️", "clear weather"], ["🌤", "scattered clouds"], ["🌧", "rain"], ["🌫", "fog"], ["💨", "strong wind"], ["⛈", "a storm"]],
 }
 
+signal leveled_up(from_level: int, to_level: int)
+
 var character: Dictionary = {}
 var session_id := ""
 var state: Dictionary = {}
@@ -237,7 +239,9 @@ func award_xp(amount: int, reason := "") -> Dictionary:
 		note += "\n🎉 *LEVEL UP — you are now level %d! HP restored to %d.%s*" % [after, int(s["hpMax"]),
 			(" New: " + ", ".join(gained)) if not gained.is_empty() else ""]
 	set_sheet(s)
-	return {"note": note, "leveled": after > before}
+	if after > before:
+		leveled_up.emit(before, after)
+	return {"note": note, "leveled": after > before, "from": before, "to": after}
 
 
 func inv_text() -> String:

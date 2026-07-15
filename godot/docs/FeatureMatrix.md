@@ -32,7 +32,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Backgrounds (8, +2 skills + hook) | :3796 | ✅ picker + hook into session zero | P2 | — | S | |
 | Portrait in hero forge | :3826 | 🔲 | P3 | /generate | M | |
 | Standard array + editable grid | :3807 | 🔲 | P3 | — | S | |
-| Level-up ceremony (roll HP, feats/ASI, subclass, spells) | renderLevelUp :5825 | 🔲 | **P1** | tables present | L | auto-level works; choices absent |
+| Level-up ceremony (roll HP, feats/ASI, subclass, spells) | renderLevelUp :5825 | ✅ | P1 | — | L | ASI = +2 single (split 🔲) |
 | Class feature actions (per-rest uses) | FEATURE_ACTIONS :2940 | ✅ 6 ported | P1 | — | M | Bardic Insp., Lay on Hands, Wild Shape… 🔲 |
 | Inspiration (grant nat20 / arm / spend adv) | :3342 | 🔲 | P2 | — | S | |
 | Multiclassing | _canMulticlass :2877 | 🔲 | P4 | — | L | |
@@ -49,7 +49,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Companions fight + persist wounds | _companionTurn | ✅ | P1 | — | M | — |
 | Death saves + epitaph | _rollDeathSave :5178 | ✅ | P1 | — | M | game-over overlay w/ load-save & cling-to-life buttons 🟡 (revive path = long rest) |
 | Victory: auto-finish, XP, killing-blow cinema | _finishCombat | ✅ | P1 | — | M | HDYWTDT player flourish input 🔲; victory frame FX 🔲 |
-| **Tactical battle grid** (16×10 tokens/drag/terrain/move budgets) | renderBattle :6508 | 🔲 | **P1** | bmap kind | **XL** | the biggest open port |
+| **Tactical battle grid** (16×10, tokens, move budgets, adjacency/ranged, enemy approach) | renderBattle :6508 | ✅ v1 | P1 | — | XL | terrain paint + token drag 🔲 (click-move shipped) |
 | Battle underlay art (scene-matched map) | _ensureBattleUnderlay | 🔲 | P3 | /generate | M | |
 | Combat music/backdrop swap | _enterCombatMode | 🟡 tint+sting | P3 | audio | M | music system 🔲 |
 

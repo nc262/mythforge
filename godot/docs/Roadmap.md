@@ -15,10 +15,10 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
 - Docs system (this set) + FeatureMatrix as living truth ✅
 
 ## M2 — Combat & progression complete (current)
-- **Tactical battle grid** (the XL item): 16×10 board, tokens, movement
-  budgets by speed, melee adjacency/ranged rules, terrain, `bmap` persistence
-- **Level-up ceremony**: HP roll-vs-average, feats/ASI at milestones,
-  subclass at 3, spell picks by circle
+- ✅ **Tactical battle grid**: 16×10 board, tokens, movement budgets,
+  melee adjacency/ranged rules, enemy approach, `bmap` persistence (terrain → M3)
+- ✅ **Level-up ceremony**: HP roll-vs-average, feats/ASI at milestones,
+  subclass at 3 with grants, spell picks by circle
 - Chronicle/snapshots UI (save slots: list, continue-from-here)
 - Travel atlas v1: places list, travel action, road encounters, "you are
   here", location-aware vendors
