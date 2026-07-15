@@ -516,11 +516,78 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 		"relationship": "Dungeon Master", "world_id": wid,
 	})
 	_busy = false
-	_play({"id": "dm-%s-%s" % [wid, slug], "name": name, "world_id": wid})
+	var adv := {"id": "dm-%s-%s" % [wid, slug], "name": name, "world_id": wid}
+	# A live save already? Continue it or start over (archive + wipe).
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	var sid := str(cfg.get_value("sessions", str(adv["id"]), ""))
+	if sid != "" and (await Api.call_json(HTTPClient.METHOD_GET, "/api/history/" + sid)).get("_status", 0) == 200:
+		_ask_continue_or_new(adv, sid)
+	else:
+		_play(adv)
+
+
+func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = str(adv.get("name", "This adventure"))
+	dlg.ok_button_text = "▶ Continue"
+	dlg.get_cancel_button().text = "↻ New game"
+	var note := Label.new()
+	note.theme_type_variation = "HintLabel"
+	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	note.custom_minimum_size = Vector2(420, 0)
+	note.text = "A new game starts this adventure over — your sheet, pack, gold, and progress here are reset (the old save is archived). Your other adventures are untouched."
+	dlg.add_child(note)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(func(): dlg.queue_free(); _play(adv))
+	dlg.canceled.connect(func():
+		dlg.queue_free()
+		await Api.call_json(HTTPClient.METHOD_POST, "/api/session/%s/archive" % sid)
+		var cfg := ConfigFile.new()
+		cfg.load(Api.COOKIE_FILE)
+		cfg.set_value("sessions", str(adv["id"]), null)
+		cfg.save(Api.COOKIE_FILE)
+		# Reset this adventure's world-state so the hero forge runs fresh.
+		for kind in ["sheet", "inv", "combat", "clock", "quests", "codex", "mem", "bmap", "gm"]:
+			await Api.call_json(HTTPClient.METHOD_PUT,
+				"/api/characters/studio/state/%s/%s" % [str(adv["id"]).uri_encode(), kind], {"value": null})
+		_play(adv))
 
 
 func _continue_last() -> void:
-	_play($Title/Box/Continue.get_meta("char"))
+	# Several live adventures → the save-file screen; one → straight in.
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	var saved: Array = []
+	if cfg.has_section("sessions"):
+		for cid in cfg.get_section_keys("sessions"):
+			for t in _templates:
+				if str(t.get("id")) == cid and cid.begins_with("dm-"):
+					saved.append(t)
+	if saved.size() <= 1:
+		_play($Title/Box/Continue.get_meta("char"))
+		return
+	_show_saves(saved)
+
+
+func _show_saves(saved: Array) -> void:
+	_show_sub("Your tales", "Pick up where a story left off")
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	var last = JSON.parse_string(str(cfg.get_value("last", "adventure", "")))
+	var last_id := str(last.get("id", "")) if last is Dictionary else ""
+	for t in saved:
+		var cid := str(t.get("id"))
+		var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid.uri_encode())
+		var sheet: Dictionary = st.get("state", {}).get("sheet", {}) if st.get("state") is Dictionary and st["state"].get("sheet") is Dictionary else {}
+		var clock: Dictionary = st.get("state", {}).get("clock", {}) if st.get("state") is Dictionary and st["state"].get("clock") is Dictionary else {}
+		var row := _big_card("%s%s" % [str(t.get("name", "?")), "   · latest" if cid == last_id else ""],
+			"%s · Level %d · Day %d" % [str(sheet.get("name", "a new hero")), int(sheet.get("level", 1)), int(clock.get("day", 1))],
+			Ui.pal["gold"] if cid == last_id else Ui.pal["ink_soft"])
+		row.custom_minimum_size = Vector2(560, 84)
+		row.pressed.connect(func(): _play({"id": cid, "name": t.get("name", ""), "world_id": t.get("world_id", "")}))
+		_content.add_child(row)
 
 
 func _play(c: Dictionary) -> void:

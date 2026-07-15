@@ -271,6 +271,22 @@ func spell_text() -> String:
 	return t
 
 
+## An NPC joins the party (port of _toggleCompanion's recruit half).
+func add_companion(nm: String, role := "") -> String:
+	var s := sheet()
+	var comps: Array = s.get("companions", [])
+	for c in comps:
+		if str(c.get("name", "")).nocasecmp_to(nm) == 0:
+			return ""
+	var level := int(s.get("level", 1))
+	var hp_max := 10 + 2 * level
+	comps.append({"name": nm, "role": role, "cls": "Fighter", "level": level,
+		"ac": 13, "hpMax": hp_max, "hp": hp_max})
+	s["companions"] = comps
+	set_sheet(s)
+	return "⚔ *%s joins your party — a level %d companion!*" % [nm, level]
+
+
 # ── Class feature actions (port of FEATURE_ACTIONS) ─────────────────────────
 ## Feature name (matched by prefix against sheet.features) → per-rest uses.
 const FEATURE_ACTIONS := {

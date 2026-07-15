@@ -10,6 +10,7 @@ var _last_player_msg := ""  # the visible player line, paired into memory beats
 var _conjuring := false
 var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
 var _panel_mode := "sheet"  # what the right panel shows: sheet | codex
+var _shop_markup := 1.0  # haggling moves the keeper's prices
 
 @onready var _thread: VBoxContainer = $Margin/Split/ChatBox/Scroll/Thread
 @onready var _scroll: ScrollContainer = $Margin/Split/ChatBox/Scroll
@@ -309,7 +310,11 @@ func _send(raw: String) -> void:
 	_stream(Composer.envelope(msg, beats))
 
 
+var _last_framed := ""
+
+
 func _stream(framed: String) -> void:
+	_last_framed = framed
 	_streaming = true
 	_acc = ""
 	_shown = 0
@@ -349,6 +354,17 @@ func _flush_stream() -> void:
 		_shown += (j + 2) - i  # skip the completed tag; done() re-parses _acc
 
 
+## ↻ Retell: drop the last GM reply and stream the same framed message again.
+func _regen() -> void:
+	if _streaming or _last_framed == "" or _gm_rt == null:
+		return
+	var row := _gm_rt.get_parent().get_parent()  # rt -> panel -> row
+	if row != null and row.get_parent() == _thread:
+		row.queue_free()
+	_gm_rt = null
+	_stream(_last_framed)
+
+
 func _on_event(d: Dictionary) -> void:
 	if d.get("type", "") == "error" or d.has("error"):
 		if _gm_rt != null:
@@ -373,6 +389,12 @@ func _on_done(_ok: bool) -> void:
 	var parsed: Dictionary = Tags.parse(_acc)
 	_apply_world_tags(parsed["tags"])
 	Chronicle.record(_last_player_msg, str(parsed["clean"]))
+	if RegEx.create_from_string("\bTHE END\b").search(str(parsed["clean"])):
+		Sfx.play("chime")
+		Sfx.play("sting")
+		var fin_rt := _bubble("gm")
+		fin_rt.append_text("[color=%s][b]🏁 THE TALE IS COMPLETE[/b][/color]
+[i]This campaign has reached its end — the world remembers. Free roam continues if you keep talking, or return to the menu for a new tale.[/i]" % Ui.c("gold_soft").to_html(false))
 	var check: Dictionary = Tags.check_from_tags(parsed["tags"])
 	if check.is_empty():
 		check = Tags.detect_check(str(parsed["clean"]))
@@ -417,6 +439,13 @@ func _apply_world_tags(tags: Array) -> void:
 				var place := str(a.get("place", "")).strip_edges()
 				if place != "" and not _conjuring:
 					_repaint_scene(place)
+			"companion":
+				var cn := str(a.get("name", "")).strip_edges()
+				if cn != "":
+					var note := GameState.add_companion(cn, str(a.get("role", "")))
+					if note != "":
+						Sfx.play("chime")
+						_say_system(note.replace("*", ""))
 	if not Combat.active():
 		var foe := Tags.detect_combat_start(Tags.parse(_acc)["clean"])
 		if foe != "":
@@ -551,12 +580,24 @@ func _build_dice_menu() -> void:
 		pop.add_item("%s  %+d" % [a, Rules.ability_mod(int(s["abilities"].get(a, 10)))], idx)
 		pop.set_item_metadata(idx, {"abil": a})
 		idx += 1
+	pop.add_separator("Ask the GM")
+	idx += 1
+	pop.add_item("📖 Learn a spell…", 900)
+	pop.add_item("🤝 Recruit an ally…", 901)
 	if not pop.id_pressed.is_connected(_free_check):
 		pop.id_pressed.connect(_free_check)
 
 
 func _free_check(id: int) -> void:
 	if _streaming:
+		return
+	if id == 900:
+		_ask_gm("Learn a spell", "Which spell do you seek?",
+			func(x): return "[I want to learn the spell %s. As GM, decide honestly if I could access it here and what it costs — gold, a favor, training time. If you grant it, say clearly that I learn it and tag [[spell-learned name=\"%s\"]].]" % [x, x])
+		return
+	if id == 901:
+		_ask_gm("Recruit an ally", "Who do you ask to join you?",
+			func(x): return "[I ask %s to join my party as a companion. Decide honestly from our history whether they agree — if they do, tag [[companion name=\"%s\"]].]" % [x, x])
 		return
 	var pop: PopupMenu = $Margin/Split/ChatBox/Input/Dice.get_popup()
 	var meta = pop.get_item_metadata(pop.get_item_index(id))
@@ -577,11 +618,35 @@ func _free_check(id: int) -> void:
 	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.]" % [label, int(res["total"])]))
 
 
+## A one-line ask that the GM adjudicates (learn a spell, recruit an ally).
+func _ask_gm(title: String, placeholder: String, frame: Callable) -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = title
+	dlg.ok_button_text = "Ask"
+	var input := LineEdit.new()
+	input.placeholder_text = placeholder
+	input.custom_minimum_size = Vector2(360, 0)
+	dlg.add_child(input)
+	add_child(dlg)
+	dlg.popup_centered()
+	input.grab_focus()
+	dlg.confirmed.connect(func():
+		var x := input.text.strip_edges()
+		dlg.queue_free()
+		if x == "" or _streaming:
+			return
+		_say_me(_bb("I ask about: %s" % x))
+		_last_player_msg = "I ask about " + x
+		_stream(Composer.envelope(str(frame.call(x)))))
+
+
 # ── Sheet actions ────────────────────────────────────────────────────────────
 func _on_sheet_action(meta) -> void:
 	var parts := str(meta).split(":", true, 1)
-	if parts.size() != 2 or _streaming:
+	if _streaming:
 		return
+	if parts.size() == 1:
+		parts = [parts[0], ""]
 	var note := ""
 	var tell_gm := false
 	match parts[0]:
@@ -598,6 +663,14 @@ func _on_sheet_action(meta) -> void:
 			tell_gm = note != ""
 		"portrait":
 			_conjure_portrait(parts[1].uri_decode())
+			return
+		"haggle":
+			var hres: Dictionary = Rules.resolve_check({"ability": "CHA", "skill": "Persuasion", "dc": 12}, GameState.sheet(), GameState.inv())
+			await _animate_die(20, int(hres.get("roll", 10)), "Persuasion")
+			_shop_markup = 0.8 if int(hres["total"]) >= 12 else 1.1
+			_say_me(_md(str(hres["text"])))
+			_say_system("The keeper %s." % ("softens — a fifth off everything" if _shop_markup < 1.0 else "bristles — prices nudge up"))
+			_open_shop()
 			return
 		"buy":
 			var bits := parts[1].split("|")
@@ -888,7 +961,17 @@ func _open_shop() -> void:
 		lines.append("[color=%s][b]%s[/b][/color]" % [gold, cat.capitalize()])
 		for g in goods:
 			if g is Array and g.size() >= 2:
-				lines.append("  %s — %d gold  [url=buy:%s|%d]buy[/url]" % [_bb(str(g[0])), int(g[1]), str(g[0]).uri_encode(), int(g[1])])
+				var price := maxi(1, roundi(int(g[1]) * _shop_markup))
+				lines.append("  %s — %d gold  [url=buy:%s|%d]buy[/url]" % [_bb(str(g[0])), price, str(g[0]).uri_encode(), price])
+	if _shop_markup == 1.0:
+		lines.append("
+[url=haggle]💬 Haggle with the keeper[/url]")
+	elif _shop_markup < 1.0:
+		lines.append("
+[i]The keeper likes you — prices are down a fifth.[/i]")
+	else:
+		lines.append("
+[i]The keeper is annoyed — prices are up.[/i]")
 	var rt := _bubble("gm")
 	rt.append_text("\n".join(lines))
 	rt.meta_clicked.connect(_on_sheet_action)
