@@ -55,9 +55,16 @@ Enforcement: the protocol text in every envelope + all mutation paths go
 through typed tag handlers + prose-regex fallbacks exist only for
 roll-calls and combat-starts (never for state changes without a tag).
 
-## Planned: finite state machine (see Roadmap M1)
-A `Mode` autoload gating input/UI per state: MainMenu, CharacterCreation,
-Exploration, Conversation, Combat, Inventory, Merchant, Crafting, Camp,
-Travel, Cutscene, GameOver. Today the equivalents are implicit (scene +
-booleans like `_streaming`, `Combat.active()`); the FSM formalizes them
-before more modes land.
+## Finite state machine (`Mode`, autoload/state_manager.gd) — M1 ✅
+The authoritative game-flow controller. 20 declared states (MainMenu,
+Settings, Loading, CharacterCreation, Exploration, Dialogue, Combat, Death,
+Victory, GameOver, LevelUp, Merchant, Inventory, CharacterSheet, Crafting,
+Camp, LongRest, Travel, Cutscene, Pause), each with an **allowed-action
+set** and a **declared transition list**. Every player action passes
+`Mode.can(action)`; every mode change goes through `Mode.enter()` (illegal
+transitions warn loudly but never hard-lock). `Mode.busy` mirrors streams —
+it blocks all actions in any state without changing mode. States without
+gameplay yet (Crafting, Travel, Pause…) are declared placeholders per the
+no-simplification rule; they gain wiring as their systems land (see
+FeatureMatrix). Self-check asserts gating, busy blocking, and that every
+declared exit targets a declared state.

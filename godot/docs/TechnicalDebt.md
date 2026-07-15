@@ -5,7 +5,7 @@ Deliberate shortcuts, each with its ceiling and upgrade path. (Grep
 
 | Debt | Where | Ceiling | Upgrade path | When |
 |---|---|---|---|---|
-| Implicit game modes (booleans, scene identity) | game.gd, Combat | blocks controller nav, mode-gated input, cutscenes | `Mode` FSM autoload | **M1** |
+| ~~Implicit game modes~~ PAID M1: `Mode` FSM owns flow; `_streaming` remains as a local mirror of `Mode.busy` until the game.gd split | state_manager.gd | — | remove `_streaming` alias during M2 split | M2 |
 | game.gd is a god-script (~1.3k lines: chat+combat UI+sheet+shop+forge) | scripts/game.gd | hard to grow M2/M3 features | split: chat_view / panels / dialogs as child scenes under the FSM | M1–M2 |
 | State writes are fire-and-forget PUTs, no debounce/retry | GameState.save_kind | a dropped PUT silently loses a mutation until next write of that kind | write-through queue with retry + dirty flags (web had 600ms debounce) | M2 |
 | Enemy stats by name-regex tiers + level multiplier | Combat.enemy_hp_guess | flavorless foes vs rich bestiary data | stat blocks derived from bestiary tiers; per-world threat tables | M2 grid |

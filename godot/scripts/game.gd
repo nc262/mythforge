@@ -65,6 +65,7 @@ func _ready() -> void:
 		_scene_art.modulate.a = 0.35
 	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
 	if not GameState.is_dm():
+		Mode.enter("Dialogue")
 		for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "ShortRest", "LongRest", "Scene"]:
 			$Margin/Split/ChatBox/Input.get_node(btn).visible = false
 		_say_system("You sit down with %s." % str(GameState.character.get("name", "?")))
@@ -74,8 +75,10 @@ func _ready() -> void:
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
 	if str(GameState.sheet().get("name", "")) == "":
+		Mode.enter("CharacterCreation")
 		_hero_forge()  # a fresh adventure begins with a hero, not a nobody
 	else:
+		Mode.enter("Exploration")
 		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
 		_recap()
 
@@ -234,6 +237,7 @@ func _session_zero(nm: String, race: String, cls: String) -> void:
 			knobs[key] = int(sliders[key].value)
 		GameState.save_kind("gm", knobs)
 		dlg.queue_free()
+		Mode.enter("Exploration")
 		_last_player_msg = "I arrive."
 		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls])))
 
@@ -294,7 +298,7 @@ func _scroll_bottom() -> void:
 
 # ── Sending / streaming ──────────────────────────────────────────────────────
 func _send(raw: String) -> void:
-	if _streaming:
+	if not Mode.can("send_message"):
 		return
 	var msg := raw.strip_edges()
 	if msg == "":
@@ -316,6 +320,7 @@ var _last_framed := ""
 func _stream(framed: String) -> void:
 	_last_framed = framed
 	_streaming = true
+	Mode.busy = true
 	_acc = ""
 	_shown = 0
 	_send_btn.disabled = true
@@ -375,6 +380,7 @@ func _on_event(d: Dictionary) -> void:
 
 func _on_done(_ok: bool) -> void:
 	_streaming = false
+	Mode.busy = false
 	_send_btn.disabled = false
 	var tail: Dictionary = Tags.parse(_acc.substr(_shown))
 	if _gm_rt != null:
@@ -478,6 +484,7 @@ func _start_combat(foes: String) -> void:
 
 
 func _end_combat() -> void:
+	Mode.enter("Exploration")
 	var r: Dictionary = Combat.finish()
 	if str(r["note"]) != "":
 		_say_system(str(r["note"]).replace("*", ""))
@@ -521,7 +528,7 @@ func _set_check(check: Dictionary) -> void:
 
 
 func _roll_pending() -> void:
-	if _pending_check.is_empty() or _streaming:
+	if _pending_check.is_empty() or not (Mode.can("roll") or Mode.can("death_save")):
 		return
 	var check := _pending_check
 	_set_check({})
@@ -533,7 +540,10 @@ func _roll_pending() -> void:
 		_render_sheet()
 		_say_me(_md(str(dr["msg"])))
 		_last_player_msg = str(dr["msg"])
+		if bool(dr["revived"]) or bool(dr["stable"]):
+			Mode.enter("Combat")  # the fight goes on around you
 		if bool(dr["dead"]):
+			Mode.enter("GameOver")
 			# The epitaph: what this run amounted to.
 			var s := GameState.sheet()
 			var c: Dictionary = GameState.clock()
@@ -589,7 +599,7 @@ func _build_dice_menu() -> void:
 
 
 func _free_check(id: int) -> void:
-	if _streaming:
+	if not (Mode.can("roll") or Mode.can("ask_gm")):
 		return
 	if id == 900:
 		_ask_gm("Learn a spell", "Which spell do you seek?",
@@ -643,7 +653,7 @@ func _ask_gm(title: String, placeholder: String, frame: Callable) -> void:
 # ── Sheet actions ────────────────────────────────────────────────────────────
 func _on_sheet_action(meta) -> void:
 	var parts := str(meta).split(":", true, 1)
-	if _streaming:
+	if not Mode.can("panels"):
 		return
 	if parts.size() == 1:
 		parts = [parts[0], ""]
@@ -695,7 +705,7 @@ func _on_sheet_action(meta) -> void:
 
 # ── Combat actions ───────────────────────────────────────────────────────────
 func _on_combat_action(meta) -> void:
-	if _streaming:
+	if not Mode.can("combat_action"):
 		return
 	var m := str(meta)
 	if m == "cend":
@@ -755,7 +765,11 @@ func _render_combat() -> void:
 	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
 	if not fighting:
 		return
+	if Mode.state in ["Exploration", "Victory", "Loading"]:
+		Mode.enter("Combat")
 	if not Combat.pc_down().is_empty():
+		if Mode.state == "Combat":
+			Mode.enter("Death")  # the only roll that matters now is the save
 		_pending_check = {"type": "death"}
 		_roll_bar.text = "☠ Roll a death save"
 		_roll_bar.visible = true
@@ -782,7 +796,7 @@ func _render_combat() -> void:
 
 # ── Rests ────────────────────────────────────────────────────────────────────
 func _rest(kind: String) -> void:
-	if _streaming:
+	if not Mode.can("rest"):
 		return
 	var r: Dictionary = GameState.short_rest() if kind == "short" else GameState.long_rest()
 	_render_sheet()

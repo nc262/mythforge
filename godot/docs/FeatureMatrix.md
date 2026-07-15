@@ -96,4 +96,4 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Crafting | _craftItem :7756 | 🔲 | P3 | — | M | |
 | Party multiplayer + voice | /party/* | 🔲 | P4 | polling API | XL | |
 | Windows .exe export (Steam-ready) | — | 🔲 | P2 | ~500MB templates (ask user) | S | |
-| FSM game modes | (new) | 🔲 | **P1** | — | M | prerequisite for controller + modes |
+| FSM game modes | (new) | ✅ Mode autoload, 20 states | P1 | — | M | input-map per state rides M3 controller work |

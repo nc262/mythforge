@@ -141,5 +141,28 @@ func _ready() -> void:
 	assert(not Combat.active())
 	assert(int(GameState.sheet()["xp"]) > 300)  # victory XP landed
 
+	# FSM: transitions, action gating, busy blocking
+	assert(Mode.state == "Boot")
+	Mode.enter("MainMenu")
+	assert(Mode.can("start_adventure") and not Mode.can("send_message"))
+	assert(Mode.can_enter("Settings") and not Mode.can_enter("Combat"))
+	Mode.enter("Loading")
+	Mode.enter("Exploration")
+	assert(Mode.can("send_message") and Mode.can("rest") and not Mode.can("combat_action"))
+	Mode.busy = true
+	assert(not Mode.can("send_message"), "busy blocks every action")
+	Mode.busy = false
+	Mode.enter("Combat")
+	assert(Mode.can("combat_action") and not Mode.can("rest"))
+	Mode.enter("Death")
+	assert(Mode.can("death_save") and not Mode.can("combat_action"))
+	assert(Mode.can_enter("GameOver") and Mode.can_enter("Combat"))
+	Mode.enter("GameOver")
+	assert(not Mode.can("roll") and Mode.can("rest"))  # the last dawn
+	for st in Mode.STATES:  # every declared exit leads to a declared state
+		for nxt in Mode.STATES[st]["to"]:
+			assert(Mode.STATES.has(nxt), "undeclared target %s from %s" % [nxt, st])
+	Mode.state = "Boot"  # leave the machine as the game boots it
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

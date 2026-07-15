@@ -28,6 +28,7 @@ var _templates: Array = []
 func _ready() -> void:
 	theme = Ui.theme
 	Ui.apply("")
+	Mode.enter("MainMenu")
 	_load_settings()
 	$Title/Box/Continue.pressed.connect(_continue_last)
 	$Title/Box/NewAdv.pressed.connect(_show_worlds)
@@ -69,6 +70,7 @@ func _refresh() -> void:
 
 # ── View plumbing ────────────────────────────────────────────────────────────
 func _show_title() -> void:
+	Mode.enter("MainMenu")
 	_sub.visible = false
 	_title.visible = true
 	Ui.apply("")
@@ -284,6 +286,7 @@ func _chat_companion(w: Dictionary, c: Dictionary) -> void:
 
 # ── Settings ─────────────────────────────────────────────────────────────────
 func _show_settings() -> void:
+	Mode.enter("Settings")
 	_show_sub("⚙ Settings", "")
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
@@ -594,6 +597,7 @@ func _play(c: Dictionary) -> void:
 	if _busy:
 		return
 	_busy = true
+	Mode.enter("Loading")
 	var status := _sub_status if _sub.visible else $Title/Box/Status
 	status.text = "Opening %s…" % str(c.get("name", ""))
 	GameState.character = c
@@ -602,6 +606,7 @@ func _play(c: Dictionary) -> void:
 	if GameState.session_id == "":
 		status.text = "Could not create a session (is a chat model endpoint configured?)."
 		Ui.apply("")
+		Mode.enter("MainMenu")
 		_busy = false
 		return
 	if str(c.get("id", "")).begins_with("dm-"):

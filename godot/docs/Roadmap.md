@@ -4,7 +4,7 @@ Milestones are shippable; each ends with the harnesses green, FeatureMatrix
 updated, and a playable build. Order chosen by play-impact per the matrix.
 
 ## M1 — Foundations for scale (current)
-- **Finite state machine** (`Mode` autoload): MainMenu, CharacterCreation,
+- ✅ **Finite state machine** (`Mode` autoload): MainMenu, CharacterCreation,
   Exploration, Conversation, Combat, Inventory, Merchant, Crafting, Camp,
   Travel, Cutscene, GameOver. Each mode declares allowed actions, blocked
   input, visible UI. All existing booleans (`_streaming`, `Combat.active`)
