@@ -33,6 +33,7 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
+	$Margin/Split/ChatBox/Input/Shop.pressed.connect(_open_shop)
 	_roll_bar.pressed.connect(_roll_pending)
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
@@ -429,7 +430,15 @@ func _roll_pending() -> void:
 		_say_me(_md(str(dr["msg"])))
 		_last_player_msg = str(dr["msg"])
 		if bool(dr["dead"]):
-			_say_system("☠ THE TALE ENDS HERE — three failures. A long rest starts a new dawn… if the GM allows it.")
+			# The epitaph: what this run amounted to.
+			var s := GameState.sheet()
+			var c: Dictionary = GameState.clock()
+			var rt := _bubble("gm")
+			rt.append_text("[color=%s][b]☠ HERE ENDS THE TALE OF %s[/b][/color]\nLevel %d %s %s · survived to day %d · %d XP · %d gold in the purse\n[i]The dice remember what the living forget.[/i]" % [
+				Ui.c("danger").to_html(false), _bb(str(s.get("name", "?")).to_upper()),
+				int(s.get("level", 1)), _bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))),
+				int(c.get("day", 1)), int(s.get("xp", 0)), int(s.get("gold", 0))])
+			_say_system("A long rest starts a new dawn… if the GM allows it.")
 			_stream(Composer.envelope("[Three death saves failed — I am dying, my tale at its end. Narrate my final moment with the weight it deserves.]"))
 		else:
 			_stream(Composer.envelope(str(dr["msg"])))
@@ -508,6 +517,19 @@ func _on_sheet_action(meta) -> void:
 			note = GameState.toggle_equip(parts[1])
 		"sell":
 			note = GameState.sell_item(parts[1])
+			tell_gm = true
+		"feat":
+			note = GameState.use_feature(parts[1].uri_decode())
+			tell_gm = note != ""
+		"buy":
+			var bits := parts[1].split("|")
+			var price := int(bits[1]) if bits.size() > 1 else 0
+			if int(GameState.sheet().get("gold", 0)) < price:
+				_say_system("Not enough gold for the %s (%d needed)." % [bits[0].uri_decode(), price])
+				return
+			GameState.add_gold(-price)
+			GameState.add_item(bits[0].uri_decode())
+			note = "🛒 *You buy the %s for %d gold.*" % [bits[0].uri_decode(), price]
 			tell_gm = true
 	if note == "":
 		return
@@ -757,8 +779,34 @@ func _render_sheet() -> void:
 		lines.append("")
 		lines.append("[color=%s][b]Class features[/b][/color]" % gold)
 		for f in features:
-			lines.append("  %s" % _bb(str(f)))
+			var row := "  %s" % _bb(str(f))
+			var key := GameState.feature_action_key(str(f))
+			if key != "":
+				var left := GameState.feature_uses_left(key)
+				row += "  [url=feat:%s]◆ use (%d/%d)[/url]" % [key.uri_encode(), left, int(GameState.FEATURE_ACTIONS[key]["uses"])] if left > 0 \
+					else "  [color=%s]◇ spent[/color]" % Ui.c("ink_dim").to_html(false)
+			lines.append(row)
 	_sheet_panel.text = "\n".join(lines)
+
+
+## 🛒 The trade screen: world-appropriate stock at honest prices. Buying is a
+## sheet action (buy:<name>|<price>) so the GM narrates the purchase.
+func _open_shop() -> void:
+	var stock: Dictionary = Rules.tables.get("vendor_stock", {})
+	var gold := Ui.c("gold_soft").to_html(false)
+	var lines: Array[String] = ["[color=%s][b]🛒 The trader's wares[/b][/color]  (your purse: %d)" % [gold, int(GameState.sheet().get("gold", 0))]]
+	for cat in ["weapon", "armor", "potion", "general", "food"]:
+		var goods: Array = stock.get(cat, [])
+		if goods.is_empty():
+			continue
+		lines.append("")
+		lines.append("[color=%s][b]%s[/b][/color]" % [gold, cat.capitalize()])
+		for g in goods:
+			if g is Array and g.size() >= 2:
+				lines.append("  %s — %d gold  [url=buy:%s|%d]buy[/url]" % [_bb(str(g[0])), int(g[1]), str(g[0]).uri_encode(), int(g[1])])
+	var rt := _bubble("gm")
+	rt.append_text("\n".join(lines))
+	rt.meta_clicked.connect(_on_sheet_action)
 
 
 # ── Text helpers ─────────────────────────────────────────────────────────────

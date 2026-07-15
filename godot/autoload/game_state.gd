@@ -266,6 +266,78 @@ func spell_text() -> String:
 	return t
 
 
+# ── Class feature actions (port of FEATURE_ACTIONS) ─────────────────────────
+## Feature name (matched by prefix against sheet.features) → per-rest uses.
+const FEATURE_ACTIONS := {
+	"Second Wind": {"rest": "short", "uses": 1},
+	"Rage": {"rest": "long", "uses": 2},
+	"Action Surge": {"rest": "short", "uses": 1},
+	"Combat Maneuver": {"rest": "short", "uses": 4},
+	"Arcane Ward": {"rest": "long", "uses": 1},
+	"Cutting Words": {"rest": "long", "uses": 3},
+}
+
+
+## The action a sheet feature string maps to ("Rage (bonus damage…)") → "Rage".
+func feature_action_key(feature: String) -> String:
+	for k in FEATURE_ACTIONS:
+		if feature.begins_with(k):
+			return k
+	return ""
+
+
+func feature_uses_left(key: String) -> int:
+	var meta: Dictionary = FEATURE_ACTIONS.get(key, {})
+	if meta.is_empty():
+		return 0
+	return int(meta["uses"]) - int(sheet().get("featUses", {}).get(key, 0))
+
+
+## Spend one use and apply the effect. → in-fiction note for the GM, "" if dry.
+func use_feature(key: String) -> String:
+	if feature_uses_left(key) <= 0:
+		return ""
+	var s := sheet()
+	var used: Dictionary = s.get("featUses", {})
+	used[key] = int(used.get(key, 0)) + 1
+	s["featUses"] = used
+	var note := ""
+	match key:
+		"Second Wind":
+			var heal := randi_range(1, 10) + int(s.get("level", 1))
+			s["hp"] = mini(int(s["hpMax"]), int(s.get("hp", 0)) + heal)
+			note = "💨 *Second Wind — you steady yourself and recover **%d HP** (now %d/%d).*" % [heal, int(s["hp"]), int(s["hpMax"])]
+		"Rage":
+			s["conditions"] = s.get("conditions", []) + [{"name": "raging (+2 melee damage, resist physical)", "rounds": 10}]
+			note = "😤 *You RAGE — advantage on Strength, resistance to physical damage, +2 melee damage while it lasts.*"
+		"Action Surge":
+			var c: Dictionary = Combat.data()
+			if bool(c.get("active", false)) and c.get("_pcb") is Dictionary:
+				c["_pcb"]["attacksLeft"] = int(c["_pcb"].get("attacksLeft", 0)) + int(c["_pcb"].get("attacksMax", 1))
+				Combat.save(c)
+			note = "⚡ *Action Surge — you push past your limits and act again this turn.*"
+		"Combat Maneuver":
+			note = "🎖 *Superiority die spent — trip, disarm, riposte, or feint for **+%d** to the effect. Tell the GM which maneuver.*" % randi_range(1, 8)
+		"Arcane Ward":
+			var ward := 2 * int(s.get("level", 1)) + maxi(0, Rules.ability_mod(int(s["abilities"].get("INT", 10))))
+			s["conditions"] = s.get("conditions", []) + [{"name": "arcane ward (absorbs %d damage)" % ward, "rounds": 99}]
+			note = "🛡 *A woven ward of abjuration surrounds you — it absorbs the next **%d** damage before your HP does.*" % ward
+		"Cutting Words":
+			note = "🎻 *Cutting Words — your mockery lands where armor doesn't: **−%d** from an enemy's attack, check, or damage roll.*" % randi_range(1, 8)
+	set_sheet(s)
+	return note
+
+
+func _recharge_features(rest_kind: String) -> void:
+	var s := sheet()
+	var used: Dictionary = s.get("featUses", {})
+	for k in FEATURE_ACTIONS:
+		if rest_kind == "long" or str(FEATURE_ACTIONS[k]["rest"]) == "short":
+			used.erase(k)
+	s["featUses"] = used
+	set_sheet(s)
+
+
 # ── Clock / weather (port of _advanceTime) ──────────────────────────────────
 func clock() -> Dictionary:
 	return _merged("clock", {"day": 1, "ti": 1, "at": 0})
@@ -326,6 +398,7 @@ func short_rest() -> Dictionary:
 	else:
 		note = "🌙 *You rest an hour, but you're out of Hit Dice (%d/%d spent) — a long rest is what you need to heal.*" % [pool, pool]
 	set_sheet(s)
+	_recharge_features("short")
 	advance_time(1)
 	var gm := "[I take a short rest%s. Briefly narrate the pause, then continue.]" % [
 		(", recovering %d HP" % heal) if heal > 0 else " but I am out of Hit Dice"]
@@ -351,6 +424,7 @@ func long_rest() -> Dictionary:
 	if int(s.get("exhaustion", 0)) > 0:
 		s["exhaustion"] = int(s["exhaustion"]) - 1
 	set_sheet(s)
+	_recharge_features("long")
 	var c := clock()
 	var steps := TIMES.size() if int(c.get("ti", 0)) == 0 else TIMES.size() - int(c.get("ti", 0))
 	advance_time(steps)

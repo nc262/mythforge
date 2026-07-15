@@ -111,6 +111,11 @@ layout_mode = 2
 tooltip_text = "Conjure a painting of the current scene"
 text = "🖼"
 
+[node name="Shop" type="Button" parent="Margin/Split/ChatBox/Input"]
+layout_mode = 2
+tooltip_text = "Trade — browse a merchant's wares"
+text = "🛒"
+
 [node name="ShortRest" type="Button" parent="Margin/Split/ChatBox/Input"]
 layout_mode = 2
 tooltip_text = "Short rest — spend a Hit Die to heal"
