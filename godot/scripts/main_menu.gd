@@ -36,6 +36,7 @@ func _ready() -> void:
 	$Title/Box/Settings.pressed.connect(_show_settings)
 	$Sub/Margin/Box/Bar/Back.pressed.connect(_show_title)
 	Art.art_ready.connect(func(_w): if _sub.visible and _heading.text == "Choose a world": _show_worlds())
+	$Title/Box/NewAdv.grab_focus()  # keyboard/controller lands somewhere useful
 	_refresh()
 
 

@@ -101,6 +101,24 @@ func learn_spell(nm: String) -> bool:
 	return true
 
 
+func grant_inspiration() -> bool:
+	var s := sheet()
+	if bool(s.get("inspiration", false)):
+		return false
+	s["inspiration"] = true
+	set_sheet(s)
+	return true
+
+
+func spend_inspiration() -> bool:
+	var s := sheet()
+	if not bool(s.get("inspiration", false)):
+		return false
+	s["inspiration"] = false
+	set_sheet(s)
+	return true
+
+
 # ── Inventory ───────────────────────────────────────────────────────────────
 func inv() -> Dictionary:
 	return _merged("inv", {"slots": 24, "items": [], "equipped": {}})

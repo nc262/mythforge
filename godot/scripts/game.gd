@@ -11,6 +11,7 @@ var _conjuring := false
 var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
 var _panel_mode := "sheet"  # what the right panel shows: sheet | codex
 var _shop_markup := 1.0  # haggling moves the keeper's prices
+var _insp_armed := false  # spend Inspiration on the next roll
 
 @onready var _thread: VBoxContainer = $Margin/Split/ChatBox/Scroll/Thread
 @onready var _scroll: ScrollContainer = $Margin/Split/ChatBox/Scroll
@@ -87,6 +88,7 @@ func _ready() -> void:
 		Mode.enter("Exploration")
 		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
 		_recap()
+	_msg.grab_focus()
 
 
 ## "Previously, in <adventure>…" — the campaign memory recalls the thread.
@@ -726,7 +728,15 @@ func _roll_pending() -> void:
 		else:
 			_stream(Composer.envelope(str(dr["msg"])))
 		return
+	if _insp_armed and str(check.get("adv", "")) == "" and check.get("type", "") != "damage":
+		check["adv"] = "adv"
+		_insp_armed = false
+		GameState.spend_inspiration()
+		_say_system("✨ Inspiration spent — advantage.")
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
+	if int(res.get("roll", 0)) == 20 and GameState.grant_inspiration():
+		Sfx.play("chime")
+		_say_system("✨ A natural 20 — you gain Inspiration.")
 	var caption := "d%d" % int(res.get("sides", 20))
 	if check.get("type", "") == "damage":
 		caption = "%dd%d" % [int(check["n"]), int(check["sides"])]
@@ -764,6 +774,8 @@ func _build_dice_menu() -> void:
 	pop.add_item("📖 Learn a spell…", 900)
 	pop.add_item("🤝 Recruit an ally…", 901)
 	pop.add_item("🔨 Craft something…", 902)
+	if bool(GameState.sheet().get("inspiration", false)):
+		pop.add_item("✨ Spend Inspiration — advantage on your next roll", 903)
 	if not pop.id_pressed.is_connected(_free_check):
 		pop.id_pressed.connect(_free_check)
 
@@ -774,6 +786,10 @@ func _free_check(id: int) -> void:
 	if id == 900:
 		_ask_gm("Learn a spell", "Which spell do you seek?",
 			func(x): return "[I want to learn the spell %s. As GM, decide honestly if I could access it here and what it costs — gold, a favor, training time. If you grant it, say clearly that I learn it and tag [[spell-learned name=\"%s\"]].]" % [x, x])
+		return
+	if id == 903:
+		_insp_armed = true
+		_say_system("✨ Inspiration armed — your next roll has advantage.")
 		return
 	if id == 902:
 		_ask_gm("Craft something", "What do you try to make (and from what)?",
@@ -795,7 +811,15 @@ func _free_check(id: int) -> void:
 	else:
 		check = {"ability": meta["abil"], "skill": ""}
 		label = "%s check" % meta["abil"]
+	if _insp_armed:
+		check["adv"] = "adv"
+		_insp_armed = false
+		GameState.spend_inspiration()
+		_say_system("✨ Inspiration spent — advantage.")
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
+	if int(res.get("roll", 0)) == 20 and GameState.grant_inspiration():
+		Sfx.play("chime")
+		_say_system("✨ A natural 20 — you gain Inspiration.")
 	await _animate_die(20, int(res.get("roll", res["total"])), label)
 	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
@@ -859,6 +883,9 @@ func _on_sheet_action(meta) -> void:
 			return
 		"atlas":
 			_open_atlas()
+			return
+		"map":
+			_open_world_map()
 			return
 		"travel":
 			_travel_to(parts[1].uri_decode())
@@ -1281,34 +1308,119 @@ func _render_sheet() -> void:
 	_sheet_panel.text = "\n".join(lines)
 
 
-## 🛒 The trade screen: world-appropriate stock at honest prices. Buying is a
-## sheet action (buy:<name>|<price>) so the GM narrates the purchase.
+## 🛒 The trading post: wares on the left, your pack on the right, the
+## purse between. Haggling moves every price; the GM hears the visit once.
 func _open_shop() -> void:
-	var stock: Dictionary = Rules.tables.get("vendor_stock", {})
-	var gold := Ui.c("gold_soft").to_html(false)
-	var lines: Array[String] = ["[color=%s][b]🛒 The trader's wares[/b][/color]  (your purse: %d)" % [gold, int(GameState.sheet().get("gold", 0))]]
-	for cat in ["weapon", "armor", "potion", "general", "food"]:
-		var goods: Array = stock.get(cat, [])
-		if goods.is_empty():
-			continue
-		lines.append("")
-		lines.append("[color=%s][b]%s[/b][/color]" % [gold, cat.capitalize()])
-		for g in goods:
-			if g is Array and g.size() >= 2:
-				var price := maxi(1, roundi(int(g[1]) * _shop_markup))
-				lines.append("  %s — %d gold  [url=buy:%s|%d]buy[/url]" % [_bb(str(g[0])), price, str(g[0]).uri_encode(), price])
-	if _shop_markup == 1.0:
-		lines.append("
-[url=haggle]💬 Haggle with the keeper[/url]")
-	elif _shop_markup < 1.0:
-		lines.append("
-[i]The keeper likes you — prices are down a fifth.[/i]")
-	else:
-		lines.append("
-[i]The keeper is annoyed — prices are up.[/i]")
-	var rt := _bubble("gm")
-	rt.append_text("\n".join(lines))
-	rt.meta_clicked.connect(_on_sheet_action)
+	if not Mode.can("shop"):
+		return
+	Mode.enter("Merchant")
+	var deals: Array[String] = []
+	var dlg := AcceptDialog.new()
+	dlg.title = "🛒 The trading post"
+	dlg.ok_button_text = "Leave the counter"
+	dlg.min_size = Vector2i(720, 480)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	var purse := Label.new()
+	purse.theme_type_variation = "HintLabel"
+	var cols := HBoxContainer.new()
+	cols.add_theme_constant_override("separation", 14)
+	var wares := ItemList.new()
+	wares.custom_minimum_size = Vector2(330, 320)
+	var pack := ItemList.new()
+	pack.custom_minimum_size = Vector2(330, 320)
+	var wares_meta: Array = []
+	var pack_meta: Array = []
+	var refresh := func():
+		purse.text = "Your purse: %d gold%s" % [int(GameState.sheet().get("gold", 0)),
+			"   ·   the keeper likes you (−20%)" if _shop_markup < 1.0 else ("   ·   the keeper is annoyed (+10%)" if _shop_markup > 1.0 else "")]
+		wares.clear()
+		wares_meta.clear()
+		var stock: Dictionary = Rules.tables.get("vendor_stock", {})
+		for cat in ["weapon", "armor", "potion", "general", "food"]:
+			var goods: Array = stock.get(cat, [])
+			if goods.is_empty():
+				continue
+			wares.add_item("— %s —" % cat.to_upper(), null, false)
+			wares_meta.append(null)
+			for gd in goods:
+				if gd is Array and gd.size() >= 2:
+					var price := maxi(1, roundi(int(gd[1]) * _shop_markup))
+					wares.add_item("%s   ·   %d gold" % [str(gd[0]), price])
+					wares_meta.append({"name": str(gd[0]), "price": price})
+		pack.clear()
+		pack_meta.clear()
+		for it in GameState.inv().get("items", []):
+			var q := int(it.get("qty", 1))
+			pack.add_item("%s%s   ·   sells %d" % [str(it.get("name", "")),
+				(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common")))])
+			pack_meta.append(str(it.get("id", "")))
+	var left := VBoxContainer.new()
+	var lt := Label.new()
+	lt.text = "The keeper's wares"
+	var buy := Button.new()
+	buy.text = "Buy ›"
+	buy.pressed.connect(func():
+		var sel := wares.get_selected_items()
+		if sel.is_empty() or wares_meta[sel[0]] == null:
+			return
+		var w: Dictionary = wares_meta[sel[0]]
+		if int(GameState.sheet().get("gold", 0)) < int(w["price"]):
+			purse.text = "Not enough gold for the %s." % w["name"]
+			return
+		GameState.add_gold(-int(w["price"]))
+		GameState.add_item(str(w["name"]))
+		Sfx.play("chime")
+		deals.append("bought a %s (%d gold)" % [w["name"], int(w["price"])])
+		refresh.call())
+	left.add_child(lt)
+	left.add_child(wares)
+	left.add_child(buy)
+	var right := VBoxContainer.new()
+	var rt2 := Label.new()
+	rt2.text = "Your pack"
+	var sell := Button.new()
+	sell.text = "‹ Sell"
+	sell.pressed.connect(func():
+		var sel := pack.get_selected_items()
+		if sel.is_empty():
+			return
+		var note := GameState.sell_item(str(pack_meta[sel[0]]))
+		if note != "":
+			Sfx.play("chime")
+			deals.append(note.trim_prefix("You "))
+		refresh.call())
+	right.add_child(rt2)
+	right.add_child(pack)
+	right.add_child(sell)
+	cols.add_child(left)
+	cols.add_child(right)
+	var haggle := Button.new()
+	haggle.text = "💬 Haggle with the keeper (Persuasion, DC 12)"
+	haggle.pressed.connect(func():
+		if _shop_markup != 1.0:
+			return
+		var hres: Dictionary = Rules.resolve_check({"ability": "CHA", "skill": "Persuasion", "dc": 12}, GameState.sheet(), GameState.inv())
+		_shop_markup = 0.8 if int(hres["total"]) >= 12 else 1.1
+		deals.append("haggled (%s)" % ("won a fifth off" if _shop_markup < 1.0 else "annoyed the keeper"))
+		haggle.disabled = true
+		refresh.call())
+	root.add_child(purse)
+	root.add_child(cols)
+	root.add_child(haggle)
+	dlg.add_child(root)
+	add_child(dlg)
+	refresh.call()
+	dlg.popup_centered()
+	dlg.confirmed.connect(func():
+		dlg.queue_free()
+		Mode.enter("Exploration")
+		_render_sheet()
+		if not deals.is_empty():
+			var summary := "🛒 *At the trader: %s.*" % "; ".join(deals)
+			_say_me(_md(summary))
+			_last_player_msg = summary
+			_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail.]" % summary.replace("*", ""))))
 
 
 # ── The codex panel: the cast you've met and the threads you're pulling ─────
@@ -1469,7 +1581,7 @@ func _open_atlas() -> void:
 	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
 	var rt := _bubble("gm")
 	var gold := Ui.c("gold_soft").to_html(false)
-	rt.append_text("[color=%s][b]🧭 The Atlas[/b][/color]\n" % gold)
+	rt.append_text("[color=%s][b]🧭 The Atlas[/b][/color]   [url=map]🗺 open the map[/url]\n" % gold)
 	if locs.is_empty():
 		rt.append_text("[i]No charted places — the GM's narration is your map for now.[/i]")
 		return
@@ -1482,6 +1594,31 @@ func _open_atlas() -> void:
 		if nm != here:
 			rt.append_text("[url=travel:%s]set off →[/url]\n" % nm.uri_encode())
 	rt.meta_clicked.connect(_on_sheet_action)
+
+
+## 🗺 The painted map: the world's key art with its places marked.
+func _open_world_map() -> void:
+	var locs: Array = Rules.world_locations(GameState.world_id())
+	if locs.is_empty():
+		var g2 := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+		for w in g2.get("state", {}).get("cworlds", []):
+			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
+				locs = w.get("locations") if w.get("locations") is Array else []
+	if locs.is_empty():
+		_say_system("No charted places to map yet.")
+		return
+	var dlg := AcceptDialog.new()
+	dlg.title = "🗺 %s" % str(GameState.character.get("name", "the world")).split(":")[0]
+	dlg.ok_button_text = "Close the map"
+	var map := preload("res://scenes/ui/world_map.gd").new()
+	map.locations = locs
+	map.here = str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+	map.travel_requested.connect(func(place):
+		dlg.queue_free()
+		_travel_to(place))
+	dlg.add_child(map)
+	add_child(dlg)
+	dlg.popup_centered()
 
 
 func _travel_to(place: String) -> void:
@@ -1516,6 +1653,8 @@ func _render_chips() -> void:
 			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
 				bits.append("◈ " + str(q["title"]).left(36))
 				break
+	if bool(GameState.sheet().get("inspiration", false)):
+		bits.append("✨ Inspiration")
 	for cmp in GameState.sheet().get("companions", []):
 		if cmp is Dictionary:
 			var chp := int(cmp.get("hp", 0))
@@ -1539,8 +1678,67 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_regen()
 	elif event.keycode == KEY_SPACE and Mode.is_state("Combat") and not _msg.has_focus():
 		_on_combat_action("cnext")
+	elif event.ctrl_pressed and event.keycode == KEY_M:
+		_open_world_map()
+	elif event.ctrl_pressed and event.keycode == KEY_J:
+		_open_journal()
 	elif event.keycode == KEY_ESCAPE:
 		_msg.grab_focus()
+
+
+## 📖 The journal: everything the campaign remembers, searchable.
+func _open_journal() -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "📖 The Journal"
+	dlg.ok_button_text = "Close"
+	dlg.min_size = Vector2i(640, 520)
+	var root := VBoxContainer.new()
+	root.add_theme_constant_override("separation", 8)
+	var search := LineEdit.new()
+	search.placeholder_text = "Search quests, people, chapters…"
+	var body := RichTextLabel.new()
+	body.bbcode_enabled = true
+	body.selection_enabled = true
+	body.custom_minimum_size = Vector2(600, 430)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var render := func(q: String):
+		q = q.to_lower()
+		body.clear()
+		var gold := Ui.c("gold_soft").to_html(false)
+		var hits := 0
+		body.append_text("[color=%s][b]Quests[/b][/color]\n" % gold)
+		for qq in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
+			if qq is Dictionary:
+				var line := "%s — %s" % [str(qq.get("title", "")), str(qq.get("desc", ""))]
+				if q == "" or line.to_lower().contains(q):
+					body.append_text("%s %s\n" % ["✓" if str(qq.get("status", "")) == "done" else "◈", _bb(line)])
+					hits += 1
+		body.append_text("\n[color=%s][b]People[/b][/color]\n" % gold)
+		for n in (GameState.state.get("codex", []) if GameState.state.get("codex") is Array else []):
+			if n is Dictionary:
+				var line2 := "%s (%s) — %s" % [str(n.get("name", "")), str(n.get("role", "")), str(n.get("note", ""))]
+				if q == "" or line2.to_lower().contains(q):
+					body.append_text("• %s\n" % _bb(line2))
+					hits += 1
+		var snaps := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
+		body.append_text("\n[color=%s][b]Chapters[/b][/color]\n" % gold)
+		for sn in snaps.get("snapshots", snaps.get("data", [])):
+			if sn is Dictionary:
+				var line3 := "%s — %s" % [str(sn.get("title", "")), str(sn.get("story_so_far", ""))]
+				if q == "" or line3.to_lower().contains(q):
+					body.append_text("💾 %s\n" % _bb(line3.left(220)))
+					hits += 1
+		if hits == 0:
+			body.append_text("[i]Nothing matches — the story hasn't written that yet.[/i]")
+	search.text_changed.connect(func(t): render.call(t))
+	root.add_child(search)
+	root.add_child(body)
+	dlg.add_child(root)
+	add_child(dlg)
+	dlg.popup_centered()
+	search.grab_focus()
+	render.call("")
+	dlg.confirmed.connect(func(): dlg.queue_free())
 
 
 # ── Text helpers ─────────────────────────────────────────────────────────────
