@@ -24,7 +24,11 @@ are all real, narrated by an AI that never gets to cheat.
 4. **The table feels alive.** Generated scenes behind the parchment, dice
    that tumble, a sting when steel is drawn, per-world palettes (fantasy
    gold / neon cyan / everyday warm).
-5. **Fully local.** Ollama for text, ComfyUI-ZLUDA (SDXL) for images,
+5. **The two Forges are pillars.** The Character Forge (forging a hero)
+   and the Campaign Forge (the DM's war table) are cornerstone experiences
+   with the weight of BG3's character creator — first-class on the main
+   menu, each a full ritual (docs/forges/).
+6. **Fully local.** Ollama for text, ComfyUI-ZLUDA (SDXL) for images,
    FastAPI for persistence — one Windows PC, no cloud, no subscription.
 
 ## Player promise

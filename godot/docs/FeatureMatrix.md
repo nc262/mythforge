@@ -81,6 +81,16 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | U5 destiny constellation: class road 1-20 as a night sky — winding earned-gold spine, amethyst feature stars, milestone monuments (subclass/ASI/Apotheosis, next one breathes), circles of magic, wheel-zoom + pan (shared MythCamera), level-up opens it with the new star flaring; sheet ✨ destiny link + Ctrl+K | docs/rituals/SkillTree.md | ✅ | P2 | MDL | XL | node click-to-inspect dialog 🔲; world_map adopts MythCamera 🔲 |
 | U6 the Hero's Record: identity-first full screen (portrait/name/epithet, HP+XP straps, gold-lit gear sockets → Pack handoff, carved Six, prowess, MythFold sections for skills/magic/deeds/companions) | docs/rituals/CharacterScreen.md | ✅ | P2 | MDL | L | 3D turntable 🔲; heraldry crest 🔲; memory-drawn epithet 🔲 |
 
+## Forge pillars (docs/forges/ — designs approved before any build)
+| Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
+|---|---|---|---|---|---|---|
+| **Character Forge** (pillar): multi-stage hero ritual — origin/ruleset/heritage/class/background/nature/appearance/evolving portrait/voice/equipment/Quenching | absorbs hero forge + prebuilts + backgrounds | 📐 designed, awaiting approval | P1 | MDL, SDXL | XL | docs/forges/CharacterForge.md; F1-F5 milestones |
+| **Campaign Forge** (pillar): war-table ritual — name/ruleset/theme/GM's voice/table rules/THE FORGING/dossier | absorbs ⚒ world forge + campaign smith + Session Zero | 📐 designed, awaiting approval | P1 | MDL, worldsmith | XL | docs/forges/CampaignForge.md; C1-C5 milestones |
+| Shared forge components: MythChoiceCard · MythStageRail · MythForgeStep | (new) | 📐 designed | P1 | MDL | M | gallery-first per the law |
+| Table rules engine levers: difficulty multiplier · permadeath · fog toggle · companions toggle · house rules | (new) | 📐 designed | P1 | — | M | each engine-enforced, C2 |
+| Character voice stage | — | ⛔ blocked w/ TTS provider; ships as visible placeholder rune-stone | P3 | backend voice | S | F5 |
+| 3D character generation | — | 🔲 future | P4 | — | XL | FutureIdeas |
+
 ## AI & memory
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|

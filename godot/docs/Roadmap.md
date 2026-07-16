@@ -56,6 +56,19 @@ ritual with its doc in docs/rituals/):
 - ✅ U5 the destiny constellation (new system: class road as a night sky)
 - ✅ U6 the Hero's Record (identity-first character screen; 3D turntable → FutureIdeas)
 
+## M6 — The Character Forge (pillar) 📐 DESIGNED — AWAITING APPROVAL
+docs/forges/CharacterForge.md. F1 shell+rail+3 stages+Quenching (screenshot
+gate) → F2 origins/ruleset/kits → F3 evolving portrait → F4 nature/array →
+F5 voice placeholder + cinematic quench + memory/relationship seeds.
+
+## M7 — The Campaign Forge (pillar) 📐 DESIGNED — AWAITING APPROVAL
+docs/forges/CampaignForge.md. C1 shell+war table+name/theme (screenshot
+gate) → C2 GM's voice + engine-enforced table rules → C3 THE FORGING
+(staged generation + cast portrait queue) → C4 settlement/intro/dossier/
+save slot → C5 set-dressing polish + export. Absorbs world forge, campaign
+smith, Session Zero; menu becomes Continue · Character Forge · Campaign
+Forge · Settings.
+
 ## Standing rules
 No milestone ships with a red harness. No feature leaves the matrix. The
 .exe export waits for explicit user approval of the ~500MB template download.
