@@ -12,6 +12,7 @@ var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
 var _panel_mode := "sheet"  # what the right panel shows: sheet | codex
 var _shop_markup := 1.0  # haggling moves the keeper's prices
 var _insp_armed := false  # spend Inspiration on the next roll
+var _turns_since_tick := 0  # the clock walks every 3 player turns
 
 @onready var _thread: VBoxContainer = $Margin/Split/ChatBox/Scroll/Thread
 @onready var _scroll: ScrollContainer = $Margin/Split/ChatBox/Scroll
@@ -361,6 +362,11 @@ func _send(raw: String) -> void:
 	if not GameState.is_dm():
 		_stream(msg)  # companions get your words, not a rules envelope
 		return
+	_turns_since_tick += 1
+	if _turns_since_tick >= 3 and not Combat.active():
+		_turns_since_tick = 0
+		GameState.advance_time(1)
+		_render_chips()
 	var beats: Array = await Chronicle.recall(msg)
 	_stream(Composer.envelope(msg, beats))
 
@@ -965,13 +971,8 @@ func _on_combat_action(meta) -> void:
 		if str(r2["msg"]) == "":
 			return
 		_say_me(_md(str(r2["msg"])))
-		if bool(r2["won"]):
-			_end_combat()
-			_last_player_msg = str(r2["msg"])
-			_stream(Composer.envelope("%s\n[Victory — the last foe falls! Narrate the killing blow in full cinema, then the aftermath.]" % str(r2["msg"])))
-		elif bool(r2["fell"]):
-			_last_player_msg = str(r2["msg"])
-			_stream(Composer.envelope("%s\n[The foe falls — narrate the finish with cinema.]" % str(r2["msg"])))
+		if bool(r2["won"]) or bool(r2["fell"]):
+			_how_do_you_want_to_do_this(str(r2["msg"]), bool(r2["won"]))
 		else:
 			_last_player_msg = str(r2["msg"])
 			_stream(Composer.envelope(str(r2["msg"])))
@@ -1072,6 +1073,40 @@ func _on_grid_token(id: String) -> void:
 			Combat.distance(Combat.cell_of("pc"), Combat.cell_of(id)) * Combat.FEET_PER_CELL])
 		return
 	_on_combat_action("atk:" + id)
+
+
+## The table's favorite question: the killing blow belongs to the player.
+func _how_do_you_want_to_do_this(mech_msg: String, won: bool) -> void:
+	if won:
+		Sfx.play("chime")
+		var flash := create_tween()
+		flash.tween_property(_battle_tint, "color", Color(Ui.c("gold"), 0.12), 0.3)
+		flash.tween_property(_battle_tint, "color", Color(Ui.c("danger"), 0.0), 1.2)
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "The foe is finished."
+	dlg.ok_button_text = "Strike ›"
+	dlg.get_cancel_button().text = "Let the GM paint it"
+	var input := LineEdit.new()
+	input.placeholder_text = "How do you want to do this?"
+	input.custom_minimum_size = Vector2(420, 0)
+	dlg.add_child(input)
+	add_child(dlg)
+	dlg.popup_centered()
+	input.grab_focus()
+	var go := func(flourish: String):
+		dlg.queue_free()
+		if won:
+			_end_combat()
+		if flourish != "":
+			_say_me(_bb("⚔ " + flourish))
+		_last_player_msg = mech_msg
+		var frame := "%s\n[%s%s]" % [mech_msg,
+			("My finishing flourish: " + flourish + ". ") if flourish != "" else "",
+			"Victory — the last foe falls! Narrate the killing blow in full cinema, then the aftermath." if won else "The foe falls — narrate the finish with cinema."]
+		_stream(Composer.envelope(frame))
+	dlg.confirmed.connect(func(): go.call(input.text.strip_edges()))
+	dlg.canceled.connect(func(): go.call(""))
+	input.text_submitted.connect(func(t): dlg.hide(); go.call(t.strip_edges()))
 
 
 func _render_combat() -> void:

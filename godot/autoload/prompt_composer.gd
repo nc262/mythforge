@@ -89,12 +89,22 @@ func sheet_summary(s: Dictionary) -> String:
 	var cond_names: Array[String] = []
 	for c in conds:
 		cond_names.append(str(c.get("name", c)) if c is Dictionary else str(c))
+	var exh := int(s.get("exhaustion", 0))
+	var exh_line := ""
+	if exh > 0:
+		var track: Array = Rules.tables.get("exhaustion", [])
+		var effects: Array[String] = []
+		for i in range(1, mini(exh, 6) + 1):
+			if i < track.size():
+				effects.append(str(track[i]))
+		exh_line = " Exhaustion level %d (%s) — enforce it." % [exh, "; ".join(effects)]
 	var dc := Rules.spell_save_dc(s)
-	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s" % [
+	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s%s" % [
 		str(s.get("name", "the hero")), int(s.get("level", 1)), str(s.get("cls", "Adventurer")),
 		int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv()),
 		Rules.passive_perception(s), int(s.get("gold", 0)),
 		", ".join(ab_parts),
 		", ".join(cond_names) if not cond_names.is_empty() else "none",
 		(" Spell save DC %d, spell attack +%d (enemies roll saves against this; use these numbers)." % [dc, Rules.spell_attack(s)]) if dc > 0 else "",
+		exh_line,
 	])

@@ -157,6 +157,11 @@ func toggle_equip(id: String) -> String:
 	if not slot in ["weapon", "armor", "shield"]:
 		return ""
 	var eq: Dictionary = v.get("equipped", {})
+	# A second light weapon slips into the off-hand (two-weapon fighting).
+	if slot == "weapon" and str(eq.get("weapon", "")) != "" and str(eq.get("weapon", "")) != id:
+		var light_re := RegEx.create_from_string("(?i)dagger|shortsword|handaxe|hatchet|scimitar|club|sickle|knife")
+		if light_re.search(str(it.get("name", ""))) != null:
+			slot = "offhand"
 	if str(eq.get(slot, "")) == id:
 		eq.erase(slot)
 		save_kind("inv", v)

@@ -165,7 +165,13 @@ func player_attack(target_id: String) -> Dictionary:
 	var strn := Rules.ability_mod(int(s["abilities"].get("STR", 10)))
 	var abil_mod := dex if (props["ranged"] or (props["finesse"] and dex > strn)) else strn
 	var mod: int = abil_mod + Rules.prof_bonus(s) + int(wpn.get("atk", 0))
+	# Heavy weapons are unwieldy for Small heroes — swing at disadvantage.
+	var small: bool = RegEx.create_from_string("(?i)halfling|gnome|goblin|kobold|imp|sprite|fairy|pixie").search(str(s.get("race", ""))) != null
 	var roll := randi_range(1, 20)
+	var dv_tag := ""
+	if bool(props["heavy"]) and small:
+		roll = mini(roll, randi_range(1, 20))
+		dv_tag = " *(disadvantage — heavy weapon in small hands)*"
 	var champion: bool = str(s.get("subclass", "")) == "Champion"
 	var total := roll + mod
 	var crit: bool = roll == 20 or (roll == 19 and champion)
@@ -174,9 +180,15 @@ func player_attack(target_id: String) -> Dictionary:
 	var vs_ac := (" vs AC %d" % int(foe["ac"])) if foe.get("ac") != null else ""
 	if not crit and (fumble or total < target_ac):
 		save(c)
-		return {"msg": "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s → a miss.*" % [
-			foe["name"], wname, roll, mod, total, vs_ac, " — a FUMBLE" if fumble else ""],
+		var miss := {"msg": "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → a miss.*" % [
+			foe["name"], wname, roll, mod, total, vs_ac, dv_tag, " — a FUMBLE" if fumble else ""],
 			"fell": false, "won": false, "spent": true}
+		var off_miss := offhand_followup(target_id, b)
+		if str(off_miss.get("msg", "")) != "":
+			miss["msg"] = str(miss["msg"]) + "\n" + str(off_miss["msg"])
+			miss["fell"] = off_miss["fell"]
+			miss["won"] = off_miss["won"]
+		return miss
 	var de := _dice_expr(props["versatile"] if str(props["versatile"]) != "" else str(wpn.get("dmg", props["die"])))
 	var dmg: int = int(de["mod"]) + maxi(0, abil_mod)
 	for i in int(de["n"]) * (2 if crit else 1):
@@ -199,12 +211,74 @@ func player_attack(target_id: String) -> Dictionary:
 	var enemies: Array = c["combatants"].filter(func(x): return x.get("side") == "enemy")
 	var won: bool = fell and not enemies.is_empty() and enemies.all(func(e): return int(e.get("hp", 0)) <= 0)
 	save(c)
-	var msg := "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s → **%d damage**%s%s.*" % [
-		foe["name"], wname, roll, mod, total, vs_ac,
+	var msg := "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → **%d damage**%s%s.*" % [
+		foe["name"], wname, roll, mod, total, vs_ac, dv_tag,
 		" — **CRITICAL HIT%s!**" % (" (Champion)" if roll == 19 else "") if crit else "",
 		dmg, res_tag,
 		(" — the %s falls!" % foe["name"]) if fell else " (%d/%d left)" % [int(foe["hp"]), int(foe["hpMax"])]]
-	return {"msg": msg, "fell": fell, "won": won, "spent": true}
+	var result := {"msg": msg, "fell": fell, "won": won, "spent": true}
+	if not fell:
+		var off := offhand_followup(target_id, b)
+		if str(off.get("msg", "")) != "":
+			result["msg"] = str(result["msg"]) + "\n" + str(off["msg"])
+			result["fell"] = off["fell"]
+			result["won"] = off["won"]
+	return result
+
+
+## Two-weapon fighting: a light off-hand weapon grants a bonus strike — no
+## positive ability mod to its damage (that's the trade). Once per round.
+func offhand_followup(target_id: String, budget: Dictionary) -> Dictionary:
+	var out := {"msg": "", "fell": false, "won": false}
+	if bool(budget.get("bonusUsed", false)):
+		return out
+	var s := GameState.sheet()
+	var inv := GameState.inv()
+	var main := GameState.item_by_id(str(inv.get("equipped", {}).get("weapon", "")))
+	var off := GameState.item_by_id(str(inv.get("equipped", {}).get("offhand", "")))
+	if off.is_empty() or main.is_empty():
+		return out
+	var main_props := weapon_props(str(main.get("name", "")))
+	var off_props := weapon_props(str(off.get("name", "")))
+	var light_re := RegEx.create_from_string("(?i)dagger|shortsword|handaxe|hatchet|scimitar|club|sickle|knife")
+	if light_re.search(str(main.get("name", ""))) == null or light_re.search(str(off.get("name", ""))) == null:
+		return out
+	budget["bonusUsed"] = true
+	var c := data()
+	save(c)
+	var foe := {}
+	for x in c["combatants"]:
+		if str(x.get("id", "")) == target_id:
+			foe = x
+	if foe.is_empty() or int(foe.get("hp", 0)) <= 0:
+		return out
+	var dex := Rules.ability_mod(int(s["abilities"].get("DEX", 10)))
+	var strn := Rules.ability_mod(int(s["abilities"].get("STR", 10)))
+	var abil_mod: int = dex if (off_props["finesse"] and dex > strn) else strn
+	var mod: int = abil_mod + Rules.prof_bonus(s)
+	var roll := randi_range(1, 20)
+	var total := roll + mod
+	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
+	var crit := roll == 20
+	if not crit and (roll == 1 or total < target_ac):
+		out["msg"] = "🗡 *Off-hand %s — d20 %d %+d = %d → misses.*" % [str(off.get("name", "")), roll, mod, total]
+		return out
+	var de := _dice_expr(str(off.get("dmg", off_props["die"])))
+	var dmg: int = int(de["mod"]) + mini(0, abil_mod)
+	for i in int(de["n"]) * (2 if crit else 1):
+		dmg += randi_range(1, int(de["sides"]))
+	dmg = maxi(1, dmg)
+	foe["hp"] = maxi(0, int(foe["hp"]) - dmg)
+	var fell := int(foe["hp"]) <= 0
+	var enemies: Array = c["combatants"].filter(func(x): return x.get("side") == "enemy")
+	var won: bool = fell and enemies.all(func(e): return int(e.get("hp", 0)) <= 0)
+	save(c)
+	out["msg"] = "🗡 *Off-hand %s%s → **%d damage**%s.*" % [str(off.get("name", "")),
+		" — **CRIT!**" if crit else "", dmg,
+		(" — the %s falls!" % foe["name"]) if fell else " (%d/%d left)" % [int(foe["hp"]), int(foe["hpMax"])]]
+	out["fell"] = fell
+	out["won"] = won
+	return out
 
 
 ## Reactions the hero can take against an incoming hit (port of
