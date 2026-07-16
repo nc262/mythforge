@@ -90,6 +90,15 @@ func _ready() -> void:
 	prow.add_child(gcol)
 	col.add_child(prow)
 
+	var fold := preload("res://ui/myth_fold.gd").new("A folded section (MythFold)", false)
+	var fl := Label.new()
+	fl.theme_type_variation = "HintLabel"
+	fl.text = "…complexity, hidden until wanted."
+	fold.content.add_child(fl)
+	var fc := CenterContainer.new()
+	fc.add_child(fold)
+	col.add_child(fc)
+
 	var hint := Label.new()
 	hint.theme_type_variation = "HintLabel"
 	hint.text = "hover lifts · press dips · rarity glows · framed tooltips · reveal stagger on entry"

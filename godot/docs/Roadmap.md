@@ -45,7 +45,7 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
   recipe-based crafting · campaigns tab · STT · settlement simulation ·
   party multiplayer (+voice) — interfaces sketched in FutureIdeas.md.
 
-## M5 — The Ritual Interface (MDL) 🟡 IN FLIGHT
+## M5 — The Ritual Interface (MDL) ✅ COMPLETE
 Design-system-first UI rebuild (docs/DesignSystem.md is law; every screen a
 ritual with its doc in docs/rituals/):
 - ✅ U0 the Mythforge Design Language + component library + gallery
@@ -54,7 +54,7 @@ ritual with its doc in docs/rituals/):
 - ✅ U3 the living map (camera, fog of war, quest pull)
 - ✅ U4 the manuscript journal + dialogue speaker portraits
 - ✅ U5 the destiny constellation (new system: class road as a night sky)
-- 🔲 U6 the character screen (full-screen sheet; 3D turntable later)
+- ✅ U6 the Hero's Record (identity-first character screen; 3D turntable → FutureIdeas)
 
 ## Standing rules
 No milestone ships with a red harness. No feature leaves the matrix. The

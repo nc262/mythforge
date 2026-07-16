@@ -927,6 +927,9 @@ func _on_sheet_action(meta) -> void:
 		"dest":
 			_open_skill_tree()
 			return
+		"record":
+			_open_character_screen()
+			return
 		"cast":
 			note = GameState.cast_spell(parts[1].uri_decode())
 			tell_gm = not note.begins_with("✋")
@@ -1515,7 +1518,7 @@ func _render_sheet() -> void:
 		Art.ensure_hero_portrait(GameState.cid(), s)
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
-	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]  [url=dest]✨ destiny[/url]")
+	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]  [url=dest]✨ destiny[/url]  [url=record]🛡 record[/url]")
 	lines.append("")
 	var dim := Ui.c("ink_dim").to_html(false)
 	lines.append("[center][font_size=22][color=%s][b]%s[/b][/color][/font_size]" % [gold, _bb(str(s.get("name", "?")))])
@@ -2032,6 +2035,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_open_inventory()
 	elif event.ctrl_pressed and event.keycode == KEY_K:
 		_open_skill_tree()
+	elif event.ctrl_pressed and event.keycode == KEY_H:
+		_open_character_screen()
 	elif event.keycode == KEY_ESCAPE:
 		_msg.grab_focus()
 
@@ -2049,6 +2054,18 @@ func _open_skill_tree(pulse_level := -1) -> void:
 	dlg.popup_centered()
 	Ui.ritual_open(dlg)
 	dlg.confirmed.connect(dlg.queue_free)
+
+
+## 🛡 The Hero's Record (docs/rituals/CharacterScreen.md): identity before
+## statistics — a reading surface; actions live in the Pack and side sheet.
+func _open_character_screen() -> void:
+	if not Mode.can("panels"):
+		return
+	var rec := preload("res://scenes/ui/character_screen.gd").new()
+	rec.open_pack.connect(_open_inventory)
+	add_child(rec)
+	rec.popup_centered()
+	Ui.ritual_open(rec)
 
 
 ## 📖 The Journal — a handwritten manuscript (docs/rituals/Journal.md):

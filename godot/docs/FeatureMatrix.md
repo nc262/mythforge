@@ -72,14 +72,14 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 |---|---|---|---|---|---|---|
 | Tokens (SPACE/TIME/RADIUS/RARITY) + surfaces (forged/ornate/grain/socket/card/glow) | studio.css | ✅ Ui autoload | P1 | — | M | |
 | Motion vocabulary (polish/reveal/breathe/pulse/rise_text, reduce-motion aware) | (new) | ✅ | P1 | — | M | audio hooks await tick/thud samples |
-| Component library (MythCard/Socket/Tooltip/Header/Gauge/Portrait) | (new) | ✅ ui/myth_*.gd | P1 | — | L | |
+| Component library (MythCard/Socket/Tooltip/Header/Gauge/Portrait/Camera/Fold) | (new) | ✅ ui/myth_*.gd | P1 | — | L | |
 | Component gallery / visual regression page | (new) | ✅ tests/ui_gallery.tscn | P2 | — | S | |
 | U1 The Pack ritual: leather surface, cards-not-cells, socket doll around portrait, ▲/▼ comparison tooltips, context menu, inspect, reward rise, scrim ritual | docs/rituals/Inventory.md | ✅ | P1 | MDL | L | leather material refinement pass 🔲 |
 | U2 combat feel: initiative rail (portrait chips, turn halo+pulse), token slides, rising damage/heal numbers, impact blooms, attacker lunge, board shudder on hero hit | docs/rituals/Combat.md | ✅ | P1 | MDL | L | action-bar icon buttons 🔲 (tracker links remain) |
 | U3 living map: wheel-zoom + drag-pan camera, fog of war (world.seen persists), quest-pull gold pulse, animated dashed route preview, drifting cloud shadows, breathing here-ring, compass rose | docs/rituals/WorldMap.md | ✅ | P2 | MDL | L | region-shaped fog (per-place blobs today) 🔲 |
 | U4 journal & dialogue: manuscript journal (wax-seal quests, portrait people, fleuron chapters, tab filters + search) + GM speaker portraits (codex face near quoted speech seats their chip on the bubble) | docs/rituals/Journal.md + Dialogue.md | ✅ | P2 | MDL | M | relationship chips 🔲 (no relationship stat yet); choice-button dialogue 🔲 |
 | U5 destiny constellation: class road 1-20 as a night sky — winding earned-gold spine, amethyst feature stars, milestone monuments (subclass/ASI/Apotheosis, next one breathes), circles of magic, wheel-zoom + pan (shared MythCamera), level-up opens it with the new star flaring; sheet ✨ destiny link + Ctrl+K | docs/rituals/SkillTree.md | ✅ | P2 | MDL | XL | node click-to-inspect dialog 🔲; world_map adopts MythCamera 🔲 |
-| U6 character screen: full-screen sheet + doll; 3D turntable later | — | 🔲 | P2 | MDL | L | |
+| U6 the Hero's Record: identity-first full screen (portrait/name/epithet, HP+XP straps, gold-lit gear sockets → Pack handoff, carved Six, prowess, MythFold sections for skills/magic/deeds/companions) | docs/rituals/CharacterScreen.md | ✅ | P2 | MDL | L | 3D turntable 🔲; heraldry crest 🔲; memory-drawn epithet 🔲 |
 
 ## AI & memory
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |

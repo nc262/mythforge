@@ -80,7 +80,9 @@ never per-screen.
 | `MythTooltip.build(title, rows, rarity)` | The only tooltip in the game. Framed, title tinted by rarity, rows = `[text, role]` pairs (comparison rows use `gold`/`danger` roles with ▲/▼). |
 | `MythHeader` | `✦ SECTION ✦` with gold wing-lines — the only section header. |
 | `MythGauge` | Drawn strap bar (capacity, HP, XP) — rim-lit fill, centered caption. Never a stock ProgressBar. |
-| `MythPortrait` | Round art disc + colored ring + optional halo glow. Tokens, sheet, dialogue speakers, initiative chips. |
+| `MythPortrait` | Round art disc + colored ring + optional halo glow; optional vitals arc + turn ring. Tokens, sheet, dialogue speakers, initiative chips. |
+| `MythCamera` | The pan/zoom camera every map-like surface shares (wheel toward cursor, drag pan, clamped edges). |
+| `MythFold` | Collapsible section (gilded ▸/▾ header, content reveals) — hide complexity until wanted. |
 
 Composition rules:
 - Components reference each other via `preload` consts (no class-cache coupling).
