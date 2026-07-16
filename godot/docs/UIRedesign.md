@@ -57,7 +57,9 @@ already our super-power; no static assets to redraw).
 | **U5 Skill tree** | constellation progression tree (pan/zoom, curved connections, glow paths); feeds from class features/feats data | 🔲 |
 | **U6 Character screen** | full-screen sheet: doll integration, collapsible groups; 3D turntable exploration | 🔲 |
 
-Mockups: see the published design-direction artifact (wireframes for U1–U5).
+Mockups: the living mockup of the system is `tests/ui_gallery.tscn` — run it
+(or screenshot it) to see every component with fake data before applying the
+system to a screen.
 
 Anti-goals (rejected): visible GridContainers anywhere player-facing; OS
 tooltips; instant pop-in dialogs; empty-slot placeholder boxes; uniform
