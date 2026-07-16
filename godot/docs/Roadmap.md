@@ -34,7 +34,7 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
   controller navigation pass · drag-and-drop inventory + paper doll ·
   merchant window · quest journal window with search · world map + minimap
   render (atlas data live) · portrait/persona forge · scaling QA ·
-  Steam .exe export (waiting on user approval for the ~500MB templates)
+  ✅ Steam-shape .exe export shipped (dist/Mythforge.exe)
 
 ## M4 — The living world 🟡 FIRST SYSTEMS SHIPPED
 - ✅ Worldtick: "Meanwhile…" asides after every long rest, folded into memory

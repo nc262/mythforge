@@ -29,6 +29,17 @@ Dice tumble on a gold-glow card · bubbles breathe in · backdrops crossfade
 on scene changes · HP as colored bars (gold → danger under half) · epitaph
 and THE-END cards.
 
+## Keyboard map
+Ctrl+S sheet · Ctrl+L codex · Ctrl+J journal (searchable) · Ctrl+M world
+map · Ctrl+R retell · Space next combat turn (when not typing) · Esc focus
+the message box · Enter send.
+
+## Windows shipped
+🛒 Trading post (wares/pack/purse/haggle, one GM beat per visit) ·
+📖 Journal (quests+people+chapters, live search) · 🗺 World map (painted,
+click-travel) · ⚡ Reaction dialog · 🎉 Level-up ceremony · ⚒ hero/world
+forges · Session Zero / 🎛 retune.
+
 ## Production bar (M3 — the AAA pass)
 Per the target directive, still owed: controller navigation (focus paths on
 every surface), keyboard shortcuts (documented map), drag-and-drop inventory

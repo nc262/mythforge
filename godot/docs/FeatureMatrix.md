@@ -34,7 +34,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Standard array + editable grid | :3807 | 🔲 | P3 | — | S | |
 | Level-up ceremony (roll HP, feats/ASI, subclass, spells) | renderLevelUp :5825 | ✅ | P1 | — | L | ASI = +2 single (split 🔲) |
 | Class feature actions (per-rest uses) | FEATURE_ACTIONS :2940 | ✅ 6 ported | P1 | — | M | Bardic Insp., Lay on Hands, Wild Shape… 🔲 |
-| Inspiration (grant nat20 / arm / spend adv) | :3342 | 🔲 | P2 | — | S | |
+| Inspiration (grant nat20 / arm / spend adv) | :3342 | ✅ full loop + chip | P2 | — | S | |
 | Multiclassing | _canMulticlass :2877 | 🔲 | P4 | — | L | |
 | Exhaustion enforcement UI | _EXHAUSTION | 🟡 shown on sheet | P3 | — | S | effects text into envelope 🔲 |
 
@@ -88,12 +88,12 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Ambient soundscapes + synth music | studioAmbient.js :7252 | ✅ five looping pads, crossfade, combat drone, volume setting | P3 | — | L | scene-reactive layers 🔲 |
 | Party chips w/ HP bars | :4801 | ✅ in the banner chips | P2 | — | S | |
 | Clock/objective/inspiration chips | banner chips | ✅ clock/weather/here/quest (inspiration rides its feature) | P2 | — | S | |
-| Dice tray (manual d4–d20 + mod) | :1671 | 🟡 🎲 menu covers checks | P3 | — | S | raw die tray |
+| Dice tray (manual d4–d20 + mod) | :1671 | 🟡 🎲 menu covers checks | P3 | — | S | raw die tray 🔲 |
 | Controller support | (n/a web) | 🔲 | **P2** | FSM/focus | L | target-game requirement |
 | Keyboard shortcuts map | web various | ✅ Ctrl+S/L/R, Space, Esc (docs/UI.md) | P3 | — | S | |
 | Drag-drop inventory + paper doll | (target, beyond web) | 🔲 | P3 | UI pass | XL | |
-| World map + minimap | (target) | 🔲 | P3 | atlas | L | |
+| World map + minimap | (target) | ✅ painted map (key art, kind-colored marks, hover lore, click-travel, Ctrl+M) | P3 | — | L | minimap overlay 🔲 |
 | Crafting | _craftItem :7756 | ✅ v1 ask-GM flow (materials judged, loot/gold tags settle it) | P3 | — | M | recipe system → M4 living world |
 | Party multiplayer + voice | /party/* | 🔲 | P4 | polling API | XL | |
-| Windows .exe export (Steam-ready) | — | 🔲 | P2 | ~500MB templates (ask user) | S | |
+| Windows .exe export (Steam-ready) | — | ✅ dist/Mythforge.exe (105MB, embedded pck, x86_64) | P2 | — | S | codesign + Steam SDK when publishing |
 | FSM game modes | (new) | ✅ Mode autoload, 20 states | P1 | — | M | input-map per state rides M3 controller work |
