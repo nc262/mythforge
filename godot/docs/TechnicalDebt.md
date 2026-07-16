@@ -23,3 +23,4 @@ with a check. New shortcuts must add a row here in the same commit.
 
 - **Terrain sampler is a color heuristic** (combat.gd bake_terrain): misreads are possible on unusual palettes; flood guard drops any kind covering >45% of the board. Upgrade path: commission an LLM terrain layout alongside each battle map.
 - **Mode drift self-heal** (game.gd _can_fight): combat clicks force-enter Combat if a fight is active but the FSM drifted (RCA: fight started from Dialogue state locked every combat action, silently). Real fix is declaring Combat as a legal target from every in-game state.
+- **world_map still carries its own pan/zoom** (predates MythCamera): duplicate of ui/myth_camera.gd. Upgrade: adopt MythCamera in world_map.gd next time that file is touched.

@@ -28,6 +28,9 @@ func _ready() -> void:
 		if OS.get_environment("MF_SHOT_JOURNAL") == "1":
 			Combat.finish()
 			scene.call("_open_journal")
+		if OS.get_environment("MF_SHOT_TREE") == "1":
+			Combat.finish()
+			scene.call("_open_skill_tree", 4)
 		if OS.get_environment("MF_SHOT_MAP") == "1":
 			Combat.finish()
 			scene.call("_open_world_map")

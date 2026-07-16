@@ -53,7 +53,7 @@ ritual with its doc in docs/rituals/):
 - ✅ U2 combat feel (initiative rail, living board) + the clip_contents RCA
 - ✅ U3 the living map (camera, fog of war, quest pull)
 - ✅ U4 the manuscript journal + dialogue speaker portraits
-- 🔲 U5 skill-tree constellation (new system)
+- ✅ U5 the destiny constellation (new system: class road as a night sky)
 - 🔲 U6 the character screen (full-screen sheet; 3D turntable later)
 
 ## Standing rules

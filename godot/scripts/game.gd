@@ -714,7 +714,8 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		_build_dice_menu()
 		_render_sheet()
 		if not gains.is_empty():
-			_say_system("🎉 Level %d: you gain %s." % [to_level, ", ".join(gains)]))
+			_say_system("🎉 Level %d: you gain %s." % [to_level, ", ".join(gains)])
+		_open_skill_tree(to_level))  # the reward beat: the new star flares in the sky
 
 
 # ── The dice moment ──────────────────────────────────────────────────────────
@@ -923,6 +924,9 @@ func _on_sheet_action(meta) -> void:
 	var note := ""
 	var tell_gm := false
 	match parts[0]:
+		"dest":
+			_open_skill_tree()
+			return
 		"cast":
 			note = GameState.cast_spell(parts[1].uri_decode())
 			tell_gm = not note.begins_with("✋")
@@ -1511,7 +1515,7 @@ func _render_sheet() -> void:
 		Art.ensure_hero_portrait(GameState.cid(), s)
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
-	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]")
+	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]  [url=dest]✨ destiny[/url]")
 	lines.append("")
 	var dim := Ui.c("ink_dim").to_html(false)
 	lines.append("[center][font_size=22][color=%s][b]%s[/b][/color][/font_size]" % [gold, _bb(str(s.get("name", "?")))])
@@ -2026,8 +2030,25 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_open_journal()
 	elif event.ctrl_pressed and event.keycode == KEY_I:
 		_open_inventory()
+	elif event.ctrl_pressed and event.keycode == KEY_K:
+		_open_skill_tree()
 	elif event.keycode == KEY_ESCAPE:
 		_msg.grab_focus()
+
+
+## ✨ The Constellation of Destiny (docs/rituals/SkillTree.md): the class's
+## whole road as a night sky; a fresh level flares alight after the ceremony.
+func _open_skill_tree(pulse_level := -1) -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = "✨ The Constellation of %s" % str(GameState.sheet().get("name", "the hero"))
+	dlg.ok_button_text = "Return to the tale"
+	var tree := preload("res://scenes/ui/skill_tree.gd").new()
+	tree.pulse_level = pulse_level
+	dlg.add_child(tree)
+	add_child(dlg)
+	dlg.popup_centered()
+	Ui.ritual_open(dlg)
+	dlg.confirmed.connect(dlg.queue_free)
 
 
 ## 📖 The Journal — a handwritten manuscript (docs/rituals/Journal.md):
