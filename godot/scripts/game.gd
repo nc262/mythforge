@@ -54,6 +54,7 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
 	$Margin/Split/ChatBox/Input/Shop.pressed.connect(_open_shop)
+	$Margin/Split/ChatBox/Input/Bag.pressed.connect(_open_inventory)
 	$Margin/Split/ChatBox/Input/Retell.pressed.connect(_regen)
 	_roll_bar.pressed.connect(_roll_pending)
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
@@ -76,7 +77,7 @@ func _ready() -> void:
 	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
 	if not GameState.is_dm():
 		Mode.enter("Dialogue")
-		for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "ShortRest", "LongRest", "Scene"]:
+		for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "Bag", "ShortRest", "LongRest", "Scene"]:
 			$Margin/Split/ChatBox/Input.get_node(btn).visible = false
 		_say_system("You sit down with %s." % str(GameState.character.get("name", "?")))
 		return
@@ -854,6 +855,16 @@ func _ask_gm(title: String, placeholder: String, frame: Callable) -> void:
 		_say_me(_bb("I ask about: %s" % x))
 		_last_player_msg = "I ask about " + x
 		_stream(Composer.envelope(str(frame.call(x)))))
+
+
+## 🎒 The paper-doll inventory window.
+func _open_inventory() -> void:
+	if not Mode.can("panels"):
+		return
+	var win := preload("res://scenes/ui/inventory_window.gd").new()
+	win.inventory_changed.connect(func(): _render_sheet())
+	add_child(win)
+	win.popup_centered()
 
 
 # ── Sheet actions ────────────────────────────────────────────────────────────
@@ -1767,6 +1778,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_open_world_map()
 	elif event.ctrl_pressed and event.keycode == KEY_J:
 		_open_journal()
+	elif event.ctrl_pressed and event.keycode == KEY_I:
+		_open_inventory()
 	elif event.keycode == KEY_ESCAPE:
 		_msg.grab_focus()
 

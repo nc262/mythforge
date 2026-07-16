@@ -91,7 +91,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Dice tray (manual d4–d20 + mod) | :1671 | 🟡 🎲 menu covers checks | P3 | — | S | raw die tray 🔲 |
 | Controller support | (n/a web) | 🔲 | **P2** | FSM/focus | L | target-game requirement |
 | Keyboard shortcuts map | web various | ✅ Ctrl+S/L/R, Space, Esc (docs/UI.md) | P3 | — | S | |
-| Drag-drop inventory + paper doll | (target, beyond web) | 🔲 | P3 | UI pass | XL | |
+| Drag-drop inventory + paper doll | (target, beyond web) | ✅ 🎒 window: 4-slot doll, 24-cell grid, rarity glow, drag/double-click, tooltips (Ctrl+I) | P3 | — | XL | |
 | World map + minimap | (target) | ✅ painted map (key art, kind-colored marks, hover lore, click-travel, Ctrl+M) | P3 | — | L | minimap overlay 🔲 |
 | Crafting | _craftItem :7756 | ✅ v1 ask-GM flow (materials judged, loot/gold tags settle it) | P3 | — | M | recipe system → M4 living world |
 | Party multiplayer + voice | /party/* | 🔲 | P4 | polling API | XL | |

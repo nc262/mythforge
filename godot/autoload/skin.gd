@@ -42,12 +42,100 @@ var pal: Dictionary = PALETTES["arcane"]
 var theme := Theme.new()
 var serif := SystemFont.new()
 var sans := SystemFont.new()
+var display: FontVariation  # tracked serif — titles and headers
 
 
 func _ready() -> void:
 	serif.font_names = PackedStringArray(["Palatino Linotype", "Book Antiqua", "Georgia"])
 	sans.font_names = PackedStringArray(["Inter", "Segoe UI", "Arial"])
+	display = FontVariation.new()
+	display.base_font = serif
+	display.spacing_glyph = 2  # letter-spaced smallcaps energy
 	_build()
+
+
+# ── Procedural surfaces: forged slabs, ornate frames, parchment grain ───────
+## A nine-patch slab: vertical steel gradient, black outer line, trim inner
+## line, a highlight kiss on top and a shadow bite below — buttons struck on
+## an anvil instead of drawn in a spreadsheet.
+func forged_tex(base: Color, trim: Color, trim_alpha := 0.8) -> ImageTexture:
+	var s := 26
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		var t := float(y) / float(s - 1)
+		var row := base.lightened(0.10).lerp(base.darkened(0.30), t)
+		for x in s:
+			img.set_pixel(x, y, row)
+	var outer := base.darkened(0.75)
+	for i in s:
+		img.set_pixel(i, 0, outer)
+		img.set_pixel(i, s - 1, outer)
+		img.set_pixel(0, i, outer)
+		img.set_pixel(s - 1, i, outer)
+	var tr := Color(trim, trim_alpha)
+	for i in range(1, s - 1):
+		img.set_pixel(i, 1, tr)
+		img.set_pixel(i, s - 2, Color(trim, trim_alpha * 0.55))
+		img.set_pixel(1, i, tr)
+		img.set_pixel(s - 2, i, Color(trim, trim_alpha * 0.55))
+	for i in range(2, s - 2):
+		img.set_pixel(i, 2, Color(1, 1, 1, 0.10))       # anvil highlight
+		img.set_pixel(i, s - 3, Color(0, 0, 0, 0.30))   # under-shadow
+	return ImageTexture.create_from_image(img)
+
+
+## An ornate frame: double trim lines with corner diamonds over a deep panel —
+## the BG3 window language, drawn from math.
+func ornate_frame_tex(base: Color, trim: Color) -> ImageTexture:
+	var s := 48
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(base, 0.96))
+	var edge := base.darkened(0.8)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	for spec in [[0.95, 2], [0.35, 5]]:
+		var cc := Color(trim, spec[0])
+		var inset: int = spec[1]
+		for i in range(inset, s - inset):
+			img.set_pixel(i, inset, cc)
+			img.set_pixel(i, s - 1 - inset, cc)
+			img.set_pixel(inset, i, cc)
+			img.set_pixel(s - 1 - inset, i, cc)
+	for corner in [[2, 2], [s - 3, 2], [2, s - 3], [s - 3, s - 3]]:
+		for dx in range(-2, 3):
+			for dy in range(-2, 3):
+				if absi(dx) + absi(dy) <= 2:
+					var px: int = corner[0] + dx
+					var py: int = corner[1] + dy
+					if px >= 0 and px < s and py >= 0 and py < s:
+						img.set_pixel(px, py, trim)
+	return ImageTexture.create_from_image(img)
+
+
+## Parchment grain: the panel color with a whisper of noise — surfaces stop
+## being flat without shouting about it.
+func grain_tex(base: Color, strength := 0.045) -> ImageTexture:
+	var s := 64
+	var noise := FastNoiseLite.new()
+	noise.seed = 11
+	noise.frequency = 0.55
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		for x in s:
+			var n := noise.get_noise_2d(x, y) * strength
+			img.set_pixel(x, y, Color(base.r + n, base.g + n, base.b + n, 0.94))
+	return ImageTexture.create_from_image(img)
+
+
+func _nine(tex: ImageTexture, margin: int, content: int) -> StyleBoxTexture:
+	var sb := StyleBoxTexture.new()
+	sb.texture = tex
+	sb.set_texture_margin_all(margin)
+	sb.set_content_margin_all(content)
+	return sb
 
 
 func apply(wid: String) -> void:
@@ -75,28 +163,28 @@ func _build() -> void:
 	theme.default_font = sans
 	theme.default_font_size = 15
 
-	# Buttons — quiet surface, gold on hover (the studio's tab/button feel).
-	theme.set_stylebox("normal", "Button", _flat(c("surface2"), c("border")))
-	var hover := _flat(c("surface2").lightened(0.05), c("gold"))
-	theme.set_stylebox("hover", "Button", hover)
-	theme.set_stylebox("pressed", "Button", _flat(c("night2"), c("gold")))
-	theme.set_stylebox("focus", "Button", _flat(Color.TRANSPARENT, c("amethyst")))
-	theme.set_stylebox("disabled", "Button", _flat(c("surface"), c("border_soft")))
+	# Buttons — forged slabs: steel gradient, black edge, trim line, bevel.
+	theme.set_stylebox("normal", "Button", _nine(forged_tex(c("surface2"), c("border")), 6, 12))
+	theme.set_stylebox("hover", "Button", _nine(forged_tex(c("surface2").lightened(0.07), c("gold"), 0.95), 6, 12))
+	theme.set_stylebox("pressed", "Button", _nine(forged_tex(c("night2"), c("gold")), 6, 12))
+	theme.set_stylebox("focus", "Button", _flat(Color.TRANSPARENT, c("amethyst"), 6, 1, 12))
+	theme.set_stylebox("disabled", "Button", _nine(forged_tex(c("surface"), c("border_soft"), 0.4), 6, 12))
 	theme.set_color("font_color", "Button", c("ink_soft"))
 	theme.set_color("font_hover_color", "Button", c("gold_soft"))
 	theme.set_color("font_pressed_color", "Button", c("gold"))
 	theme.set_color("font_disabled_color", "Button", c("ink_dim"))
+	theme.set_font("font", "Button", display)
+	theme.set_font_size("font_size", "Button", 15)
 
-	# Accent button — the roll bar / primary action, gold-glow style.
+	# Accent button — gold-trimmed dark iron; the primary action sings.
 	theme.set_type_variation("AccentButton", "Button")
-	var acc := _flat(Color(c("gold"), 0.12), c("gold"), 12, 1, 12)
-	theme.set_stylebox("normal", "AccentButton", acc)
-	theme.set_stylebox("hover", "AccentButton", _flat(Color(c("gold"), 0.22), c("gold_soft"), 12, 1, 12))
-	theme.set_stylebox("pressed", "AccentButton", _flat(Color(c("gold"), 0.30), c("gold_soft"), 12, 1, 12))
+	theme.set_stylebox("normal", "AccentButton", _nine(forged_tex(c("night2").lerp(c("gold"), 0.10), c("gold"), 1.0), 6, 14))
+	theme.set_stylebox("hover", "AccentButton", _nine(forged_tex(c("night2").lerp(c("gold"), 0.20), c("gold_soft"), 1.0), 6, 14))
+	theme.set_stylebox("pressed", "AccentButton", _nine(forged_tex(c("night2"), c("gold_soft"), 1.0), 6, 14))
 	theme.set_color("font_color", "AccentButton", c("gold_soft"))
-	theme.set_color("font_hover_color", "AccentButton", c("gold_soft"))
-	theme.set_font("font", "AccentButton", sans)
-	theme.set_font_size("font_size", "AccentButton", 16)
+	theme.set_color("font_hover_color", "AccentButton", Color(c("gold_soft")).lightened(0.15))
+	theme.set_font("font", "AccentButton", display)
+	theme.set_font_size("font_size", "AccentButton", 17)
 
 	# Inputs — night wells with an amethyst focus ring.
 	theme.set_stylebox("normal", "LineEdit", _flat(c("night2"), c("border_soft")))
@@ -105,36 +193,52 @@ func _build() -> void:
 	theme.set_color("font_placeholder_color", "LineEdit", c("ink_dim"))
 	theme.set_color("caret_color", "LineEdit", c("gold"))
 
-	# Panels / lists / text.
-	theme.set_stylebox("panel", "PanelContainer", _flat(c("surface"), c("border_soft"), 14, 1, 14))
-	theme.set_stylebox("panel", "ItemList", _flat(c("surface"), c("border_soft"), 14, 1, 10))
-	theme.set_stylebox("selected", "ItemList", _flat(Color(c("gold"), 0.14), c("gold"), 7, 1, 6))
-	theme.set_stylebox("selected_focus", "ItemList", _flat(Color(c("gold"), 0.18), c("gold"), 7, 1, 6))
+	# Panels — ornate double-trim frames with corner diamonds; lists ride the
+	# same language; long-form text sits on parchment grain.
+	theme.set_stylebox("panel", "PanelContainer", _nine(ornate_frame_tex(c("surface"), c("border")), 10, 16))
+	theme.set_stylebox("panel", "ItemList", _nine(ornate_frame_tex(c("surface"), c("border_soft")), 10, 12))
+	theme.set_stylebox("selected", "ItemList", _flat(Color(c("gold"), 0.14), c("gold"), 4, 1, 6))
+	theme.set_stylebox("selected_focus", "ItemList", _flat(Color(c("gold"), 0.18), c("gold"), 4, 1, 6))
 	theme.set_color("font_color", "ItemList", c("ink_soft"))
 	theme.set_color("font_selected_color", "ItemList", c("gold_soft"))
-	theme.set_stylebox("normal", "RichTextLabel", _flat(Color(c("sheet"), 0.82), c("border_soft"), 14, 1, 16))
+	var parchment := _nine(grain_tex(c("sheet")), 4, 16)
+	theme.set_stylebox("normal", "RichTextLabel", parchment)
 	theme.set_color("default_color", "RichTextLabel", c("ink"))
 	theme.set_color("font_color", "Label", c("ink_soft"))
+	# Windows/dialogs wear the ornate frame too.
+	theme.set_stylebox("embedded_border", "Window", _nine(ornate_frame_tex(c("night2"), c("gold")), 12, 20))
+	theme.set_color("title_color", "Window", c("gold_soft"))
+	theme.set_font("title_font", "Window", display)
+	theme.set_font_size("title_font_size", "Window", 18)
 
-	# Title — the serif, candle-gold brand line ("MYTHFORGE ✦").
+	# Title — tracked serif with a candle-glow outline.
 	theme.set_type_variation("TitleLabel", "Label")
-	theme.set_font("font", "TitleLabel", serif)
+	theme.set_font("font", "TitleLabel", display)
 	theme.set_font_size("font_size", "TitleLabel", 30)
 	theme.set_color("font_color", "TitleLabel", c("gold_soft"))
+	theme.set_color("font_outline_color", "TitleLabel", Color(c("gold"), 0.22))
+	theme.set_constant("outline_size", "TitleLabel", 10)
+
+	# Section headers — small tracked gold caps.
+	theme.set_type_variation("HeaderLabel", "Label")
+	theme.set_font("font", "HeaderLabel", display)
+	theme.set_font_size("font_size", "HeaderLabel", 16)
+	theme.set_color("font_color", "HeaderLabel", c("gold"))
 
 	# Dim hint text.
 	theme.set_type_variation("HintLabel", "Label")
 	theme.set_color("font_color", "HintLabel", c("ink_dim"))
 	theme.set_font_size("font_size", "HintLabel", 13)
 
-	# Chat bubbles — the studio's parchment GM / candle-gold player look.
+	# Chat bubbles — grained parchment for the GM, gold-edged vellum for you.
 	theme.set_type_variation("BubbleGm", "PanelContainer")
-	var gm_sb := _flat(Color(c("sheet"), 0.92), c("border_soft"), 14, 1, 14)
-	gm_sb.corner_radius_top_left = 4  # speech points back at the teller
+	var gm_sb := _nine(grain_tex(c("sheet")), 4, 14)
 	theme.set_stylebox("panel", "BubbleGm", gm_sb)
 	theme.set_type_variation("BubbleMe", "PanelContainer")
-	var me_sb := _flat(Color(c("gold"), 0.10), Color(c("gold"), 0.55), 14, 1, 14)
-	me_sb.corner_radius_top_right = 4
+	var me_sb := _flat(Color(c("gold"), 0.10), Color(c("gold"), 0.55), 10, 1, 14)
+	me_sb.corner_radius_top_right = 3
+	me_sb.shadow_color = Color(c("gold"), 0.10)
+	me_sb.shadow_size = 8
 	theme.set_stylebox("panel", "BubbleMe", me_sb)
 
 	# The dice overlay — a candle-lit card the roll tumbles on.

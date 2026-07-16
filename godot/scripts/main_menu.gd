@@ -29,6 +29,17 @@ func _ready() -> void:
 	theme = Ui.theme
 	Ui.apply("")
 	Mode.enter("MainMenu")
+	$Title/Box/Divider.draw.connect(func():
+		var d: Control = $Title/Box/Divider
+		var w := d.size.x
+		var y := d.size.y / 2.0
+		var gold: Color = Ui.c("gold")
+		d.draw_line(Vector2(0, y), Vector2(w * 0.42, y), Color(gold, 0.0).lerp(Color(gold, 0.7), 1.0), 1.0)
+		d.draw_line(Vector2(w * 0.58, y), Vector2(w, y), Color(gold, 0.7), 1.0)
+		for k in [[w * 0.5, 5.0], [w * 0.44, 2.6], [w * 0.56, 2.6]]:
+			var cx: float = k[0]
+			var r: float = k[1]
+			d.draw_colored_polygon(PackedVector2Array([Vector2(cx, y - r), Vector2(cx + r, y), Vector2(cx, y + r), Vector2(cx - r, y)]), gold))
 	_load_settings()
 	$Title/Box/Continue.pressed.connect(_continue_last)
 	$Title/Box/NewAdv.pressed.connect(_show_worlds)

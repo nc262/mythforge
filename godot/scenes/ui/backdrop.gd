@@ -8,6 +8,7 @@ const STARS := 70
 var _base := TextureRect.new()
 var _glow_hi := TextureRect.new()
 var _glow_lo := TextureRect.new()
+var _vignette := TextureRect.new()
 var _stars: Array = []  # [{pos: Vector2 (0-1), r: float, col: Color}]
 var _drift := 0.0
 
@@ -15,7 +16,7 @@ var _drift := 0.0
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	for t in [_base, _glow_hi, _glow_lo]:
+	for t in [_base, _glow_hi, _glow_lo, _vignette]:
 		t.set_anchors_preset(Control.PRESET_FULL_RECT)
 		t.stretch_mode = TextureRect.STRETCH_SCALE
 		t.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -41,6 +42,18 @@ func _paint() -> void:
 	_base.texture = _linear(Ui.c("night2"), Ui.c("night"))
 	_glow_hi.texture = _radial(Color(Ui.c("amethyst_deep"), 0.18), Vector2(0.78, -0.08))
 	_glow_lo.texture = _radial(Color(Ui.c("gold"), 0.10), Vector2(0.12, 1.08))
+	# The vignette: light lives in the middle, night owns the edges.
+	var vg := Gradient.new()
+	vg.colors = PackedColorArray([Color(Ui.c("night"), 0.0), Color(Ui.c("night"), 0.0), Color(Ui.c("night"), 0.62)])
+	vg.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	var vt := GradientTexture2D.new()
+	vt.gradient = vg
+	vt.fill = GradientTexture2D.FILL_RADIAL
+	vt.fill_from = Vector2(0.5, 0.5)
+	vt.fill_to = Vector2(1.06, 1.06)
+	vt.width = 512
+	vt.height = 512
+	_vignette.texture = vt
 	queue_redraw()
 
 

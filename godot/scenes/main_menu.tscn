@@ -43,9 +43,14 @@ theme_override_constants/separation = 12
 [node name="Brand" type="Label" parent="Title/Box"]
 layout_mode = 2
 theme_type_variation = &"TitleLabel"
-theme_override_font_sizes/font_size = 68
-text = "✦ MYTHFORGE"
+theme_override_font_sizes/font_size = 84
+theme_override_constants/outline_size = 18
+text = "MYTHFORGE"
 horizontal_alignment = 1
+
+[node name="Divider" type="Control" parent="Title/Box"]
+custom_minimum_size = Vector2(460, 22)
+layout_mode = 2
 
 [node name="Tag" type="Label" parent="Title/Box"]
 layout_mode = 2

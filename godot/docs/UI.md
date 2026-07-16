@@ -1,5 +1,14 @@
 # UI
 
+## The forged pass (2026-07-15)
+All chrome is procedurally forged at runtime — no image assets: buttons are
+nine-patch steel slabs (gradient, black edge, gold trim, anvil highlight),
+panels wear ornate double-trim frames with corner diamonds, long-form text
+sits on parchment grain (FastNoiseLite), dialogs use the ornate Window
+frame, titles are tracked serif with a candle-glow outline, and a radial
+vignette keeps the light centered. The 🎒 inventory is a paper doll + 24-
+cell rarity-lit slot grid with drag-and-drop.
+
 ## Design system ("Enchanted Arcane", ported from studio.css)
 Tokens live in `Ui` (autoload/skin.gd) as three palettes that restyle the
 entire client when a world is entered:

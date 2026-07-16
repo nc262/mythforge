@@ -113,6 +113,11 @@ layout_mode = 2
 tooltip_text = "Retell — the GM takes another pass at its last reply"
 text = "↻"
 
+[node name="Bag" type="Button" parent="Margin/Split/ChatBox/Input"]
+layout_mode = 2
+tooltip_text = "Inventory — paper doll and pack"
+text = "🎒"
+
 [node name="SheetBtn" type="Button" parent="Margin/Split/ChatBox/Input"]
 layout_mode = 2
 toggle_mode = true

@@ -8,6 +8,7 @@ func _ready() -> void:
 	var out := OS.get_environment("MF_SHOT_OUT")
 	if OS.get_environment("MF_SHOT_DEMO") == "1":
 		_seed_demo()
+		await get_tree().create_timer(1.0).timeout  # let the demo PUTs land
 	var scene = load(scene_path).instantiate()
 	add_child(scene)
 	if OS.get_environment("MF_SHOT_DEMO") == "1" and scene_path.contains("game"):
@@ -22,6 +23,8 @@ func _ready() -> void:
 		var gm_rt: RichTextLabel = scene.call("_bubble", "gm")
 		gm_rt.append_text("The chapel door splinters — goblins pour through the gap, their boss bellowing behind them. Steel glints in the candlelight. [i]Roll for initiative![/i]")
 		scene.call("_say_me", "I hurl my lantern at the boss and draw my silvered dagger!")
+		if OS.get_environment("MF_SHOT_INV") == "1":
+			scene.call("_open_inventory")
 		scene.call("_say_system", "⚔️ Combat — Goblin Boss!")
 	await get_tree().create_timer(2.5).timeout
 	var img := get_viewport().get_texture().get_image()
@@ -32,7 +35,7 @@ func _ready() -> void:
 
 func _seed_demo() -> void:
 	Ui.apply("embervale")
-	GameState.character = {"id": "godot-demo", "name": "The Hollow Bell", "world_id": "embervale"}
+	GameState.character = {"id": "dm-godot-demo", "name": "The Hollow Bell", "world_id": "embervale"}
 	GameState.state = {"sheet": {"name": "Wren Ashvale", "race": "Half-Elf", "cls": "Wizard", "level": 4, "xp": 640,
 		"hp": 21, "hpMax": 26, "gold": 87,
 		"abilities": {"STR": 8, "DEX": 14, "CON": 12, "INT": 17, "WIS": 12, "CHA": 10},
@@ -46,3 +49,7 @@ func _seed_demo() -> void:
 			{"id": "p1", "name": "Healing Potion", "qty": 3, "rarity": "uncommon", "type": "gear"}],
 			"equipped": {"weapon": "w1", "armor": "a1"}},
 		"clock": {"day": 3, "ti": 5, "wx": {"ico": "🌧", "name": "soft valley rain"}}}
+	# Persist the demo state server-side so the scene's hydrate() finds it
+	# (otherwise the hero forge gates in front of whatever we want to shoot).
+	for kind in ["sheet", "inv", "clock"]:
+		GameState.save_kind(kind, GameState.state[kind])
