@@ -1,6 +1,21 @@
 # Mythforge Design Language (MDL)
 
 **The single source of truth for every UI element in the game.**
+
+## The Five Pillars (every component must satisfy all five)
+
+1. **Physicality** — constructed from believable materials that exist within
+   the game's world (forged steel, parchment, carved stone, candle-light).
+2. **Hierarchy** — the eye knows where to look first, second, and third
+   without conscious effort.
+3. **Feedback** — every interaction acknowledges the player through motion,
+   light, sound, or subtle animation.
+4. **Reusability** — every visual pattern is implemented once and reused
+   everywhere.
+5. **Delight** — opening any menu is enjoyable, even when no important
+   decision is being made.
+
+A component that is functional but not memorable is not done — keep refining.
 No screen may define its own colors, spacing, radii, motion timing, fonts,
 tooltips, or one-off components. Screens are *applications* of this system.
 
