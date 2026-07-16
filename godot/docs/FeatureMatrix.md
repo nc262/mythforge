@@ -30,7 +30,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Hero forge (name/heritage/class/4d6) | openPlayerEditor gate | ✅ | P1 | tables.json | M | — |
 | Prebuilt heroes (4 one-click) | :3826 | ✅ | P2 | — | S | — |
 | Backgrounds (8, +2 skills + hook) | :3796 | ✅ picker + hook into session zero | P2 | — | S | |
-| Portrait in hero forge | :3826 | 🔲 | P3 | /generate | M | |
+| Portrait in hero forge | :3826 | ✅ auto-commissioned at creation; crowns the sheet + grid token | P3 | /generate | M | forge-time preview 🔲 |
 | Standard array + editable grid | :3807 | 🔲 | P3 | — | S | |
 | Level-up ceremony (roll HP, feats/ASI, subclass, spells) | renderLevelUp :5825 | ✅ | P1 | — | L | ASI = +2 single (split 🔲) |
 | Class feature actions (per-rest uses) | FEATURE_ACTIONS :2940 | ✅ 6 ported | P1 | — | M | Bardic Insp., Lay on Hands, Wild Shape… 🔲 |
@@ -50,7 +50,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Death saves + epitaph | _rollDeathSave :5178 | ✅ | P1 | — | M | game-over overlay w/ load-save & cling-to-life buttons 🟡 (revive path = long rest) |
 | Victory: auto-finish, XP, killing-blow cinema | _finishCombat | ✅ + HDYWTDT flourish + gold victory flash | P1 | — | M | |
 | **Tactical battle grid** (16×10, tokens, move budgets, adjacency/ranged, enemy approach) | renderBattle :6508 | ✅ v1 | P1 | — | XL | terrain paint + token drag 🔲 (click-move shipped) |
-| Battle underlay art (scene-matched map) | _ensureBattleUnderlay | 🔲 | P3 | /generate | M | |
+| Battle underlay art (scene-matched map) | _ensureBattleUnderlay | ✅ generated overhead map of the actual place, ornate frame, whisper grid | P3 | /generate | M | terrain paint 🔲 |
 | Combat music/backdrop swap | _enterCombatMode | 🟡 tint+sting | P3 | audio | M | music system 🔲 |
 
 ## World, travel, economy

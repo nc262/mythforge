@@ -48,7 +48,8 @@ func _seed_demo() -> void:
 			{"id": "a1", "name": "Traveler's Leathers", "qty": 1, "rarity": "common", "type": "armor", "acBonus": 2},
 			{"id": "p1", "name": "Healing Potion", "qty": 3, "rarity": "uncommon", "type": "gear"}],
 			"equipped": {"weapon": "w1", "armor": "a1"}},
-		"clock": {"day": 3, "ti": 5, "wx": {"ico": "🌧", "name": "soft valley rain"}}}
+		"clock": {"day": 3, "ti": 5, "wx": {"ico": "🌧", "name": "soft valley rain"}},
+		"world": {"here": "Embervale village square"}}
 	# Persist the demo state server-side so the scene's hydrate() finds it
 	# (otherwise the hero forge gates in front of whatever we want to shoot).
 	for kind in ["sheet", "inv", "clock"]:

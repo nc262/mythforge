@@ -1,8 +1,11 @@
 extends Node
-## Art — world key-art: generated once through the ComfyUI bridge, cached in
-## user://art/<world_id>.png, painted onto menu cards and the game backdrop.
+## Art — every generated image the game wears: world key art, hero and NPC
+## portraits, item icons, battle-map underlays, parchment world maps. All
+## painted once through the ComfyUI bridge, cached in user://art/<key>.png.
+## Keys: "<world_id>" · "hero-<cid>" · "npc-<slug>" · "item-<slug>" ·
+## "map-<place-slug>" · "chart-<world_id>".
 
-signal art_ready(world_id: String)
+signal art_ready(key: String)
 
 const WORLD_PROMPTS := {
 	"embervale": "a candlelit fantasy valley village at dusk, timber inn glowing warm, misty hills, cinematic high fantasy establishing shot, no people, no text",
@@ -11,44 +14,125 @@ const WORLD_PROMPTS := {
 }
 
 var _generating := {}
+var _round_cache := {}   # key -> circular-masked ImageTexture
+var _tex_cache := {}     # key -> ImageTexture (avoid re-reading disk every frame)
+var _queue: Array = []   # [{key, prompt, size}] — one generation at a time
+var _pumping := false
 
 
-func path_for(world_id: String) -> String:
-	return "user://art/%s.png" % world_id.validate_filename()
+func path_for(key: String) -> String:
+	return "user://art/%s.png" % key.validate_filename()
 
 
-func has_art(world_id: String) -> bool:
-	return world_id != "" and FileAccess.file_exists(path_for(world_id))
+func has_art(key: String) -> bool:
+	return key != "" and FileAccess.file_exists(path_for(key))
 
 
-func texture_for(world_id: String) -> ImageTexture:
-	if not has_art(world_id):
+func texture_for(key: String) -> ImageTexture:
+	if _tex_cache.has(key):
+		return _tex_cache[key]
+	if not has_art(key):
 		return null
-	var img := Image.load_from_file(path_for(world_id))
-	return ImageTexture.create_from_image(img) if img != null and not img.is_empty() else null
+	var img := Image.load_from_file(path_for(key))
+	if img == null or img.is_empty():
+		return null
+	var tex := ImageTexture.create_from_image(img)
+	_tex_cache[key] = tex
+	return tex
 
 
-## Generate + cache key art if missing (one in flight per world). Emits
-## art_ready(world_id) on success. `prompt` falls back to the built-in look.
-func ensure(world_id: String, prompt := "") -> void:
-	if world_id == "" or has_art(world_id) or _generating.get(world_id, false):
+## A circular-alpha version (tokens, avatars). Cached in memory.
+func round_tex(key: String, size := 128) -> ImageTexture:
+	if _round_cache.has(key):
+		return _round_cache[key]
+	if not has_art(key):
+		return null
+	var img := Image.load_from_file(path_for(key))
+	if img == null or img.is_empty():
+		return null
+	img.convert(Image.FORMAT_RGBA8)
+	# Center-crop square, resize, punch a circle.
+	var side := mini(img.get_width(), img.get_height())
+	img = img.get_region(Rect2i((img.get_width() - side) / 2, (img.get_height() - side) / 2, side, side))
+	img.resize(size, size, Image.INTERPOLATE_LANCZOS)
+	var r := size / 2.0
+	for y in size:
+		for x in size:
+			var d := Vector2(x - r + 0.5, y - r + 0.5).length()
+			if d > r - 1.0:
+				var px := img.get_pixel(x, y)
+				px.a = clampf(r - d, 0.0, 1.0) * px.a
+				img.set_pixel(x, y, px)
+	var tex := ImageTexture.create_from_image(img)
+	_round_cache[key] = tex
+	return tex
+
+
+## Generate + cache if missing. Queued — one image in flight, ever; the GPU
+## also serves the storyteller. Emits art_ready(key) when a painting lands.
+func ensure(key: String, prompt := "", size := "1024x1024") -> void:
+	if key == "" or has_art(key) or _generating.get(key, false):
 		return
 	if prompt == "":
-		prompt = WORLD_PROMPTS.get(world_id, "")
+		prompt = WORLD_PROMPTS.get(key, "")
 	if prompt == "":
 		return
-	_generating[world_id] = true
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate",
-		{"prompt": prompt + ", atmospheric establishing scene, no people, no text", "size": "1024x1024"})
-	_generating[world_id] = false
-	if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":
-		return
-	var bytes := await Api.fetch_bytes(str(r["image_url"]).trim_prefix(Api.BASE))
-	if bytes.is_empty():
-		return
-	var img := Image.new()
-	if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
-		return
-	DirAccess.make_dir_recursive_absolute("user://art")
-	img.save_png(path_for(world_id))
-	art_ready.emit(world_id)
+	_generating[key] = true
+	_queue.append({"key": key, "prompt": prompt, "size": size})
+	if not _pumping:
+		_pump()
+
+
+func _pump() -> void:
+	_pumping = true
+	while not _queue.is_empty():
+		var job: Dictionary = _queue.pop_front()
+		var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate",
+			{"prompt": str(job["prompt"]), "size": str(job["size"])})
+		_generating[job["key"]] = false
+		if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":
+			continue
+		var bytes := await Api.fetch_bytes(str(r["image_url"]).trim_prefix(Api.BASE))
+		if bytes.is_empty():
+			continue
+		var img := Image.new()
+		if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
+			continue
+		DirAccess.make_dir_recursive_absolute("user://art")
+		img.save_png(path_for(str(job["key"])))
+		_tex_cache.erase(str(job["key"]))
+		_round_cache.erase(str(job["key"]))
+		art_ready.emit(str(job["key"]))
+	_pumping = false
+
+
+# ── Prompt builders: one voice for each art family ──────────────────────────
+func world_flavor() -> String:
+	return {"neonspire": "cyberpunk sci-fi", "everyday": "warm contemporary slice-of-life"}.get(GameState.world_id(), "high fantasy")
+
+
+func ensure_hero_portrait(cid: String, sheet: Dictionary) -> void:
+	ensure("hero-" + cid.validate_filename(),
+		"character portrait of %s, a %s %s, %s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
+			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")), world_flavor()])
+
+
+func ensure_item_icon(nm: String) -> void:
+	ensure("item-" + nm.to_lower().replace(" ", "-"),
+		"game inventory icon of a %s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [nm, world_flavor()], "1024x1024")
+
+
+func item_tex(nm: String) -> ImageTexture:
+	return texture_for("item-" + nm.to_lower().replace(" ", "-"))
+
+
+func ensure_battle_map(place: String) -> String:
+	var key := "map-" + place.to_lower().replace(" ", "-").validate_filename()
+	ensure(key, "top-down tabletop RPG battle map of %s, %s style, overhead view, painted terrain, no grid lines, no tokens, no text, muted lighting" % [place, world_flavor()])
+	return key
+
+
+func ensure_world_chart(world_id2: String, world_name: String) -> String:
+	var key := "chart-" + world_id2.validate_filename()
+	ensure(key, "hand-drawn parchment world map of %s, %s style, aged paper, inked coastlines and roads, cartography illustration, no modern text labels" % [world_name, world_flavor()])
+	return key

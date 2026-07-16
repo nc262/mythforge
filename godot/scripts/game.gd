@@ -245,6 +245,7 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 			if sp is Array and sp.size() >= 2 and int(sp[1]) <= 1:
 				s["spells"].append({"name": str(sp[0]), "level": int(sp[1])})
 	GameState.set_sheet(s)
+	Art.ensure_hero_portrait(GameState.cid(), s)
 	_build_dice_menu()
 	_render_sheet()
 	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])
@@ -483,6 +484,7 @@ func _apply_world_tags(tags: Array) -> void:
 				var nm := str(a.get("name", "")).strip_edges()
 				if nm != "":
 					GameState.add_item(nm, str(a.get("rarity", "common")), maxi(1, int(a.get("qty", 1))))
+					Art.ensure_item_icon(nm)
 					Sfx.play("chime")
 					_say_system("🎒 %s added to your pack" % nm)
 			"spell-learned":
@@ -1129,6 +1131,8 @@ func _render_combat() -> void:
 	_battle_grid.visible = fighting
 	if fighting:
 		Combat.ensure_positions()
+		var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+		_battle_grid.map_key = Art.ensure_battle_map(here if here != "" else "a %s battlefield" % Art.world_flavor())
 	# The room darkens toward ember-red while steel is out.
 	var tween := create_tween()
 	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
@@ -1289,6 +1293,9 @@ func _render_sheet() -> void:
 		_render_codex()
 		return
 	var s := GameState.sheet()
+	# The hero's painted face crowns the sheet (commissioned lazily).
+	if str(s.get("name", "")) != "" and not Art.has_art("hero-" + GameState.cid().validate_filename()):
+		Art.ensure_hero_portrait(GameState.cid(), s)
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
 	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]")
@@ -1366,7 +1373,13 @@ func _render_sheet() -> void:
 				row += "  [url=feat:%s]◆ use (%d/%d)[/url]" % [key.uri_encode(), left, int(GameState.FEATURE_ACTIONS[key]["uses"])] if left > 0 \
 					else "  [color=%s]◇ spent[/color]" % Ui.c("ink_dim").to_html(false)
 			lines.append(row)
-	_sheet_panel.text = "\n".join(lines)
+	_sheet_panel.clear()
+	var face := Art.round_tex("hero-" + GameState.cid().validate_filename(), 148)
+	if face != null:
+		_sheet_panel.append_text("[center]")
+		_sheet_panel.add_image(face)
+		_sheet_panel.append_text("[/center]\n")
+	_sheet_panel.append_text("\n".join(lines))
 
 
 ## 🛒 The trading post: wares on the left, your pack on the right, the
@@ -1694,6 +1707,7 @@ func _open_world_map() -> void:
 	var dlg := AcceptDialog.new()
 	dlg.title = "🗺 %s" % str(GameState.character.get("name", "the world")).split(":")[0]
 	dlg.ok_button_text = "Close the map"
+	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
 	var map := preload("res://scenes/ui/world_map.gd").new()
 	map.locations = locs
 	map.here = str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""

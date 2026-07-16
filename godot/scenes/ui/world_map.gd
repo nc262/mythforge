@@ -37,7 +37,9 @@ func _gui_input(event: InputEvent) -> void:
 
 func _draw() -> void:
 	# The land itself: key art dimmed under a scrim, night vignette at edges.
-	var art := Art.texture_for(GameState.world_id())
+	var art := Art.texture_for("chart-" + GameState.world_id().validate_filename())
+	if art == null:
+		art = Art.texture_for(GameState.world_id())
 	if art != null:
 		draw_texture_rect(art, Rect2(Vector2.ZERO, size), false, Color(0.75, 0.72, 0.8, 1.0))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.45))

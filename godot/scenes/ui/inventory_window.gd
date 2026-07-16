@@ -30,6 +30,13 @@ class InvSlot extends PanelContainer:
 		slot_key = key
 		index = idx
 		custom_minimum_size = Vector2(64, 64)
+		var icon := TextureRect.new()
+		icon.name = "Icon"
+		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		add_child(icon)
 		var glyph := Label.new()
 		glyph.name = "Glyph"
 		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -54,6 +61,9 @@ class InvSlot extends PanelContainer:
 		sb.set_content_margin_all(6)
 		var glyph: Label = get_node("Glyph")
 		var qty: Label = get_node("Qty")
+		var icon: TextureRect = get_node("Icon")
+		icon.texture = null if item.is_empty() else Art.item_tex(str(item.get("name", "")))
+		glyph.visible = icon.texture == null
 		if item.is_empty():
 			sb.border_color = Color(Ui.c("border_soft"), 0.7)
 			glyph.text = {"weapon": "⚔", "offhand": "🗡", "armor": "🥋", "shield": "⛨"}.get(slot_key, "")
@@ -140,6 +150,10 @@ func _init() -> void:
 
 func _ready() -> void:
 	rebuild()
+	Art.art_ready.connect(func(_k): rebuild())
+	# Commission icons for whatever the pack holds (queued, one at a time).
+	for it in GameState.inv().get("items", []):
+		Art.ensure_item_icon(str(it.get("name", "")))
 
 
 func rebuild() -> void:
