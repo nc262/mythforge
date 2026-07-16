@@ -25,6 +25,9 @@ func _ready() -> void:
 		scene.call("_say_me", "I hurl my lantern at the boss and draw my silvered dagger!")
 		if OS.get_environment("MF_SHOT_INV") == "1":
 			scene.call("_open_inventory")
+		if OS.get_environment("MF_SHOT_JOURNAL") == "1":
+			Combat.finish()
+			scene.call("_open_journal")
 		if OS.get_environment("MF_SHOT_MAP") == "1":
 			Combat.finish()
 			scene.call("_open_world_map")
@@ -52,7 +55,13 @@ func _seed_demo() -> void:
 			{"id": "p1", "name": "Healing Potion", "qty": 3, "rarity": "uncommon", "type": "gear"}],
 			"equipped": {"weapon": "w1", "armor": "a1"}},
 		"clock": {"day": 3, "ti": 5, "wx": {"ico": "🌧", "name": "soft valley rain"}},
-		"world": {"here": "The Ember & Oak", "seen": ["Hearthwood Market"]}}
+		"world": {"here": "The Ember & Oak", "seen": ["Hearthwood Market"]},
+		"quests": [
+			{"title": "The Hollow Bell Tolls", "desc": "Find who rings the drowned chapel bell at midnight.", "status": "active"},
+			{"title": "Rats in the Cellar", "desc": "Clear the Ember & Oak's cellar for Talia.", "status": "done"}],
+		"codex": [
+			{"name": "Talia", "role": "innkeeper of the Ember & Oak", "note": "Warm, sharp-eyed, knows every road and rumor in the valley."},
+			{"name": "Old Maren", "role": "chapel warden", "note": "Went pale when the bell was mentioned. Hiding something."}]}
 	# Persist the demo state server-side so the scene's hydrate() finds it
 	# (otherwise the hero forge gates in front of whatever we want to shoot).
 	for kind in ["sheet", "inv", "clock"]:

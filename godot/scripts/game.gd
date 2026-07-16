@@ -477,7 +477,39 @@ func _on_done(_ok: bool) -> void:
 	if check.is_empty():
 		check = Tags.detect_check(str(parsed["clean"]))
 	_set_check(check)
+	_decorate_speaker(_gm_rt, str(parsed["clean"]))
 	_scroll_bottom()
+
+
+## BG3 intimacy (docs/rituals/Dialogue.md): when a codex-known face speaks
+## inside the GM's beat — their name near quoted speech — seat their painted
+## portrait beside the words. Heuristic, engine-side; first match wins.
+func _decorate_speaker(rt: RichTextLabel, clean: String) -> void:
+	if rt == null or not (GameState.state.get("codex") is Array):
+		return
+	var panel := rt.get_parent()
+	var row := panel.get_parent() if panel != null else null
+	if not (row is HBoxContainer) or row.get_child_count() != 2:
+		return
+	for n in GameState.state.get("codex", []):
+		if not (n is Dictionary):
+			continue
+		var nm := str(n.get("name", "")).strip_edges()
+		if nm.length() < 3:
+			continue
+		var idx := clean.find(nm)
+		if idx < 0:
+			continue
+		var window := clean.substr(maxi(0, idx - 80), nm.length() + 160)
+		if not (window.contains("\"") or window.contains("“") or window.contains("”")):
+			continue
+		var chip := MythPortrait.new(38, "amethyst")
+		chip.set_portrait(Art.round_tex("npc-" + nm.to_lower().replace(" ", "-")), nm.left(1).to_upper())
+		chip.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		chip.tooltip_text = "%s — %s" % [nm, str(n.get("role", ""))] if str(n.get("role", "")) != "" else nm
+		row.add_child(chip)
+		row.move_child(chip, 0)
+		return
 
 
 # ── World tags → state ───────────────────────────────────────────────────────
@@ -1998,58 +2030,112 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		_msg.grab_focus()
 
 
-## 📖 The journal: everything the campaign remembers, searchable.
+## 📖 The Journal — a handwritten manuscript (docs/rituals/Journal.md):
+## quests sworn in wax, the people you've met beside their painted faces,
+## chapters closed with fleurons. Tabs filter; search cuts across the pages.
 func _open_journal() -> void:
 	var dlg := AcceptDialog.new()
 	dlg.title = "📖 The Journal"
-	dlg.ok_button_text = "Close"
-	dlg.min_size = Vector2i(640, 520)
+	dlg.ok_button_text = "Close the journal"
+	dlg.min_size = Vector2i(700, 580)
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 8)
+	root.add_theme_constant_override("separation", Ui.SPACE["s"])
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", Ui.SPACE["s"])
+	var group := ButtonGroup.new()
+	var current: Array = ["All"]
 	var search := LineEdit.new()
-	search.placeholder_text = "Search quests, people, chapters…"
 	var body := RichTextLabel.new()
 	body.bbcode_enabled = true
 	body.selection_enabled = true
-	body.custom_minimum_size = Vector2(600, 430)
+	body.custom_minimum_size = Vector2(660, 460)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var render := func(q: String):
-		q = q.to_lower()
+	var gold := Ui.c("gold").to_html(false)
+	var dim := Ui.c("ink_dim").to_html(false)
+	var soft := Ui.c("ink_soft").to_html(false)
+	var render := func():
+		var q := search.text.to_lower()
+		var tab: String = current[0]
 		body.clear()
-		var gold := Ui.c("gold_soft").to_html(false)
 		var hits := 0
-		body.append_text("[color=%s][b]Quests[/b][/color]\n" % gold)
-		for qq in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
-			if qq is Dictionary:
-				var line := "%s — %s" % [str(qq.get("title", "")), str(qq.get("desc", ""))]
-				if q == "" or line.to_lower().contains(q):
-					body.append_text("%s %s\n" % ["✓" if str(qq.get("status", "")) == "done" else "◈", _bb(line)])
-					hits += 1
-		body.append_text("\n[color=%s][b]People[/b][/color]\n" % gold)
-		for n in (GameState.state.get("codex", []) if GameState.state.get("codex") is Array else []):
-			if n is Dictionary:
-				var line2 := "%s (%s) — %s" % [str(n.get("name", "")), str(n.get("role", "")), str(n.get("note", ""))]
-				if q == "" or line2.to_lower().contains(q):
-					body.append_text("• %s\n" % _bb(line2))
-					hits += 1
-		var snaps := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
-		body.append_text("\n[color=%s][b]Chapters[/b][/color]\n" % gold)
-		for sn in snaps.get("snapshots", snaps.get("data", [])):
-			if sn is Dictionary:
-				var line3 := "%s — %s" % [str(sn.get("title", "")), str(sn.get("story_so_far", ""))]
-				if q == "" or line3.to_lower().contains(q):
-					body.append_text("💾 %s\n" % _bb(line3.left(220)))
-					hits += 1
+		if tab == "All" or tab == "Quests":
+			body.append_text("[center][color=%s]────  ✦  QUESTS  ✦  ────[/color][/center]\n" % gold)
+			for qq in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
+				if not (qq is Dictionary):
+					continue
+				var title := str(qq.get("title", ""))
+				var desc := str(qq.get("desc", ""))
+				if title == "" or (q != "" and not (title + " " + desc).to_lower().contains(q)):
+					continue
+				var done := str(qq.get("status", "")) == "done"
+				# The wax: unbroken red for the sworn, gray and struck for the kept.
+				body.append_text("[color=%s]◉[/color]  [font_size=17]%s[b]%s[/b]%s[/font_size]\n" % [
+					dim if done else Ui.c("danger").to_html(false),
+					("[s][color=%s]" % dim) if done else "[color=%s]" % Ui.c("ink").to_html(false),
+					_bb(title), "[/color][/s]" if done else "[/color]"])
+				if desc != "":
+					body.append_text("        [color=%s][i]%s[/i][/color]\n" % [soft, _bb(desc)])
+				hits += 1
+			body.append_text("\n")
+		if tab == "All" or tab == "People":
+			body.append_text("[center][color=%s]────  ✦  PEOPLE  ✦  ────[/color][/center]\n" % gold)
+			for n in (GameState.state.get("codex", []) if GameState.state.get("codex") is Array else []):
+				if not (n is Dictionary):
+					continue
+				var nm := str(n.get("name", ""))
+				var role := str(n.get("role", ""))
+				var note := str(n.get("note", ""))
+				if nm == "" or (q != "" and not (nm + " " + role + " " + note).to_lower().contains(q)):
+					continue
+				var face := Art.round_tex("npc-" + nm.to_lower().replace(" ", "-"))
+				if face != null:
+					body.add_image(face, 36, 36)
+					body.append_text("  ")
+				body.append_text("[font_size=16][b]%s[/b][/font_size][color=%s]  ·  %s[/color]\n" % [_bb(nm), dim, _bb(role)])
+				if note != "":
+					body.append_text("        [color=%s][i]%s[/i][/color]\n" % [soft, _bb(note)])
+				hits += 1
+			body.append_text("\n")
+		if tab == "All" or tab == "Chapters":
+			body.append_text("[center][color=%s]────  ✦  CHAPTERS  ✦  ────[/color][/center]\n" % gold)
+			var snaps := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
+			for sn in snaps.get("snapshots", snaps.get("data", [])):
+				if not (sn is Dictionary):
+					continue
+				var title2 := str(sn.get("title", ""))
+				var story := str(sn.get("story_so_far", ""))
+				if q != "" and not (title2 + " " + story).to_lower().contains(q):
+					continue
+				body.append_text("[color=%s]❦[/color]  [font_size=16][b]%s[/b][/font_size]\n" % [gold, _bb(title2)])
+				if story != "":
+					body.append_text("        [color=%s][i]%s…[/i][/color]\n" % [soft, _bb(story.left(200))])
+				hits += 1
 		if hits == 0:
-			body.append_text("[i]Nothing matches — the story hasn't written that yet.[/i]")
-	search.text_changed.connect(func(t): render.call(t))
-	root.add_child(search)
+			body.append_text("\n[center][color=%s][i]Nothing here yet — the story hasn't written that page.[/i][/color][/center]" % dim)
+	for tname in ["All", "Quests", "People", "Chapters"]:
+		var tb := Button.new()
+		tb.text = tname
+		tb.theme_type_variation = "GhostButton"
+		tb.toggle_mode = true
+		tb.button_group = group
+		tb.button_pressed = tname == "All"
+		tb.toggled.connect(func(on):
+			if on:
+				current[0] = tname
+				render.call())
+		top.add_child(tb)
+	search.placeholder_text = "Search the pages…"
+	search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	search.text_changed.connect(func(_t): render.call())
+	top.add_child(search)
+	root.add_child(top)
 	root.add_child(body)
 	dlg.add_child(root)
 	add_child(dlg)
 	dlg.popup_centered()
+	Ui.ritual_open(dlg)
 	search.grab_focus()
-	render.call("")
+	render.call()
 	dlg.confirmed.connect(func(): dlg.queue_free())
 
 
