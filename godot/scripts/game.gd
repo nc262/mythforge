@@ -870,6 +870,7 @@ func _open_inventory() -> void:
 	win.inventory_changed.connect(func(): _render_sheet())
 	add_child(win)
 	win.popup_centered()
+	Ui.ritual_open(win)
 
 
 # ── Sheet actions ────────────────────────────────────────────────────────────

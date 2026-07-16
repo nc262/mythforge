@@ -74,7 +74,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Motion vocabulary (polish/reveal/breathe/pulse/rise_text, reduce-motion aware) | (new) | ✅ | P1 | — | M | audio hooks await tick/thud samples |
 | Component library (MythCard/Socket/Tooltip/Header/Gauge/Portrait) | (new) | ✅ ui/myth_*.gd | P1 | — | L | |
 | Component gallery / visual regression page | (new) | ✅ tests/ui_gallery.tscn | P2 | — | S | |
-| U1 apply system: inventory as physical object | — | 🔲 next | P1 | MDL | L | |
+| U1 The Pack ritual: leather surface, cards-not-cells, socket doll around portrait, ▲/▼ comparison tooltips, context menu, inspect, reward rise, scrim ritual | docs/rituals/Inventory.md | ✅ | P1 | MDL | L | leather material refinement pass 🔲 |
 | U2 combat feel: initiative chips, action bar, token motion, damage numbers | — | 🔲 | P1 | MDL | L | |
 | U3 living map: pan/zoom, fog, pulsing markers | — | 🔲 | P2 | MDL | L | |
 | U4 journal & dialogue: typography, filters, speaker portraits | — | 🔲 | P2 | MDL | M | |

@@ -50,6 +50,7 @@ caps gold · body 15 sans · hint 13 dim · hero numbers 19+.
 | `sb_socket(lit)` | carved dark well; gold-lit when filled | equipment slots |
 | `sb_card(rarity)` | night steel + rarity halo shadow | item/entity cards |
 | `glow_tex()` | radial halo (modulate to tint) | rarity glows, milestones, portrait rims |
+| `leather_tex` / `sb_leather()` | worn leather with gold-thread stitching | pack surface, merchant counter |
 
 ## 3. Motion vocabulary (Ui functions — all honor `reduce_motion`)
 
@@ -61,6 +62,10 @@ caps gold · body 15 sans · hint 13 dim · hero numbers 19+.
 | `Ui.breathe(ctrl)` | 3.2s luminance sine | ONE monumental element per screen, max |
 | `Ui.pulse(ctrl)` | one-shot attention pop | a slot fills, a chip lands, a node unlocks |
 | `Ui.rise_text(parent, txt, color, at)` | rising fading ghost text | damage, gold, XP moments |
+| `Ui.ritual_open(dlg)` | THE window ritual: world dims (anticipation), contents settle staggered (reveal), scrim lifts on close (graceful exit) | every dialog/window, no exceptions |
+
+**Rituals:** every major screen gets a ritual doc in `docs/rituals/` (emotions,
+beats, UX flow, wireframe) BEFORE implementation. First: rituals/Inventory.md.
 
 Audio hooks: motion verbs are the mount points — `Sfx` tick/thud samples are
 in the make_sfx backlog; when they land they attach inside `polish`/`pulse`,

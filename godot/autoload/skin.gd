@@ -177,6 +177,40 @@ func sb_card(rarity := "common") -> StyleBoxFlat:
 	return sb
 
 
+## Worn leather with stitching at the border — the pack/merchant material.
+## Palette-tinted: Neonspire reads as coated canvas, Everyday as satchel cloth.
+func leather_tex() -> ImageTexture:
+	var s := 48
+	var base: Color = c("night2").lerp(Color(0.30, 0.20, 0.11), 0.30)
+	var noise := FastNoiseLite.new()
+	noise.seed = 7
+	noise.frequency = 0.4
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		for x in s:
+			var n := noise.get_noise_2d(x * 1.7, y) * 0.05
+			img.set_pixel(x, y, Color(base.r + n, base.g + n * 0.8, base.b + n * 0.6, 0.97))
+	var edge := base.darkened(0.55)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	# Stitches: short gold-thread dashes inset from the edge.
+	var thread := Color(c("gold"), 0.35)
+	for i in range(4, s - 4):
+		if (i / 3) % 2 == 0:
+			img.set_pixel(i, 4, thread)
+			img.set_pixel(i, s - 5, thread)
+			img.set_pixel(4, i, thread)
+			img.set_pixel(s - 5, i, thread)
+	return ImageTexture.create_from_image(img)
+
+
+func sb_leather() -> StyleBoxTexture:
+	return _nine(leather_tex(), 12, 14)
+
+
 # ── Motion vocabulary (docs/DesignSystem.md §3) — all honor reduce_motion ───
 ## Hover-lift + press-dip for every Button under root. One call per screen;
 ## call again after building dynamic dialogs. Audio hook mounts here later.
@@ -241,6 +275,34 @@ func pulse(ctrl: Control) -> void:
 	var tw := ctrl.create_tween()
 	tw.tween_property(ctrl, "scale", Vector2.ONE * 1.10, TIME["fast"]).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tw.tween_property(ctrl, "scale", Vector2.ONE, TIME["base"]).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## The window ritual every screen shares (docs/DesignSystem.md — Rituals):
+## anticipation (the world dims), reveal (contents settle in, staggered),
+## graceful exit (the scrim lifts as the window goes). Call after add_child.
+func ritual_open(dlg: Window) -> void:
+	polish(dlg)
+	var host := dlg.get_parent()
+	if host is Control and not reduce_motion:
+		var scrim := ColorRect.new()
+		scrim.color = Color(c("night"), 0.0)
+		scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+		scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		host.add_child(scrim)
+		scrim.create_tween().tween_property(scrim, "color:a", 0.45, TIME["base"])
+		var lift := func():
+			if not is_instance_valid(scrim):
+				return
+			var tw := scrim.create_tween()
+			tw.tween_property(scrim, "color:a", 0.0, TIME["base"])
+			tw.tween_callback(scrim.queue_free)
+		dlg.visibility_changed.connect(func():
+			if not dlg.visible:
+				lift.call())
+		dlg.tree_exited.connect(lift)
+	for ch in dlg.get_children():
+		if ch is Control:
+			reveal(ch)
 
 
 ## Rising ghost text (damage, gold, XP) at a canvas position.
