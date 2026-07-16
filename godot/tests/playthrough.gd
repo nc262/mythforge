@@ -147,8 +147,11 @@ func _ready() -> void:
 	_ok("long rest restores slots (HP full unless ambushed)", slots_back, str(lr["note"]).left(60))
 
 	# ── 7. Campaign memory: beat + recall roundtrip ─────────────────────────
+	# Unique per run: the store dedups a beat near-identical to the LAST one
+	# (regenerate guard) — identical text across runs read as a false failure.
+	var run_tag := "%06x" % (randi() % 0xFFFFFF)
 	var beat_r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/memory/beat",
-		{"cid": GameState.cid(), "text": "Player: We spared the goblin king Yarg at the broken bridge.\nGM: Yarg swore a life-debt.", "day": 1})
+		{"cid": GameState.cid(), "text": "Player: We spared the goblin king Yarg at the %s bridge.\nGM: Yarg swore a life-debt." % run_tag, "day": 1})
 	_ok("memory beat stored", bool(beat_r.get("ok", false)))
 	var rec := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/memory/recall",
 		{"cid": GameState.cid(), "query": "who did we spare at the bridge?", "k": 3})
