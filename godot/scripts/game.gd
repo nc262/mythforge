@@ -1901,13 +1901,17 @@ func _open_world_map() -> void:
 	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
 	var map := preload("res://scenes/ui/world_map.gd").new()
 	map.locations = locs
-	map.here = str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+	var world_d: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	map.here = str(world_d.get("here", ""))
+	map.seen = world_d.get("seen") if world_d.get("seen") is Array else []
+	map.quest_text = Chronicle.quests_text()
 	map.travel_requested.connect(func(place):
 		dlg.queue_free()
 		_travel_to(place))
 	dlg.add_child(map)
 	add_child(dlg)
 	dlg.popup_centered()
+	Ui.ritual_open(dlg)
 
 
 func _travel_to(place: String) -> void:
@@ -1915,6 +1919,11 @@ func _travel_to(place: String) -> void:
 		return
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	world["here"] = place
+	# The map remembers: fog burned away stays away.
+	var seen: Array = world.get("seen") if world.get("seen") is Array else []
+	if not seen.has(place):
+		seen.append(place)
+	world["seen"] = seen
 	GameState.save_kind("world", world)
 	GameState.advance_time(1)
 	_say_system("🧭 You set off for %s." % place)

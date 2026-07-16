@@ -25,6 +25,9 @@ func _ready() -> void:
 		scene.call("_say_me", "I hurl my lantern at the boss and draw my silvered dagger!")
 		if OS.get_environment("MF_SHOT_INV") == "1":
 			scene.call("_open_inventory")
+		if OS.get_environment("MF_SHOT_MAP") == "1":
+			Combat.finish()
+			scene.call("_open_world_map")
 		scene.call("_say_system", "⚔️ Combat — Goblin Boss!")
 	await get_tree().create_timer(2.5).timeout
 	var img := get_viewport().get_texture().get_image()
@@ -49,7 +52,7 @@ func _seed_demo() -> void:
 			{"id": "p1", "name": "Healing Potion", "qty": 3, "rarity": "uncommon", "type": "gear"}],
 			"equipped": {"weapon": "w1", "armor": "a1"}},
 		"clock": {"day": 3, "ti": 5, "wx": {"ico": "🌧", "name": "soft valley rain"}},
-		"world": {"here": "Embervale village square"}}
+		"world": {"here": "The Ember & Oak", "seen": ["Hearthwood Market"]}}
 	# Persist the demo state server-side so the scene's hydrate() finds it
 	# (otherwise the hero forge gates in front of whatever we want to shoot).
 	for kind in ["sheet", "inv", "clock"]:

@@ -76,7 +76,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Component gallery / visual regression page | (new) | ✅ tests/ui_gallery.tscn | P2 | — | S | |
 | U1 The Pack ritual: leather surface, cards-not-cells, socket doll around portrait, ▲/▼ comparison tooltips, context menu, inspect, reward rise, scrim ritual | docs/rituals/Inventory.md | ✅ | P1 | MDL | L | leather material refinement pass 🔲 |
 | U2 combat feel: initiative rail (portrait chips, turn halo+pulse), token slides, rising damage/heal numbers, impact blooms, attacker lunge, board shudder on hero hit | docs/rituals/Combat.md | ✅ | P1 | MDL | L | action-bar icon buttons 🔲 (tracker links remain) |
-| U3 living map: pan/zoom, fog, pulsing markers | — | 🔲 | P2 | MDL | L | |
+| U3 living map: wheel-zoom + drag-pan camera, fog of war (world.seen persists), quest-pull gold pulse, animated dashed route preview, drifting cloud shadows, breathing here-ring, compass rose | docs/rituals/WorldMap.md | ✅ | P2 | MDL | L | region-shaped fog (per-place blobs today) 🔲 |
 | U4 journal & dialogue: typography, filters, speaker portraits | — | 🔲 | P2 | MDL | M | |
 | U5 skill tree: organic constellation, curved glow paths | — | 🔲 new system | P2 | MDL | XL | |
 | U6 character screen: full-screen sheet + doll; 3D turntable later | — | 🔲 | P2 | MDL | L | |
