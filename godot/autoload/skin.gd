@@ -36,6 +36,13 @@ const PALETTES := {
 	},
 }
 
+# ── Design-language tokens (docs/DesignSystem.md) — the ONLY numbers allowed
+const SPACE := {"xs": 4, "s": 8, "m": 14, "l": 22, "xl": 34}
+const TIME := {"fast": 0.12, "base": 0.22, "slow": 0.45, "breath": 3.2}
+const RADIUS := {"s": 4, "m": 9, "l": 18}
+const RARITY := {"common": "border", "uncommon": "gold_soft", "rare": "amethyst",
+	"epic": "ember", "legendary": "gold"}
+
 var world_id := ""
 var reduce_motion := false
 var pal: Dictionary = PALETTES["arcane"]
@@ -43,6 +50,11 @@ var theme := Theme.new()
 var serif := SystemFont.new()
 var sans := SystemFont.new()
 var display: FontVariation  # tracked serif — titles and headers
+var _glow: ImageTexture     # cached radial halo
+
+
+func rarity_color(r: String) -> Color:
+	return c(RARITY.get(r, "border"))
 
 
 func _ready() -> void:
@@ -130,6 +142,125 @@ func grain_tex(base: Color, strength := 0.045) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+## A radial halo — modulate to tint (rarity glows, milestones, portrait rims).
+func glow_tex() -> ImageTexture:
+	if _glow != null:
+		return _glow
+	var s := 64
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	var r := s / 2.0
+	for y in s:
+		for x in s:
+			var d := Vector2(x - r + 0.5, y - r + 0.5).length() / r
+			var a := clampf(1.0 - d, 0.0, 1.0)
+			img.set_pixel(x, y, Color(1, 1, 1, a * a * 0.9))
+	_glow = ImageTexture.create_from_image(img)
+	return _glow
+
+
+## A carved socket: the dark well an equipment piece sits in. Lit = filled.
+func sb_socket(lit := false) -> StyleBoxFlat:
+	var sb := _flat(c("night").darkened(0.2), Color(c("gold"), 0.55) if lit else c("border_soft"), RADIUS["m"], 2, 8)
+	if lit:
+		sb.shadow_color = Color(c("gold"), 0.25)
+		sb.shadow_size = 8
+	return sb
+
+
+## An item/entity card face: night steel wearing its rarity's halo.
+func sb_card(rarity := "common") -> StyleBoxFlat:
+	var rc := rarity_color(rarity)
+	var sb := _flat(Color(c("night2"), 0.92), rc, RADIUS["m"], 2, 6)
+	if rarity != "common":
+		sb.shadow_color = Color(rc, 0.4)
+		sb.shadow_size = 7
+	return sb
+
+
+# ── Motion vocabulary (docs/DesignSystem.md §3) — all honor reduce_motion ───
+## Hover-lift + press-dip for every Button under root. One call per screen;
+## call again after building dynamic dialogs. Audio hook mounts here later.
+func polish(root: Node) -> void:
+	if reduce_motion:
+		return
+	var targets: Array = root.find_children("*", "Button", true, false)
+	if root is Button:
+		targets.append(root)
+	for n in targets:
+		if n.has_meta("_polished"):
+			continue
+		n.set_meta("_polished", true)
+		n.mouse_entered.connect(_lift.bind(n, 1.045))
+		n.mouse_exited.connect(_lift.bind(n, 1.0))
+		n.button_down.connect(_lift.bind(n, 0.96))
+		n.button_up.connect(_lift.bind(n, 1.045))
+
+
+func _lift(n: Control, to: float) -> void:
+	if not is_instance_valid(n) or not n.is_inside_tree():
+		return
+	n.pivot_offset = n.size / 2.0
+	var tw := n.create_tween()
+	tw.tween_property(n, "scale", Vector2.ONE * to, TIME["fast"]).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+
+
+## Entry ceremony: fade in + settle. Container-safe (no position animation).
+func reveal(ctrl: Control, delay := 0.0) -> void:
+	if reduce_motion or not ctrl.is_inside_tree():
+		return
+	ctrl.modulate.a = 0.0
+	ctrl.pivot_offset = ctrl.size / 2.0
+	ctrl.scale = Vector2.ONE * 0.985
+	var tw := ctrl.create_tween().set_parallel(true)
+	tw.tween_property(ctrl, "modulate:a", 1.0, TIME["base"]).set_delay(delay)
+	tw.tween_property(ctrl, "scale", Vector2.ONE, TIME["slow"]).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+func reveal_children(container: Node, stagger := 0.05) -> void:
+	var i := 0
+	for ch in container.get_children():
+		if ch is Control and ch.visible:
+			reveal(ch, i * stagger)
+			i += 1
+
+
+## A slow luminous breath. ONE monumental element per screen, max.
+func breathe(ctrl: CanvasItem) -> void:
+	if reduce_motion:
+		return
+	var tw := ctrl.create_tween().set_loops()
+	tw.tween_property(ctrl, "modulate", Color(1.06, 1.05, 1.0), TIME["breath"] / 2.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(ctrl, "modulate", Color(0.97, 0.96, 1.0), TIME["breath"] / 2.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+
+## One-shot attention pop: a slot fills, a chip lands, a node unlocks.
+func pulse(ctrl: Control) -> void:
+	if reduce_motion:
+		return
+	ctrl.pivot_offset = ctrl.size / 2.0
+	var tw := ctrl.create_tween()
+	tw.tween_property(ctrl, "scale", Vector2.ONE * 1.10, TIME["fast"]).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(ctrl, "scale", Vector2.ONE, TIME["base"]).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Rising ghost text (damage, gold, XP) at a canvas position.
+func rise_text(parent: Node, text: String, color: Color, at: Vector2) -> void:
+	var lab := Label.new()
+	lab.text = text
+	lab.theme_type_variation = "TitleLabel"
+	lab.add_theme_color_override("font_color", color)
+	lab.position = at
+	lab.z_index = 100
+	parent.add_child(lab)
+	if reduce_motion:
+		lab.queue_free()
+		return
+	var tw := lab.create_tween().set_parallel(true)
+	tw.tween_property(lab, "position:y", at.y - 46.0, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lab, "modulate:a", 0.0, 0.9).set_delay(0.25)
+	tw.chain().tween_callback(lab.queue_free)
+
+
 func _nine(tex: ImageTexture, margin: int, content: int) -> StyleBoxTexture:
 	var sb := StyleBoxTexture.new()
 	sb.texture = tex
@@ -210,6 +341,22 @@ func _build() -> void:
 	theme.set_color("title_color", "Window", c("gold_soft"))
 	theme.set_font("title_font", "Window", display)
 	theme.set_font_size("title_font_size", "Window", 18)
+
+	# Ghost button — low-emphasis actions; quiet until courted.
+	theme.set_type_variation("GhostButton", "Button")
+	theme.set_stylebox("normal", "GhostButton", _flat(Color(c("night2"), 0.0), Color(c("border"), 0.0), RADIUS["s"], 1, 8))
+	theme.set_stylebox("hover", "GhostButton", _flat(Color(c("gold"), 0.07), Color(c("gold"), 0.35), RADIUS["s"], 1, 8))
+	theme.set_stylebox("pressed", "GhostButton", _flat(Color(c("gold"), 0.12), c("gold"), RADIUS["s"], 1, 8))
+
+	# The engine's own tooltip wears the frame — no OS default ever shows.
+	theme.set_stylebox("panel", "TooltipPanel", _nine(ornate_frame_tex(c("night2"), c("gold")), 10, 12))
+	theme.set_color("font_color", "TooltipLabel", c("ink_soft"))
+
+	# Sockets and cards as theme variations (styleboxes also exposed as fns).
+	theme.set_type_variation("SocketPanel", "PanelContainer")
+	theme.set_stylebox("panel", "SocketPanel", sb_socket())
+	theme.set_type_variation("CardPanel", "PanelContainer")
+	theme.set_stylebox("panel", "CardPanel", sb_card())
 
 	# Title — tracked serif with a candle-glow outline.
 	theme.set_type_variation("TitleLabel", "Label")

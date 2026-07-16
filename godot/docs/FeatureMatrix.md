@@ -67,6 +67,20 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Finale / THE END | _checkFinale :6105 | ✅ detection+card | P2 | — | S | complete badge on saves 🔲; auto-snapshot 🔲 |
 | Loot prompt (Add to pack / Ignore) | :7935 | 🟡 auto-add via tag | P3 | — | S | opt-in prompt variant |
 
+## Design system (MDL — docs/DesignSystem.md is the contract)
+| Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
+|---|---|---|---|---|---|---|
+| Tokens (SPACE/TIME/RADIUS/RARITY) + surfaces (forged/ornate/grain/socket/card/glow) | studio.css | ✅ Ui autoload | P1 | — | M | |
+| Motion vocabulary (polish/reveal/breathe/pulse/rise_text, reduce-motion aware) | (new) | ✅ | P1 | — | M | audio hooks await tick/thud samples |
+| Component library (MythCard/Socket/Tooltip/Header/Gauge/Portrait) | (new) | ✅ ui/myth_*.gd | P1 | — | L | |
+| Component gallery / visual regression page | (new) | ✅ tests/ui_gallery.tscn | P2 | — | S | |
+| U1 apply system: inventory as physical object | — | 🔲 next | P1 | MDL | L | |
+| U2 combat feel: initiative chips, action bar, token motion, damage numbers | — | 🔲 | P1 | MDL | L | |
+| U3 living map: pan/zoom, fog, pulsing markers | — | 🔲 | P2 | MDL | L | |
+| U4 journal & dialogue: typography, filters, speaker portraits | — | 🔲 | P2 | MDL | M | |
+| U5 skill tree: organic constellation, curved glow paths | — | 🔲 new system | P2 | MDL | XL | |
+| U6 character screen: full-screen sheet + doll; 3D turntable later | — | 🔲 | P2 | MDL | L | |
+
 ## AI & memory
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
