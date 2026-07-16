@@ -20,3 +20,6 @@ Deliberate shortcuts, each with its ceiling and upgrade path. (Grep
 
 Paying debt follows the same workflow as features: plan → document → land
 with a check. New shortcuts must add a row here in the same commit.
+
+- **Terrain sampler is a color heuristic** (combat.gd bake_terrain): misreads are possible on unusual palettes; flood guard drops any kind covering >45% of the board. Upgrade path: commission an LLM terrain layout alongside each battle map.
+- **Mode drift self-heal** (game.gd _can_fight): combat clicks force-enter Combat if a fight is active but the FSM drifted (RCA: fight started from Dialogue state locked every combat action, silently). Real fix is declaring Combat as a legal target from every in-game state.

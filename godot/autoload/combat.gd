@@ -178,6 +178,9 @@ func player_attack(target_id: String) -> Dictionary:
 	var fumble := roll == 1
 	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
 	var vs_ac := (" vs AC %d" % int(foe["ac"])) if foe.get("ac") != null else ""
+	if props["ranged"] and in_cover(target_id):
+		target_ac += 2
+		vs_ac += " (+2 cover)"
 	if not crit and (fumble or total < target_ac):
 		save(c)
 		var miss := {"msg": "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → a miss.*" % [
@@ -284,6 +287,86 @@ func offhand_followup(target_id: String, budget: Dictionary) -> Dictionary:
 ## Reactions the hero can take against an incoming hit (port of
 ## _availableReactions): Shield needs the spell + a slot + the hit inside
 ## +5; Uncanny Dodge is a feature; Parry rides Combat Maneuver uses.
+## Nudge a spawn seat off walls and occupied squares (reinforcements land
+## after terrain bakes; original seating happens before it and stays put).
+func _free_seat(cell: Array, pos: Dictionary) -> Array:
+	for dy in MAP_ROWS:
+		var cand := [int(cell[0]), (int(cell[1]) + dy) % MAP_ROWS]
+		if terrain_at(cand) == "block":
+			continue
+		var taken := false
+		for id in pos:
+			if pos[id] is Array and int(pos[id][0]) == cand[0] and int(pos[id][1]) == cand[1]:
+				taken = true
+		if not taken:
+			return cand
+	return cell
+
+
+## ✦ Cast a damaging spell at a foe: spell attack vs AC (Magic Missile darts
+## strike unerringly), dice pulled from the spell's own description, typed
+## defenses applied. Spends the whole action and the slot.
+func player_spell(target_id: String, nm: String) -> Dictionary:
+	var c := data()
+	var foe := {}
+	for x in c["combatants"]:
+		if str(x.get("id", "")) == target_id:
+			foe = x
+			break
+	if foe.is_empty() or int(foe.get("hp", 0)) <= 0:
+		return {"msg": "", "fell": false, "won": false, "spent": true}
+	var b := _budget(c)
+	if int(b.get("attacksLeft", 0)) <= 0:
+		return {"msg": "✦ *Your action is spent — end your turn.*", "fell": false, "won": false, "spent": false}
+	var s := GameState.sheet()
+	var desc := str(Rules.spell_named(nm).get("desc", ""))
+	var cast := GameState.cast_spell(nm)
+	if cast == "" or cast.begins_with("✋"):
+		return {"msg": cast, "fell": false, "won": false, "spent": false}
+	b["attacksLeft"] = 0  # casting is your whole action
+	var atk := Rules.spell_attack(s)
+	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
+	var cover_tag := ""
+	if in_cover(target_id):
+		target_ac += 2
+		cover_tag = " (+2 cover)"
+	var auto_hit := nm.nocasecmp_to("Magic Missile") == 0
+	var roll := randi_range(1, 20)
+	var total := roll + atk
+	var crit := roll == 20
+	if not auto_hit and (roll == 1 or (not crit and total < target_ac)):
+		save(c)
+		return {"msg": "✦ *You cast **%s** at the %s — d20 %d %+d = **%d** vs AC %d%s → the spell goes wide.*" % [
+			nm, foe["name"], roll, atk, total, target_ac, cover_tag], "fell": false, "won": false, "spent": true}
+	var de := _dice_expr(desc)
+	var darts := 3 if auto_hit else 1
+	var dmg := int(de["mod"]) * darts
+	for i in int(de["n"]) * darts * (2 if crit and not auto_hit else 1):
+		dmg += randi_range(1, int(de["sides"]))
+	dmg = maxi(1, dmg)
+	var dt := RegEx.create_from_string("(?i)fire|cold|lightning|thunder|acid|poison|necrotic|radiant|force|psychic").search(desc)
+	var dtype := dt.get_string(0).to_lower() if dt else "force"
+	var entry := bestiary_for(str(foe["name"]))
+	var res_tag := ""
+	if entry.get("vuln", []).has(dtype):
+		dmg *= 2
+		res_tag = " — **vulnerable to %s!**" % dtype
+	elif entry.get("resist", []).has(dtype):
+		dmg = maxi(1, ceili(dmg / 2.0))
+		res_tag = " *(resists %s)*" % dtype
+	foe["hp"] = maxi(0, int(foe["hp"]) - dmg)
+	var fell := int(foe["hp"]) <= 0
+	var enemies: Array = c["combatants"].filter(func(x): return x.get("side") == "enemy")
+	var won: bool = fell and enemies.all(func(e): return int(e.get("hp", 0)) <= 0)
+	save(c)
+	return {"msg": "✦ *You cast **%s** at the %s — %s**%d %s damage**%s%s.*" % [
+		nm, foe["name"],
+		"the darts strike unerringly — " if auto_hit else ("d20 %d %+d = **%d** vs AC %d%s → " % [roll, atk, total, target_ac, cover_tag]),
+		dmg, dtype, res_tag,
+		(" — the %s falls!" % foe["name"]) if fell else " (%d/%d left)" % [int(foe["hp"]), int(foe["hpMax"])]],
+		"fell": fell, "won": won, "spent": true}
+
+
 func available_reactions(total: int, ac: int) -> Array:
 	var s := GameState.sheet()
 	var out: Array = []
@@ -433,6 +516,73 @@ const MAP_ROWS := 10
 const FEET_PER_CELL := 5
 
 
+# ── Terrain: the battle map's paint made mechanical ─────────────────────────
+## Cell kinds sampled from the generated map painting: "block" (buildings and
+## walls — impassable), "water" (difficult — double move cost), "cover"
+## (trees/foliage — +2 AC against ranged attacks and spells).
+## ponytail: color-heuristic sampling with a flood guard; upgrade path is an
+## LLM-authored terrain layout commissioned alongside the map.
+
+func terrain() -> Dictionary:
+	return data().get("terrain", {})
+
+
+func terrain_at(cell: Array) -> String:
+	return str(terrain().get("%d,%d" % [int(cell[0]), int(cell[1])], ""))
+
+
+## Sample the battle-map painting into the terrain grid. Bakes once per fight;
+## cells someone already stands on stay passable.
+func bake_terrain(img: Image) -> void:
+	var c := data()
+	if not bool(c.get("active", false)) or c.has("terrain") or img == null or img.is_empty():
+		return
+	img.convert(Image.FORMAT_RGBA8)
+	var cw := img.get_width() / float(MAP_COLS)
+	var ch := img.get_height() / float(MAP_ROWS)
+	var t := {}
+	var counts := {"block": 0, "water": 0, "cover": 0}
+	for x in MAP_COLS:
+		for y in MAP_ROWS:
+			var avg := Color(0, 0, 0)
+			for i in 9:  # 3×3 sample points per cell
+				avg += img.get_pixelv(Vector2i(
+					mini(img.get_width() - 1, int((x + 0.25 + 0.25 * (i % 3)) * cw)),
+					mini(img.get_height() - 1, int((y + 0.25 + 0.25 * int(i / 3.0)) * ch))))
+			avg /= 9.0
+			var luma := avg.get_luminance()
+			var kind := ""
+			if avg.b > avg.r * 1.12 and avg.b > avg.g * 1.04 and avg.s > 0.1:
+				kind = "water"
+			elif avg.g > avg.r * 1.06 and avg.g > avg.b * 1.15 and luma < 0.42:
+				kind = "cover"
+			elif avg.s < 0.14 and luma > 0.2 and luma < 0.78:
+				kind = "block"
+			if kind != "":
+				t["%d,%d" % [x, y]] = kind
+				counts[kind] += 1
+	# Flood guard: a kind claiming near half the board is the sampler lying.
+	for kind in counts:
+		if counts[kind] > int(MAP_COLS * MAP_ROWS * 0.45):
+			for k in t.keys():
+				if t[k] == kind:
+					t.erase(k)
+	# Occupied squares stay passable — nobody spawns inside a wall.
+	for p in positions().values():
+		t.erase("%d,%d" % [int(p[0]), int(p[1])])
+	c["terrain"] = t
+	save(c)
+
+
+## True when the combatant stands in or beside foliage — ranged shots suffer.
+func in_cover(id: String) -> bool:
+	var cl := cell_of(id)
+	for d in [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]:
+		if terrain_at([int(cl[0]) + d[0], int(cl[1]) + d[1]]) == "cover":
+			return true
+	return false
+
+
 func positions() -> Dictionary:
 	return GameState._merged("bmap", {"pos": {}}).get("pos", {})
 
@@ -456,10 +606,10 @@ func ensure_positions() -> Dictionary:
 		if pos.has(id):
 			continue
 		if m.get("side") == "ally":
-			pos[id] = [2, 2 + (ally_row * 2) % (MAP_ROWS - 3)]
+			pos[id] = _free_seat([2, 2 + (ally_row * 2) % (MAP_ROWS - 3)], pos)
 			ally_row += 1
 		else:
-			pos[id] = [MAP_COLS - 3, 2 + (foe_row * 2) % (MAP_ROWS - 3)]
+			pos[id] = _free_seat([MAP_COLS - 3, 2 + (foe_row * 2) % (MAP_ROWS - 3)], pos)
 			foe_row += 1
 		dirty = true
 	# Sweep the seats of the fallen-and-removed.
@@ -507,8 +657,12 @@ func move_pc(to: Array) -> bool:
 	for id in pos:
 		if int(pos[id][0]) == int(to[0]) and int(pos[id][1]) == int(to[1]):
 			return false
+	if terrain_at(to) == "block":
+		return false
 	var budget := move_budget(c)
 	var cost := distance(cell_of("pc"), to)
+	if terrain_at(to) == "water":
+		cost *= 2  # ponytail: destination-based difficult terrain; per-step path costs later
 	if cost > int(budget["left"]):
 		return false
 	budget["left"] = int(budget["left"]) - cost
@@ -527,15 +681,25 @@ func enemy_approach(enemy_id: String, cells := 6) -> int:
 	var p: Array = pos["pc"]
 	var moved := 0
 	while moved < cells and distance(e, p) > 1:
-		var step := [int(e[0]) + signi(int(p[0]) - int(e[0])), int(e[1]) + signi(int(p[1]) - int(e[1]))]
-		var blocked := false
-		for id in pos:
-			if str(id) != enemy_id and int(pos[id][0]) == step[0] and int(pos[id][1]) == step[1]:
-				blocked = true
-		if blocked:
+		var dx := signi(int(p[0]) - int(e[0]))
+		var dy := signi(int(p[1]) - int(e[1]))
+		var stepped := false
+		# Prefer the diagonal; sidestep along one axis around walls and bodies.
+		for step in [[int(e[0]) + dx, int(e[1]) + dy], [int(e[0]) + dx, int(e[1])], [int(e[0]), int(e[1]) + dy]]:
+			if (step[0] == int(e[0]) and step[1] == int(e[1])) or terrain_at(step) == "block":
+				continue
+			var taken := false
+			for id in pos:
+				if str(id) != enemy_id and int(pos[id][0]) == step[0] and int(pos[id][1]) == step[1]:
+					taken = true
+			if taken:
+				continue
+			e = step
+			moved += 1
+			stepped = true
 			break
-		e = step
-		moved += 1
+		if not stepped:
+			break
 	pos[enemy_id] = e
 	save_positions(pos)
 	return moved

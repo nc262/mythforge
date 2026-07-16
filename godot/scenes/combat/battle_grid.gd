@@ -88,8 +88,22 @@ func _draw() -> void:
 	if my_turn and int(budget.get("left", 0)) > 0:
 		for x in Combat.MAP_COLS:
 			for y in Combat.MAP_ROWS:
-				if Combat.distance(pc_cell, [x, y]) <= int(budget["left"]):
+				if Combat.terrain_at([x, y]) != "block" and Combat.distance(pc_cell, [x, y]) <= int(budget["left"]):
 					draw_rect(Rect2(Vector2(x * cs.x, y * cs.y), cs), Color(Ui.c("gold"), 0.06))
+	# Terrain the engine recognizes, whispered onto the paint.
+	var terr: Dictionary = Combat.terrain()
+	for key in terr:
+		var kxy := str(key).split(",")
+		var tr := Rect2(Vector2(int(kxy[0]) * cs.x, int(kxy[1]) * cs.y), cs)
+		match str(terr[key]):
+			"block":
+				draw_rect(tr, Color(Ui.c("night"), 0.30))
+				draw_line(tr.position + Vector2(3, 3), tr.end - Vector2(3, 3), Color(Ui.c("danger"), 0.28), 1.0)
+				draw_line(Vector2(tr.end.x - 3, tr.position.y + 3), Vector2(tr.position.x + 3, tr.end.y - 3), Color(Ui.c("danger"), 0.28), 1.0)
+			"water":
+				draw_rect(tr, Color(0.3, 0.65, 0.95, 0.12))
+			"cover":
+				draw_circle(tr.position + Vector2(cs.x, cs.y) * 0.85, 3.0, Color(0.45, 0.8, 0.4, 0.65))
 	# Whisper-thin grid — the painting shows through.
 	var grid_col := Color(Ui.c("ink"), 0.07)
 	for x in Combat.MAP_COLS + 1:

@@ -68,6 +68,7 @@ theme_type_variation = &"HintLabel"
 text = ""
 
 [node name="Scroll" type="ScrollContainer" parent="Margin/Split/ChatBox"]
+custom_minimum_size = Vector2(0, 110)
 layout_mode = 2
 size_flags_vertical = 3
 horizontal_scroll_mode = 0
@@ -79,8 +80,10 @@ theme_override_constants/separation = 10
 
 [node name="BattleGrid" type="Control" parent="Margin/Split/ChatBox"]
 visible = false
-custom_minimum_size = Vector2(0, 300)
+custom_minimum_size = Vector2(0, 170)
 layout_mode = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 1.6
 script = ExtResource("3")
 
 [node name="CombatPanel" type="RichTextLabel" parent="Margin/Split/ChatBox"]

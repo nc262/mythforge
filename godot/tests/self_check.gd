@@ -151,6 +151,52 @@ func _ready() -> void:
 		Combat.enemy_approach(gob_id, 3)
 		assert(Combat.distance(Combat.cell_of(gob_id), Combat.cell_of("pc")) < d0, "foes close in")
 
+	# Terrain: synthetic map — water strip, dark-tree strip, gray-wall strip
+	var timg := Image.create(320, 200, false, Image.FORMAT_RGBA8)
+	timg.fill(Color(0.35, 0.6, 0.25))                                # bright grass
+	timg.fill_rect(Rect2i(0, 160, 100, 40), Color(0.2, 0.4, 0.9))    # water: cols 0-4, rows 8-9
+	timg.fill_rect(Rect2i(160, 160, 40, 40), Color(0.15, 0.3, 0.12)) # trees: cols 8-9, rows 8-9
+	timg.fill_rect(Rect2i(220, 160, 100, 40), Color(0.5, 0.5, 0.5))  # wall: cols 11-15, rows 8-9
+	Combat.bake_terrain(timg)
+	assert(Combat.terrain_at([1, 9]) == "water", "blue reads as water")
+	assert(Combat.terrain_at([8, 9]) == "cover", "dark green reads as cover")
+	assert(Combat.terrain_at([14, 9]) == "block", "gray reads as wall")
+	assert(Combat.terrain_at([6, 5]) == "", "open grass stays open")
+	assert(not Combat.move_pc([14, 9]), "walls refuse entry")
+	# Water costs double: fresh round, teleport beside the shore, wade in
+	for i in Combat.order(Combat.data()).size():
+		Combat.next_turn()
+	var pos_t := Combat.positions()
+	pos_t["pc"] = [6, 9]
+	Combat.save_positions(pos_t)
+	var left0 := int(Combat.move_budget(Combat.data()).get("left", 0))
+	assert(Combat.move_pc([4, 9]), "wading is legal")
+	assert(int(Combat.move_budget(Combat.data()).get("left", 0)) == left0 - 4, "water doubles the cost")
+	assert(Combat.in_cover("pc") == false)
+	pos_t = Combat.positions()
+	pos_t["pc"] = [8, 8]
+	Combat.save_positions(pos_t)
+	assert(Combat.in_cover("pc"), "standing in the trees grants cover")
+
+	# Combat casting: engine-resolved, slot-enforced, one action a round
+	GameState.state["sheet"]["cls"] = "Wizard"
+	GameState.state["sheet"]["abilities"]["INT"] = 16
+	GameState.state["sheet"]["spells"] = [{"name": "Fire Bolt", "level": 0}, {"name": "Magic Missile", "level": 1}]
+	GameState.state["sheet"]["slots"] = {"1": {"max": 2, "used": 0}}
+	Combat.add_foe("Bandit")
+	var bid := ""
+	for m2 in Combat.data()["combatants"]:
+		if str(m2.get("name", "")) == "Bandit":
+			bid = str(m2["id"])
+	assert(bid != "")
+	for i in Combat.order(Combat.data()).size():
+		Combat.next_turn()  # fresh round, fresh action
+	var sp := Combat.player_spell(bid, "Magic Missile")
+	assert(bool(sp["spent"]) and str(sp["msg"]).contains("damage"), "missiles land")
+	assert(int(GameState.sheet()["slots"]["1"]["used"]) == 1, "the slot burned")
+	var sp2 := Combat.player_spell(bid, "Fire Bolt")
+	assert(not bool(sp2["spent"]), "casting spends the whole action")
+
 	var fin := Combat.finish()
 	assert(int(fin["xp"]) >= 25)
 	assert(not Combat.active())

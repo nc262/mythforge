@@ -49,8 +49,14 @@ func _load_json(path: String) -> Dictionary:
 
 
 func spell_named(nm: String) -> Dictionary:
+	var want := nm.strip_edges()
 	for sp in spells:
-		if str(sp.get("name", "")).nocasecmp_to(nm.strip_edges()) == 0:
+		if str(sp.get("name", "")).nocasecmp_to(want) == 0:
+			return sp
+	# "Firebolt" and "fire-bolt" are still Fire Bolt — match with spacing stripped.
+	var squeezed := want.to_lower().replace(" ", "").replace("-", "")
+	for sp in spells:
+		if str(sp.get("name", "")).to_lower().replace(" ", "").replace("-", "") == squeezed:
 			return sp
 	return {}
 

@@ -62,6 +62,9 @@ func _ready() -> void:
 	_battle_grid.cell_clicked.connect(_on_grid_move)
 	_battle_grid.token_clicked.connect(_on_grid_token)
 	Combat.changed.connect(_render_combat)
+	Art.art_ready.connect(func(k):
+		if Combat.active() and str(k) == str(_battle_grid.map_key):
+			Combat.bake_terrain(Image.load_from_file(Art.path_for(str(k)))))
 	GameState.leveled_up.connect(_level_up_ceremony)
 	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
@@ -944,8 +947,27 @@ func _on_sheet_action(meta) -> void:
 
 
 # ── Combat actions ───────────────────────────────────────────────────────────
+var _armed_spell := ""              # a combat spell waiting for its target click
+var _auto_round := false            # End Turn's auto-sweep paused on a reaction
+var _round_gm: Array[String] = []   # enemy-turn GM notes, streamed once per sweep
+
+
+## The one gate for every combat click — self-heals Mode drift (a fight is on
+## but the FSM sat in Dialogue/whatever: enter Combat) and never fails silent.
+func _can_fight() -> bool:
+	if Combat.active() and not Mode.busy and Mode.state not in ["Combat", "Death", "GameOver"]:
+		Mode.enter("Combat")
+	if Mode.can("combat_action"):
+		return true
+	if Mode.busy:
+		_say_system("⏳ The GM is mid-tale — wait for the words to settle.")
+	elif Mode.state == "Death":
+		_say_system("☠ You are down — roll your death save.")
+	return false
+
+
 func _on_combat_action(meta) -> void:
-	if not Mode.can("combat_action"):
+	if not _can_fight():
 		return
 	var m := str(meta)
 	if m == "cend":
@@ -954,43 +976,102 @@ func _on_combat_action(meta) -> void:
 		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.]"))
 		return
 	if m == "cnext":
+		_run_round()
+		return
+	if m.begins_with("spl:"):
+		_cast_in_combat(m.substr(4).uri_decode())
+		return
+	if m.begins_with("atk:"):
+		_deliver_player_hit(Combat.player_attack(m.substr(4)))
+
+
+## End Turn: everyone else acts on their own — enemies close and strike
+## (reactions still pend for your choice), companions swing — then play
+## returns to you. The GM hears one combined note per sweep, not one per foe.
+func _run_round() -> void:
+	var guard := 0
+	while guard < 32:
+		guard += 1
 		Combat.next_turn()
 		var c: Dictionary = Combat.data()
+		if not bool(c.get("active", false)):
+			return
 		var cur: Dictionary = Combat.current(c)
+		var cid := str(cur.get("id", ""))
+		if cid == "pc":
+			_render_combat()
+			if Combat.pc_down().is_empty():
+				_say_system("Round %d — your turn: move on the board, ⚔ attack, or ✦ cast." % int(c.get("round", 1)))
+			_flush_round_gm()
+			return
 		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
-			var eid := str(cur.get("id", ""))
-			if not Combat.adjacent(eid, "pc"):
-				var moved := Combat.enemy_approach(eid)
-				if not Combat.adjacent(eid, "pc"):
-					_say_system("The %s closes in — %d ft nearer." % [str(cur.get("name", "?")), moved * Combat.FEET_PER_CELL])
-					return
+			if not Combat.adjacent(cid, "pc"):
+				var moved := Combat.enemy_approach(cid)
+				if not Combat.adjacent(cid, "pc"):
+					if moved > 0:
+						_say_system("The %s closes in — %d ft nearer." % [str(cur.get("name", "?")), moved * Combat.FEET_PER_CELL])
+					continue
 			var r: Dictionary = Combat.enemy_turn(cur)
 			if r.has("pending"):
+				_auto_round = true
 				_reaction_overlay(r["pending"], r["reactions"])
 				return
-			_deliver_enemy_result(r)
-		elif str(cur.get("id", "")).begins_with("cmp"):
+			if str(r.get("msg", "")) != "":
+				if str(r["msg"]).contains("hits you"):
+					Sfx.play("hit")
+				_say_me(_md(str(r["msg"])))
+			if str(r.get("gm", "")) != "":
+				_round_gm.append(str(r["gm"]))
+			_render_sheet()
+			if bool(r.get("down", false)):
+				_render_combat()
+				_flush_round_gm()
+				return
+		elif cid.begins_with("cmp"):
 			var cr: Dictionary = Combat.companion_turn(cur)
 			if str(cr["msg"]) != "":
 				_say_me(_md(str(cr["msg"])))
-		elif str(cur.get("id", "")) == "pc":
-			_say_system("Round %d — your turn." % int(c.get("round", 1)))
+
+
+func _flush_round_gm() -> void:
+	if _round_gm.is_empty():
 		return
-	if m.begins_with("atk:"):
-		var r2: Dictionary = Combat.player_attack(m.substr(4))
-		if str(r2.get("msg", "")).contains("damage"):
-			Sfx.play("hit")
-		if not bool(r2["spent"]):
+	var notes := "\n".join(_round_gm)
+	_round_gm = []
+	_last_player_msg = notes
+	_stream(Composer.envelope(notes))
+
+
+## Deliver a player attack/cast result: sound, message, victory, GM note.
+func _deliver_player_hit(r2: Dictionary) -> void:
+	if str(r2.get("msg", "")).contains("damage"):
+		Sfx.play("hit")
+	if not bool(r2["spent"]):
+		if str(r2["msg"]) != "":
 			_say_system(str(r2["msg"]).replace("*", ""))
-			return
-		if str(r2["msg"]) == "":
-			return
-		_say_me(_md(str(r2["msg"])))
-		if bool(r2["won"]) or bool(r2["fell"]):
-			_how_do_you_want_to_do_this(str(r2["msg"]), bool(r2["won"]))
-		else:
-			_last_player_msg = str(r2["msg"])
-			_stream(Composer.envelope(str(r2["msg"])))
+		return
+	if str(r2["msg"]) == "":
+		return
+	_say_me(_md(str(r2["msg"])))
+	_render_sheet()
+	_render_combat()
+	if bool(r2["won"]) or bool(r2["fell"]):
+		_how_do_you_want_to_do_this(str(r2["msg"]), bool(r2["won"]))
+	else:
+		_last_player_msg = str(r2["msg"])
+		_stream(Composer.envelope(str(r2["msg"])))
+
+
+## ✦ A combat cast: one living foe → cast now; several → arm it and click one.
+func _cast_in_combat(nm: String) -> void:
+	var foes: Array = Combat.data().get("combatants", []).filter(func(x): return x.get("side") == "enemy" and int(x.get("hp", 0)) > 0)
+	if foes.is_empty():
+		return
+	if foes.size() == 1:
+		_deliver_player_hit(Combat.player_spell(str(foes[0]["id"]), nm))
+		return
+	_armed_spell = nm
+	_say_system("✦ %s armed — click your target on the board." % nm)
 
 
 ## ⚡ Reaction! The blow pends while you choose: Shield / Uncanny Dodge /
@@ -1050,6 +1131,15 @@ func _deliver_enemy_result(r: Dictionary) -> void:
 		_say_me(_md(str(r["msg"])))
 	_render_sheet()
 	_render_combat()
+	if _auto_round:
+		_auto_round = false
+		if str(r.get("gm", "")) != "":
+			_round_gm.append(str(r["gm"]))
+		if bool(r.get("down", false)):
+			_flush_round_gm()
+		else:
+			_run_round()  # the sweep picks up where the reaction paused it
+		return
 	if str(r.get("gm", "")) != "":
 		_last_player_msg = str(r["msg"])
 		_stream(Composer.envelope(str(r["gm"])))
@@ -1057,7 +1147,7 @@ func _deliver_enemy_result(r: Dictionary) -> void:
 
 ## Click an open square on your turn: move there (spends the round's budget).
 func _on_grid_move(cell: Array) -> void:
-	if not Mode.can("combat_action"):
+	if not _can_fight():
 		return
 	var c: Dictionary = Combat.data()
 	if str(Combat.current(c).get("id", "")) != "pc":
@@ -1066,13 +1156,15 @@ func _on_grid_move(cell: Array) -> void:
 	if Combat.move_pc(cell):
 		var left := int(Combat.move_budget(Combat.data()).get("left", 0))
 		_say_system("You move — %d ft of movement left." % (left * Combat.FEET_PER_CELL))
+	elif Combat.terrain_at(cell) == "block":
+		_say_system("Something solid stands there — no way through.")
 	else:
 		_say_system("Too far, or the square is taken.")
 
 
 ## Click a foe's token: attack if you can reach it (melee adjacency or ranged).
 func _on_grid_token(id: String) -> void:
-	if not Mode.can("combat_action"):
+	if not _can_fight():
 		return
 	var c: Dictionary = Combat.data()
 	var m := {}
@@ -1080,6 +1172,11 @@ func _on_grid_token(id: String) -> void:
 		if str(x.get("id", "")) == id:
 			m = x
 	if m.is_empty() or m.get("side") != "enemy" or int(m.get("hp", 0)) <= 0:
+		return
+	if _armed_spell != "":
+		var spell_nm := _armed_spell
+		_armed_spell = ""
+		_deliver_player_hit(Combat.player_spell(id, spell_nm))
 		return
 	var wpn := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get("weapon", "")))
 	var ranged: bool = Combat.weapon_props(str(wpn.get("name", "fists")))["ranged"]
@@ -1133,6 +1230,8 @@ func _render_combat() -> void:
 		Combat.ensure_positions()
 		var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
 		_battle_grid.map_key = Art.ensure_battle_map(here if here != "" else "a %s battlefield" % Art.world_flavor())
+		if Art.has_art(_battle_grid.map_key):
+			Combat.bake_terrain(Image.load_from_file(Art.path_for(_battle_grid.map_key)))
 	# The room darkens toward ember-red while steel is out.
 	var tween := create_tween()
 	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
@@ -1142,8 +1241,8 @@ func _render_combat() -> void:
 		Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
 	if not fighting:
 		return
-	if Mode.state in ["Exploration", "Victory", "Loading"]:
-		Mode.enter("Combat")
+	if Mode.state not in ["Combat", "Death", "GameOver", "LevelUp"]:
+		Mode.enter("Combat")  # steel is out — whatever mode we drifted to yields
 	if not Combat.pc_down().is_empty():
 		if Mode.state == "Combat":
 			Mode.enter("Death")  # the only roll that matters now is the save
@@ -1154,7 +1253,7 @@ func _render_combat() -> void:
 	var danger := Ui.c("danger").to_html(false)
 	var cur: Dictionary = Combat.current(c)
 	var lines: Array[String] = []
-	lines.append("[color=%s][b]⚔ COMBAT — Round %d[/b][/color]    [url=cnext]Next ›[/url]    [url=cend]End combat[/url]" % [gold, int(c.get("round", 1))])
+	lines.append("[color=%s][b]⚔ COMBAT — Round %d[/b][/color]    [url=cnext]End turn ›[/url]    [url=cend]End combat[/url]" % [gold, int(c.get("round", 1))])
 	for m in Combat.order(c):
 		var here := "▶ " if str(m.get("id")) == str(cur.get("id")) else "   "
 		var hp := int(m.get("hp", 0))
@@ -1168,7 +1267,52 @@ func _render_combat() -> void:
 		elif hp <= 0:
 			row += "   ✝"
 		lines.append(row)
+	var srow := _combat_spell_row(c)
+	if srow != "":
+		lines.append(srow)
 	_combat_panel.text = "\n".join(lines)
+
+
+## Damaging spells you can cast right now + slots + feet left, one tracker row.
+func _combat_spell_row(c: Dictionary) -> String:
+	var s := GameState.sheet()
+	var parts: Array[String] = []
+	var offensive := RegEx.create_from_string("\\d+d\\d+")
+	var soothing := RegEx.create_from_string("(?i)heal|restore|regain|cure|mend")
+	for sp in s.get("spells", []):
+		var nm := str(sp.get("name", ""))
+		var desc := str(Rules.spell_named(nm).get("desc", ""))
+		if offensive.search(desc) == null or soothing.search(desc) != null:
+			continue
+		if int(sp.get("level", 0)) > 0:
+			var has_slot := false
+			for l in s.get("slots", {}).values():
+				if l is Dictionary and int(l.get("used", 0)) < int(l.get("max", 0)):
+					has_slot = true
+			if not has_slot:
+				continue
+		parts.append("[url=spl:%s]✦ %s[/url]" % [nm.uri_encode(), _bb(nm)])
+	var dim := Ui.c("ink_dim").to_html(false)
+	var bits: Array[String] = []
+	if not parts.is_empty():
+		bits.append("   ".join(parts))
+	var slots: Dictionary = s.get("slots", {})
+	var slot_parts: Array[String] = []
+	var sk := slots.keys()
+	sk.sort()
+	for l in sk:
+		if slots[l] is Dictionary and int(slots[l].get("max", 0)) > 0:
+			slot_parts.append("L%s %d/%d" % [l, maxi(0, int(slots[l]["max"]) - int(slots[l].get("used", 0))), int(slots[l]["max"])])
+	if not slot_parts.is_empty():
+		bits.append("[color=%s]Slots %s[/color]" % [dim, " ".join(slot_parts)])
+	if str(Combat.current(c).get("id", "")) == "pc":
+		bits.append("[color=%s]🥾 %d ft left[/color]" % [dim, int(Combat.move_budget(c).get("left", 0)) * Combat.FEET_PER_CELL])
+	return "    ".join(bits)
+
+
+## A BG3-style gilded section header for the sheet panel.
+func _hdr(t: String) -> String:
+	return "[center][color=%s]────  ✦  [b]%s[/b]  ✦  ────[/color][/center]" % [Ui.c("gold").to_html(false), t]
 
 
 # ── Rests ────────────────────────────────────────────────────────────────────
@@ -1300,8 +1444,9 @@ func _render_sheet() -> void:
 	var lines: Array[String] = []
 	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]")
 	lines.append("")
-	lines.append("[color=%s][b]%s[/b][/color]" % [gold, _bb(str(s.get("name", "?")))])
-	lines.append("%s %s, level %d" % [_bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))), int(s.get("level", 1))])
+	var dim := Ui.c("ink_dim").to_html(false)
+	lines.append("[center][font_size=22][color=%s][b]%s[/b][/color][/font_size]" % [gold, _bb(str(s.get("name", "?")))])
+	lines.append("[color=%s]%s %s  ·  Level %d[/color][/center]" % [dim, _bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))), int(s.get("level", 1))])
 	lines.append("")
 	var hp := int(s.get("hp", 10))
 	var hp_max := maxi(1, int(s.get("hpMax", 10)))
@@ -1310,9 +1455,15 @@ func _render_sheet() -> void:
 	lines.append("HP [b]%d / %d[/b]  [color=%s]%s[/color][color=%s]%s[/color]" % [hp, hp_max, hp_col, "▰".repeat(hb), Ui.c("ink_dim").to_html(false), "▱".repeat(12 - hb)])
 	lines.append("AC [b]%d[/b]    Gold [b]%d[/b]    Perception [b]%d[/b]" % [Rules.eff_ac(s, GameState.inv()), int(s.get("gold", 0)), Rules.passive_perception(s)])
 	lines.append("")
+	var bcol := Ui.c("gold").darkened(0.25).to_html(false)
+	var cbg := Ui.c("night").lightened(0.04).to_html(false)
+	var plaques := "[table=3]"
 	for k in Rules.ABILITIES:
 		var v := int(s.get("abilities", {}).get(k, 10))
-		lines.append("%s  [b]%d[/b]  (%+d)" % [k, v, Rules.ability_mod(v)])
+		plaques += "[cell border=#%s bg=#%s padding=10,7,10,7][center][color=%s]%s[/color]  [font_size=19][b]%d[/b][/font_size]  [color=%s]%+d[/color][/center][/cell]" % [
+			bcol, cbg, gold, k, v, dim, Rules.ability_mod(v)]
+	plaques += "[/table]"
+	lines.append(plaques)
 	var pool := int(s.get("level", 1))
 	lines.append("Hit Dice [b]%d / %d[/b] (d%d)" % [pool - int(s.get("hitDiceUsed", 0)), pool, int(s.get("hitDie", 8))])
 	if int(s.get("exhaustion", 0)) > 0:
@@ -1320,15 +1471,17 @@ func _render_sheet() -> void:
 	var prof: Array = s.get("profSkills", [])
 	if not prof.is_empty():
 		lines.append("")
-		lines.append("[color=%s][b]Proficient[/b][/color]  %s" % [gold, _bb(", ".join(prof.map(func(x): return str(x))))])
+		lines.append(_hdr("PROFICIENCIES"))
+		lines.append("[center]%s[/center]" % _bb(", ".join(prof.map(func(x): return str(x)))))
 	var conds: Array = s.get("conditions", [])
 	if not conds.is_empty():
 		lines.append("")
-		lines.append("[color=%s][b]Conditions[/b][/color]  %s" % [gold, _bb(", ".join(conds.map(func(c): return str(c.get("name", c)) if c is Dictionary else str(c))))])
+		lines.append(_hdr("CONDITIONS"))
+		lines.append("[center]%s[/center]" % _bb(", ".join(conds.map(func(c): return str(c.get("name", c)) if c is Dictionary else str(c)))))
 	var spells: Array = s.get("spells", [])
 	if not spells.is_empty():
 		lines.append("")
-		lines.append("[color=%s][b]Spells[/b][/color]" % gold)
+		lines.append(_hdr("SPELLS"))
 		for sp in spells:
 			var lv := int(sp.get("level", 0))
 			lines.append("  %s %s  [url=cast:%s]✦ cast[/url]" % [_bb(str(sp.get("name", ""))),
@@ -1347,7 +1500,7 @@ func _render_sheet() -> void:
 	if not items.is_empty():
 		var worn: Array = inv.get("equipped", {}).values()
 		lines.append("")
-		lines.append("[color=%s][b]Pack[/b][/color]  (%d/%d slots)" % [gold, items.size(), int(inv.get("slots", 24))])
+		lines.append(_hdr("PACK") + "  [color=%s](%d/%d)[/color]" % [Ui.c("ink_dim").to_html(false), items.size(), int(inv.get("slots", 24))])
 		for it in items:
 			var q := int(it.get("qty", 1))
 			var iid := str(it.get("id", ""))
@@ -1360,11 +1513,12 @@ func _render_sheet() -> void:
 	var feats: Array = s.get("feats", [])
 	if not feats.is_empty():
 		lines.append("")
-		lines.append("[color=%s][b]Feats[/b][/color]  %s" % [gold, _bb(", ".join(feats.map(func(x): return str(x))))])
+		lines.append(_hdr("FEATS"))
+		lines.append("[center]%s[/center]" % _bb(", ".join(feats.map(func(x): return str(x)))))
 	var features: Array = s.get("features", [])
 	if not features.is_empty():
 		lines.append("")
-		lines.append("[color=%s][b]Class features[/b][/color]" % gold)
+		lines.append(_hdr("CLASS FEATURES"))
 		for f in features:
 			var row := "  %s" % _bb(str(f))
 			var key := GameState.feature_action_key(str(f))

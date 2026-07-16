@@ -49,7 +49,10 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Companions fight + persist wounds | _companionTurn | ✅ | P1 | — | M | — |
 | Death saves + epitaph | _rollDeathSave :5178 | ✅ | P1 | — | M | game-over overlay w/ load-save & cling-to-life buttons 🟡 (revive path = long rest) |
 | Victory: auto-finish, XP, killing-blow cinema | _finishCombat | ✅ + HDYWTDT flourish + gold victory flash | P1 | — | M | |
-| **Tactical battle grid** (16×10, tokens, move budgets, adjacency/ranged, enemy approach) | renderBattle :6508 | ✅ v1 | P1 | — | XL | terrain paint + token drag 🔲 (click-move shipped) |
+| **Tactical battle grid** (16×10, tokens, move budgets, adjacency/ranged, enemy approach) | renderBattle :6508 | ✅ v1 | P1 | — | XL | token drag 🔲 (click-move shipped) |
+| Engine terrain (walls/water/cover sampled from the map painting) | (new, better) | ✅ heuristic sampler + flood guard; walls block, water doubles cost, cover +2 AC vs ranged | P2 | — | M | LLM-authored terrain layout 🔲 |
+| Combat casting (engine-resolved spell attacks, slots enforced) | _castSpell | ✅ v1 damage spells; Magic Missile auto-hit; typed defenses | P1 | — | M | save-DC spells 🔲 |
+| End Turn auto-sweep (enemies + companions act unprompted) | _enemyTurn loop | ✅ reactions still pend; one combined GM note per sweep | P1 | — | M | |
 | Battle underlay art (scene-matched map) | _ensureBattleUnderlay | ✅ generated overhead map of the actual place, ornate frame, whisper grid | P3 | /generate | M | terrain paint 🔲 |
 | Combat music/backdrop swap | _enterCombatMode | 🟡 tint+sting | P3 | audio | M | music system 🔲 |
 
