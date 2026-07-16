@@ -36,19 +36,19 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Class feature actions (per-rest uses) | FEATURE_ACTIONS :2940 | ✅ 6 ported | P1 | — | M | Bardic Insp., Lay on Hands, Wild Shape… 🔲 |
 | Inspiration (grant nat20 / arm / spend adv) | :3342 | ✅ full loop + chip | P2 | — | S | |
 | Multiclassing | _canMulticlass :2877 | 🔲 | P4 | — | L | |
-| Exhaustion enforcement UI | _EXHAUSTION | 🟡 shown on sheet | P3 | — | S | effects text into envelope 🔲 |
+| Exhaustion enforcement UI | _EXHAUSTION | ✅ sheet + effects enforced via envelope | P3 | — | S | |
 
 ## Combat
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
 | Tracker (initiative/HP/turns/conditions) | renderCombatPanel :5289 | ✅ | P1 | — | L | — |
-| Player attack math (full port) | _playerAttack :4911 | ✅ | P1 | — | L | small-race heavy disadvantage 🔲 |
-| Two-weapon / off-hand bonus strike | _offhandAttack :4870 | 🔲 | P2 | offhand slot | M | |
+| Player attack math (full port) | _playerAttack :4911 | ✅ incl. small-race heavy disadvantage | P1 | — | L | |
+| Two-weapon / off-hand bonus strike | _offhandAttack :4870 | ✅ light+light, once/round, no +mod dmg | P2 | — | M | |
 | Enemy AI turns → real sheet | _enemyTurn :5051 | ✅ | P1 | — | M | — |
 | Reactions overlay (Shield/Uncanny Dodge/Parry) | :5128 | ✅ pend→choose→resolve | P1 | — | M | escape/OK = take the hit, never voids |
 | Companions fight + persist wounds | _companionTurn | ✅ | P1 | — | M | — |
 | Death saves + epitaph | _rollDeathSave :5178 | ✅ | P1 | — | M | game-over overlay w/ load-save & cling-to-life buttons 🟡 (revive path = long rest) |
-| Victory: auto-finish, XP, killing-blow cinema | _finishCombat | ✅ | P1 | — | M | HDYWTDT player flourish input 🔲; victory frame FX 🔲 |
+| Victory: auto-finish, XP, killing-blow cinema | _finishCombat | ✅ + HDYWTDT flourish + gold victory flash | P1 | — | M | |
 | **Tactical battle grid** (16×10, tokens, move budgets, adjacency/ranged, enemy approach) | renderBattle :6508 | ✅ v1 | P1 | — | XL | terrain paint + token drag 🔲 (click-move shipped) |
 | Battle underlay art (scene-matched map) | _ensureBattleUnderlay | 🔲 | P3 | /generate | M | |
 | Combat music/backdrop swap | _enterCombatMode | 🟡 tint+sting | P3 | audio | M | music system 🔲 |
@@ -56,9 +56,9 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 ## World, travel, economy
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
-| Clock/weather/waning conditions | :8017 | ✅ | P1 | — | M | auto-advance every 3 turns 🔲; clock chip UI 🔲; time-of-day tint 🔲 |
+| Clock/weather/waning conditions | :8017 | ✅ + auto-advance/3 turns + chip + time-of-day tint | P1 | — | M | |
 | Rests (hit dice, ambush, slots) | :6747/:7488 | ✅ | P1 | — | M | rest FX 🔲 |
-| Vendors: stock + buy/sell + haggle | openVendor :6447 | ✅ | P2 | — | M | location-aware vendors 🔲; currency naming 🔲 |
+| Vendors: stock + buy/sell + haggle | openVendor :6447 | ✅ window + location flavor + world currency | P2 | — | M | |
 | Travel/atlas ("you are here", encounters) | _travelTo :6380 | ✅ v1 (list, travel, 1-in-5 road encounters, here-marker, scene repaint) | P2 | — | L | x/y world map render 🔲; auto here-tracking from prose 🔲 |
 | Worldtick ("Meanwhile…" between days) | :8060 | ✅ after every long rest | P3 | — | S | |
 | Finale / THE END | _checkFinale :6105 | ✅ detection+card | P2 | — | S | complete badge on saves 🔲; auto-snapshot 🔲 |
@@ -72,8 +72,8 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Codex / quests extractors + panels | :848/:929 | ✅ | P1 | — | M | — |
 | Recap card (+art) | _showRecap :5260 | ✅ text | P2 | — | S | recap art 🔲 |
 | Snapshots/Chronicle UI | :2671 | ✅ save/list/resume-from-chapter | P2 | — | M | campaign export/import 🔲 |
-| NPC portraits in codex | (portraits) | ✅ on-demand | P2 | — | M | auto-conjure on meet 🔲 |
-| Scene backdrops ([[scene]] + 🖼) | _combatBackdrop etc | ✅ | P2 | — | M | Ken Burns anim 🔲 |
+| NPC portraits in codex | (portraits) | ✅ on-demand + auto-conjure on meet | P2 | — | M | |
+| Scene backdrops ([[scene]] + 🖼) | _combatBackdrop etc | ✅ + Ken Burns breath (reduce-motion aware) | P2 | — | M | |
 | Ask-GM: learn spell / recruit | :8002/:8010 | ✅ | P2 | — | S | — |
 | Edit / regenerate messages | :1958 | 🟡 ↻ retell button live | P2 | edit-message API | M | inline edit 🔲 |
 | GM model picker | settings | ✅ (applies to new sessions) | P2 | — | S | |

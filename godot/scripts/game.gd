@@ -48,7 +48,8 @@ func _ready() -> void:
 			_render_codex())
 	Chronicle.chronicle_updated.connect(func():
 		if _panel_mode == "codex" and _sheet_panel.visible:
-			_render_codex())
+			_render_codex()
+		_auto_portrait())
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
@@ -71,6 +72,7 @@ func _ready() -> void:
 	if world_tex != null:
 		_scene_art.texture = world_tex
 		_scene_art.modulate.a = 0.35
+		_ken_burns()
 	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
 	if not GameState.is_dm():
 		Mode.enter("Dialogue")
@@ -475,7 +477,7 @@ func _apply_world_tags(tags: Array) -> void:
 				if delta != 0:
 					var total := GameState.add_gold(delta)
 					Sfx.play("chime")
-					_say_system("%s gold %+d — purse now %d" % ["💰" if delta > 0 else "🪙", delta, total])
+					_say_system("%s %s %+d — purse now %d" % ["💰" if delta > 0 else "🪙", GameState.currency(), delta, total])
 			"loot":
 				var nm := str(a.get("name", "")).strip_edges()
 				if nm != "":
@@ -1201,6 +1203,7 @@ func _show_image(url: String) -> void:
 	_scene_art.texture = ImageTexture.create_from_image(img)
 	var tw := create_tween()
 	tw.tween_property(_scene_art, "modulate:a", 0.45, 1.4)
+	_ken_burns()
 	# Then inline, sized to the thread.
 	var inline := img.duplicate()
 	var w := 520
@@ -1231,6 +1234,18 @@ func _repaint_scene(place: String) -> void:
 	var tw := create_tween()
 	_scene_art.modulate.a = 0.0
 	tw.tween_property(_scene_art, "modulate:a", 0.45, 1.8)
+
+
+## The slow breath of the backdrop — Ken Burns, reduced-motion aware.
+func _ken_burns() -> void:
+	if Ui.reduce_motion:
+		_scene_art.scale = Vector2.ONE
+		return
+	_scene_art.pivot_offset = _scene_art.size / 2.0
+	_scene_art.scale = Vector2(1.03, 1.03)
+	var tw := create_tween().set_loops()
+	tw.tween_property(_scene_art, "scale", Vector2(1.09, 1.09), 24.0).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(_scene_art, "scale", Vector2(1.03, 1.03), 24.0).set_trans(Tween.TRANS_SINE)
 
 
 func _conjure_scene() -> void:
@@ -1350,8 +1365,13 @@ func _open_shop() -> void:
 		return
 	Mode.enter("Merchant")
 	var deals: Array[String] = []
+	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+	var here_shop := ""
+	for l in Rules.world_locations(GameState.world_id()):
+		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
+			here_shop = str(l.get("shop", ""))
 	var dlg := AcceptDialog.new()
-	dlg.title = "🛒 The trading post"
+	dlg.title = "🛒 %s" % (here if here_shop != "" else "The trading post")
 	dlg.ok_button_text = "Leave the counter"
 	dlg.min_size = Vector2i(720, 480)
 	var root := VBoxContainer.new()
@@ -1367,7 +1387,7 @@ func _open_shop() -> void:
 	var wares_meta: Array = []
 	var pack_meta: Array = []
 	var refresh := func():
-		purse.text = "Your purse: %d gold%s" % [int(GameState.sheet().get("gold", 0)),
+		purse.text = "Your purse: %d %s%s" % [int(GameState.sheet().get("gold", 0)), GameState.currency(),
 			"   ·   the keeper likes you (−20%)" if _shop_markup < 1.0 else ("   ·   the keeper is annoyed (+10%)" if _shop_markup > 1.0 else "")]
 		wares.clear()
 		wares_meta.clear()
@@ -1440,6 +1460,11 @@ func _open_shop() -> void:
 		deals.append("haggled (%s)" % ("won a fifth off" if _shop_markup < 1.0 else "annoyed the keeper"))
 		haggle.disabled = true
 		refresh.call())
+	if here_shop != "":
+		var trades := Label.new()
+		trades.theme_type_variation = "HintLabel"
+		trades.text = "This counter trades in: %s" % here_shop
+		root.add_child(trades)
 	root.add_child(purse)
 	root.add_child(cols)
 	root.add_child(haggle)
@@ -1501,6 +1526,19 @@ func _render_codex() -> void:
 					(" — " + _bb(str(q.get("desc", "")))) if str(q.get("desc", "")) != "" else ""])
 	if not anyq:
 		_sheet_panel.append_text("[color=%s]No threads yet — make a promise, take a job, swear revenge.[/color]\n" % Ui.c("ink_dim").to_html(false))
+
+
+## Quietly give the newest face-less codex NPC a portrait (one per update).
+func _auto_portrait() -> void:
+	var codex = GameState.state.get("codex", [])
+	if not (codex is Array):
+		return
+	for n in codex:
+		if n is Dictionary and str(n.get("name", "")) != "":
+			var key := "npc-" + str(n["name"]).to_lower().replace(" ", "-")
+			if not Art.has_art(key):
+				_conjure_portrait(str(n["name"]))
+				return
 
 
 ## Give a codex NPC a face: generate from their appearance anchor, cache, redraw.
@@ -1673,8 +1711,20 @@ func _travel_to(place: String) -> void:
 		_stream(Composer.envelope("[I travel to %s. Describe the journey briefly and my arrival — who is about, what I notice first.]" % place))
 
 
+## Dusk cools the scene; deep night darkens it (time-of-day tint).
+const _TIME_TINT := [Color(1.0, 0.92, 0.85), Color(1, 1, 1), Color(1, 1, 1), Color(1.0, 0.97, 0.9), Color(0.95, 0.85, 0.85), Color(0.8, 0.78, 0.9), Color(0.62, 0.62, 0.78)]
+
+
+func _apply_time_tint() -> void:
+	var ti := clampi(int(GameState.clock().get("ti", 1)), 0, _TIME_TINT.size() - 1)
+	var target: Color = _TIME_TINT[ti]
+	target.a = _scene_art.modulate.a
+	create_tween().tween_property(_scene_art, "modulate", target, 1.2)
+
+
 ## The banner chips: time · weather · place · quest · party wounds.
 func _render_chips() -> void:
+	_apply_time_tint()
 	var c: Dictionary = GameState.clock()
 	var bits: Array[String] = []
 	var wx := str(c.get("wx", {}).get("ico", "")) if c.get("wx") is Dictionary else ""

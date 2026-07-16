@@ -34,6 +34,11 @@ func world_id() -> String:
 	return str(character.get("world_id", ""))
 
 
+## One number, three names: gold in the vale, credits in the spire, cash at home.
+func currency() -> String:
+	return {"embervale": "gold", "neonspire": "credits", "everyday": "cash"}.get(world_id(), "gold")
+
+
 ## DM adventures carry the game systems; everything else is pure conversation.
 func is_dm() -> bool:
 	return cid().begins_with("dm-")
