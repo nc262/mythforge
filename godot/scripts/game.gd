@@ -763,6 +763,7 @@ func _build_dice_menu() -> void:
 	idx += 1
 	pop.add_item("📖 Learn a spell…", 900)
 	pop.add_item("🤝 Recruit an ally…", 901)
+	pop.add_item("🔨 Craft something…", 902)
 	if not pop.id_pressed.is_connected(_free_check):
 		pop.id_pressed.connect(_free_check)
 
@@ -773,6 +774,10 @@ func _free_check(id: int) -> void:
 	if id == 900:
 		_ask_gm("Learn a spell", "Which spell do you seek?",
 			func(x): return "[I want to learn the spell %s. As GM, decide honestly if I could access it here and what it costs — gold, a favor, training time. If you grant it, say clearly that I learn it and tag [[spell-learned name=\"%s\"]].]" % [x, x])
+		return
+	if id == 902:
+		_ask_gm("Craft something", "What do you try to make (and from what)?",
+			func(x): return "[I try to craft: %s. Check my pack in the context — decide honestly if my materials and skills allow it, what it costs (time, gold, a roll), and if I succeed, grant it with [[loot name=\"...\"]] and take costs with [[gold delta=-N]].]" % x)
 		return
 	if id == 901:
 		_ask_gm("Recruit an ally", "Who do you ask to join you?",
@@ -1096,6 +1101,25 @@ func _rest(kind: String) -> void:
 	_say_me(_md(str(r["note"])))
 	_last_player_msg = str(r["note"])
 	_stream(Composer.envelope(str(r["gm"])))
+	if kind == "long":
+		_worldtick()
+
+
+## The living world breathes between days: off-screen events surface as an
+## aside and fold into memory (backend /worldtick extractor).
+func _worldtick() -> void:
+	if Chronicle.transcript.is_empty():
+		return
+	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldtick", {
+		"character_name": str(GameState.character.get("name", "")),
+		"transcript": Chronicle.transcript,
+		"codex": GameState.state.get("codex", []),
+		"quests": GameState.state.get("quests", [])})
+	var tick := str(r.get("tick", r.get("aside", r.get("text", ""))))
+	if r.get("_status", 0) == 200 and tick != "":
+		var rt := _bubble("gm")
+		rt.append_text("[color=%s][i]Meanwhile… %s[/i][/color]" % [Ui.c("ink_dim").to_html(false), _bb(tick.left(400))])
+		Chronicle.record("(a day passes)", "Meanwhile: " + tick.left(300))
 
 
 # ── Images ───────────────────────────────────────────────────────────────────

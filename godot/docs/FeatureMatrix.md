@@ -16,12 +16,12 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | World forge: pillars+chips+surprise+refine+preview | openWorldsmith :496 | ✅ | P1 | worldsmith API | L | forge queue (pregen cast faces + creature art) 🔲 |
 | Campaign smith (mode=story) | openCampaignsmith :651 | ✅ | P2 | — | M | preview shows hook ✅; cstories registry simplified to world graft |
 | Companion 1-to-1 chat (no HUD) | openChat non-DM | ✅ | P2 | — | M | seed-photos 📷 ask-pic buttons 🔲; clear-chat 🔲 |
-| Settings (native panel) | openSettings :8321 | 🟡 | P2 | — | M | done: sfx/motion/signout/version; missing: GM model picker, ambient+TTS toggles/volume, shutdown button |
+| Settings (native panel) | openSettings :8321 | ✅ sfx/ambient+volume/motion/model picker/signout/version | P2 | — | M | TTS toggle ⛔ w/ backend; shutdown button 🔲 |
 | Session Zero tone knobs | _sessionZero :3680 | ✅ + 🎛 mid-game retune | P1 | — | S | |
 | GM forge (dm-custom-* personas) | renderForge gm | 🔲 | P3 | — | M | custom GM personalities |
 | Character/persona forge (portrait+suggest+describe) | renderForge :1216 | 🔲 | P3 | /generate /describe /suggest | L | create-your-own companions |
-| World import/export (.world.json) | :278/:396 | 🔲 | P3 | FileDialog | S | |
-| Unmake world | world-admin | 🔲 | P3 | — | S | |
+| World import/export (.world.json) | :278/:396 | ✅ export+opens folder / import with validation | P3 | — | S | |
+| Unmake world | world-admin | ✅ | P3 | — | S | |
 | Campaigns tab (cross-world premises) | :1079 | 🔲 | P4 | — | M | |
 
 ## Character & progression
@@ -60,7 +60,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Rests (hit dice, ambush, slots) | :6747/:7488 | ✅ | P1 | — | M | rest FX 🔲 |
 | Vendors: stock + buy/sell + haggle | openVendor :6447 | ✅ | P2 | — | M | location-aware vendors 🔲; currency naming 🔲 |
 | Travel/atlas ("you are here", encounters) | _travelTo :6380 | ✅ v1 (list, travel, 1-in-5 road encounters, here-marker, scene repaint) | P2 | — | L | x/y world map render 🔲; auto here-tracking from prose 🔲 |
-| Worldtick ("Meanwhile…" between days) | :8060 | 🔲 | P3 | endpoint live | S | |
+| Worldtick ("Meanwhile…" between days) | :8060 | ✅ after every long rest | P3 | — | S | |
 | Finale / THE END | _checkFinale :6105 | ✅ detection+card | P2 | — | S | complete badge on saves 🔲; auto-snapshot 🔲 |
 | Loot prompt (Add to pack / Ignore) | :7935 | 🟡 auto-add via tag | P3 | — | S | opt-in prompt variant |
 
@@ -77,7 +77,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Ask-GM: learn spell / recruit | :8002/:8010 | ✅ | P2 | — | S | — |
 | Edit / regenerate messages | :1958 | 🟡 ↻ retell button live | P2 | edit-message API | M | inline edit 🔲 |
 | GM model picker | settings | ✅ (applies to new sessions) | P2 | — | S | |
-| TTS narration (server) | :6114 (browser) | 🔲 | P3 | /api/tts | M | |
+| TTS narration (server) | :6114 (browser) | ⛔ BLOCKED | P3 | backend voice provider (probe: 503 provider=disabled) | M | client wiring waits for a server-side provider |
 | STT input | voiceRecorder.js | 🔲 | P4 | /api/stt | M | |
 
 ## Presentation & platform
@@ -85,15 +85,15 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 |---|---|---|---|---|---|---|
 | Per-world theming + living backdrop | applyWorldTheme | ✅ | P1 | — | M | — |
 | Bubbles/dice moment/battle tint/SFX | (various fx) | ✅ | P1 | — | M | fx suite (_fxVictory/Rest/Shake/ItemGet/LevelUp…) 🟡 partial |
-| Ambient soundscapes + synth music | studioAmbient.js :7252 | 🔲 | P3 | audio synth | L | |
-| Party chips w/ HP bars | :4801 | 🔲 | P2 | — | S | |
-| Clock/objective/inspiration chips | banner chips | 🔲 | P2 | — | S | |
+| Ambient soundscapes + synth music | studioAmbient.js :7252 | ✅ five looping pads, crossfade, combat drone, volume setting | P3 | — | L | scene-reactive layers 🔲 |
+| Party chips w/ HP bars | :4801 | ✅ in the banner chips | P2 | — | S | |
+| Clock/objective/inspiration chips | banner chips | ✅ clock/weather/here/quest (inspiration rides its feature) | P2 | — | S | |
 | Dice tray (manual d4–d20 + mod) | :1671 | 🟡 🎲 menu covers checks | P3 | — | S | raw die tray |
 | Controller support | (n/a web) | 🔲 | **P2** | FSM/focus | L | target-game requirement |
-| Keyboard shortcuts map | web various | 🔲 | P3 | — | S | |
+| Keyboard shortcuts map | web various | ✅ Ctrl+S/L/R, Space, Esc (docs/UI.md) | P3 | — | S | |
 | Drag-drop inventory + paper doll | (target, beyond web) | 🔲 | P3 | UI pass | XL | |
 | World map + minimap | (target) | 🔲 | P3 | atlas | L | |
-| Crafting | _craftItem :7756 | 🔲 | P3 | — | M | |
+| Crafting | _craftItem :7756 | ✅ v1 ask-GM flow (materials judged, loot/gold tags settle it) | P3 | — | M | recipe system → M4 living world |
 | Party multiplayer + voice | /party/* | 🔲 | P4 | polling API | XL | |
 | Windows .exe export (Steam-ready) | — | 🔲 | P2 | ~500MB templates (ask user) | S | |
 | FSM game modes | (new) | ✅ Mode autoload, 20 states | P1 | — | M | input-map per state rides M3 controller work |

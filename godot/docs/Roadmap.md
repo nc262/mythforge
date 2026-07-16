@@ -23,19 +23,27 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
 - ✅ Travel atlas v1: places list, travel action, road encounters, here-marker
 - ✅ GM panel: 🎛 mid-campaign retune; GM model picker in Settings
 
-## M3 — The AAA presentation pass (current)
-- Controller navigation + keyboard shortcut map (rides the FSM)
-- Drag-and-drop inventory grid + equipment paper doll; merchant window
-- Quest journal window with search; world map + minimap (atlas v2)
-- Banner chips (clock/objective/inspiration/party HP), tooltips everywhere
-- Ambient soundscapes + synth music (combat/explore), full FX suite
-- TTS narration; portrait/persona forge; character forge portraits
-- Window scaling QA (1080p→4K), Steam-ready export preset + .exe
+## M3 — The AAA presentation pass 🟡 WAVE 1 SHIPPED
+- ✅ Keyboard shortcut map (Ctrl+S/L/R, Space, Esc)
+- ✅ Banner chips: clock/weather · here · active quest · party HP
+- ✅ Ambient score: five looping synth pads crossfading with world & combat,
+  volume + toggle in Settings
+- ⛔ TTS narration — BLOCKED: backend voice provider disabled (503); client
+  wiring resumes when a provider is enabled server-side
+- Remaining (each a full session of work, placeholders per the rules):
+  controller navigation pass · drag-and-drop inventory + paper doll ·
+  merchant window · quest journal window with search · world map + minimap
+  render (atlas data live) · portrait/persona forge · scaling QA ·
+  Steam .exe export (waiting on user approval for the ~500MB templates)
 
-## M4 — The living world
-- Worldtick wiring, relationships/reputation, crafting, inspiration economy,
-  world import/export, campaigns tab, STT, party multiplayer (polling
-  protocol exists) — sequence by demand after M3 playtests.
+## M4 — The living world 🟡 FIRST SYSTEMS SHIPPED
+- ✅ Worldtick: "Meanwhile…" asides after every long rest, folded into memory
+- ✅ Crafting v1: 🔨 ask-the-GM flow — materials judged from the real pack,
+  results granted via loot/gold tags
+- ✅ World export/import (.world.json) + unmake
+- Remaining: relationships/reputation web · inspiration economy ·
+  recipe-based crafting · campaigns tab · STT · settlement simulation ·
+  party multiplayer (+voice) — interfaces sketched in FutureIdeas.md.
 
 ## Standing rules
 No milestone ships with a red harness. No feature leaves the matrix. The

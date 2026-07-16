@@ -110,7 +110,35 @@ func _show_worlds() -> void:
 	var forge := _big_card("✦  Forge a new world", "The smith writes lore, places, people, beasts, and campaigns from your idea.", Ui.pal["gold"])
 	forge.pressed.connect(_open_world_forge)
 	grid.add_child(forge)
+	var imp := _big_card("⬆  Import a world file", "A .world.json forged on any table.", Ui.pal["ink_soft"])
+	imp.pressed.connect(_import_world)
+	grid.add_child(imp)
 	_content.add_child(grid)
+
+
+func _import_world() -> void:
+	var dlg := FileDialog.new()
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.file_mode = FileDialog.FILE_MODE_OPEN_FILE
+	dlg.filters = PackedStringArray(["*.world.json ; Mythforge worlds", "*.json ; JSON"])
+	dlg.min_size = Vector2i(720, 480)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.file_selected.connect(func(path):
+		dlg.queue_free()
+		var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+		if not (parsed is Dictionary) or str(parsed.get("name", "")) == "" or str(parsed.get("lore", "")) == "":
+			_sub_status.text = "That file isn't a world — it needs at least a name and lore."
+			return
+		var world: Dictionary = parsed
+		if str(world.get("id", "")) == "" or _cworlds.any(func(cw): return str(cw.get("id")) == str(world.get("id"))):
+			world["id"] = "cw-%s-%04x" % [str(world["name"]).to_lower().replace(" ", "-").left(20), randi() % 65536]
+		world["custom"] = true
+		_cworlds.append(world)
+		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+		Art.ensure(str(world["id"]), str(world.get("backdrop", "")))
+		_show_detail(world))
+	dlg.canceled.connect(func(): dlg.queue_free())
 
 
 func _world_card(w: Dictionary) -> Button:
@@ -222,6 +250,28 @@ func _show_detail(w: Dictionary) -> void:
 	craft.pressed.connect(func(): _open_campaign_forge(w))
 	grid.add_child(craft)
 	_content.add_child(grid)
+	if bool(w.get("custom", false)):
+		var admin := HBoxContainer.new()
+		admin.add_theme_constant_override("separation", 10)
+		var exp := Button.new()
+		exp.text = "⬇ Export world file"
+		exp.pressed.connect(func():
+			DirAccess.make_dir_recursive_absolute("user://exports")
+			var path := "user://exports/%s.world.json" % wid
+			var f := FileAccess.open(path, FileAccess.WRITE)
+			f.store_string(JSON.stringify(w, "\t"))
+			f.close()
+			_sub_status.text = "Exported to %s" % ProjectSettings.globalize_path(path)
+			OS.shell_open(ProjectSettings.globalize_path("user://exports")))
+		var unmake := Button.new()
+		unmake.text = "🗑 Unmake this world"
+		unmake.pressed.connect(func():
+			_cworlds = _cworlds.filter(func(cw): return str(cw.get("id", "")) != wid)
+			await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+			_show_worlds())
+		admin.add_child(exp)
+		admin.add_child(unmake)
+		_content.add_child(admin)
 	var cast: Array = w.get("cast") if w.get("cast") is Array else []
 	if not cast.is_empty():
 		_content.add_child(_section("THE CAST — sit with them one-on-one, no dice"))
