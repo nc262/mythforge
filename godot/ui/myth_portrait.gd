@@ -6,6 +6,8 @@ var tex: Texture2D            # pre-rounded (Art.round_tex) or null → glyph
 var glyph := "?"
 var ring_role := "gold"
 var halo := false
+var hp_frac := -1.0           # 0..1 draws a vitals arc; -1 = none
+var turn := false             # this one acts now: outer gold ring
 
 
 func _init(size_px := 96, ring := "gold", with_halo := false) -> void:
@@ -17,6 +19,12 @@ func _init(size_px := 96, ring := "gold", with_halo := false) -> void:
 func set_portrait(t: Texture2D, g := "?") -> void:
 	tex = t
 	glyph = g
+	queue_redraw()
+
+
+func set_vitals(frac: float, is_turn := false) -> void:
+	hp_frac = frac
+	turn = is_turn
 	queue_redraw()
 
 
@@ -38,3 +46,8 @@ func _draw() -> void:
 		draw_string(font, center + Vector2(-sz.x / 2.0, sz.y / 3.0), glyph,
 			HORIZONTAL_ALIGNMENT_CENTER, -1, fs, Ui.c("ink_dim"))
 	draw_arc(center, r, 0, TAU, 48, Ui.c(ring_role), 2.5, true)
+	if hp_frac >= 0.0:
+		draw_arc(center, r + 3.0, -PI / 2, -PI / 2 + TAU * clampf(hp_frac, 0.0, 1.0), 48,
+			Color(Ui.c(ring_role), 0.95), 3.0, true)
+	if turn:
+		draw_arc(center, r + 7.0, 0, TAU, 48, Ui.c("gold_soft"), 2.0, true)

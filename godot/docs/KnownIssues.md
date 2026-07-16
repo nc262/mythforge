@@ -11,6 +11,7 @@
 | 7 | Session map lives in `user://session.cfg` — deleting it orphans (not loses) server sessions | Continue caption resets | replay adventure → Continue choice reappears | M2 snapshots UI makes recovery visible |
 | 8 | Backend auth uses a single shared cookie file per OS user | Fine solo; multiplayer later | — | M4 party work |
 | 9 | Harness screenshots need a windowed run (headless can't render) | CI can't do visual diffs | local screenshot harness | acceptable |
+| 10b | (RESOLVED, kept for the pattern) Battle-board cover-fit underlay painted outside its rect and flooded the chat column — Controls do NOT clip _draw by default; clip_contents=true on any cover-fit painter | was the real 'only map, no text' RCA | — | fixed in U2; screenshot harness now catches it |
 | 10a | Pack leather surface reads flat at a glance (stitch detail subtle at 1x) | polish gap vs the five pillars | — | material refinement pass in U1.1 |
 | 10 | Godot 4.7 shutdown prints benign RID/StringName leak noise in headless runs | Log noise only | grep-filtered in harnesses | upstream |
 

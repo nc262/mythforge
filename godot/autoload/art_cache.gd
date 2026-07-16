@@ -126,6 +126,24 @@ func item_tex(nm: String) -> ImageTexture:
 	return texture_for("item-" + nm.to_lower().replace(" ", "-"))
 
 
+## The face a combatant wears everywhere (board token, initiative rail):
+## hero portrait / companion npc portrait / bestiary painting (commissioned
+## from the entry's art prompt on first sight).
+func combatant_tex(m: Dictionary) -> ImageTexture:
+	var id := str(m.get("id", ""))
+	if id == "pc":
+		return round_tex("hero-" + GameState.cid().validate_filename())
+	if id.begins_with("cmp"):
+		return round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))
+	var entry := Combat.bestiary_for(str(m.get("name", "")))
+	if not entry.is_empty():
+		var key := "beast-" + str(entry.get("slug", ""))
+		if has_art(key):
+			return round_tex(key)
+		ensure(key, str(entry.get("art", "")) + ", painted creature portrait, dark background, no text")
+	return null
+
+
 func ensure_battle_map(place: String) -> String:
 	var key := "map-" + place.to_lower().replace(" ", "-").validate_filename()
 	ensure(key, "top-down tabletop RPG battle map of %s, %s style, overhead view, painted terrain, no grid lines, no tokens, no text, muted lighting" % [place, world_flavor()])

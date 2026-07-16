@@ -66,6 +66,14 @@ func _ready() -> void:
 		if Combat.active() and str(k) == str(_battle_grid.map_key):
 			Combat.bake_terrain(Image.load_from_file(Art.path_for(str(k)))))
 	GameState.leveled_up.connect(_level_up_ceremony)
+	_init_rail = HBoxContainer.new()
+	_init_rail.name = "InitRail"
+	_init_rail.alignment = BoxContainer.ALIGNMENT_CENTER
+	_init_rail.add_theme_constant_override("separation", Ui.SPACE["s"])
+	_init_rail.visible = false
+	var chatbox: VBoxContainer = $Margin/Split/ChatBox
+	chatbox.add_child(_init_rail)
+	chatbox.move_child(_init_rail, _battle_grid.get_index())
 	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
@@ -948,6 +956,8 @@ func _on_sheet_action(meta) -> void:
 
 
 # ── Combat actions ───────────────────────────────────────────────────────────
+var _init_rail: HBoxContainer       # the initiative rail: faces in turn order
+var _rail_turn_id := ""             # whose chip pulsed last
 var _armed_spell := ""              # a combat spell waiting for its target click
 var _auto_round := false            # End Turn's auto-sweep paused on a reaction
 var _round_gm: Array[String] = []   # enemy-turn GM notes, streamed once per sweep
@@ -1227,6 +1237,8 @@ func _render_combat() -> void:
 	var fighting := bool(c.get("active", false))
 	_combat_panel.visible = fighting
 	_battle_grid.visible = fighting
+	if _init_rail != null and not fighting:
+		_init_rail.visible = false
 	if fighting:
 		Combat.ensure_positions()
 		var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
@@ -1272,6 +1284,30 @@ func _render_combat() -> void:
 	if srow != "":
 		lines.append(srow)
 	_combat_panel.text = "\n".join(lines)
+	_render_init_rail(c, cur)
+
+
+## The initiative rail: everyone in the fight as a face, in turn order —
+## ally gold, enemy danger, the current actor swollen with a halo and pulsed.
+func _render_init_rail(c: Dictionary, cur: Dictionary) -> void:
+	_init_rail.visible = true
+	for ch in _init_rail.get_children():
+		ch.queue_free()
+	var cur_id := str(cur.get("id", ""))
+	for m in Combat.order(c):
+		var id := str(m.get("id", ""))
+		var is_turn := id == cur_id
+		var chip := MythPortrait.new(52 if is_turn else 40,
+			"gold" if m.get("side") == "ally" else "danger", is_turn)
+		chip.set_portrait(Art.combatant_tex(m), str(m.get("name", "?")).left(1).to_upper())
+		chip.set_vitals(clampf(float(m.get("hp", 0)) / maxf(1.0, float(m.get("hpMax", 1))), 0.0, 1.0), is_turn)
+		if int(m.get("hp", 0)) <= 0:
+			chip.modulate = Color(1, 1, 1, 0.32)
+		chip.tooltip_text = "%s — %d/%d" % [str(m.get("name", "?")), int(m.get("hp", 0)), int(m.get("hpMax", 1))]
+		_init_rail.add_child(chip)
+		if is_turn and cur_id != _rail_turn_id:
+			Ui.pulse(chip)
+	_rail_turn_id = cur_id
 
 
 ## Damaging spells you can cast right now + slots + feet left, one tracker row.

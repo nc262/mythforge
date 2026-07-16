@@ -10,13 +10,110 @@ signal token_clicked(id: String)
 
 var map_key := ""  # Art cache key of the underlay ("" = scrimmed scene art)
 var _hover := [-1, -1]
+var _disp := {}        # id -> displayed pixel center (eases toward the square)
+var _hp_seen := {}     # id -> last hp, for damage/heal feedback
+var _shake := Vector2.ZERO
+var _lunge_id := ""
+var _lunge_off := Vector2.ZERO
 
 
 func _ready() -> void:
+	# The cover-fit underlay overshoots the rect on purpose — clip it, or the
+	# painting floods the whole chat column (RCA'd: "only map, no text").
+	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	Combat.changed.connect(queue_redraw)
+	Combat.changed.connect(_on_combat_changed)
 	Art.art_ready.connect(func(_k): queue_redraw())
 	custom_minimum_size = Vector2(Combat.MAP_COLS * 40, Combat.MAP_ROWS * 40)
+
+
+## Tokens slide, blows land: diff the state, spawn the feedback, ease frames.
+func _on_combat_changed() -> void:
+	var c := Combat.data()
+	if not bool(c.get("active", false)):
+		_disp.clear()
+		_hp_seen.clear()
+		set_process(false)
+		queue_redraw()
+		return
+	set_process(not Ui.reduce_motion)
+	var cur_id := str(Combat.current(c).get("id", ""))
+	for m in c.get("combatants", []):
+		var id := str(m.get("id", ""))
+		var hp := int(m.get("hp", 0))
+		if _hp_seen.has(id) and hp != int(_hp_seen[id]) and not Ui.reduce_motion:
+			var at: Vector2 = _disp.get(id, _cell_center(Combat.cell_of(id)))
+			var delta := hp - int(_hp_seen[id])
+			Ui.rise_text(self, ("%+d" if delta > 0 else "%d") % delta,
+				Ui.c("gold") if delta > 0 else Ui.c("danger"), at + Vector2(-12, -34))
+			if delta < 0:
+				_impact(at)
+				_lunge(cur_id, id)
+				if id == "pc":
+					_shudder()
+		_hp_seen[id] = hp
+	queue_redraw()
+
+
+func _cell_center(cell: Array) -> Vector2:
+	var cs := _cell_size()
+	return Vector2((int(cell[0]) + 0.5) * cs.x, (int(cell[1]) + 0.5) * cs.y)
+
+
+func _process(delta: float) -> void:
+	var moving := false
+	var pos := Combat.positions()
+	for id in pos:
+		var target := _cell_center(pos[id])
+		var at: Vector2 = _disp.get(id, target)
+		if at.distance_to(target) > 0.5:
+			_disp[id] = at.lerp(target, 1.0 - exp(-10.0 * delta))
+			moving = true
+		else:
+			_disp[id] = target
+	if moving or _shake != Vector2.ZERO or _lunge_off != Vector2.ZERO:
+		queue_redraw()
+
+
+## A radial bloom where the blow landed.
+func _impact(at: Vector2) -> void:
+	var flash := TextureRect.new()
+	flash.texture = Ui.glow_tex()
+	flash.modulate = Color(Ui.c("danger"), 0.85)
+	flash.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var s := 26.0
+	flash.position = at - Vector2(s, s) / 2.0
+	flash.size = Vector2(s, s)
+	flash.pivot_offset = Vector2(s, s) / 2.0
+	add_child(flash)
+	var tw := flash.create_tween().set_parallel(true)
+	tw.tween_property(flash, "scale", Vector2.ONE * 3.2, 0.32).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(flash, "modulate:a", 0.0, 0.32)
+	tw.chain().tween_callback(flash.queue_free)
+
+
+## The attacker leans into the blow and settles back.
+func _lunge(attacker_id: String, victim_id: String) -> void:
+	if attacker_id == "" or attacker_id == victim_id:
+		return
+	var a: Vector2 = _disp.get(attacker_id, _cell_center(Combat.cell_of(attacker_id)))
+	var v: Vector2 = _disp.get(victim_id, _cell_center(Combat.cell_of(victim_id)))
+	var dir := (v - a).normalized() * minf(a.distance_to(v) * 0.35, 22.0)
+	_lunge_id = attacker_id
+	var tw := create_tween()
+	tw.tween_method(func(t): _lunge_off = dir * t; queue_redraw(), 0.0, 1.0, 0.09).set_ease(Tween.EASE_OUT)
+	tw.tween_method(func(t): _lunge_off = dir * t; queue_redraw(), 1.0, 0.0, 0.16).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_callback(func(): _lunge_id = "")
+
+
+## The board itself shudders when the hero takes the hit.
+func _shudder() -> void:
+	var tw := create_tween()
+	for i in 4:
+		var off := Vector2(randf_range(-5, 5), randf_range(-4, 4)) * (1.0 - i / 4.0)
+		tw.tween_method(func(t): _shake = off * t; queue_redraw(), 1.0, 0.0, 0.05)
+	tw.tween_callback(func(): _shake = Vector2.ZERO)
 
 
 func _cell_size() -> Vector2:
@@ -44,23 +141,13 @@ func _gui_input(event: InputEvent) -> void:
 		cell_clicked.emit(cell)
 
 
-## The art a combatant's token wears: hero portrait / bestiary painting.
+## The art a combatant's token wears — one source with the initiative rail.
 func _token_art(m: Dictionary) -> ImageTexture:
-	var id := str(m.get("id", ""))
-	if id == "pc":
-		return Art.round_tex("hero-" + GameState.cid().validate_filename())
-	if id.begins_with("cmp"):
-		return Art.round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))
-	var entry := Combat.bestiary_for(str(m.get("name", "")))
-	if not entry.is_empty():
-		var key := "beast-" + str(entry.get("slug", ""))
-		if Art.has_art(key):
-			return Art.round_tex(key)
-		Art.ensure(key, str(entry.get("art", "")) + ", painted creature portrait, dark background, no text")
-	return null
+	return Art.combatant_tex(m)
 
 
 func _draw() -> void:
+	draw_set_transform(_shake, 0.0, Vector2.ONE)  # the whole field shudders
 	var cs := _cell_size()
 	# ── The battlefield itself: painted underlay, framed and scrimmed ──
 	var under := Art.texture_for(map_key) if map_key != "" else null
@@ -119,7 +206,9 @@ func _draw() -> void:
 		var id := str(m.get("id", ""))
 		if not pos.has(id):
 			continue
-		var center := Vector2((int(pos[id][0]) + 0.5) * cs.x, (int(pos[id][1]) + 0.5) * cs.y)
+		var center: Vector2 = _disp.get(id, _cell_center(pos[id]))
+		if id == _lunge_id:
+			center += _lunge_off
 		var r := minf(cs.x, cs.y) * 0.46
 		var alive := int(m.get("hp", 0)) > 0
 		var col: Color = Ui.c("gold") if m.get("side") == "ally" else Ui.c("danger")

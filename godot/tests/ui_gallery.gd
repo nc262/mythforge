@@ -77,6 +77,7 @@ func _ready() -> void:
 	hero.set_portrait(Art.round_tex("hero-dm-godot-demo", 84), "W")
 	prow.add_child(hero)
 	var foe := Portrait.new(64, "danger")
+	foe.set_vitals(0.6, true)
 	foe.set_portrait(null, "G")
 	prow.add_child(foe)
 	var gcol := VBoxContainer.new()
