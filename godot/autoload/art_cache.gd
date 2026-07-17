@@ -136,6 +136,21 @@ func ensure_environment(key: String) -> void:
 	ensure(key, str(ENV_PROMPTS.get(key, "")), "1344x768")
 
 
+## Duplicate a painting under a new key (e.g. the approved forge-preview
+## portrait becomes the played hero's face, so the face never re-rolls).
+func copy(from_key: String, to_key: String) -> bool:
+	if to_key == "" or not has_art(from_key):
+		return false
+	var img := Image.load_from_file(path_for(from_key))
+	if img == null or img.is_empty():
+		return false
+	DirAccess.make_dir_recursive_absolute("user://art")
+	img.save_png(path_for(to_key))
+	_tex_cache.erase(to_key)
+	_round_cache.erase(to_key)
+	return true
+
+
 ## Un-cache a painting so it can be re-struck (forge re-strike, style change).
 func forget(key: String) -> void:
 	_tex_cache.erase(key)

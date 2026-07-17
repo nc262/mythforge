@@ -30,7 +30,8 @@ const Rail := preload("res://ui/myth_stage_rail.gd")
 const Fold := preload("res://ui/myth_fold.gd")
 
 var draft := {"name": "", "race": "", "cls": "", "bg": "", "rolled": [], "assign": {},
-	"appearance": "", "style": "painted", "kit": [], "origin": ""}
+	"appearance": "", "style": "painted", "kit": [], "origin": "",
+	"cls_story": "", "bg_story": "", "portrait_key": ""}
 var menu_mode := false        # true = forging a draft from the main menu
 var start_at_quench := false  # a banked draft resumes at the reveal
 var _rail: MythStageRail
@@ -38,6 +39,7 @@ var _stage_box: VBoxContainer
 var _status: Label
 var _phase := 0.0
 var _embers: Array = []
+var _story_edit: TextEdit = null   # the current stage's optional free-text story
 
 
 func _ready() -> void:
@@ -170,10 +172,33 @@ func _card_grid(entries: Array, cols: int, selected_title: String, on_pick: Call
 	_stage_box.add_child(gc)
 
 
+## A collapsible free-text panel: the player's own story for a class or
+## background. The GM adapts whatever's written to the world they land in.
+func _story_fold(title: String, hint: String, draft_key: String) -> Control:
+	var fold := Fold.new(title, str(draft[draft_key]) != "")
+	var hl := Label.new()
+	hl.theme_type_variation = "HintLabel"
+	hl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hl.custom_minimum_size = Vector2(560, 0)
+	hl.text = hint
+	fold.content.add_child(hl)
+	var edit := TextEdit.new()
+	edit.placeholder_text = "In your own words…"
+	edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	edit.custom_minimum_size = Vector2(560, 80)
+	edit.text = str(draft[draft_key])
+	fold.content.add_child(edit)
+	_story_edit = edit
+	var cc := CenterContainer.new()
+	cc.add_child(fold)
+	return cc
+
+
 func _enter_stage(i: int) -> void:
 	_rail.set_stage(i)
 	_clear_stage()
 	_status.text = ""
+	_story_edit = null
 	match i:
 		0:
 			_stage_anvil()
@@ -208,7 +233,7 @@ func _stage_anvil() -> void:
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line.text = "Every legend begins as raw metal."
 	_stage_box.add_child(line)
-	_nav(-1, "⚒ Light the forge ›", func(): _enter_stage(1))
+	_nav(-1, "Light the forge ›", func(): _enter_stage(1))
 
 
 func _stage_origin() -> void:
@@ -251,24 +276,93 @@ func _stage_ruleset() -> void:
 	_nav(1, "Continue ›", func(): _enter_stage(3))
 
 
+## The heritages, each with a generated portrait that fills in as you browse
+## (the "pictures of each race" — painted once, cached forever after).
 func _stage_heritage() -> void:
 	_title_label("Choose Your Heritage")
-	var entries: Array = []
 	var hs: Dictionary = Rules.tables.get("heritages", {})
 	var names := hs.keys()
 	names.sort()
+	var split := HBoxContainer.new()
+	split.alignment = BoxContainer.ALIGNMENT_CENTER
+	split.add_theme_constant_override("separation", Ui.SPACE["l"])
+	# Left: the race portrait preview.
+	var preview := VBoxContainer.new()
+	preview.alignment = BoxContainer.ALIGNMENT_CENTER
+	preview.custom_minimum_size = Vector2(280, 0)
+	var port := TextureRect.new()
+	port.custom_minimum_size = Vector2(256, 256)
+	port.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	port.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	preview.add_child(port)
+	var pname := Label.new()
+	pname.theme_type_variation = "HeaderLabel"
+	pname.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	preview.add_child(pname)
+	var ptraits := RichTextLabel.new()
+	ptraits.bbcode_enabled = true
+	ptraits.fit_content = true
+	ptraits.custom_minimum_size = Vector2(280, 90)
+	preview.add_child(ptraits)
+	split.add_child(preview)
+	# Right: the roster of heritages.
+	var cards: Array = []
+	var grid := GridContainer.new()
+	grid.columns = 3
+	grid.add_theme_constant_override("h_separation", Ui.SPACE["s"])
+	grid.add_theme_constant_override("v_separation", Ui.SPACE["s"])
+	var cur_key := {"k": ""}
+	var show_race := func(nm: String):
+		var h: Dictionary = hs[nm]
+		pname.text = nm
+		var traits: Array = h.get("traits", [])
+		ptraits.text = "[color=%s]%d ft speed[/color]\n%s" % [Ui.c("gold_soft").to_html(false),
+			int(h.get("speed", 30)), "\n".join(traits.map(func(t): return "• " + str(t).replace("[", "[lb]")))]
+		var key := "race-" + str(nm).to_lower().replace(" ", "-").validate_filename()
+		cur_key["k"] = key
+		var tex := Art.texture_for(key)
+		if tex != null:
+			port.texture = tex
+		else:
+			port.texture = null
+			_status.text = "Painting the %s…" % nm
+			Art.ensure(key, _race_prompt(nm, h))
 	for nm in names:
 		var h: Dictionary = hs[nm]
 		var traits: Array = h.get("traits", [])
-		entries.append({"glyph": "🧬", "title": str(nm),
+		var card := Card.new({"glyph": "shield", "title": str(nm),
 			"body": str(traits[0]).split("—")[0].strip_edges() if not traits.is_empty() else "",
 			"foot": "%d ft" % int(h.get("speed", 30))})
-	_card_grid(entries, 5, str(draft["race"]), func(e): draft["race"] = str(e["title"]))
+		card.set_selected(str(draft["race"]) == str(nm))
+		card.pressed.connect(func():
+			draft["race"] = str(nm)
+			for c in cards:
+				c.set_selected(c == card)
+			show_race.call(str(nm)))
+		cards.append(card)
+		grid.add_child(card)
+	split.add_child(grid)
+	_stage_box.add_child(split)
+	Art.art_ready.connect(func(k):
+		if str(k) == cur_key["k"] and is_instance_valid(port):
+			port.texture = Art.texture_for(str(k))
+			_status.text = ""
+			Ui.pulse(port))
+	if str(draft["race"]) != "":
+		show_race.call(str(draft["race"]))
 	_nav(2, "Strike ›", func():
 		if str(draft["race"]) == "":
 			_status.text = "The metal needs a heritage — choose one."
 			return
 		_enter_stage(4))
+
+
+## The commission for a heritage reference portrait — world-flavored.
+func _race_prompt(nm: String, h: Dictionary) -> String:
+	var traits: Array = h.get("traits", [])
+	var look := str(traits[0]).split("—")[0].strip_edges() if not traits.is_empty() else ""
+	return "character concept portrait of a %s%s, %s fantasy, head and shoulders, neutral heroic pose, detailed face and costume, dramatic rim light, dark background, painted illustration, no text" % [
+		nm, (", " + look) if look != "" else "", Art.world_flavor()]
 
 
 func _stage_class() -> void:
@@ -283,10 +377,16 @@ func _stage_class() -> void:
 			"body": str(l.get("blurb", "")).left(90),
 			"foot": "d%d" % int(Rules.tables["class_presets"][nm].get("hitDie", 8))})
 	_card_grid(entries, 4, str(draft["cls"]), func(e): draft["cls"] = str(e["title"]))
+	var story := _story_fold("Make this path your own (optional)",
+		"Why did you take up this class? A mentor, a curse, a debt, a calling — the GM weaves it into whatever world you're dropped into.",
+		"cls_story")
+	_stage_box.add_child(story)
 	_nav(3, "Strike ›", func():
 		if str(draft["cls"]) == "":
 			_status.text = "The blade needs a shape — choose a class."
 			return
+		if _story_edit != null:
+			draft["cls_story"] = _story_edit.text.strip_edges()
 		_enter_stage(5))
 
 
@@ -301,10 +401,16 @@ func _stage_background() -> void:
 		entries.append({"glyph": "🕯", "title": str(nm), "body": str(b.get("line", "")).left(90),
 			"foot": ", ".join(b.get("skills", []))})
 	_card_grid(entries, 4, str(draft["bg"]), func(e): draft["bg"] = str(e["title"]))
+	var story := _story_fold("Your story, in your words (optional)",
+		"Where do you come from, and what set you on the road? The GM reinterprets your past inside whatever world the tale drops you into.",
+		"bg_story")
+	_stage_box.add_child(story)
 	_nav(4, "Strike ›", func():
 		if str(draft["bg"]) == "":
 			_status.text = "Every legend was someone first — choose a background."
 			return
+		if _story_edit != null:
+			draft["bg_story"] = _story_edit.text.strip_edges()
 		_enter_stage(6))
 
 
@@ -328,12 +434,12 @@ func _stage_nature() -> void:
 	dice_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	dice_l.add_theme_color_override("font_color", Ui.c("gold_soft"))
 	var show_roll := func():
-		dice_l.text = "🎲 Destiny: %s   (best scores land where your class wants them)" % ", ".join(draft["rolled"].map(func(x): return str(x)))
+		dice_l.text = "Destiny: %s   (best scores land where your class wants them)" % ", ".join(draft["rolled"].map(func(x): return str(x)))
 	if not draft["rolled"].is_empty():
 		show_roll.call()
 	_stage_box.add_child(dice_l)
 	var reroll := Button.new()
-	reroll.text = "🎲 Reroll destiny (4d6, drop lowest)"
+	reroll.text = "Reroll destiny (4d6, drop lowest)"
 	reroll.pressed.connect(func():
 		Sfx.play("dice")
 		_roll_destiny()
@@ -380,18 +486,62 @@ func _stage_nature() -> void:
 		_enter_stage(7))
 
 
+## The portrait commission — shared by the live Appearance preview and the
+## Quenching so the face the player approves is the face the hero wears.
+func _portrait_prompt(nm: String) -> String:
+	return "character portrait of %s, a %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
+		nm if nm != "" else "a hero", str(draft["race"]), str(draft["cls"]),
+		(str(draft["appearance"]) + ", ") if str(draft["appearance"]) != "" else "", str(draft["style"])]
+
+
+const LOOK_GUIDES := ["build", "age", "hair", "eyes", "skin", "garb", "bearing", "a scar or mark", "a color they wear"]
+
+
 func _stage_appearance() -> void:
 	_title_label("Their Face, In Words")
+	var split := HBoxContainer.new()
+	split.alignment = BoxContainer.ALIGNMENT_CENTER
+	split.add_theme_constant_override("separation", Ui.SPACE["l"])
+	# The living portrait — it forms from the words on the right.
+	var port := TextureRect.new()
+	port.custom_minimum_size = Vector2(236, 236)
+	port.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	port.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	if str(draft["portrait_key"]) != "" and Art.has_art(str(draft["portrait_key"])):
+		port.texture = Art.texture_for(str(draft["portrait_key"]))
+	split.add_child(port)
+	var right := VBoxContainer.new()
+	right.custom_minimum_size = Vector2(540, 0)
+	right.add_theme_constant_override("separation", Ui.SPACE["s"])
 	var desc := TextEdit.new()
-	desc.placeholder_text = "e.g. wind-burned, silver-braided, eyes like a storm about to break…"
-	desc.custom_minimum_size = Vector2(520, 70)
+	desc.placeholder_text = "e.g. wind-burned and lean, silver-braided, past forty, eyes like a storm about to break, a soldier's grey coat…"
+	desc.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	desc.custom_minimum_size = Vector2(540, 88)
 	desc.text = str(draft["appearance"])
-	var dc := CenterContainer.new()
-	dc.add_child(desc)
-	_stage_box.add_child(dc)
-	var chip_row := HBoxContainer.new()
-	chip_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	chip_row.add_theme_constant_override("separation", Ui.SPACE["s"])
+	right.add_child(desc)
+	# Writing guides: tap to add a detail the painter should know.
+	var guide_hint := Label.new()
+	guide_hint.theme_type_variation = "HintLabel"
+	guide_hint.text = "The more you name, the truer the face. Tap to add a detail:"
+	right.add_child(guide_hint)
+	var guides := HFlowContainer.new()
+	guides.add_theme_constant_override("h_separation", Ui.SPACE["xs"])
+	guides.add_theme_constant_override("v_separation", Ui.SPACE["xs"])
+	for gd in LOOK_GUIDES:
+		var chip := Button.new()
+		chip.theme_type_variation = "GhostButton"
+		chip.text = "+ " + gd
+		chip.pressed.connect(func():
+			var pre: String = desc.text.strip_edges()
+			desc.text = pre + (("\n" if pre != "" else "") + gd + ": ")
+			desc.set_caret_line(desc.get_line_count() - 1)
+			desc.set_caret_column(desc.get_line(desc.get_line_count() - 1).length())
+			desc.grab_focus())
+		guides.add_child(chip)
+	right.add_child(guides)
+	# The brush: style chips.
+	var chip_row := HFlowContainer.new()
+	chip_row.add_theme_constant_override("h_separation", Ui.SPACE["xs"])
 	var chips: Array = []
 	for st in STYLES:
 		var chip := Button.new()
@@ -404,12 +554,26 @@ func _stage_appearance() -> void:
 				c2.text = ("● " if nm2 == st else "○ ") + nm2)
 		chips.append(chip)
 		chip_row.add_child(chip)
-	_stage_box.add_child(chip_row)
-	var hint := Label.new()
-	hint.theme_type_variation = "HintLabel"
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.text = "These words become the portrait's commission — the style chip sets its brush."
-	_stage_box.add_child(hint)
+	right.add_child(chip_row)
+	# Envision — paint the hero from the words, live.
+	var envision := Button.new()
+	envision.theme_type_variation = "AccentButton"
+	envision.text = "Envision this hero"
+	envision.pressed.connect(func():
+		draft["appearance"] = desc.text.strip_edges()
+		draft["portrait_key"] = "heroprev"
+		Art.forget("heroprev")
+		port.texture = null
+		_status.text = "The painter takes up the brush…"
+		Art.ensure("heroprev", _portrait_prompt(str(draft["name"]))))
+	right.add_child(envision)
+	split.add_child(right)
+	_stage_box.add_child(split)
+	Art.art_ready.connect(func(k):
+		if str(k) == "heroprev" and is_instance_valid(port):
+			port.texture = Art.texture_for("heroprev")
+			_status.text = ""
+			Ui.pulse(port))
 	_nav(6, "Strike ›", func():
 		draft["appearance"] = desc.text.strip_edges()
 		_enter_stage(8))
@@ -444,20 +608,18 @@ func _stage_equipment() -> void:
 func _stage_quenching() -> void:
 	_title_label("The Quenching")
 	var portrait := MythPortrait.new(150, "gold", true)
-	var pkey := ""
-	if not menu_mode:
-		pkey = "hero-" + GameState.cid().validate_filename()
-		var prompt := "character portrait of %s, a %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
-			str(draft["name"]) if str(draft["name"]) != "" else "a hero", str(draft["race"]), str(draft["cls"]),
-			(str(draft["appearance"]) + ", ") if str(draft["appearance"]) != "" else "", str(draft["style"])]
-		Art.ensure(pkey, prompt)
-		portrait.set_portrait(Art.round_tex(pkey), str(draft["name"]).left(1) if str(draft["name"]) != "" else "?")
-		Art.art_ready.connect(func(k):
-			if str(k) == pkey and is_instance_valid(portrait):
-				portrait.set_portrait(Art.round_tex(pkey), "?")
-				Ui.pulse(portrait))
-	else:
-		portrait.set_portrait(null, str(draft["name"]).left(1) if str(draft["name"]) != "" else "?")
+	# Prefer the face the player already approved at Appearance; else commission
+	# it now (works in menu mode too — the Quenching always shows a face).
+	var pkey: String = str(draft["portrait_key"]) if str(draft["portrait_key"]) != "" and Art.has_art(str(draft["portrait_key"])) else ""
+	if pkey == "":
+		pkey = "heroprev" if menu_mode else ("hero-" + GameState.cid().validate_filename())
+		draft["portrait_key"] = pkey
+		Art.ensure(pkey, _portrait_prompt(str(draft["name"])))
+	portrait.set_portrait(Art.round_tex(pkey), str(draft["name"]).left(1) if str(draft["name"]) != "" else "?")
+	Art.art_ready.connect(func(k):
+		if str(k) == pkey and is_instance_valid(portrait):
+			portrait.set_portrait(Art.round_tex(pkey), "?")
+			Ui.pulse(portrait))
 	var pc := CenterContainer.new()
 	pc.add_child(portrait)
 	_stage_box.add_child(pc)
@@ -475,27 +637,23 @@ func _stage_quenching() -> void:
 	epithet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	var nature := ("destiny: " + ", ".join(draft["rolled"].map(func(x): return str(x)))) if not draft["rolled"].is_empty() \
 		else "the standard array, by hand"
-	epithet.text = "%s %s · %s · %s · kit: %s%s" % [str(draft["race"]), str(draft["cls"]), str(draft["bg"]), nature,
-		", ".join(draft["kit"]),
-		("   ·   the portrait cools on the anvil…" if not menu_mode else "   ·   the portrait is commissioned when the tale begins")]
+	epithet.text = "%s %s · %s · %s · kit: %s" % [str(draft["race"]), str(draft["cls"]), str(draft["bg"]), nature,
+		", ".join(draft["kit"])]
 	epithet.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	epithet.custom_minimum_size = Vector2(620, 0)
 	_stage_box.add_child(epithet)
-	if not menu_mode:
-		var restrike := Button.new()
-		restrike.theme_type_variation = "GhostButton"
-		restrike.text = "↻ Re-strike the portrait"
-		restrike.pressed.connect(func():
-			Art.forget(pkey)
-			portrait.set_portrait(null, "…")
-			var prompt2 := "character portrait of %s, a %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
-				name_in.text.strip_edges() if name_in.text.strip_edges() != "" else "a hero", str(draft["race"]), str(draft["cls"]),
-				(str(draft["appearance"]) + ", ") if str(draft["appearance"]) != "" else "", str(draft["style"])]
-			Art.ensure(pkey, prompt2))
-		var rsc := CenterContainer.new()
-		rsc.add_child(restrike)
-		_stage_box.add_child(rsc)
-	_nav(9, "⚒ BEGIN THE ADVENTURE" if not menu_mode else "⚒ BANK THIS LEGEND", func():
+	var restrike := Button.new()
+	restrike.theme_type_variation = "GhostButton"
+	restrike.text = "Re-strike the portrait"
+	restrike.pressed.connect(func():
+		Art.forget(pkey)
+		portrait.set_portrait(null, "…")
+		draft["name"] = name_in.text.strip_edges()
+		Art.ensure(pkey, _portrait_prompt(name_in.text.strip_edges())))
+	var rsc := CenterContainer.new()
+	rsc.add_child(restrike)
+	_stage_box.add_child(rsc)
+	_nav(9, "BEGIN THE ADVENTURE" if not menu_mode else "BANK THIS LEGEND", func():
 		draft["name"] = name_in.text.strip_edges()
 		if draft["name"] == "":
 			_status.text = "A legend needs a name — strike it."

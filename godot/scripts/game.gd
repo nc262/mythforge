@@ -240,6 +240,15 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	s["profSkills"] = preset.get("skills", []) + heritage.get("skills", []) + bgd.get("skills", [])
 	var traits: Array = heritage.get("traits", [])
 	s["features"] = traits.duplicate()
+	# The player's own class/background story — the GM reinterprets it inside
+	# whatever world this hero was dropped into (adventure_forge / world card).
+	var story := {}
+	if str(extra.get("cls_story", "")) != "":
+		story["class"] = str(extra["cls_story"])
+	if str(extra.get("bg_story", "")) != "":
+		story["background"] = str(extra["bg_story"])
+	if not story.is_empty():
+		s["story"] = story
 	if bool(preset.get("caster", false)):
 		s["slots"] = Rules.full_caster_slots(1)
 		var seed: Array = Rules.tables.get("class_spells", {}).get(cls, [])
@@ -260,10 +269,16 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	if not eq2.is_empty():
 		inv2["equipped"] = eq2
 		GameState.save_kind("inv", inv2)
-	var looks := str(extra.get("appearance", ""))
-	var brush := str(extra.get("style", ""))
-	Art.ensure_hero_portrait(GameState.cid(), s,
-		(looks + (", " if looks != "" and brush != "" else "") + brush).strip_edges())
+	# The face the player approved at the forge becomes the hero's face (copied,
+	# not re-rolled). Only when none was struck do we commission a fresh one.
+	var pkey := str(extra.get("portrait_key", ""))
+	if pkey != "" and Art.has_art(pkey):
+		Art.copy(pkey, "hero-" + GameState.cid().validate_filename())
+	else:
+		var looks := str(extra.get("appearance", ""))
+		var brush := str(extra.get("style", ""))
+		Art.ensure_hero_portrait(GameState.cid(), s,
+			(looks + (", " if looks != "" and brush != "" else "") + brush).strip_edges())
 	_build_dice_menu()
 	_render_sheet()
 	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])

@@ -109,8 +109,20 @@ func sheet_summary(s: Dictionary) -> String:
 			if i < track.size():
 				effects.append(str(track[i]))
 		exh_line = " Exhaustion level %d (%s) — enforce it." % [exh, "; ".join(effects)]
+	# The player's own class/background story, if they wrote one — the GM must
+	# honor it and reinterpret it inside THIS world's setting.
+	var story_line := ""
+	var story = s.get("story")
+	if story is Dictionary and not story.is_empty():
+		var bits: Array[String] = []
+		if str(story.get("background", "")) != "":
+			bits.append("Their past: " + str(story["background"]).left(280))
+		if str(story.get("class", "")) != "":
+			bits.append("Why this path: " + str(story["class"]).left(280))
+		if not bits.is_empty():
+			story_line = " The player wrote their own story — honor it and weave it into THIS world's setting, renaming places/factions to fit: %s" % " ".join(bits)
 	var dc := Rules.spell_save_dc(s)
-	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s%s" % [
+	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s%s%s" % [
 		str(s.get("name", "the hero")), int(s.get("level", 1)), str(s.get("cls", "Adventurer")),
 		int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv()),
 		Rules.passive_perception(s), int(s.get("gold", 0)),
@@ -118,4 +130,5 @@ func sheet_summary(s: Dictionary) -> String:
 		", ".join(cond_names) if not cond_names.is_empty() else "none",
 		(" Spell save DC %d, spell attack +%d (enemies roll saves against this; use these numbers)." % [dc, Rules.spell_attack(s)]) if dc > 0 else "",
 		exh_line,
+		story_line,
 	])
