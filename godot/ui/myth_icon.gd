@@ -12,7 +12,7 @@ var tint_role := "gold"
 const NAMES := ["banner", "anvil", "wartable", "compass", "book", "runewheel",
 	"door", "cups", "quill", "hammer", "pack", "scroll", "die", "easel", "coins",
 	"moon", "tent", "retell", "sword", "shield", "star", "flame", "skull",
-	"crown", "mountain", "ship", "sigil"]
+	"crown", "mountain", "ship", "globe", "sigil"]
 
 ## Legacy emoji → the icon that carries the same meaning. Lets old card
 ## payloads keep their glyph string while rendering as real art (no emoji).
@@ -220,6 +220,14 @@ func _draw() -> void:
 			var sail := PackedVector2Array([o + Vector2(12, 5) * u, o + Vector2(18, 13) * u, o + Vector2(12, 13) * u])
 			draw_colored_polygon(sail, soft)
 			draw_polyline(sail + PackedVector2Array([sail[0]]), g, w * 0.6, true)
+		"globe":  # a world — the World Forge
+			draw_arc(o + Vector2(12, 12) * u, 8.5 * u, 0, TAU, 40, g, w)
+			draw_line(o + Vector2(3.5, 12) * u, o + Vector2(20.5, 12) * u, Color(g, 0.7), w * 0.55)
+			for ry in [7.0, 12.0, 17.0]:
+				var rr: float = 8.5 * u * sin(acos(clampf((ry - 12.0) / 8.5, -1.0, 1.0)))
+				draw_arc(o + Vector2(12, ry) * u, maxf(0.5, rr / u) * u, 0, TAU, 24, Color(g, 0.35), w * 0.4)
+			draw_arc(o + Vector2(12, 12) * u, 3.6 * u, -PI, 0, 16, Color(g, 0.55), w * 0.5)
+			draw_arc(o + Vector2(12, 12) * u, 3.6 * u, 0, PI, 16, Color(g, 0.55), w * 0.5)
 		"sigil":  # the framed rune — a meaningful placeholder, never an emoji
 			var dia := PackedVector2Array([o + Vector2(12, 4) * u, o + Vector2(20, 12) * u, o + Vector2(12, 20) * u, o + Vector2(4, 12) * u])
 			draw_polyline(dia + PackedVector2Array([dia[0]]), g, w * 0.8, true)

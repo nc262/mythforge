@@ -5,13 +5,6 @@ extends Control
 ## pillar-form World Forge with a refine loop, and settings.
 
 const GAME_SCENE := "res://scenes/game.tscn"
-const SMITH_GUIDE := [
-	["Magic system", ["Forbidden & feared", "Elemental pacts", "Tech-grafted mods", "Divine bargains", "Wild & untamed", "None — mundane grit"]],
-	["Technology", ["Medieval", "Steam & clockwork", "Modern day", "Neon cyberpunk", "Starfaring"]],
-	["Era & timeline", ["A golden age fading", "After the cataclysm", "Frontier boom", "A long peace cracking", "Under occupation"]],
-	["Beast variants", ["Corrupted wildlife", "Ancient constructs", "Spirits & shades", "Bio-engineered horrors", "Dragons & their kin"]],
-	["Tone", ["Grim & gritty", "Heroic & bright", "Whimsical", "Noir & conspiratorial"]],
-]
 
 var _busy := false
 var _cworlds: Array = []
@@ -72,6 +65,7 @@ func _build_primary_controls() -> void:
 	var specs := [
 		["BEGIN  A  NEW  ADVENTURE", "compass", "oak", _open_adventure_forge, "the table is set"],
 		["FORGE  A  HERO", "anvil", "steel", _open_character_forge_pillar, ""],
+		["FORGE  A  WORLD", "globe", "oak", _open_world_forge_pillar, "a realm of your own"],
 		["FORGE  A  CAMPAIGN", "wartable", "oak", _open_campaign_forge_pillar, ""],
 		["CHRONICLES", "book", "leather", _open_chronicles, "the saved tales"],
 		["SETTINGS", "runewheel", "steel", _show_settings, ""],
@@ -215,8 +209,8 @@ func _show_worlds() -> void:
 	for w in _all_worlds():
 		grid.add_child(_world_card(w))
 		Art.ensure(str(w.get("id", "")), str(w.get("backdrop", "")))
-	var forge := _big_card("✦  Forge a new world", "The smith writes lore, places, people, beasts, and campaigns from your idea.", Ui.pal["gold"])
-	forge.pressed.connect(_open_world_forge)
+	var forge := _big_card("Forge a new world", "The smith writes lore, places, people, beasts, and campaigns from your idea.", Ui.pal["gold"])
+	forge.pressed.connect(_open_world_forge_pillar)
 	grid.add_child(forge)
 	var imp := _big_card("⬆  Import a world file", "A .world.json forged on any table.", Ui.pal["ink_soft"])
 	imp.pressed.connect(_import_world)
@@ -335,11 +329,15 @@ func _show_detail(w: Dictionary) -> void:
 	var wid := str(w.get("id", ""))
 	_show_sub(str(w.get("name", "?")), "New adventure · Step 2 of 3 — world › campaign › hero")
 	Ui.apply(wid)
-	var lore := Label.new()
-	lore.theme_type_variation = "HintLabel"
-	lore.text = str(w.get("lore", ""))
-	lore.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_content.add_child(lore)
+	# A vivid reveal: tagline, lore, and the world's places and beasts named
+	# with their own descriptions — a world you can read (#6).
+	var reveal := RichTextLabel.new()
+	reveal.bbcode_enabled = true
+	reveal.fit_content = true
+	reveal.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	reveal.custom_minimum_size = Vector2(720, 0)
+	reveal.text = _world_reveal_text(w)
+	_content.add_child(reveal)
 	_content.add_child(_section("ADVENTURES — a Dungeon Master narrates & drives the story"))
 	var grid := GridContainer.new()
 	grid.columns = 3
@@ -354,7 +352,7 @@ func _show_detail(w: Dictionary) -> void:
 			var card := _big_card(str(st["title"]), str(st.get("premise", "")).left(110), Ui.pal["amethyst"])
 			card.pressed.connect(func(): _start_adventure(w, st))
 			grid.add_child(card)
-	var craft := _big_card("✦  Craft a campaign", "Tell the smith the story you want in this world.", Ui.pal["gold"])
+	var craft := _big_card("Craft a campaign", "Tell the smith the story you want in this world.", Ui.pal["gold"])
 	craft.pressed.connect(func(): _open_campaign_forge(w))
 	grid.add_child(craft)
 	_content.add_child(grid)
@@ -362,7 +360,7 @@ func _show_detail(w: Dictionary) -> void:
 		var admin := HBoxContainer.new()
 		admin.add_theme_constant_override("separation", 10)
 		var exp := Button.new()
-		exp.text = "⬇ Export world file"
+		exp.text = "Export world file"
 		exp.pressed.connect(func():
 			DirAccess.make_dir_recursive_absolute("user://exports")
 			var path := "user://exports/%s.world.json" % wid
@@ -372,7 +370,7 @@ func _show_detail(w: Dictionary) -> void:
 			_sub_status.text = "Exported to %s" % ProjectSettings.globalize_path(path)
 			OS.shell_open(ProjectSettings.globalize_path("user://exports")))
 		var unmake := Button.new()
-		unmake.text = "🗑 Unmake this world"
+		unmake.text = "Unmake this world"
 		unmake.pressed.connect(func():
 			_cworlds = _cworlds.filter(func(cw): return str(cw.get("id", "")) != wid)
 			await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
@@ -394,6 +392,29 @@ func _show_detail(w: Dictionary) -> void:
 				cc.pressed.connect(func(): _chat_companion(w, c))
 				cgrid.add_child(cc)
 		_content.add_child(cgrid)
+
+
+## A world you can read: tagline, lore, then its places and beasts named with
+## their own lines. Kept compact — the full atlas lives in the World Forge.
+func _world_reveal_text(w: Dictionary) -> String:
+	var gold := Ui.c("gold_soft").to_html(false)
+	var esc := func(s): return str(s).replace("[", "[lb]")
+	var out := ""
+	if str(w.get("tagline", "")) != "":
+		out += "[i][color=%s]%s[/color][/i]\n\n" % [gold, esc.call(w.get("tagline", ""))]
+	out += esc.call(w.get("lore", ""))
+	var locs: Array = w.get("locations") if w.get("locations") is Array else []
+	if not locs.is_empty():
+		out += "\n\n[color=%s][b]Places[/b][/color]\n" % gold
+		for l in locs.slice(0, 6):
+			if l is Dictionary:
+				var d := str(l.get("desc", l.get("blurb", "")))
+				out += "• [b]%s[/b]%s\n" % [esc.call(l.get("name", "?")), (" — " + esc.call(d)) if d != "" else ""]
+	var beasts: Array = w.get("creatures") if w.get("creatures") is Array else []
+	if not beasts.is_empty():
+		var names: Array = beasts.map(func(b): return esc.call(b.get("name", "?")) if b is Dictionary else esc.call(b))
+		out += "\n[color=%s][b]Beasts[/b][/color] %s" % [gold, ", ".join(names)]
+	return out
 
 
 func _section(text: String) -> Label:
@@ -445,13 +466,13 @@ func _chat_companion(w: Dictionary, c: Dictionary) -> void:
 # ── Settings ─────────────────────────────────────────────────────────────────
 func _show_settings() -> void:
 	Mode.enter("Settings")
-	_show_sub("⚙ Settings", "")
+	_show_sub("Settings", "")
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
 	_content.add_child(_section("GAME MASTER"))
 	var model_in := OptionButton.new()
 	model_in.custom_minimum_size = Vector2(420, 0)
-	model_in.add_item("✨ Auto — the account default")
+	model_in.add_item("Auto — the account default")
 	var picks: Array = []
 	var mods := await Api.call_json(HTTPClient.METHOD_GET, "/api/models")
 	for host in mods.get("items", []):
@@ -524,138 +545,30 @@ func _load_settings() -> void:
 	Ui.reduce_motion = bool(cfg.get_value("settings", "reduce_motion", false))
 
 
-# ── The World Forge (pillar form + refine loop) ──────────────────────────────
-func _open_world_forge() -> void:
-	var dlg := ConfirmationDialog.new()
-	dlg.title = "✦ Forge a new world"
-	dlg.ok_button_text = "✦ Forge it"
-	dlg.min_size = Vector2i(640, 560)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	var idea := TextEdit.new()
-	idea.placeholder_text = "e.g. A drowned Venice of sky-whales and salvage guilds, melancholy but hopeful…"
-	idea.custom_minimum_size = Vector2(0, 72)
-	box.add_child(idea)
-	var pillar_inputs := {}
-	for pillar in SMITH_GUIDE:
-		var lbl := Label.new()
-		lbl.theme_type_variation = "HintLabel"
-		lbl.text = str(pillar[0])
-		box.add_child(lbl)
-		var input := LineEdit.new()
-		input.placeholder_text = "anything you like — or tap a suggestion"
-		box.add_child(input)
-		pillar_inputs[pillar[0]] = input
-		var chips := HFlowContainer.new()
-		for sug in pillar[1]:
-			var chip := Button.new()
-			chip.text = str(sug)
-			chip.add_theme_font_size_override("font_size", 12)
-			chip.pressed.connect(func(): input.text = str(sug))
-			chips.add_child(chip)
-		box.add_child(chips)
-	var surprise := Button.new()
-	surprise.text = "🎲 Surprise me"
-	surprise.pressed.connect(func():
-		for pillar in SMITH_GUIDE:
-			pillar_inputs[pillar[0]].text = str(pillar[1][randi() % pillar[1].size()]))
-	box.add_child(surprise)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(600, 480)
-	scroll.add_child(box)
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	dlg.add_child(scroll)
-	add_child(dlg)
-	dlg.popup_centered()
-	dlg.confirmed.connect(func():
-		var fields := {}
-		for pillar in SMITH_GUIDE:
-			var v: String = pillar_inputs[pillar[0]].text.strip_edges()
-			if v != "":
-				fields[pillar[0]] = v
-		var txt := idea.text.strip_edges()
-		dlg.queue_free()
-		if txt != "" or not fields.is_empty():
-			_forge_world(txt if txt != "" else "a world built from these pillars", fields, null))
+# ── The World Forge (full-screen pillar, docs/forges — a realm of your own) ──
+var _world_forge: Control = null
 
 
-## One smith call; preview with Create / Refine / Another take.
-func _forge_world(idea: String, fields: Dictionary, prior) -> void:
-	if _busy:
-		return
-	_busy = true
-	_sub_status.text = "⚒ The forge burns — shaping the world (about a minute)…"
-	var payload := {"idea": idea, "mode": "world", "fields": fields}
-	if prior is Dictionary:
-		payload["prior"] = prior
-	var w := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", payload)
-	_busy = false
-	_sub_status.text = ""
-	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
-		_sub_status.text = "The forge sputtered (%s) — try again." % str(w.get("_status", 0))
-		return
-	_preview_world(w, fields)
-
-
-func _preview_world(w: Dictionary, fields: Dictionary) -> void:
-	var dlg := ConfirmationDialog.new()
-	dlg.title = "✦ %s — %s" % [str(w.get("name", "?")), str(w.get("kind", ""))]
-	dlg.ok_button_text = "Create this world ›"
-	dlg.min_size = Vector2i(620, 480)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	var body := RichTextLabel.new()
-	body.bbcode_enabled = true
-	body.fit_content = true
-	body.custom_minimum_size = Vector2(560, 0)
-	var casts: Array = w.get("cast") if w.get("cast") is Array else []
-	var stories: Array = w.get("stories") if w.get("stories") is Array else []
-	var locs: Array = w.get("locations") if w.get("locations") is Array else []
-	var beasts: Array = w.get("creatures") if w.get("creatures") is Array else []
-	body.append_text("[i]%s[/i]\n\n%s\n\n[b]Campaigns:[/b] %s\n[b]The cast:[/b] %s\n[b]Places:[/b] %s\n[b]Beasts:[/b] %d setting-specific threats" % [
-		str(w.get("tagline", "")).replace("[", "[lb]"), str(w.get("lore", "")).replace("[", "[lb]"),
-		", ".join(stories.map(func(s): return str(s.get("title", "?")))),
-		", ".join(casts.map(func(c): return str(c.get("name", "?")))),
-		", ".join(locs.map(func(l): return str(l.get("name", "?")))), beasts.size()])
-	box.add_child(body)
-	var refine := LineEdit.new()
-	refine.placeholder_text = "✎ What should change? e.g. darker tone, add a pirate faction, rename it…"
-	box.add_child(refine)
-	var again := Button.new()
-	again.text = "↻ Forge another take"
-	box.add_child(again)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(580, 420)
-	scroll.add_child(box)
-	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	dlg.add_child(scroll)
-	add_child(dlg)
-	dlg.popup_centered()
-	refine.text_submitted.connect(func(t):
-		dlg.queue_free()
-		if t.strip_edges() != "":
-			_forge_world(t.strip_edges(), fields, w))
-	again.pressed.connect(func():
-		dlg.queue_free()
-		_forge_world("another take on the same idea, fresh names and angles", fields, null))
-	dlg.confirmed.connect(func():
-		dlg.queue_free()
-		_create_world(w))
-
-
-func _create_world(w: Dictionary) -> void:
-	_busy = true
-	_sub_status.text = "⚒ Binding its campaigns…"
-	var wid := "cw-%s-%04x" % [str(w["name"]).to_lower().replace(" ", "-").left(20), randi() % 65536]
-	var world := {"id": wid, "custom": true}
-	for k in ["name", "kind", "tagline", "lore", "backdrop", "locations", "cast", "stories", "creatures"]:
-		world[k] = w.get(k)
-	_cworlds.append(world)
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
-	_sub_status.text = "⚒ Painting its sky…"
-	await Art.ensure(wid, str(world.get("backdrop", "")))
-	_busy = false
-	_show_detail(world)
+func _open_world_forge_pillar() -> void:
+	Mode.enter("CampaignForge")
+	_title.visible = false
+	_sub.visible = false
+	if _world_forge == null:
+		_world_forge = preload("res://scenes/forge/world_forge.tscn").instantiate()
+		_world_forge.world_created.connect(func(world):
+			_world_forge.visible = false
+			Mode.enter("MainMenu")
+			if not _cworlds.any(func(c): return str(c.get("id", "")) == str(world.get("id", ""))):
+				_cworlds.append(world)
+			_show_detail(world))
+		_world_forge.closed.connect(func():
+			_world_forge.visible = false
+			Mode.enter("MainMenu")
+			_show_title())
+		add_child(_world_forge)
+	else:
+		_world_forge.visible = true
+	Ui.polish(_world_forge)
 
 
 ## ⚒ The Campaign Forge pillar (docs/forges/CampaignForge.md) — the war
