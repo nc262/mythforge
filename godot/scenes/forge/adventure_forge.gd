@@ -63,14 +63,6 @@ func _load_worlds() -> void:
 	_worlds = Rules.builtin_worlds() + cw
 
 
-func _banked_hero() -> Dictionary:
-	if not FileAccess.file_exists("user://forged_hero.json"):
-		return {}
-	var f := FileAccess.open("user://forged_hero.json", FileAccess.READ)
-	var parsed = JSON.parse_string(f.get_as_text())
-	return parsed if parsed is Dictionary else {}
-
-
 func _clear_stage() -> void:
 	for ch in _stage_box.get_children():
 		ch.queue_free()
@@ -139,45 +131,53 @@ func _stage_welcome() -> void:
 
 func _stage_hero() -> void:
 	_title_label("Who Plays Tonight?")
-	var banked := _banked_hero()
+	var heroes := GameState.banked_heroes()
 	var cards: Array = []
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", Ui.SPACE["m"])
-	var entries: Array = []
-	if not banked.is_empty():
-		entries.append({"glyph": "🛡", "title": str(banked.get("name", "The banked legend")),
-			"body": "%s %s, waiting at the anvil" % [str(banked.get("race", "")), str(banked.get("cls", ""))], "pick": "banked"})
-	entries.append({"glyph": "⚒", "title": "Forge a Hero now", "body": "walk the anvil's eleven runes", "pick": "forge"})
-	entries.append({"glyph": "🎲", "title": "The tale provides", "body": "forge at the campfire when the story opens", "pick": "later"})
-	for e in entries:
-		var card := Card.new(e)
-		card.set_selected(str(draft["hero"]) == str(e["pick"]))
+	var flow := HFlowContainer.new()
+	flow.alignment = FlowContainer.ALIGNMENT_CENTER
+	flow.add_theme_constant_override("h_separation", Ui.SPACE["m"])
+	flow.add_theme_constant_override("v_separation", Ui.SPACE["m"])
+	# Every banked legend — a forged hero survives to play many nights.
+	for h in heroes:
+		var hd: Dictionary = h
+		var card := Card.new({"glyph": "banner", "title": str(hd.get("name", "The legend")),
+			"body": "%s %s" % [str(hd.get("race", "")), str(hd.get("cls", ""))], "foot": "your roster"})
+		card.set_selected(_hero_selected(hd))
 		card.pressed.connect(func():
-			if str(e["pick"]) == "forge":
-				_spawn_char_forge()
-				return
-			draft["hero"] = str(e["pick"])
+			draft["hero"] = hd
 			for c in cards:
 				c.set_selected(c == card))
 		cards.append(card)
-		row.add_child(card)
-	_stage_box.add_child(row)
+		flow.add_child(card)
+	var forge_card := Card.new({"glyph": "anvil", "title": "Forge a Hero now", "body": "walk the anvil's eleven runes"})
+	forge_card.pressed.connect(_spawn_char_forge)
+	flow.add_child(forge_card)
+	var later := Card.new({"glyph": "die", "title": "The tale provides", "body": "forge at the campfire when the story opens"})
+	later.set_selected(str(draft["hero"]) == "later")
+	later.pressed.connect(func():
+		draft["hero"] = "later"
+		for c in cards:
+			c.set_selected(c == later))
+	cards.append(later)
+	flow.add_child(later)
+	_stage_box.add_child(flow)
 	_nav(0, "NEXT — THE CAMPAIGN", func():
-		if str(draft["hero"]) == "":
-			draft["hero"] = "banked" if not _banked_hero().is_empty() else "later"
+		if not (draft["hero"] is Dictionary) and str(draft["hero"]) != "later":
+			draft["hero"] = heroes[0] if not heroes.is_empty() else "later"
 		_enter_stage(2))
+
+
+func _hero_selected(hd: Dictionary) -> bool:
+	return draft["hero"] is Dictionary and str(draft["hero"].get("name", "")).nocasecmp_to(str(hd.get("name", ""))) == 0
 
 
 func _spawn_char_forge() -> void:
 	_child_forge = preload("res://scenes/forge/character_forge.tscn").instantiate()
 	_child_forge.menu_mode = true
 	_child_forge.hero_forged.connect(func(d):
-		var f := FileAccess.open("user://forged_hero.json", FileAccess.WRITE)
-		f.store_string(JSON.stringify(d))
-		f.close()
+		GameState.bank_hero(d)
 		_child_forge.queue_free()
-		draft["hero"] = "banked"
+		draft["hero"] = d
 		_enter_stage(1))
 	_child_forge.closed.connect(func():
 		_child_forge.queue_free()
@@ -296,10 +296,10 @@ func _stage_house() -> void:
 
 func _stage_preview() -> void:
 	_title_label("The Adventure, Previewed")
-	var banked := _banked_hero()
 	var hero_line := "forged at the campfire when the story opens"
-	if str(draft["hero"]) == "banked" and not banked.is_empty():
-		hero_line = "%s — %s %s" % [str(banked.get("name", "")), str(banked.get("race", "")), str(banked.get("cls", ""))]
+	if draft["hero"] is Dictionary:
+		var h: Dictionary = draft["hero"]
+		hero_line = "%s — %s %s" % [str(h.get("name", "")), str(h.get("race", "")), str(h.get("cls", ""))]
 	var diff_name := "Adventurer"
 	for d in DIFFICULTIES:
 		if float(d["mult"]) == float(draft["difficulty"]):
@@ -324,6 +324,9 @@ func _begin() -> void:
 	if adv.is_empty():
 		_enter_stage(2)
 		return
+	# The chosen banked legend fills the adventure's Quenching; "later" leaves
+	# it empty so the hero is forged at the campfire when the tale opens.
+	GameState.pending_hero = draft["hero"] if draft["hero"] is Dictionary else {}
 	var adv_id := str(adv.get("id", ""))
 	# A gallery tale may not have its dm- template yet — bind it now.
 	if adv.has("world"):

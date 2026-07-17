@@ -24,11 +24,11 @@ func _init(p: Dictionary = {}) -> void:
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		box.add_child(art)
 	else:
-		var glyph := Label.new()
-		glyph.text = str(p.get("glyph", "◆"))
-		glyph.add_theme_font_size_override("font_size", 26)
-		glyph.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		box.add_child(glyph)
+		# Hand-drawn icon, never a font glyph or emoji (MDL law). Legacy emoji
+		# payloads resolve to the matching drawn icon; unknowns get a sigil.
+		var ic := MythIcon.new(MythIcon.resolve(str(p.get("glyph", "sigil"))), 34, "gold")
+		ic.custom_minimum_size = Vector2(0, 40)
+		box.add_child(ic)
 	var title_l := Label.new()
 	title_l.theme_type_variation = "HeaderLabel"
 	title_l.text = str(p.get("title", ""))

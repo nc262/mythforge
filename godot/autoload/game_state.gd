@@ -24,6 +24,53 @@ signal leveled_up(from_level: int, to_level: int)
 var character: Dictionary = {}
 var session_id := ""
 var state: Dictionary = {}
+var pending_hero: Dictionary = {}   # a banked hero chosen to fill the next adventure's Quenching
+
+
+# ── Banked heroes: a persistent roster forged at the anvil ───────────────────
+## Heroes survive shutdown and being played — a forged legend is a reusable
+## template you can begin many adventures with (fixes the "my hero vanished"
+## data loss: the old single-file draft was deleted the moment it was used).
+const HERO_ROSTER := "user://heroes.json"
+
+
+func banked_heroes() -> Array:
+	var arr: Array = []
+	if FileAccess.file_exists(HERO_ROSTER):
+		var p = JSON.parse_string(FileAccess.get_file_as_string(HERO_ROSTER))
+		if p is Array:
+			arr = p
+	# Migrate (once) the legacy single-file banked hero into the roster.
+	if FileAccess.file_exists("user://forged_hero.json"):
+		var d = JSON.parse_string(FileAccess.get_file_as_string("user://forged_hero.json"))
+		if d is Dictionary and str(d.get("name", "")) != "":
+			arr = _roster_upsert(arr, d)
+			_write_roster(arr)
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://forged_hero.json"))
+	return arr
+
+
+func bank_hero(d: Dictionary) -> void:
+	if d.is_empty() or str(d.get("name", "")) == "":
+		return
+	_write_roster(_roster_upsert(banked_heroes(), d))
+
+
+func unbank_hero(hero_name: String) -> void:
+	_write_roster(banked_heroes().filter(func(h): return str(h.get("name", "")).nocasecmp_to(hero_name) != 0))
+
+
+func _roster_upsert(arr: Array, d: Dictionary) -> Array:
+	var out: Array = arr.filter(func(h): return str(h.get("name", "")).nocasecmp_to(str(d.get("name", ""))) != 0)
+	out.append(d)
+	return out
+
+
+func _write_roster(arr: Array) -> void:
+	var f := FileAccess.open(HERO_ROSTER, FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(arr))
+		f.close()
 
 
 func cid() -> String:

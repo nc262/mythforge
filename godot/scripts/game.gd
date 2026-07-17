@@ -74,9 +74,11 @@ func _ready() -> void:
 	var chatbox: VBoxContainer = $Margin/Split/ChatBox
 	chatbox.add_child(_init_rail)
 	chatbox.move_child(_init_rail, _battle_grid.get_index())
-	var atmo := MythEnvironment.new("", "dust", [])
-	add_child(atmo)
-	move_child(atmo, $Margin.get_index())
+	# The play screen already stands inside SceneArt + Backdrop + scrim; a
+	# per-frame mote overlay on top of streaming text read as flicker, so the
+	# adventure screen wears no atmosphere overlay (rooms/forges still do).
+	_iconify_toolbar()
+	_add_leave_button()
 	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
@@ -109,6 +111,50 @@ func _ready() -> void:
 	_msg.grab_focus()
 
 
+## The action bar wears the hand-drawn Icon Library, never font glyphs or
+## emoji (docs/DesignSystem.md, MDL law). Each button keeps its tooltip.
+func _iconify_toolbar() -> void:
+	var input := $Margin/Split/ChatBox/Input
+	for pair in [["Retell", "retell"], ["Bag", "pack"], ["CodexBtn", "scroll"],
+			["Dice", "die"], ["Scene", "easel"], ["Shop", "coins"],
+			["ShortRest", "moon"], ["LongRest", "tent"]]:
+		var btn: Button = input.get_node_or_null(str(pair[0]))
+		if btn == null:
+			continue
+		btn.text = ""
+		btn.custom_minimum_size = Vector2(42, 34)
+		var ic := MythIcon.new(str(pair[1]), 24, "gold")
+		ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+		btn.add_child(ic)
+
+
+## Leave to the Hall — the tale is already saved (every mutation mirrors to
+## the server), so this just returns to the main menu. Blocked mid-stream.
+func _add_leave_button() -> void:
+	var leave := Button.new()
+	leave.flat = true
+	leave.tooltip_text = "Leave to the Hall — your tale is saved"
+	leave.anchor_left = 1.0
+	leave.anchor_right = 1.0
+	leave.offset_left = -52
+	leave.offset_top = 12
+	leave.offset_right = -14
+	leave.offset_bottom = 46
+	var ic := MythIcon.new("door", 26, "gold_soft")
+	ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	leave.add_child(ic)
+	leave.pressed.connect(_leave_to_hall)
+	add_child(leave)
+
+
+func _leave_to_hall() -> void:
+	if _streaming:
+		_say_system("The GM is mid-breath — let the reply finish, then leave.")
+		return
+	Mode.enter("MainMenu")
+	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+
+
 ## "Previously, in <adventure>…" — the campaign memory recalls the thread.
 func _recap() -> void:
 	var beats: Array = await Chronicle.recall("the most important recent events of our story")
@@ -129,15 +175,14 @@ func _recap() -> void:
 ## A legend banked at the main menu resumes at the Quenching.
 func _open_character_forge() -> void:
 	var forge := preload("res://scenes/forge/character_forge.tscn").instantiate()
-	if FileAccess.file_exists("user://forged_hero.json"):
-		var f := FileAccess.open("user://forged_hero.json", FileAccess.READ)
-		var parsed = JSON.parse_string(f.get_as_text())
-		if parsed is Dictionary and str(parsed.get("name", "")) != "":
-			forge.draft = parsed
-			forge.start_at_quench = true
+	# A banked legend chosen at the Adventure Forge fills the Quenching.
+	if not GameState.pending_hero.is_empty():
+		forge.draft = GameState.pending_hero.duplicate(true)
+		forge.start_at_quench = true
 	forge.hero_forged.connect(func(d):
 		forge.queue_free()
-		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://forged_hero.json"))
+		GameState.bank_hero(d)       # the legend stays in the roster, playable again
+		GameState.pending_hero = {}
 		_create_hero_forged(d))
 	forge.closed.connect(func():
 		forge.queue_free()
@@ -980,6 +1025,8 @@ func _on_sheet_action(meta) -> void:
 # ── Combat actions ───────────────────────────────────────────────────────────
 var _init_rail: HBoxContainer       # the initiative rail: faces in turn order
 var _rail_turn_id := ""             # whose chip pulsed last
+var _rail_chips := {}               # id → MythPortrait, reused across renders
+var _rail_ids: Array = []           # roster signature; rebuild only when it changes
 var _armed_spell := ""              # a combat spell waiting for its target click
 var _auto_round := false            # End Turn's auto-sweep paused on a reaction
 var _round_gm: Array[String] = []   # enemy-turn GM notes, streamed once per sweep
@@ -1261,6 +1308,7 @@ func _render_combat() -> void:
 	_battle_grid.visible = fighting
 	if _init_rail != null and not fighting:
 		_init_rail.visible = false
+		_rail_ids = []  # next fight rebuilds its own roster of chips
 	if fighting:
 		Combat.ensure_positions()
 		var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
@@ -1315,24 +1363,35 @@ func _render_combat() -> void:
 
 ## The initiative rail: everyone in the fight as a face, in turn order —
 ## ally gold, enemy danger, the current actor swollen with a halo and pulsed.
+## Reconciled in place: the chips are BUILT once per roster change and then
+## only have their vitals/turn-state refreshed. Freeing and re-adding every
+## chip on each combat save was the battle-screen flicker.
 func _render_init_rail(c: Dictionary, cur: Dictionary) -> void:
 	_init_rail.visible = true
-	for ch in _init_rail.get_children():
-		ch.queue_free()
 	var cur_id := str(cur.get("id", ""))
-	for m in Combat.order(c):
+	var order := Combat.order(c)
+	var ids: Array = order.map(func(m): return str(m.get("id", "")))
+	if ids != _rail_ids:
+		for ch in _init_rail.get_children():
+			ch.queue_free()
+		_rail_chips.clear()
+		for m in order:
+			var id := str(m.get("id", ""))
+			var chip := MythPortrait.new(46, "gold" if m.get("side") == "ally" else "danger", false)
+			chip.set_portrait(Art.combatant_tex(m), str(m.get("name", "?")).left(1).to_upper())
+			_init_rail.add_child(chip)
+			_rail_chips[id] = chip
+		_rail_ids = ids
+	for m in order:
 		var id := str(m.get("id", ""))
-		var is_turn := id == cur_id
-		var chip := MythPortrait.new(52 if is_turn else 40,
-			"gold" if m.get("side") == "ally" else "danger", is_turn)
-		chip.set_portrait(Art.combatant_tex(m), str(m.get("name", "?")).left(1).to_upper())
-		chip.set_vitals(clampf(float(m.get("hp", 0)) / maxf(1.0, float(m.get("hpMax", 1))), 0.0, 1.0), is_turn)
-		if int(m.get("hp", 0)) <= 0:
-			chip.modulate = Color(1, 1, 1, 0.32)
+		var chip: MythPortrait = _rail_chips.get(id)
+		if chip == null:
+			continue
+		chip.set_vitals(clampf(float(m.get("hp", 0)) / maxf(1.0, float(m.get("hpMax", 1))), 0.0, 1.0), id == cur_id)
+		chip.modulate = Color(1, 1, 1, 0.32) if int(m.get("hp", 0)) <= 0 else Color.WHITE
 		chip.tooltip_text = "%s — %d/%d" % [str(m.get("name", "?")), int(m.get("hp", 0)), int(m.get("hpMax", 1))]
-		_init_rail.add_child(chip)
-		if is_turn and cur_id != _rail_turn_id:
-			Ui.pulse(chip)
+	if cur_id != _rail_turn_id and _rail_chips.has(cur_id):
+		Ui.pulse(_rail_chips[cur_id])
 	_rail_turn_id = cur_id
 
 

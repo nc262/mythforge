@@ -49,6 +49,16 @@ func _ready() -> void:
 
 
 var _btn_continue: MythButton = null
+var _btn_forge_hero: MythButton = null
+
+
+## The FORGE A HERO plate wears its roster count, so a saved legend is
+## visibly saved the moment you return to the Hall (fixes "my hero vanished").
+func _refresh_hero_count() -> void:
+	if _btn_forge_hero == null:
+		return
+	var n := GameState.banked_heroes().size()
+	_btn_forge_hero.set_subtitle(("%d waiting at the anvil" % n) if n > 0 else "")
 
 
 ## The primary controls: handcrafted material plates from the Icon Library —
@@ -71,6 +81,8 @@ func _build_primary_controls() -> void:
 		var b := MythButton.new(str(sp[0]), str(sp[1]), str(sp[2]), str(sp[4]))
 		b.pressed.connect(sp[3])
 		box.add_child(b)
+		if str(sp[1]) == "anvil":
+			_btn_forge_hero = b
 	var comp := MythButton.new("A QUIET TABLE", "cups", "leather", "chat with a companion")
 	comp.custom_minimum_size = Vector2(430, 48)
 	comp.pressed.connect(_show_companions)
@@ -141,6 +153,7 @@ func _refresh() -> void:
 	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
 	_cworlds = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
 	$Title/Box/Status.text = ""
+	_refresh_hero_count()
 	# Continue: the last adventure, with its save-file caption.
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
@@ -684,13 +697,12 @@ func _open_character_forge_pillar() -> void:
 		_char_forge = preload("res://scenes/forge/character_forge.tscn").instantiate()
 		_char_forge.menu_mode = true
 		_char_forge.hero_forged.connect(func(d):
-			var f := FileAccess.open("user://forged_hero.json", FileAccess.WRITE)
-			f.store_string(JSON.stringify(d))
-			f.close()
+			GameState.bank_hero(d)
 			_char_forge.visible = false
 			Mode.enter("MainMenu")
 			_show_title()
-			$Title/Box/Status.text = "⚔ %s stands banked at the anvil — begin any adventure to play them." % str(d.get("name", "The legend")))
+			_refresh_hero_count()
+			$Title/Box/Status.text = "%s rests at the anvil — begin any adventure to play them." % str(d.get("name", "The legend")))
 		_char_forge.closed.connect(func():
 			_char_forge.visible = false
 			Mode.enter("MainMenu")

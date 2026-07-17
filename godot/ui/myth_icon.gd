@@ -8,6 +8,32 @@ class_name MythIcon extends Control
 var icon := "compass"
 var tint_role := "gold"
 
+## Every hand-drawn name (the fallback "sigil" catches anything else).
+const NAMES := ["banner", "anvil", "wartable", "compass", "book", "runewheel",
+	"door", "cups", "quill", "hammer", "pack", "scroll", "die", "easel", "coins",
+	"moon", "tent", "retell", "sword", "shield", "star", "flame", "skull",
+	"crown", "mountain", "ship", "sigil"]
+
+## Legacy emoji → the icon that carries the same meaning. Lets old card
+## payloads keep their glyph string while rendering as real art (no emoji).
+const FROM_EMOJI := {
+	"🛡": "shield", "⚔": "sword", "🗡": "sword", "🪓": "sword", "🏹": "sword",
+	"✨": "star", "🔮": "star", "🌟": "star", "⭐": "star", "🕯": "flame",
+	"🔥": "flame", "💀": "skull", "☠": "skull", "🎩": "crown", "👑": "crown",
+	"🏔": "mountain", "⛰": "mountain", "⚓": "ship", "🛰": "ship", "🚀": "ship",
+	"⚒": "anvil", "⛏": "hammer", "🔨": "hammer", "📖": "book", "📚": "book",
+	"📜": "scroll", "🎲": "die", "🧭": "compass", "🌍": "compass", "🌐": "compass",
+	"⚙": "runewheel", "🧬": "sigil", "🧪": "sigil", "🔇": "sigil", "🎬": "sigil",
+	"🕊": "sigil", "🌑": "moon", "🌙": "moon", "⛺": "tent",
+}
+
+
+## Resolve any glyph string (icon name OR legacy emoji) to a drawn icon name.
+static func resolve(glyph: String) -> String:
+	if glyph in NAMES:
+		return glyph
+	return FROM_EMOJI.get(glyph, "sigil")
+
 
 func _init(name_ := "compass", size_px := 30, role := "gold") -> void:
 	icon = name_
@@ -94,5 +120,110 @@ func _draw() -> void:
 			var head := Rect2(o + Vector2(4, 3.5) * u, Vector2(10, 6) * u)
 			draw_rect(head, soft)
 			draw_rect(head, g, false, w * 0.7)
+		"pack":  # the rucksack — inventory
+			var body := PackedVector2Array([o + Vector2(6, 9) * u, o + Vector2(18, 9) * u, o + Vector2(19, 20) * u, o + Vector2(5, 20) * u])
+			draw_colored_polygon(body, soft)
+			draw_polyline(body + PackedVector2Array([body[0]]), g, w * 0.75, true)
+			draw_arc(o + Vector2(12, 9) * u, 4 * u, PI, TAU, 16, g, w * 0.75)  # the flap-strap arch
+			draw_line(o + Vector2(9, 13.5) * u, o + Vector2(15, 13.5) * u, Color(g, 0.6), w * 0.6)
+			draw_rect(Rect2(o + Vector2(10.5, 13) * u, Vector2(3, 3) * u), Color(g, 0.5))
+		"scroll":  # the codex — a rolled parchment
+			draw_rect(Rect2(o + Vector2(6, 5) * u, Vector2(12, 14) * u), soft)
+			draw_rect(Rect2(o + Vector2(6, 5) * u, Vector2(12, 14) * u), g, false, w * 0.7)
+			for li in 3:
+				draw_line(o + Vector2(8.5, 9 + li * 3) * u, o + Vector2(15.5, 9 + li * 3) * u, Color(g, 0.5), w * 0.5)
+			draw_arc(o + Vector2(6, 5) * u, 1.6 * u, 0, TAU, 12, g, w * 0.7)
+			draw_arc(o + Vector2(18, 19) * u, 1.6 * u, 0, TAU, 12, g, w * 0.7)
+		"die":  # the d20 moment — a faceted stone
+			var dd := PackedVector2Array([o + Vector2(12, 3.5) * u, o + Vector2(20, 8) * u, o + Vector2(20, 16) * u, o + Vector2(12, 20.5) * u, o + Vector2(4, 16) * u, o + Vector2(4, 8) * u])
+			draw_colored_polygon(dd, soft)
+			draw_polyline(dd + PackedVector2Array([dd[0]]), g, w * 0.8, true)
+			var face := PackedVector2Array([o + Vector2(12, 7) * u, o + Vector2(16, 12) * u, o + Vector2(12, 15) * u, o + Vector2(8, 12) * u])
+			draw_polyline(face + PackedVector2Array([face[0]]), Color(g, 0.7), w * 0.55, true)
+			draw_line(o + Vector2(12, 3.5) * u, o + Vector2(12, 7) * u, Color(g, 0.45), w * 0.5)
+		"easel":  # conjure the scene — a framed painting
+			var fr := Rect2(o + Vector2(4, 4) * u, Vector2(16, 12) * u)
+			draw_rect(fr, soft)
+			draw_rect(fr, g, false, w * 0.8)
+			draw_polyline(PackedVector2Array([o + Vector2(5, 14) * u, o + Vector2(10, 9) * u, o + Vector2(13, 12) * u, o + Vector2(16, 8) * u, o + Vector2(19, 14) * u]), Color(g, 0.7), w * 0.6)
+			draw_circle(o + Vector2(15, 7.5) * u, 1.1 * u, g)  # the sun
+			draw_line(o + Vector2(8, 16) * u, o + Vector2(8, 20) * u, g, w * 0.7)
+			draw_line(o + Vector2(16, 16) * u, o + Vector2(16, 20) * u, g, w * 0.7)
+		"coins":  # trade — a stack of coin
+			for k in 3:
+				var cy: float = 16.0 - k * 3.2
+				draw_arc(o + Vector2(12, cy) * u, 5 * u, 0, TAU, 22, g, w * 0.7)
+				draw_line(o + Vector2(7, cy) * u, o + Vector2(7, cy - 3.2) * u, Color(g, 0.5), w * 0.5)
+				draw_line(o + Vector2(17, cy) * u, o + Vector2(17, cy - 3.2) * u, Color(g, 0.5), w * 0.5)
+			draw_line(o + Vector2(12, 5.5) * u, o + Vector2(12, 8.5) * u, g, w * 0.6)
+		"moon":  # short rest — a crescent
+			draw_circle(o + Vector2(12, 12) * u, 8 * u, soft)
+			draw_arc(o + Vector2(12, 12) * u, 8 * u, 0, TAU, 40, g, w * 0.7)
+			draw_circle(o + Vector2(15, 10) * u, 7 * u, Ui.c("night"))
+			draw_arc(o + Vector2(15, 10) * u, 7 * u, PI * 0.35, PI * 1.15, 24, Color(g, 0.5), w * 0.55)
+		"tent":  # long rest — camp for the night
+			var tent := PackedVector2Array([o + Vector2(12, 4) * u, o + Vector2(21, 19) * u, o + Vector2(3, 19) * u])
+			draw_colored_polygon(tent, soft)
+			draw_polyline(tent + PackedVector2Array([tent[0]]), g, w * 0.8, true)
+			draw_line(o + Vector2(12, 4) * u, o + Vector2(12, 19) * u, Color(g, 0.55), w * 0.55)
+			draw_polyline(PackedVector2Array([o + Vector2(10, 19) * u, o + Vector2(12, 13) * u, o + Vector2(14, 19) * u]), g, w * 0.6)
+		"retell":  # another pass — a circling arrow
+			draw_arc(o + Vector2(12, 12) * u, 7 * u, -PI * 0.5, PI * 1.15, 28, g, w)
+			var tip := o + Vector2(12, 5) * u
+			draw_polyline(PackedVector2Array([tip + Vector2(-3, -1) * u, tip, tip + Vector2(-1, 3.2) * u]), g, w)
+		"sword":  # the martial road
+			draw_line(o + Vector2(12, 4) * u, o + Vector2(12, 16) * u, g, w)
+			draw_line(o + Vector2(12, 4) * u, o + Vector2(10.6, 6) * u, g, w * 0.7)
+			draw_line(o + Vector2(8.5, 16) * u, o + Vector2(15.5, 16) * u, g, w)  # crossguard
+			draw_line(o + Vector2(12, 16) * u, o + Vector2(12, 20) * u, soft, w * 1.4)  # grip
+			draw_circle(o + Vector2(12, 20.5) * u, 1.1 * u, g)  # pommel
+		"shield":  # the guarded road
+			var sh := PackedVector2Array([o + Vector2(12, 3.5) * u, o + Vector2(19, 6) * u, o + Vector2(18, 15) * u, o + Vector2(12, 20.5) * u, o + Vector2(6, 15) * u, o + Vector2(5, 6) * u])
+			draw_colored_polygon(sh, soft)
+			draw_polyline(sh + PackedVector2Array([sh[0]]), g, w * 0.8, true)
+			draw_line(o + Vector2(12, 5) * u, o + Vector2(12, 18) * u, Color(g, 0.45), w * 0.5)
+			draw_line(o + Vector2(6.5, 9.5) * u, o + Vector2(17.5, 9.5) * u, Color(g, 0.45), w * 0.5)
+		"star":  # magic, wonder, the arcane
+			var pts := PackedVector2Array()
+			for k in 10:
+				var ang := -PI / 2 + k * PI / 5.0
+				var rad: float = (8.5 if k % 2 == 0 else 3.6) * u
+				pts.append(o + Vector2(12, 12) * u + Vector2(cos(ang), sin(ang)) * rad)
+			draw_colored_polygon(pts, soft)
+			draw_polyline(pts + PackedVector2Array([pts[0]]), g, w * 0.7, true)
+		"flame":  # horror, dread, the guttering candle
+			var fl := PackedVector2Array([o + Vector2(12, 3) * u, o + Vector2(17, 11) * u, o + Vector2(15.5, 17) * u, o + Vector2(12, 20) * u, o + Vector2(8.5, 17) * u, o + Vector2(7, 11) * u])
+			draw_colored_polygon(fl, soft)
+			draw_polyline(fl + PackedVector2Array([fl[0]]), g, w * 0.7, true)
+			draw_line(o + Vector2(12, 9) * u, o + Vector2(12, 16.5) * u, Color(g, 0.6), w * 0.6)
+		"skull":  # death, permadeath, the merciless world
+			draw_circle(o + Vector2(12, 10) * u, 6.5 * u, soft)
+			draw_arc(o + Vector2(12, 10) * u, 6.5 * u, PI, TAU, 20, g, w * 0.7)
+			draw_rect(Rect2(o + Vector2(8.5, 14) * u, Vector2(7, 4) * u), soft)
+			draw_circle(o + Vector2(9.6, 10) * u, 1.5 * u, Ui.c("night"))
+			draw_circle(o + Vector2(14.4, 10) * u, 1.5 * u, Ui.c("night"))
+			for tx in [10.0, 12.0, 14.0]:
+				draw_line(o + Vector2(tx, 14) * u, o + Vector2(tx, 18) * u, Ui.c("night"), w * 0.5)
+		"crown":  # rule, courts, the classic DM's chair
+			var cr := PackedVector2Array([o + Vector2(4, 17) * u, o + Vector2(5, 7) * u, o + Vector2(9, 12) * u, o + Vector2(12, 5.5) * u, o + Vector2(15, 12) * u, o + Vector2(19, 7) * u, o + Vector2(20, 17) * u])
+			draw_colored_polygon(cr, soft)
+			draw_polyline(cr + PackedVector2Array([cr[0]]), g, w * 0.75, true)
+			draw_line(o + Vector2(4.6, 19) * u, o + Vector2(19.4, 19) * u, g, w * 0.9)
+		"mountain":  # fjords, peaks, the high country
+			var mt := PackedVector2Array([o + Vector2(3, 19) * u, o + Vector2(10, 7) * u, o + Vector2(13.5, 13) * u, o + Vector2(16, 9) * u, o + Vector2(21, 19) * u])
+			draw_colored_polygon(mt, soft)
+			draw_polyline(mt + PackedVector2Array([mt[0]]), g, w * 0.75, true)
+			draw_polyline(PackedVector2Array([o + Vector2(8, 11.5) * u, o + Vector2(10, 7) * u, o + Vector2(12, 10.5) * u]), Color(g, 0.6), w * 0.5)
+		"ship":  # sails, salt, the age of sail / the void frontier
+			draw_arc(o + Vector2(12, 16) * u, 8 * u, 0.15 * PI, 0.85 * PI, 18, g, w)  # hull
+			draw_line(o + Vector2(12, 4) * u, o + Vector2(12, 16) * u, g, w * 0.8)  # mast
+			var sail := PackedVector2Array([o + Vector2(12, 5) * u, o + Vector2(18, 13) * u, o + Vector2(12, 13) * u])
+			draw_colored_polygon(sail, soft)
+			draw_polyline(sail + PackedVector2Array([sail[0]]), g, w * 0.6, true)
+		"sigil":  # the framed rune — a meaningful placeholder, never an emoji
+			var dia := PackedVector2Array([o + Vector2(12, 4) * u, o + Vector2(20, 12) * u, o + Vector2(12, 20) * u, o + Vector2(4, 12) * u])
+			draw_polyline(dia + PackedVector2Array([dia[0]]), g, w * 0.8, true)
+			draw_arc(o + Vector2(12, 12) * u, 3.4 * u, 0, TAU, 20, Color(g, 0.6), w * 0.6)
+			draw_circle(o + Vector2(12, 12) * u, 1.1 * u, g)
 		_:
 			draw_arc(o + Vector2(12, 12) * u, 8 * u, 0, TAU, 32, g, w)
