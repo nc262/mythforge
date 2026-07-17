@@ -29,6 +29,10 @@ func _ready() -> void:
 	for env in Art.ENV_PROMPTS:
 		Art.ensure_environment(str(env))
 		_want.append(str(env))
+	# The opening cinematic's four worlds.
+	for k in Art.CINE_PROMPTS:
+		Art.ensure(str(k), str(Art.CINE_PROMPTS[k]), "1344x768")
+		_want.append(str(k))
 	_wait()
 
 

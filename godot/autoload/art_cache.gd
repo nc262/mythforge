@@ -25,6 +25,14 @@ const ENV_PROMPTS := {
 	"env-fireside": "a warm fireside corner of a tavern at night: two chairs across a small wooden table, crackling fireplace, candlelight, shelves of books and portraits on the wall, rich shadow and amber light, ultra detailed fantasy interior illustration, no people, no text",
 }
 
+## The opening cinematic's four genre panoramas (menu boot sequence).
+const CINE_PROMPTS := {
+	"cine-fantasy": "a dragon flying over misty mountains, ancient castles, deep forests and ruined towers at dawn, epic fantasy panorama, cinematic wide establishing shot, volumetric light, ultra detailed digital painting, no text",
+	"cine-neonspire": "a glowing holographic dragon projection soaring between neon skyscrapers of a rain-slick cyberpunk megacity at night, cyan and magenta light, cinematic wide establishing shot, ultra detailed digital painting, no text",
+	"cine-everyday": "a peaceful suburban street at golden sunset, warm glowing homes, big trees, bicycles on the sidewalk, quiet empty street, cinematic wide establishing shot, ultra detailed digital painting, no text",
+	"cine-space": "a deep space vista with glowing nebulae, a vast orbital station and distant cruisers, far shimmering civilizations, cinematic wide establishing shot, ultra detailed digital painting, no text",
+}
+
 var _generating := {}
 var _round_cache := {}   # key -> circular-masked ImageTexture
 var _tex_cache := {}     # key -> ImageTexture (avoid re-reading disk every frame)

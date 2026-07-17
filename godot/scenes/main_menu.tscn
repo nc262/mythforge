@@ -62,43 +62,9 @@ horizontal_alignment = 1
 custom_minimum_size = Vector2(0, 26)
 layout_mode = 2
 
-[node name="Continue" type="Button" parent="Title/Box"]
-visible = false
-custom_minimum_size = Vector2(420, 0)
+[node name="Buttons" type="VBoxContainer" parent="Title/Box"]
 layout_mode = 2
-theme_type_variation = &"AccentButton"
-text = "▶ Continue"
-
-[node name="ContinueMeta" type="Label" parent="Title/Box"]
-visible = false
-layout_mode = 2
-theme_type_variation = &"HintLabel"
-horizontal_alignment = 1
-
-[node name="NewAdv" type="Button" parent="Title/Box"]
-custom_minimum_size = Vector2(420, 0)
-layout_mode = 2
-text = "✦ New Adventure"
-
-[node name="CampForge" type="Button" parent="Title/Box"]
-custom_minimum_size = Vector2(420, 0)
-layout_mode = 2
-text = "⚒ Campaign Forge"
-
-[node name="CharForge" type="Button" parent="Title/Box"]
-custom_minimum_size = Vector2(420, 0)
-layout_mode = 2
-text = "⚔ Character Forge"
-
-[node name="Companion" type="Button" parent="Title/Box"]
-custom_minimum_size = Vector2(420, 0)
-layout_mode = 2
-text = "💬 Chat with a Companion"
-
-[node name="Settings" type="Button" parent="Title/Box"]
-custom_minimum_size = Vector2(420, 0)
-layout_mode = 2
-text = "⚙ Settings"
+theme_override_constants/separation = 10
 
 [node name="Status" type="Label" parent="Title/Box"]
 layout_mode = 2

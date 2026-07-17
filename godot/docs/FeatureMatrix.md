@@ -81,6 +81,15 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | U5 destiny constellation: class road 1-20 as a night sky — winding earned-gold spine, amethyst feature stars, milestone monuments (subclass/ASI/Apotheosis, next one breathes), circles of magic, wheel-zoom + pan (shared MythCamera), level-up opens it with the new star flaring; sheet ✨ destiny link + Ctrl+K | docs/rituals/SkillTree.md | ✅ | P2 | MDL | XL | node click-to-inspect dialog 🔲; world_map adopts MythCamera 🔲 |
 | U6 the Hero's Record: identity-first full screen (portrait/name/epithet, HP+XP straps, gold-lit gear sockets → Pack handoff, carved Six, prowess, MythFold sections for skills/magic/deeds/companions) | docs/rituals/CharacterScreen.md | ✅ | P2 | MDL | L | 3D turntable 🔲; heraldry crest 🔲; memory-drawn epithet 🔲 |
 
+## The first impression (cinematic menu + handcrafted controls)
+| Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
+|---|---|---|---|---|---|---|
+| Opening cinematic: four genre panoramas (dragon → holo-dragon Neonspire → suburb sunset → deep space), Ken Burns + crossfades + letterbox, stars collapse into the breathing logo; skippable on any input; once per launch | (new) | ✅ scenes/ui/cinematic.gd + Art.CINE_PROMPTS | P1 | SDXL | L | true video/animated cinematic 🔲 (stills + motion today) |
+| MythButton: handcrafted material plates (carved oak / forged steel / aged leather / polished brass), engraved typography (dark glyphs, light kiss), hover light sheen, press seat, drawn icon | (new) | ✅ | P1 | MDL | M | steel-plate engraving contrast pass 🔲 |
+| Mythforge Icon Library: 10 hand-drawn code icons (banner/anvil/wartable/compass/book/runewheel/door/cups/quill/hammer) — no fonts, emoji, or icon packs | (new) | ✅ ui/myth_icon.gd, in gallery | P1 | MDL | M | grow per new surface; full in-game emoji-free sweep 🔲 |
+| New primary menu: Continue · Begin a New Adventure · Forge a Hero · Forge a Campaign · Chronicles · Settings · Exit (+ A Quiet Table) | mythforge.html | ✅ material plates, interface reveals after the cinematic | P1 | — | M | menu EAS environment painting 🔲 |
+| Begin a New Adventure orchestrator: hero (banked/forge/later) → campaign (existing/forge) → party → difficulty → house rules → preview → begin | (new) | ✅ scenes/forge/adventure_forge.gd — invokes both Forges, seats rules into the adventure | P1 | Forges | L | party multiplayer chairs dim 🔲 |
+
 ## Environmental Art System (EAS — the world is the interface)
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|

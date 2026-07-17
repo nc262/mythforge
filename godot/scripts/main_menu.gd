@@ -41,16 +41,98 @@ func _ready() -> void:
 			var r: float = k[1]
 			d.draw_colored_polygon(PackedVector2Array([Vector2(cx, y - r), Vector2(cx + r, y), Vector2(cx, y + r), Vector2(cx - r, y)]), gold))
 	_load_settings()
-	$Title/Box/Continue.pressed.connect(_continue_last)
-	$Title/Box/NewAdv.pressed.connect(_show_worlds)
-	$Title/Box/CampForge.pressed.connect(_open_campaign_forge_pillar)
-	$Title/Box/CharForge.pressed.connect(_open_character_forge_pillar)
-	$Title/Box/Companion.pressed.connect(_show_companions)
-	$Title/Box/Settings.pressed.connect(_show_settings)
+	_build_primary_controls()
 	$Sub/Margin/Box/Bar/Back.pressed.connect(_show_title)
 	Art.art_ready.connect(func(_w): if _sub.visible and _heading.text == "Choose a world": _show_worlds())
-	$Title/Box/NewAdv.grab_focus()  # keyboard/controller lands somewhere useful
+	_boot_cinematic()
 	_refresh()
+
+
+var _btn_continue: MythButton = null
+
+
+## The primary controls: handcrafted material plates from the Icon Library —
+## never a software widget (docs/DesignSystem.md, EAS + MDL law).
+func _build_primary_controls() -> void:
+	var box: VBoxContainer = $Title/Box/Buttons
+	_btn_continue = MythButton.new("CONTINUE  ADVENTURE", "banner", "brass")
+	_btn_continue.visible = false
+	_btn_continue.pressed.connect(_continue_last)
+	box.add_child(_btn_continue)
+	var specs := [
+		["BEGIN  A  NEW  ADVENTURE", "compass", "oak", _open_adventure_forge, "the table is set"],
+		["FORGE  A  HERO", "anvil", "steel", _open_character_forge_pillar, ""],
+		["FORGE  A  CAMPAIGN", "wartable", "oak", _open_campaign_forge_pillar, ""],
+		["CHRONICLES", "book", "leather", _open_chronicles, "the saved tales"],
+		["SETTINGS", "runewheel", "steel", _show_settings, ""],
+		["EXIT  THE  HALL", "door", "leather", _quit_game, ""],
+	]
+	for sp in specs:
+		var b := MythButton.new(str(sp[0]), str(sp[1]), str(sp[2]), str(sp[4]))
+		b.pressed.connect(sp[3])
+		box.add_child(b)
+	var comp := MythButton.new("A QUIET TABLE", "cups", "leather", "chat with a companion")
+	comp.custom_minimum_size = Vector2(430, 48)
+	comp.pressed.connect(_show_companions)
+	box.add_child(comp)
+	box.get_child(1).grab_focus()
+
+
+func _quit_game() -> void:
+	get_tree().quit()
+
+
+## 🧭 Begin a New Adventure — the table-setting ritual orchestrating both
+## Forges (hero → campaign → party → difficulty → house rules → preview).
+var _adv_forge: Control = null
+
+
+func _open_adventure_forge() -> void:
+	Mode.enter("CampaignForge")
+	_title.visible = false
+	_sub.visible = false
+	if _adv_forge == null:
+		_adv_forge = preload("res://scenes/forge/adventure_forge.tscn").instantiate()
+		_adv_forge.adventure_ready.connect(func(adv):
+			_adv_forge.visible = false
+			Mode.enter("MainMenu")
+			_play(adv))
+		_adv_forge.closed.connect(func():
+			_adv_forge.visible = false
+			Mode.enter("MainMenu")
+			_show_title())
+		add_child(_adv_forge)
+	else:
+		_adv_forge.visible = true
+	Ui.polish(_adv_forge)
+
+
+func _open_chronicles() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	var saved: Array = []
+	if cfg.has_section("sessions"):
+		for cid in cfg.get_section_keys("sessions"):
+			for t in _templates:
+				if str(t.get("id")) == cid and str(cid).begins_with("dm-"):
+					saved.append(t)
+	_show_saves(saved)
+
+
+## The first impression: four worlds in one breath, then the name is forged.
+## Plays once per launch; any input skips it.
+func _boot_cinematic() -> void:
+	if Engine.has_meta("mf_cine_played") or OS.get_environment("MF_SKIP_CINE") == "1":
+		return
+	Engine.set_meta("mf_cine_played", true)
+	_title.visible = false
+	var cine := preload("res://scenes/ui/cinematic.gd").new()
+	add_child(cine)
+	cine.finished.connect(func():
+		_title.visible = true
+		Ui.reveal_children($Title/Box/Buttons, 0.08))
+	for k in Art.CINE_PROMPTS:
+		Art.ensure(str(k), str(Art.CINE_PROMPTS[k]), "1344x768")
 
 
 func _refresh() -> void:
@@ -71,12 +153,11 @@ func _refresh() -> void:
 			sheet = {}
 		if not (clock is Dictionary):
 			clock = {}
-		$Title/Box/Continue.text = "▶ Continue — %s" % str(last.get("name", "?"))
-		$Title/Box/ContinueMeta.text = "%s · Level %d · Day %d" % [str(sheet.get("name", "a new hero")),
-			int(sheet.get("level", 1)), int(clock.get("day", 1))]
-		$Title/Box/Continue.visible = true
-		$Title/Box/ContinueMeta.visible = true
-		$Title/Box/Continue.set_meta("char", last)
+		_btn_continue.set_engraving("CONTINUE — %s" % str(last.get("name", "?")).to_upper().left(24))
+		_btn_continue.set_subtitle("%s · Level %d · Day %d" % [str(sheet.get("name", "a new hero")),
+			int(sheet.get("level", 1)), int(clock.get("day", 1))])
+		_btn_continue.visible = true
+		_btn_continue.set_meta("char", last)
 		var tex := Art.texture_for(str(last.get("world_id", "")))
 		if tex != null:
 			$KeyArt.texture = tex
@@ -741,7 +822,7 @@ func _continue_last() -> void:
 				if str(t.get("id")) == cid and cid.begins_with("dm-"):
 					saved.append(t)
 	if saved.size() <= 1:
-		_play($Title/Box/Continue.get_meta("char"))
+		_play(_btn_continue.get_meta("char"))
 		return
 	_show_saves(saved)
 

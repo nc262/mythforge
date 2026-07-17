@@ -211,6 +211,65 @@ func sb_leather() -> StyleBoxTexture:
 	return _nine(leather_tex(), 12, 14)
 
 
+## Carved oak: directional grain, a carved edge (dark above, lit below).
+func wood_tex(lit := 0.0) -> ImageTexture:
+	var s := 48
+	var base: Color = Color(0.30, 0.19, 0.10).lerp(c("surface2"), 0.25).lightened(lit)
+	var noise := FastNoiseLite.new()
+	noise.seed = 23
+	noise.frequency = 1.0
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		for x in s:
+			var n := noise.get_noise_2d(x * 0.12, y * 2.2) * 0.07
+			img.set_pixel(x, y, Color(base.r + n, base.g + n * 0.75, base.b + n * 0.5, 1.0))
+	var edge := base.darkened(0.65)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	for i in range(1, s - 1):
+		img.set_pixel(i, 1, Color(0, 0, 0, 0.35))              # carve shadow
+		img.set_pixel(i, s - 2, Color(1, 0.9, 0.7, 0.14))      # carve light
+	return ImageTexture.create_from_image(img)
+
+
+## Polished brass: warm metal gradient, speckle, bright top kiss.
+func brass_tex(lit := 0.0) -> ImageTexture:
+	var s := 48
+	var base: Color = Color(0.55, 0.42, 0.18).lightened(lit)
+	var noise := FastNoiseLite.new()
+	noise.seed = 31
+	noise.frequency = 0.9
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		var row := base.lightened(0.16).lerp(base.darkened(0.35), float(y) / (s - 1))
+		for x in s:
+			var n := noise.get_noise_2d(x, y) * 0.05
+			img.set_pixel(x, y, Color(row.r + n, row.g + n, row.b + n * 0.6, 1.0))
+	var edge := base.darkened(0.7)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	for i in range(2, s - 2):
+		img.set_pixel(i, 2, Color(1, 1, 0.85, 0.20))
+	return ImageTexture.create_from_image(img)
+
+
+## A material plate for MythButton: oak / steel / leather / brass.
+func material_sb(kind: String, lit := 0.0) -> StyleBoxTexture:
+	if kind == "steel":
+		return _nine(forged_tex(c("surface2").lightened(lit), c("border")), 6, 12)
+	if kind == "leather":
+		return _nine(leather_tex(), 12, 12)
+	if kind == "brass":
+		return _nine(brass_tex(lit), 6, 12)
+	return _nine(wood_tex(lit), 6, 12)
+
+
 # ── Motion vocabulary (docs/DesignSystem.md §3) — all honor reduce_motion ───
 ## Hover-lift + press-dip for every Button under root. One call per screen;
 ## call again after building dynamic dialogs. Audio hook mounts here later.

@@ -90,6 +90,22 @@ func _ready() -> void:
 	prow.add_child(gcol)
 	col.add_child(prow)
 
+	col.add_child(Header.new("Handcrafted plates & the Icon Library"))
+	var mrow := HBoxContainer.new()
+	mrow.alignment = BoxContainer.ALIGNMENT_CENTER
+	mrow.add_theme_constant_override("separation", Ui.SPACE["s"])
+	for spec in [["CARVED OAK", "compass", "oak"], ["FORGED STEEL", "anvil", "steel"], ["AGED LEATHER", "book", "leather"], ["POLISHED BRASS", "banner", "brass"]]:
+		var mb := preload("res://ui/myth_button.gd").new(spec[0], spec[1], spec[2])
+		mb.custom_minimum_size = Vector2(220, 58)
+		mrow.add_child(mb)
+	col.add_child(mrow)
+	var irow := HBoxContainer.new()
+	irow.alignment = BoxContainer.ALIGNMENT_CENTER
+	irow.add_theme_constant_override("separation", Ui.SPACE["m"])
+	for ic in ["banner", "anvil", "wartable", "compass", "book", "runewheel", "door", "cups", "quill", "hammer"]:
+		irow.add_child(preload("res://ui/myth_icon.gd").new(ic, 30))
+	col.add_child(irow)
+
 	col.add_child(Header.new("Choice cards & stage rail"))
 	var ccrow := HBoxContainer.new()
 	ccrow.alignment = BoxContainer.ALIGNMENT_CENTER

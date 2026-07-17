@@ -75,6 +75,11 @@ across forges, pack, merchant, journal, map, record, and the game table's
 air. Next waves: title-screen environment · dialogue fireside staging ·
 generated props/frames/banners · per-world room variants.
 
+## M9 — The First Impression ✅ SHIPPED
+Cinematic opening (four worlds in one breath, the name forged from stars),
+handcrafted MythButton plates + the drawn Icon Library, the seven-option
+menu, and Begin a New Adventure orchestrating both Forges.
+
 ## Standing rules
 No milestone ships with a red harness. No feature leaves the matrix. The
 .exe export waits for explicit user approval of the ~500MB template download.
