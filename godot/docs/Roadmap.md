@@ -56,7 +56,7 @@ ritual with its doc in docs/rituals/):
 - ✅ U5 the destiny constellation (new system: class road as a night sky)
 - ✅ U6 the Hero's Record (identity-first character screen; 3D turntable → FutureIdeas)
 
-## M6 — The Character Forge (pillar) 📐 DESIGNED — AWAITING APPROVAL
+## M6 — The Character Forge (pillar) ✅ COMPLETE (F1-F5)
 docs/forges/CharacterForge.md. F1 shell+rail+3 stages+Quenching (screenshot
 gate) → F2 origins/ruleset/kits → F3 evolving portrait → F4 nature/array →
 F5 voice placeholder + cinematic quench + memory/relationship seeds.

@@ -22,6 +22,7 @@ var bestiary: Array = []
 
 
 var worlds_json: Dictionary = {}
+var class_lore: Dictionary = {}
 
 
 func _ready() -> void:
@@ -29,6 +30,7 @@ func _ready() -> void:
 	spells = _load_json("res://data/spells.json").get("spells", [])
 	bestiary = _load_json("res://data/bestiary.json").get("entries", [])
 	worlds_json = _load_json("res://data/worlds.json")
+	class_lore = _load_json("res://data/class_lore.json")
 
 
 func builtin_worlds() -> Array:

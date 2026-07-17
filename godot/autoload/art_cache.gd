@@ -111,10 +111,20 @@ func world_flavor() -> String:
 	return {"neonspire": "cyberpunk sci-fi", "everyday": "warm contemporary slice-of-life"}.get(GameState.world_id(), "high fantasy")
 
 
-func ensure_hero_portrait(cid: String, sheet: Dictionary) -> void:
+## Un-cache a painting so it can be re-struck (forge re-strike, style change).
+func forget(key: String) -> void:
+	_tex_cache.erase(key)
+	_round_cache.erase(key)
+	_generating.erase(key)
+	if has_art(key):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path_for(key)))
+
+
+func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
 	ensure("hero-" + cid.validate_filename(),
-		"character portrait of %s, a %s %s, %s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
-			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")), world_flavor()])
+		"character portrait of %s, a %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
+			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")),
+			(extra + ", ") if extra != "" else "", world_flavor()])
 
 
 func ensure_item_icon(nm: String) -> void:

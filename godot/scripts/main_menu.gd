@@ -44,6 +44,7 @@ func _ready() -> void:
 	$Title/Box/Continue.pressed.connect(_continue_last)
 	$Title/Box/NewAdv.pressed.connect(_show_worlds)
 	$Title/Box/CampForge.pressed.connect(_open_campaign_forge_pillar)
+	$Title/Box/CharForge.pressed.connect(_open_character_forge_pillar)
 	$Title/Box/Companion.pressed.connect(_show_companions)
 	$Title/Box/Settings.pressed.connect(_show_settings)
 	$Sub/Margin/Box/Bar/Back.pressed.connect(_show_title)
@@ -586,6 +587,37 @@ func _open_campaign_forge_pillar() -> void:
 	else:
 		_forge_scene.visible = true
 	Ui.polish(_forge_scene)
+
+
+## ⚔ The Character Forge pillar, from the menu: forge a legend as a DRAFT —
+## banked to user://forged_hero.json; any new adventure offers them at the
+## Quenching (walk the runes back to reshape, or begin at once).
+var _char_forge: Control = null
+
+
+func _open_character_forge_pillar() -> void:
+	Mode.enter("CharacterForge")
+	_title.visible = false
+	_sub.visible = false
+	if _char_forge == null:
+		_char_forge = preload("res://scenes/forge/character_forge.tscn").instantiate()
+		_char_forge.menu_mode = true
+		_char_forge.hero_forged.connect(func(d):
+			var f := FileAccess.open("user://forged_hero.json", FileAccess.WRITE)
+			f.store_string(JSON.stringify(d))
+			f.close()
+			_char_forge.visible = false
+			Mode.enter("MainMenu")
+			_show_title()
+			$Title/Box/Status.text = "⚔ %s stands banked at the anvil — begin any adventure to play them." % str(d.get("name", "The legend")))
+		_char_forge.closed.connect(func():
+			_char_forge.visible = false
+			Mode.enter("MainMenu")
+			_show_title())
+		add_child(_char_forge)
+	else:
+		_char_forge.visible = true
+	Ui.polish(_char_forge)
 
 
 # ── Campaign smith (worldsmith mode=story, per-world craft) ──────────────────

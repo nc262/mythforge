@@ -20,7 +20,7 @@ const STATES := {
 	"CampaignForge":     {"allowed": ["forge", "navigate"], "to": ["MainMenu", "Loading"]},
 	"CharacterForge":    {"allowed": ["edit_hero", "navigate"], "to": ["MainMenu", "Loading", "Exploration"]},
 	"Settings":          {"allowed": ["navigate", "settings"], "to": ["MainMenu"]},
-	"Loading":           {"allowed": [], "to": ["Exploration", "Dialogue", "CharacterCreation", "MainMenu"]},
+	"Loading":           {"allowed": [], "to": ["Exploration", "Dialogue", "CharacterCreation", "CharacterForge", "MainMenu"]},
 	"CharacterCreation": {"allowed": ["edit_hero"], "to": ["Exploration", "MainMenu"]},
 	"Exploration":       {"allowed": ["send_message", "roll", "rest", "shop", "buy", "conjure", "panels", "retell", "ask_gm"], "to": ["Combat", "Dialogue", "Merchant", "Travel", "Camp", "LongRest", "LevelUp", "Cutscene", "Death", "MainMenu", "Pause", "Inventory", "CharacterSheet"]},
 	"Dialogue":          {"allowed": ["send_message", "retell"], "to": ["Exploration", "MainMenu", "Pause"]},

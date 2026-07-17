@@ -97,8 +97,8 @@ func _ready() -> void:
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
 	if str(GameState.sheet().get("name", "")) == "":
-		Mode.enter("CharacterCreation")
-		_hero_forge()  # a fresh adventure begins with a hero, not a nobody
+		Mode.enter("CharacterForge")
+		_open_character_forge()  # a fresh adventure begins with a legend
 	else:
 		Mode.enter("Exploration")
 		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
@@ -121,98 +121,38 @@ func _recap() -> void:
 		rt.append_text("[color=%s][b]Previously…[/b][/color]\n%s" % [Ui.c("gold_soft").to_html(false), _bb("\n".join(lines))])
 
 
-# ── Hero forge: character creation is the door into a new adventure ─────────
-func _hero_forge() -> void:
-	var dlg := ConfirmationDialog.new()
-	dlg.title = "⚒ Forge your hero"
-	dlg.ok_button_text = "Begin the tale"
-	dlg.get_cancel_button().visible = false
-	dlg.min_size = Vector2i(480, 320)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
-	var name_in := LineEdit.new()
-	name_in.placeholder_text = "Your hero's name"
-	# One-click legends (the original's prebuilts) — or start fresh below.
-	const PREBUILT := [
-		["Brakka Ironhide", "Half-Orc", "Fighter", "Soldier"],
-		["Elara Venn", "Elf", "Wizard", "Sage"],
-		["Finch", "Halfling", "Rogue", "Criminal"],
-		["Sister Maren", "Human", "Cleric", "Acolyte"],
-	]
-	var pre_row := HFlowContainer.new()
-	var race_in := OptionButton.new()
-	var races: Array = Rules.tables.get("heritages", {}).keys()
-	races.sort()
-	for r in races:
-		race_in.add_item(str(r))
-	var cls_in := OptionButton.new()
-	var classes: Array = Rules.tables.get("class_presets", {}).keys()
-	classes.sort()
-	for c in classes:
-		cls_in.add_item(str(c))
-	var bg_in := OptionButton.new()
-	var bgs: Array = Rules.tables.get("backgrounds", {}).keys()
-	bgs.sort()
-	for bgn in bgs:
-		bg_in.add_item(str(bgn))
-	var bg_hint := Label.new()
-	bg_hint.theme_type_variation = "HintLabel"
-	bg_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	bg_hint.custom_minimum_size = Vector2(420, 0)
-	var refresh_bg := func():
-		var bgd: Dictionary = Rules.tables.get("backgrounds", {}).get(bg_in.get_item_text(bg_in.selected), {})
-		bg_hint.text = "%s — trained in %s" % [str(bgd.get("line", "")), ", ".join(bgd.get("skills", []))]
-	bg_in.item_selected.connect(func(_i): refresh_bg.call())
-	refresh_bg.call()
-	var pick := func(idx: int):
-		name_in.text = str(PREBUILT[idx][0])
-		for i in race_in.item_count:
-			if race_in.get_item_text(i) == str(PREBUILT[idx][1]):
-				race_in.selected = i
-		for i in cls_in.item_count:
-			if cls_in.get_item_text(i) == str(PREBUILT[idx][2]):
-				cls_in.selected = i
-		for i in bg_in.item_count:
-			if bg_in.get_item_text(i) == str(PREBUILT[idx][3]):
-				bg_in.selected = i
-		refresh_bg.call()
-	for pi in PREBUILT.size():
-		var pb := Button.new()
-		pb.text = "%s — %s %s" % [PREBUILT[pi][0], PREBUILT[pi][1], PREBUILT[pi][2]]
-		pb.add_theme_font_size_override("font_size", 12)
-		pb.pressed.connect(pick.bind(pi))
-		pre_row.add_child(pb)
-	var stats_l := Label.new()
-	stats_l.theme_type_variation = "HintLabel"
+# ── The Character Forge (docs/forges/CharacterForge.md) ─────────────────────
+## The pillar replaces the old hero-forge dialog: a full-screen ritual.
+## A legend banked at the main menu resumes at the Quenching.
+func _open_character_forge() -> void:
+	var forge := preload("res://scenes/forge/character_forge.tscn").instantiate()
+	if FileAccess.file_exists("user://forged_hero.json"):
+		var f := FileAccess.open("user://forged_hero.json", FileAccess.READ)
+		var parsed = JSON.parse_string(f.get_as_text())
+		if parsed is Dictionary and str(parsed.get("name", "")) != "":
+			forge.draft = parsed
+			forge.start_at_quench = true
+	forge.hero_forged.connect(func(d):
+		forge.queue_free()
+		DirAccess.remove_absolute(ProjectSettings.globalize_path("user://forged_hero.json"))
+		_create_hero_forged(d))
+	forge.closed.connect(func():
+		forge.queue_free()
+		get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
+	add_child(forge)
+
+
+## Commit the forged legend through the same engine math as ever, honoring
+## the forge's extras: hand-assigned array, chosen kit, appearance, style.
+func _create_hero_forged(d: Dictionary) -> void:
 	var rolled: Array[int] = []
-	var reroll := func():
-		rolled.clear()
-		for i in 6:
-			var d := [randi_range(1, 6), randi_range(1, 6), randi_range(1, 6), randi_range(1, 6)]
-			d.sort()
-			rolled.append(d[1] + d[2] + d[3])
-		rolled.sort()
-		rolled.reverse()
-		stats_l.text = "Destiny rolled (4d6, best assigned to your class): %s" % ", ".join(rolled.map(func(x): return str(x)))
-	reroll.call()
-	var roll_btn := Button.new()
-	roll_btn.text = "🎲 Reroll destiny"
-	roll_btn.pressed.connect(reroll)
-	for n in [pre_row, name_in, race_in, cls_in, bg_in, bg_hint, roll_btn, stats_l]:
-		box.add_child(n)
-	dlg.add_child(box)
-	add_child(dlg)
-	dlg.popup_centered()
-	name_in.grab_focus()
-	dlg.confirmed.connect(func():
-		var nm := name_in.text.strip_edges()
-		_create_hero(nm if nm != "" else "The Nameless",
-			race_in.get_item_text(race_in.selected), cls_in.get_item_text(cls_in.selected), rolled,
-			bg_in.get_item_text(bg_in.selected))
-		dlg.queue_free())
+	for v in d.get("rolled", []):
+		rolled.append(int(v))
+	_create_hero(str(d.get("name", "The Nameless")), str(d.get("race", "Human")),
+		str(d.get("cls", "Fighter")), rolled, str(d.get("bg", "")), d)
 
 
-func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], background := "") -> void:
+func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], background := "", extra := {}) -> void:
 	var preset: Dictionary = Rules.tables.get("class_presets", {}).get(cls, {"hitDie": 8})
 	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(race, {})
 	# Best scores where the class wants them: cast ability or STR/DEX first, CON second.
@@ -229,8 +169,12 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 		if not a in prio:
 			prio.append(a)
 	var abilities := {}
-	for i in 6:
-		abilities[prio[i]] = rolled[i] if i < rolled.size() else 10
+	if extra.get("assign") is Dictionary and not extra["assign"].is_empty():
+		for a2 in Rules.ABILITIES:
+			abilities[a2] = int(extra["assign"].get(a2, 10))
+	else:
+		for i in 6:
+			abilities[prio[i]] = rolled[i] if i < rolled.size() else 10
 	for a in heritage.get("abil", {}):
 		abilities[a] = int(abilities.get(a, 10)) + int(heritage["abil"][a])
 	var s: Dictionary = GameState.DEFAULT_SHEET.duplicate(true)
@@ -256,7 +200,22 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 			if sp is Array and sp.size() >= 2 and int(sp[1]) <= 1:
 				s["spells"].append({"name": str(sp[0]), "level": int(sp[1])})
 	GameState.set_sheet(s)
-	Art.ensure_hero_portrait(GameState.cid(), s)
+	# The chosen kit lands in the pack, wearable pieces worn.
+	for it_nm in extra.get("kit", []):
+		GameState.add_item(str(it_nm), "common", 1)
+	var inv2 := GameState.inv()
+	var eq2: Dictionary = inv2.get("equipped", {})
+	for it in inv2.get("items", []):
+		var t2 := str(it.get("type", ""))
+		if t2 in ["weapon", "armor", "shield"] and not eq2.has(t2):
+			eq2[t2] = str(it.get("id", ""))
+	if not eq2.is_empty():
+		inv2["equipped"] = eq2
+		GameState.save_kind("inv", inv2)
+	var looks := str(extra.get("appearance", ""))
+	var brush := str(extra.get("style", ""))
+	Art.ensure_hero_portrait(GameState.cid(), s,
+		(looks + (", " if looks != "" and brush != "" else "") + brush).strip_edges())
 	_build_dice_menu()
 	_render_sheet()
 	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])

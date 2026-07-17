@@ -27,11 +27,11 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 ## Character & progression
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
-| Hero forge (name/heritage/class/4d6) | openPlayerEditor gate | ✅ | P1 | tables.json | M | — |
+| Hero forge (name/heritage/class/4d6) | openPlayerEditor gate | ✅ ABSORBED into the Character Forge pillar (same gate, full ritual) | P1 | tables.json | M | — |
 | Prebuilt heroes (4 one-click) | :3826 | ✅ | P2 | — | S | — |
 | Backgrounds (8, +2 skills + hook) | :3796 | ✅ picker + hook into session zero | P2 | — | S | |
 | Portrait in hero forge | :3826 | ✅ auto-commissioned at creation; crowns the sheet + grid token | P3 | /generate | M | forge-time preview 🔲 |
-| Standard array + editable grid | :3807 | 🔲 | P3 | — | S | |
+| Standard array + editable grid | :3807 | ✅ Character Forge Nature stage (hand-assigned, permutation-validated) | P3 | — | S | |
 | Level-up ceremony (roll HP, feats/ASI, subclass, spells) | renderLevelUp :5825 | ✅ | P1 | — | L | ASI = +2 single (split 🔲) |
 | Class feature actions (per-rest uses) | FEATURE_ACTIONS :2940 | ✅ 6 ported | P1 | — | M | Bardic Insp., Lay on Hands, Wild Shape… 🔲 |
 | Inspiration (grant nat20 / arm / spend adv) | :3342 | ✅ full loop + chip | P2 | — | S | |
@@ -84,7 +84,7 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 ## Forge pillars (docs/forges/ — designs approved before any build)
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
-| **Character Forge** (pillar): multi-stage hero ritual — origin/ruleset/heritage/class/background/nature/appearance/evolving portrait/voice/equipment/Quenching | absorbs hero forge + prebuilts + backgrounds | 📐 designed, awaiting approval | P1 | MDL, SDXL | XL | docs/forges/CharacterForge.md; F1-F5 milestones |
+| **Character Forge** (pillar) | absorbs hero forge + prebuilts + backgrounds | ✅ F1-F5 shipped: 11-stage anvil ritual (origin w/ one-click legends, ruleset, heritage/class/background card grids w/ lore, nature = 4d6 destiny OR hand-assigned standard array, appearance-in-words + style chips, voice placeholder rune, kit cards, Quenching w/ cooling portrait + re-strike + name strike); menu pillar banks drafts to user://forged_hero.json, resumed at the Quenching in any new adventure; commit runs the same engine math + equips the kit + commissions the portrait with the player's words | P1 | MDL, SDXL | XL | 3D model → FutureIdeas; relationships seed 🔲; portrait stage folded into Quenching (honest SDXL one-shot) |
 | **Campaign Forge** (pillar): war-table ritual — name/ruleset/theme/GM's voice/table rules/THE FORGING/dossier | absorbs ⚒ world forge + campaign smith + Session Zero | ✅ C1-C5 shipped: full war-table ritual — Welcome/Name/Ruleset/Theme/Voice/Rules → THE FORGING (staged: world seal, cast faces via portrait queue, settlement, opening scene, DM's notes — MythForgeStep) → Dossier (re-strike opening, inspect persona) → BEGIN THE CAMPAIGN (dm- save + gm/rules/here seeded, opens in-game) | P1 | MDL, worldsmith | XL | campaign export 🔲; forge art queue pays partially (cast faces) — creature pregen 🔲 |
 | Shared forge components: MythChoiceCard · MythStageRail · MythForgeStep | (new) | ✅ | P1 | MDL | M | |
 | Table rules engine levers | (new) | ✅ ALL engine-enforced: difficulty scales foe HP+damage (clamped 0.5-2.0) · permadeath archives the save on final death · fog toggle honored by the living map · companions gate refuses recruit tags · house rules ride every envelope; forge defaults seed each adventure and survive resets | P1 | — | M | self-check rows green |

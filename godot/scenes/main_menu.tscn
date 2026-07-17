@@ -85,6 +85,11 @@ custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
 text = "⚒ Campaign Forge"
 
+[node name="CharForge" type="Button" parent="Title/Box"]
+custom_minimum_size = Vector2(420, 0)
+layout_mode = 2
+text = "⚔ Character Forge"
+
 [node name="Companion" type="Button" parent="Title/Box"]
 custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
