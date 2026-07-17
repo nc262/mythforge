@@ -43,6 +43,8 @@ var _embers: Array = []
 func _ready() -> void:
 	theme = Ui.theme
 	set_process(not Ui.reduce_motion)
+	# EAS: the player stands inside the ancient forge; its embers are the air.
+	MythEnvironment.mount(self, "env-forge", "embers", [Vector2(0.5, 0.88)])
 	for i in 26:
 		_embers.append([randf(), randf(), 0.35 + randf() * 0.9])
 	var margin := MarginContainer.new()
@@ -82,9 +84,11 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## The ancient forge: stars above the smoke, the anvil, embers rising,
-## a molten seam breathing at the base.
+## The procedural forge — the FALLBACK while the painted interior is still
+## on the easel (first run only; cached forever after).
 func _draw() -> void:
+	if Art.has_art("env-forge"):
+		return  # the illustrated forge carries the scene
 	draw_rect(Rect2(Vector2.ZERO, size), Ui.c("night").darkened(0.35))
 	for i in 60:
 		var h1 := absf(fmod(sin(i * 127.1) * 43758.5453, 1.0))

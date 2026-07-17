@@ -81,6 +81,14 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | U5 destiny constellation: class road 1-20 as a night sky — winding earned-gold spine, amethyst feature stars, milestone monuments (subclass/ASI/Apotheosis, next one breathes), circles of magic, wheel-zoom + pan (shared MythCamera), level-up opens it with the new star flaring; sheet ✨ destiny link + Ctrl+K | docs/rituals/SkillTree.md | ✅ | P2 | MDL | XL | node click-to-inspect dialog 🔲; world_map adopts MythCamera 🔲 |
 | U6 the Hero's Record: identity-first full screen (portrait/name/epithet, HP+XP straps, gold-lit gear sockets → Pack handoff, carved Six, prowess, MythFold sections for skills/magic/deeds/companions) | docs/rituals/CharacterScreen.md | ✅ | P2 | MDL | L | 3D turntable 🔲; heraldry crest 🔲; memory-drawn epithet 🔲 |
 
+## Environmental Art System (EAS — the world is the interface)
+| Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
+|---|---|---|---|---|---|---|
+| MythEnvironment: painting + scrim + volumetric shafts + candle anchors + dust/embers + mouse parallax; atmosphere-only mode | (new) | ✅ | P1 | MDL, SDXL | L | |
+| Seven illustrated rooms generated + cached (war room, forge, pack, merchant, journal, map table, fireside) | (new) | ✅ Art.ENV_PROMPTS, warmed | P1 | SDXL | M | per-world environment variants 🔲 |
+| Mounted: both Forges (procedural = fallback), pack, merchant, journal, map table, Hero's Record, game-table atmosphere overlay | (new) | ✅ | P1 | — | M | title screen environment 🔲; dialogue fireside w/ NPC portrait staging 🔲 |
+| Generated prop/frame assets (banners, statues, carved frames, icons) | (new) | 🔲 next EAS wave | P2 | SDXL | L | |
+
 ## Forge pillars (docs/forges/ — designs approved before any build)
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|

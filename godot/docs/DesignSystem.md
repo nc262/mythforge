@@ -64,7 +64,7 @@ caps gold · body 15 sans · hint 13 dim · hero numbers 19+.
 | `Ui.rise_text(parent, txt, color, at)` | rising fading ghost text | damage, gold, XP moments |
 | `Ui.ritual_open(dlg)` | THE window ritual: world dims (anticipation), contents settle staggered (reveal), scrim lifts on close (graceful exit) | every dialog/window, no exceptions |
 
-**Rituals:** every major screen gets a ritual doc in `docs/rituals/` (emotions,
+**Rituals:** every major screen gets a ritual doc (and mounts its EAS environment first) in `docs/rituals/` (emotions,
 beats, UX flow, wireframe) BEFORE implementation. First: rituals/Inventory.md.
 
 Audio hooks: motion verbs are the mount points — `Sfx` tick/thud samples are
@@ -91,7 +91,31 @@ Composition rules:
 - Components read `Ui` at build time; screens rebuild on `Ui.changed`
   (world retint) — same contract screens already follow for the theme.
 
-## 5. Laws
+## 5. The Environmental Art System (EAS)
+
+**The world is the interface.** Every screen begins by answering "where is
+the player?" — never "what controls belong here?" UI is layered INTO an
+illustrated environment, not floated over chrome.
+
+- **`MythEnvironment`** (ui/myth_environment.gd) is the mount: a generated
+  SDXL painting of the room (cover-fit, clipped, whisper of mouse parallax),
+  a legibility scrim + edge vignette, breathing volumetric light shafts,
+  flickering candle anchors, and drifting particles (dust or embers). With
+  no key it is a pure atmosphere overlay for screens that already own art.
+- **Environments live in `Art.ENV_PROMPTS`** and generate through the same
+  queue as all art (cached forever in user://art): env-wartable (Campaign
+  Forge) · env-forge (Character Forge) · env-pack (inventory) ·
+  env-merchant (trading post) · env-journal (the manuscript) ·
+  env-maptable (the living map's table) · env-fireside (the Hero's Record;
+  dialogue later). Per-world variants are a matrix row.
+- **Procedural backdrops are the fallback only** — first run, while the
+  painting is on the easel; never the destination.
+- **Camera thinking**: background (the painting) · midground (scrim,
+  shafts) · foreground (UI + particles). One lighting direction per room.
+- Rule: every new screen MOUNTS an environment first
+  (`MythEnvironment.mount(host, key, mood, lights)`), then lays UI into it.
+
+## 6. Laws
 
 1. No one-off colors, spacing, radii, durations, fonts, tooltips, headers,
    bars, or cards. If a screen needs a new pattern, it is added HERE first.

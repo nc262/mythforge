@@ -13,6 +13,18 @@ const WORLD_PROMPTS := {
 	"everyday": "a cozy corner cafe on a quiet city street at golden hour, warm window light, bicycles, slice of life illustration, no people, no text",
 }
 
+## EAS environments — the illustrated rooms the interface stands inside.
+## One shared set today; per-world variants are a matrix row.
+const ENV_PROMPTS := {
+	"env-wartable": "a dungeon master's war room from a seated player's view: a massive candlelit oak war table covered with a huge parchment campaign map, miniature armies, brass compass, quills, ink pots, dripping wax seals, open books, scattered dice, old letters, a sheathed sword leaning on the table, a storm through leaded windows behind, dust floating in warm candlelight, volumetric light, ultra detailed fantasy interior illustration, no people, no text",
+	"env-forge": "inside an ancient mythic forge: molten metal glowing in stone channels, a great anvil at center, faint glowing runes floating in the air, chains and ancient statues in shadow, weapons displayed on stone walls like museum pieces, sparks rising, volumetric orange light against deep blue darkness, ultra detailed fantasy interior illustration, no people, no text",
+	"env-pack": "an opened leather adventurer's travel pack laid on a wooden camp table, worn leather folds and loosened brass buckles, canvas stretched open, small potion bottles, coiled rope, scattered gold coins, a folded map, warm lantern light, ultra detailed fantasy still life illustration, slightly top-down view, no people, no text",
+	"env-merchant": "a fantasy merchant's stall interior: worn wood shelves and crates, hanging lanterns, a brass coin scale, folded rich fabrics, displayed weapons and curios, coin stacks, warm lamplight and deep shadow, ultra detailed fantasy interior illustration, no people, no text",
+	"env-journal": "a large open leather-bound journal on a candlelit desk, aged parchment pages with handwritten margins and small ink illustrations, ribbon bookmarks, red wax seals, an ink pot and quill beside it, warm candlelight, ultra detailed fantasy still life illustration, slightly top-down view, no people, no text",
+	"env-maptable": "an ancient cartographer's table seen from above: dark oak surface, brass compass and dividers, red wax route markers, pinned notes, a magnifying lens, a guttering candle at the corner, ultra detailed fantasy still life illustration, no people, no text",
+	"env-fireside": "a warm fireside corner of a tavern at night: two chairs across a small wooden table, crackling fireplace, candlelight, shelves of books and portraits on the wall, rich shadow and amber light, ultra detailed fantasy interior illustration, no people, no text",
+}
+
 var _generating := {}
 var _round_cache := {}   # key -> circular-masked ImageTexture
 var _tex_cache := {}     # key -> ImageTexture (avoid re-reading disk every frame)
@@ -109,6 +121,11 @@ func _pump() -> void:
 # ── Prompt builders: one voice for each art family ──────────────────────────
 func world_flavor() -> String:
 	return {"neonspire": "cyberpunk sci-fi", "everyday": "warm contemporary slice-of-life"}.get(GameState.world_id(), "high fantasy")
+
+
+## Commission one of the EAS environments (queued like all art).
+func ensure_environment(key: String) -> void:
+	ensure(key, str(ENV_PROMPTS.get(key, "")), "1344x768")
 
 
 ## Un-cache a painting so it can be re-struck (forge re-strike, style change).

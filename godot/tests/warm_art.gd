@@ -25,6 +25,10 @@ func _ready() -> void:
 		_want.append("item-" + nm.to_lower().replace(" ", "-"))
 	_want.append(Art.ensure_battle_map("Embervale village square"))
 	_want.append(Art.ensure_world_chart("embervale", "Embervale"))
+	# The EAS rooms — the illustrated environments every screen stands in.
+	for env in Art.ENV_PROMPTS:
+		Art.ensure_environment(str(env))
+		_want.append(str(env))
 	_wait()
 
 

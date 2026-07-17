@@ -69,6 +69,12 @@ save slot → C5 set-dressing polish + export. Absorbs world forge, campaign
 smith, Session Zero; menu becomes Continue · Character Forge · Campaign
 Forge · Settings.
 
+## M8 — The Environmental Art System 🟡 FIRST WAVE SHIPPED
+The world is the interface: MythEnvironment + seven generated rooms mounted
+across forges, pack, merchant, journal, map, record, and the game table's
+air. Next waves: title-screen environment · dialogue fireside staging ·
+generated props/frames/banners · per-world room variants.
+
 ## Standing rules
 No milestone ships with a red harness. No feature leaves the matrix. The
 .exe export waits for explicit user approval of the ~500MB template download.

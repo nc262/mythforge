@@ -70,6 +70,8 @@ var _settlement := ""               # where the tale begins
 func _ready() -> void:
 	theme = Ui.theme
 	set_process(not Ui.reduce_motion)
+	# EAS: the player sits at the war room's table; candles live at its edges.
+	MythEnvironment.mount(self, "env-wartable", "dust", [Vector2(0.08, 0.34), Vector2(0.92, 0.34)])
 	var col := VBoxContainer.new()
 	col.set_anchors_preset(Control.PRESET_FULL_RECT)
 	col.add_theme_constant_override("separation", Ui.SPACE["m"])
@@ -109,8 +111,11 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## The war table itself: dark wood, candle glow, the map that inks in.
+## The procedural war table — the FALLBACK while the painted room is still
+## on the easel (first run only; the environment is cached forever after).
 func _draw() -> void:
+	if Art.has_art("env-wartable"):
+		return  # the illustrated room carries the scene
 	draw_rect(Rect2(Vector2.ZERO, size), Ui.c("night").darkened(0.25))
 	# Constellations through the window.
 	for i in 70:

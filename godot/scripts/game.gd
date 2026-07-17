@@ -74,6 +74,9 @@ func _ready() -> void:
 	var chatbox: VBoxContainer = $Margin/Split/ChatBox
 	chatbox.add_child(_init_rail)
 	chatbox.move_child(_init_rail, _battle_grid.get_index())
+	var atmo := MythEnvironment.new("", "dust", [])
+	add_child(atmo)
+	move_child(atmo, $Margin.get_index())
 	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
@@ -1605,6 +1608,7 @@ func _open_shop() -> void:
 		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
 			here_shop = str(l.get("shop", ""))
 	var dlg := AcceptDialog.new()
+	MythEnvironment.mount(dlg, "env-merchant", "dust", [Vector2(0.12, 0.14), Vector2(0.88, 0.1)])
 	dlg.title = "🛒 %s" % (here if here_shop != "" else "The trading post")
 	dlg.ok_button_text = "Leave the counter"
 	dlg.min_size = Vector2i(720, 480)
@@ -1915,6 +1919,7 @@ func _open_world_map() -> void:
 		_say_system("No charted places to map yet.")
 		return
 	var dlg := AcceptDialog.new()
+	MythEnvironment.mount(dlg, "env-maptable", "dust", [Vector2(0.93, 0.9)])
 	dlg.title = "🗺 %s" % str(GameState.character.get("name", "the world")).split(":")[0]
 	dlg.ok_button_text = "Close the map"
 	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
@@ -2043,6 +2048,7 @@ func _open_character_screen() -> void:
 	if not Mode.can("panels"):
 		return
 	var rec := preload("res://scenes/ui/character_screen.gd").new()
+	MythEnvironment.mount(rec, "env-fireside", "dust", [Vector2(0.1, 0.2)])
 	rec.open_pack.connect(_open_inventory)
 	add_child(rec)
 	rec.popup_centered()
@@ -2054,6 +2060,7 @@ func _open_character_screen() -> void:
 ## chapters closed with fleurons. Tabs filter; search cuts across the pages.
 func _open_journal() -> void:
 	var dlg := AcceptDialog.new()
+	MythEnvironment.mount(dlg, "env-journal", "dust", [Vector2(0.08, 0.1)])
 	dlg.title = "📖 The Journal"
 	dlg.ok_button_text = "Close the journal"
 	dlg.min_size = Vector2i(700, 580)

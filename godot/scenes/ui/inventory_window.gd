@@ -99,6 +99,7 @@ func _init() -> void:
 	right.add_theme_constant_override("separation", Ui.SPACE["m"])
 	right.add_child(MythHeader.new("The Goods"))
 	var surface := PackSurface.new(self)
+	surface.self_modulate = Color(1, 1, 1, 0.5)  # the painted pack shows through
 	surface.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_flow = HFlowContainer.new()
 	_flow.add_theme_constant_override("h_separation", Ui.SPACE["s"])
@@ -119,6 +120,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	# EAS: the pack itself, opened on the camp table, is the room.
+	MythEnvironment.mount(self, "env-pack", "dust", [Vector2(0.9, 0.12)])
 	rebuild()
 	Art.art_ready.connect(func(_k): rebuild())
 	for it in GameState.inv().get("items", []):
