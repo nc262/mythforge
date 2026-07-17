@@ -8,7 +8,7 @@ extends Control
 ## rune-stones already stand on the rail, dim but visible.
 ## This node IS the CampaignForgeManager: stage FSM + draft + generation.
 
-signal world_sealed(world: Dictionary, campaign_name: String)
+signal campaign_begun(adv: Dictionary)
 signal closed
 
 const STAGES := ["The Table", "The Name", "Ruleset", "Theme", "The Voice", "Table Rules", "The Forging", "Dossier"]
@@ -61,7 +61,10 @@ var _table_note: Label
 var _status: Label
 var _phase := 0.0
 var _busy := false
-var _forged: Dictionary = {}   # the smith's latest take, pre-seal
+var _forged: Dictionary = {}        # the smith's latest take, pre-seal
+var _sealed_world: Dictionary = {}  # the world after the wax came down
+var _story: Dictionary = {}         # the forged opening campaign
+var _settlement := ""               # where the tale begins
 
 
 func _ready() -> void:
@@ -170,6 +173,8 @@ func _enter_stage(i: int) -> void:
 			_stage_rules()
 		6:
 			_stage_forging()
+		7:
+			_stage_dossier()
 	Ui.polish(_stage_box)
 	Ui.reveal_children(_stage_box, 0.05)
 
@@ -505,8 +510,8 @@ func _show_take() -> void:
 	_stage_box.add_child(row)
 
 
-## The wax comes down: the world joins the gallery, its sky gets painted,
-## and the forge hands the campaign on (adventure binding arrives C4).
+## The wax comes down: the world joins the gallery — then THE FORGING
+## proper: each artifact lands on the table as it completes.
 func _seal() -> void:
 	if _busy:
 		return
@@ -524,9 +529,176 @@ func _seal() -> void:
 	var cworlds: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
 	cworlds.append(world)
 	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
-	_status.text = "🎨 Painting its sky…"
-	Art.ensure(wid, str(world.get("backdrop", "")))
-	Sfx.play("chime")
+	_sealed_world = world
 	_busy = false
 	_status.text = ""
-	world_sealed.emit(world, str(draft["name"]))
+	await _run_sequence()
+
+
+## THE FORGING sequence: world seal → the cast's faces → the settlement →
+## the opening scene → the DM's notes. Each step lands with its wax thunk.
+func _run_sequence() -> void:
+	_clear_stage()
+	_title_label("The Forging")
+	var world := _sealed_world
+	var steps := {}
+	for spec in [["world", "The world"], ["cast", "The key faces"], ["settle", "The first settlement"], ["intro", "The opening scene"], ["notes", "The DM's notes"]]:
+		var step := MythForgeStep.new(str(spec[1]))
+		steps[spec[0]] = step
+		_stage_box.add_child(step)
+	Ui.reveal_children(_stage_box, 0.04)
+	_busy = true
+	# 1. The world — the wax already came down; paint its sky in the queue.
+	Art.ensure(str(world["id"]), str(world.get("backdrop", "")))
+	steps["world"].set_state("done", "%s — sealed into the gallery" % str(world.get("name", "")))
+	# 2. The key faces — commissioned to the queue; they land as they finish.
+	steps["cast"].set_state("work", "the painters are called…")
+	var cast: Array = world.get("cast") if world.get("cast") is Array else []
+	var commissioned := 0
+	for c in cast.slice(0, 5):
+		var nm := str(c.get("name", "")).strip_edges()
+		if nm == "":
+			continue
+		var key := "npc-" + nm.to_lower().replace(" ", "-")
+		Art.ensure(key, "character portrait of %s, %s, painted head-and-shoulders portrait, dramatic rim light, dark background, no text" % [nm, str(c.get("role", "a figure of this world"))])
+		var chip := MythPortrait.new(34, "amethyst")
+		chip.set_portrait(Art.round_tex(key), nm.left(1).to_upper())
+		chip.tooltip_text = "%s — %s" % [nm, str(c.get("role", ""))]
+		steps["cast"].artifacts.add_child(chip)
+		commissioned += 1
+	steps["cast"].set_state("done", "%d faces commissioned — they arrive as the paint dries" % commissioned)
+	# 3. The first settlement — where the tale opens.
+	steps["settle"].set_state("work", "")
+	var locs: Array = world.get("locations") if world.get("locations") is Array else []
+	_settlement = ""
+	for l in locs:
+		if l is Dictionary and str(l.get("kind", "")) in ["tavern", "home"]:
+			_settlement = str(l.get("name", ""))
+			break
+	if _settlement == "" and not locs.is_empty() and locs[0] is Dictionary:
+		_settlement = str(locs[0].get("name", ""))
+	steps["settle"].set_state("done", ("its lamps are lit: %s" % _settlement) if _settlement != "" else "the road itself, for now")
+	# 4. The opening scene — the campaign smith writes the first page.
+	steps["intro"].set_state("work", "the quill scratches…")
+	var intro_idea := str(draft["name"]) if str(draft["name"]) != "" else "an opening campaign true to this world's theme"
+	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", {
+		"idea": "The opening campaign: %s. Begin it at %s." % [intro_idea, _settlement if _settlement != "" else "the world's heart"],
+		"mode": "story",
+		"world": {"name": world.get("name", ""), "kind": world.get("kind", ""), "lore": world.get("lore", "")}})
+	if r.get("_status", 0) == 200 and str(r.get("title", "")) != "":
+		_story = {"slug": str(r["title"]).to_lower().replace(" ", "-").left(24),
+			"title": str(r["title"]), "premise": str(r.get("premise", "")), "hook": str(r.get("hook", ""))}
+		if str(draft["name"]) != "":
+			_story["title"] = str(draft["name"])
+			_story["slug"] = str(draft["name"]).to_lower().replace(" ", "-").left(24)
+		steps["intro"].set_state("done", "“%s”" % str(_story.get("title", "")))
+	else:
+		_story = {}
+		steps["intro"].set_state("fail", "the quill broke — the Dossier can re-strike it")
+	# 5. The DM's notes — the campaign prompt, composed and sealed.
+	steps["notes"].set_state("done", "persona composed — inspect it in the Dossier")
+	_busy = false
+	var onward := Button.new()
+	onward.theme_type_variation = "AccentButton"
+	onward.text = "📜 To the Dossier ›"
+	onward.pressed.connect(func(): _enter_stage(7))
+	var oc := CenterContainer.new()
+	oc.add_child(onward)
+	_stage_box.add_child(onward if false else oc)
+	Ui.polish(_stage_box)
+
+
+# ── Stage 7: the Dossier — the campaign, ready to begin ─────────────────────
+func _stage_dossier() -> void:
+	var world := _sealed_world
+	_title_label("The Campaign Dossier")
+	var body := RichTextLabel.new()
+	body.bbcode_enabled = true
+	body.fit_content = true
+	body.custom_minimum_size = Vector2(640, 0)
+	var rules: Dictionary = draft["rules"]
+	var rule_bits: Array[String] = []
+	for d in DIFFICULTIES:
+		if float(d["mult"]) == float(rules.get("difficulty", 1.0)):
+			rule_bits.append(str(d["title"]))
+	if bool(rules.get("permadeath", false)):
+		rule_bits.append("permadeath")
+	if not bool(rules.get("companions", true)):
+		rule_bits.append("no companions")
+	if not bool(rules.get("fog", true)):
+		rule_bits.append("no fog")
+	if str(rules.get("house", "")) != "":
+		rule_bits.append("house: " + str(rules.get("house", "")))
+	body.append_text("[center][font_size=20][color=%s][b]%s[/b][/color][/font_size]\n[i]%s[/i][/center]\n\n[b]World:[/b] %s — %s\n[b]The GM:[/b] %s\n[b]Table rules:[/b] %s\n[b]It begins at:[/b] %s\n\n[b]The hook:[/b] %s" % [
+		Ui.c("gold_soft").to_html(false),
+		str(_story.get("title", str(draft["name"]) if str(draft["name"]) != "" else "An Untitled Campaign")).replace("[", "[lb]"),
+		str(_story.get("premise", "")).replace("[", "[lb]"),
+		str(world.get("name", "")).replace("[", "[lb]"), str(world.get("tagline", "")).replace("[", "[lb]"),
+		str(draft["gm"].get("style", "as tuned")),
+		", ".join(rule_bits) if not rule_bits.is_empty() else "the intended fight",
+		_settlement if _settlement != "" else "the open road",
+		str(_story.get("hook", "the world waits")).replace("[", "[lb]")])
+	var bc := CenterContainer.new()
+	bc.add_child(body)
+	_stage_box.add_child(bc)
+	var notes := Fold.new("The DM's notes (the composed campaign prompt)", false)
+	var np := Label.new()
+	np.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	np.theme_type_variation = "HintLabel"
+	np.custom_minimum_size = Vector2(620, 0)
+	np.text = Composer.compose_world_gm(world, _story)
+	notes.content.add_child(np)
+	var nc := CenterContainer.new()
+	nc.add_child(notes)
+	_stage_box.add_child(nc)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["l"])
+	var reroll := Button.new()
+	reroll.theme_type_variation = "GhostButton"
+	reroll.text = "↻ Re-strike the opening"
+	reroll.pressed.connect(func():
+		_story = {}
+		_enter_stage(6))
+	row.add_child(reroll)
+	var begin := Button.new()
+	begin.theme_type_variation = "AccentButton"
+	begin.text = "⚔ BEGIN THE CAMPAIGN"
+	begin.pressed.connect(_begin_campaign)
+	row.add_child(begin)
+	var leave := Button.new()
+	leave.theme_type_variation = "GhostButton"
+	leave.text = "snuff the candles"
+	leave.pressed.connect(func(): closed.emit())
+	row.add_child(leave)
+	_stage_box.add_child(row)
+
+
+## The save slot: the dm- adventure, seeded with everything the table chose.
+func _begin_campaign() -> void:
+	if _busy:
+		return
+	_busy = true
+	_status.text = "⚔ Opening the campaign…"
+	var world := _sealed_world
+	var wid := str(world.get("id", ""))
+	var story := _story
+	var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
+	var adv_name := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(world.get("name", ""))
+	var adv_id := "dm-%s-%s" % [wid, slug]
+	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
+		"id": adv_id, "name": adv_name,
+		"personality": Composer.compose_world_gm(world, story),
+		"relationship": "Dungeon Master", "world_id": wid,
+	})
+	if draft["gm"] is Dictionary and not draft["gm"].is_empty():
+		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/gm" % adv_id.uri_encode(), {"value": draft["gm"]})
+	var world_kind := {"rules": draft["rules"]}
+	if _settlement != "":
+		world_kind["here"] = _settlement
+		world_kind["seen"] = [_settlement]
+	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/world" % adv_id.uri_encode(), {"value": world_kind})
+	_busy = false
+	_status.text = ""
+	Sfx.play("sting")
+	campaign_begun.emit({"id": adv_id, "name": adv_name, "world_id": wid})

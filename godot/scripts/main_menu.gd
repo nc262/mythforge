@@ -575,11 +575,10 @@ func _open_campaign_forge_pillar() -> void:
 	_sub.visible = false
 	if _forge_scene == null:
 		_forge_scene = preload("res://scenes/forge/campaign_forge.tscn").instantiate()
-		_forge_scene.world_sealed.connect(func(world, _camp_name):
+		_forge_scene.campaign_begun.connect(func(adv):
 			_forge_scene.visible = false
-			_cworlds.append(world)
 			Mode.enter("MainMenu")
-			_show_detail(world))
+			_play(adv))
 		_forge_scene.closed.connect(func():
 			_forge_scene.visible = false
 			_show_title())
