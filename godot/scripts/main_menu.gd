@@ -43,6 +43,7 @@ func _ready() -> void:
 	_load_settings()
 	$Title/Box/Continue.pressed.connect(_continue_last)
 	$Title/Box/NewAdv.pressed.connect(_show_worlds)
+	$Title/Box/CampForge.pressed.connect(_open_campaign_forge_pillar)
 	$Title/Box/Companion.pressed.connect(_show_companions)
 	$Title/Box/Settings.pressed.connect(_show_settings)
 	$Sub/Margin/Box/Bar/Back.pressed.connect(_show_title)
@@ -562,7 +563,33 @@ func _create_world(w: Dictionary) -> void:
 	_show_detail(world)
 
 
-# ── Campaign forge (worldsmith mode=story) ───────────────────────────────────
+## ⚒ The Campaign Forge pillar (docs/forges/CampaignForge.md) — the war
+## table. The instance is kept (hidden) so a banked draft survives until
+## the menu closes. On seal: the new world joins the gallery and opens.
+var _forge_scene: Control = null
+
+
+func _open_campaign_forge_pillar() -> void:
+	Mode.enter("CampaignForge")
+	_title.visible = false
+	_sub.visible = false
+	if _forge_scene == null:
+		_forge_scene = preload("res://scenes/forge/campaign_forge.tscn").instantiate()
+		_forge_scene.world_sealed.connect(func(world, _camp_name):
+			_forge_scene.visible = false
+			_cworlds.append(world)
+			Mode.enter("MainMenu")
+			_show_detail(world))
+		_forge_scene.closed.connect(func():
+			_forge_scene.visible = false
+			_show_title())
+		add_child(_forge_scene)
+	else:
+		_forge_scene.visible = true
+	Ui.polish(_forge_scene)
+
+
+# ── Campaign smith (worldsmith mode=story, per-world craft) ──────────────────
 func _open_campaign_forge(w: Dictionary) -> void:
 	var dlg := ConfirmationDialog.new()
 	dlg.title = "✦ Craft a campaign — %s" % str(w.get("name", ""))

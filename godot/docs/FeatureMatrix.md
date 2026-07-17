@@ -85,8 +85,8 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
 | **Character Forge** (pillar): multi-stage hero ritual — origin/ruleset/heritage/class/background/nature/appearance/evolving portrait/voice/equipment/Quenching | absorbs hero forge + prebuilts + backgrounds | 📐 designed, awaiting approval | P1 | MDL, SDXL | XL | docs/forges/CharacterForge.md; F1-F5 milestones |
-| **Campaign Forge** (pillar): war-table ritual — name/ruleset/theme/GM's voice/table rules/THE FORGING/dossier | absorbs ⚒ world forge + campaign smith + Session Zero | 📐 designed, awaiting approval | P1 | MDL, worldsmith | XL | docs/forges/CampaignForge.md; C1-C5 milestones |
-| Shared forge components: MythChoiceCard · MythStageRail · MythForgeStep | (new) | 📐 designed | P1 | MDL | M | gallery-first per the law |
+| **Campaign Forge** (pillar): war-table ritual — name/ruleset/theme/GM's voice/table rules/THE FORGING/dossier | absorbs ⚒ world forge + campaign smith + Session Zero | 🟡 C1 shipped: shell, rail, Welcome/Name/Ruleset/Theme, forging wrap w/ refine loop + seal, menu pillar button | P1 | MDL, worldsmith | XL | C2 voice+rules → C3 staged forging → C4 dossier/save → C5 polish |
+| Shared forge components: MythChoiceCard · MythStageRail | (new) | ✅ in the gallery | P1 | MDL | M | MythForgeStep arrives C3 |
 | Table rules engine levers: difficulty multiplier · permadeath · fog toggle · companions toggle · house rules | (new) | 📐 designed | P1 | — | M | each engine-enforced, C2 |
 | Character voice stage | — | ⛔ blocked w/ TTS provider; ships as visible placeholder rune-stone | P3 | backend voice | S | F5 |
 | 3D character generation | — | 🔲 future | P4 | — | XL | FutureIdeas |

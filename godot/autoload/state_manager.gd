@@ -16,7 +16,9 @@ signal changed(prev: StringName, next: StringName)
 ## navigate, start_adventure, forge, settings.
 const STATES := {
 	"Boot":              {"allowed": [], "to": ["MainMenu", "Loading"]},
-	"MainMenu":          {"allowed": ["navigate", "start_adventure", "forge", "settings"], "to": ["Settings", "CharacterCreation", "Loading", "MainMenu"]},
+	"MainMenu":          {"allowed": ["navigate", "start_adventure", "forge", "settings"], "to": ["Settings", "CharacterCreation", "CampaignForge", "CharacterForge", "Loading", "MainMenu"]},
+	"CampaignForge":     {"allowed": ["forge", "navigate"], "to": ["MainMenu", "Loading"]},
+	"CharacterForge":    {"allowed": ["edit_hero", "navigate"], "to": ["MainMenu", "Loading", "Exploration"]},
 	"Settings":          {"allowed": ["navigate", "settings"], "to": ["MainMenu"]},
 	"Loading":           {"allowed": [], "to": ["Exploration", "Dialogue", "CharacterCreation", "MainMenu"]},
 	"CharacterCreation": {"allowed": ["edit_hero"], "to": ["Exploration", "MainMenu"]},

@@ -90,6 +90,26 @@ func _ready() -> void:
 	prow.add_child(gcol)
 	col.add_child(prow)
 
+	col.add_child(Header.new("Choice cards & stage rail"))
+	var ccrow := HBoxContainer.new()
+	ccrow.alignment = BoxContainer.ALIGNMENT_CENTER
+	ccrow.add_theme_constant_override("separation", Ui.SPACE["s"])
+	var cc1 := preload("res://ui/myth_choice_card.gd").new({"glyph": "🌑", "title": "Dark Fantasy", "body": "grim roads, costly magic"})
+	var cc2 := preload("res://ui/myth_choice_card.gd").new({"glyph": "⚒", "title": "Chosen", "body": "legendary rim + pulse", "foot": "selected"})
+	cc2.set_selected(true)
+	var cc3 := preload("res://ui/myth_choice_card.gd").new({"glyph": "📜", "title": "A future forging", "body": "visible, not hidden"})
+	cc3.disabled = true
+	cc3.modulate = Color(1, 1, 1, 0.45)
+	for c in [cc1, cc2, cc3]:
+		ccrow.add_child(c)
+	col.add_child(ccrow)
+	var rail := preload("res://ui/myth_stage_rail.gd").new(["Table", "Name", "Rules", "Theme", "Voice", "Forge"])
+	rail.set_stage(3)
+	rail.custom_minimum_size = Vector2(480, 44)
+	var railc := CenterContainer.new()
+	railc.add_child(rail)
+	col.add_child(railc)
+
 	var fold := preload("res://ui/myth_fold.gd").new("A folded section (MythFold)", false)
 	var fl := Label.new()
 	fl.theme_type_variation = "HintLabel"
