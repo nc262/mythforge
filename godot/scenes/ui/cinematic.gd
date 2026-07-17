@@ -12,10 +12,13 @@ const SHOTS := ["cine-fantasy", "cine-neonspire", "cine-everyday", "cine-space"]
 const SHOT_TIME := 4.4
 const FADE_TIME := 1.1
 
+const VIDEO := "res://assets/video/opening.ogv"
+
 var _t := 0.0
 var _logo_t := -1.0
 var _sparks: Array = []
 var _done := false
+var _vid: VideoStreamPlayer = null
 
 
 func _init() -> void:
@@ -29,6 +32,25 @@ func _ready() -> void:
 		Art.ensure(k, str(Art.CINE_PROMPTS.get(k, "")), "1344x768")
 	for i in 90:
 		_sparks.append([randf(), randf(), 0.4 + randf() * 0.9, randf() * TAU])
+	# The full-blown video, when it exists (scripts/make_opening_video.py):
+	# four SVD-animated worlds in one file; the logo still forges live on top.
+	if not Ui.reduce_motion and ResourceLoader.exists(VIDEO):
+		_vid = VideoStreamPlayer.new()
+		_vid.stream = load(VIDEO)
+		_vid.expand = true
+		_vid.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_vid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_vid.show_behind_parent = true  # our letterbox + skip hint stay on top
+		add_child(_vid)
+		_vid.finished.connect(func():
+			if _logo_t < 0.0:
+				_logo_t = 0.0
+				if is_instance_valid(_vid):
+					_vid.queue_free()
+					_vid = null)
+		_vid.play()
+		set_process(true)
+		return
 	var all_present := SHOTS.all(func(k): return Art.has_art(k))
 	if Ui.reduce_motion or not all_present:
 		_logo_t = 0.0  # straight to the forging of the name
@@ -42,6 +64,8 @@ func _process(delta: float) -> void:
 		_logo_t += delta
 		if _logo_t > 3.6:
 			_finish()
+	elif _vid != null:
+		pass  # the video carries the worlds; the forging follows its last frame
 	else:
 		_t += delta
 		if _t >= SHOT_TIME * SHOTS.size():
@@ -79,6 +103,13 @@ func _draw_shot(key: String, alpha: float, phase: float) -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0.01, 0.01, 0.03))
+	if _vid != null and _logo_t < 0.0:
+		# The video plays beneath; only the cinema frame + skip hint draw here.
+		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, size.y * 0.055)), Color(0, 0, 0, 0.92))
+		draw_rect(Rect2(Vector2(0, size.y * 0.945), Vector2(size.x, size.y * 0.055)), Color(0, 0, 0, 0.92))
+		draw_string(get_theme_default_font(), Vector2(size.x - 220, size.y - 12), "press anything to skip",
+			HORIZONTAL_ALIGNMENT_RIGHT, 200, 12, Color(Ui.c("ink_dim"), 0.6))
+		return
 	if _logo_t < 0.0:
 		# The journey across the worlds: current shot + the next bleeding in.
 		var idx := clampi(int(_t / SHOT_TIME), 0, SHOTS.size() - 1)
