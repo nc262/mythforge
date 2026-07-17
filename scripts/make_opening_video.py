@@ -233,8 +233,9 @@ def assemble(clips):
         fc.append(f"{last}[{i}:v]xfade=transition=fade:duration={XFADE}:offset={t_off:.2f}{out}")
         last = f"[x{i}]"
         t_off += SECONDS_PER_SHOT - XFADE
+    # Godot's Theora decoder expects 4:2:0 — 4:4:4 renders black on many GPUs.
     cmd = [FFMPEG, "-y"] + inputs + ["-filter_complex", ";".join(fc), "-map", "[vout]",
-           "-c:v", "libtheora", "-q:v", "7", "-an", FINAL]
+           "-c:v", "libtheora", "-q:v", "7", "-pix_fmt", "yuv420p", "-an", FINAL]
     subprocess.run(cmd, check=True, capture_output=True)
     print(f"ASSEMBLED {FINAL} ({os.path.getsize(FINAL)//1024//1024}MB)", flush=True)
 

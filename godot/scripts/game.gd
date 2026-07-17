@@ -1965,8 +1965,14 @@ func _travel_to(place: String) -> void:
 const _TIME_TINT := [Color(1.0, 0.92, 0.85), Color(1, 1, 1), Color(1, 1, 1), Color(1.0, 0.97, 0.9), Color(0.95, 0.85, 0.85), Color(0.8, 0.78, 0.9), Color(0.62, 0.62, 0.78)]
 
 
+var _last_tint_ti := -1
+
+
 func _apply_time_tint() -> void:
 	var ti := clampi(int(GameState.clock().get("ti", 1)), 0, _TIME_TINT.size() - 1)
+	if ti == _last_tint_ti:
+		return  # stacking a fresh tween every render made the light pump/flicker
+	_last_tint_ti = ti
 	var target: Color = _TIME_TINT[ti]
 	target.a = _scene_art.modulate.a
 	create_tween().tween_property(_scene_art, "modulate", target, 1.2)

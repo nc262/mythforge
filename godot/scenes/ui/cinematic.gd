@@ -42,12 +42,19 @@ func _ready() -> void:
 		_vid.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_vid.show_behind_parent = true  # our letterbox + skip hint stay on top
 		add_child(_vid)
+		var started := Time.get_ticks_msec()
 		_vid.finished.connect(func():
-			if _logo_t < 0.0:
-				_logo_t = 0.0
-				if is_instance_valid(_vid):
-					_vid.queue_free()
-					_vid = null)
+			if _logo_t >= 0.0:
+				return
+			if is_instance_valid(_vid):
+				_vid.queue_free()
+				_vid = null
+			# A healthy film runs ~14s; a decoder bail-out inside the first
+			# seconds falls back to the stills journey, not a jarring cut.
+			if Time.get_ticks_msec() - started < 8000:
+				_t = 0.0
+			else:
+				_logo_t = 0.0)
 		_vid.play()
 		set_process(true)
 		return
@@ -102,14 +109,15 @@ func _draw_shot(key: String, alpha: float, phase: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.01, 0.01, 0.03))
 	if _vid != null and _logo_t < 0.0:
-		# The video plays beneath; only the cinema frame + skip hint draw here.
+		# The film plays behind this canvas — NO base coat here (it would
+		# blanket the video); only the cinema frame + skip hint.
 		draw_rect(Rect2(Vector2.ZERO, Vector2(size.x, size.y * 0.055)), Color(0, 0, 0, 0.92))
 		draw_rect(Rect2(Vector2(0, size.y * 0.945), Vector2(size.x, size.y * 0.055)), Color(0, 0, 0, 0.92))
 		draw_string(get_theme_default_font(), Vector2(size.x - 220, size.y - 12), "press anything to skip",
 			HORIZONTAL_ALIGNMENT_RIGHT, 200, 12, Color(Ui.c("ink_dim"), 0.6))
 		return
+	draw_rect(Rect2(Vector2.ZERO, size), Color(0.01, 0.01, 0.03))
 	if _logo_t < 0.0:
 		# The journey across the worlds: current shot + the next bleeding in.
 		var idx := clampi(int(_t / SHOT_TIME), 0, SHOTS.size() - 1)
