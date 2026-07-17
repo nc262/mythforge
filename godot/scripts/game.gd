@@ -1267,13 +1267,17 @@ func _render_combat() -> void:
 		_battle_grid.map_key = Art.ensure_battle_map(here if here != "" else "a %s battlefield" % Art.world_flavor())
 		if Art.has_art(_battle_grid.map_key):
 			Combat.bake_terrain(Image.load_from_file(Art.path_for(_battle_grid.map_key)))
-	# The room darkens toward ember-red while steel is out.
-	var tween := create_tween()
-	tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
-	if fighting:
-		Sfx.music("combat")
-	else:
-		Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
+	# The room darkens toward ember-red while steel is out — ONCE per state
+	# change. (This fired on every combat save: stacked tint tweens pumped
+	# the light and the music crossfade restarted constantly — the flicker.)
+	if fighting != _was_fighting:
+		_was_fighting = fighting
+		var tween := create_tween()
+		tween.tween_property(_battle_tint, "color:a", 0.05 if fighting else 0.0, 0.8)
+		if fighting:
+			Sfx.music("combat")
+		else:
+			Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
 	if not fighting:
 		return
 	if Mode.state not in ["Combat", "Death", "GameOver", "LevelUp"]:
@@ -1966,6 +1970,7 @@ const _TIME_TINT := [Color(1.0, 0.92, 0.85), Color(1, 1, 1), Color(1, 1, 1), Col
 
 
 var _last_tint_ti := -1
+var _was_fighting := false
 
 
 func _apply_time_tint() -> void:

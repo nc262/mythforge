@@ -16,9 +16,9 @@ ART = os.path.expandvars(r"%APPDATA%/Godot/app_userdata/Mythforge/art")
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "build", "opening")
 FINAL = os.path.join(os.path.dirname(__file__), "..", "godot", "assets", "video", "opening.ogv")
 SHOTS = ["cine-fantasy", "cine-neonspire", "cine-everyday", "cine-space"]
-FRAMES = 14          # 25 is XT-native but ~36min/clip under quad attention; 14 halves it
+FRAMES = 25          # XT-native; quality pass — expect ~40min/clip under quad attention
 FPS_OUT = 24         # minterpolated output
-SECONDS_PER_SHOT = 4.0
+SECONDS_PER_SHOT = 3.125
 XFADE = 0.6
 
 import imageio_ffmpeg
@@ -57,12 +57,12 @@ def svd_workflow(image_name, seed, width=1024, height=576, frames=FRAMES):
         "3": {"class_type": "SVD_img2vid_Conditioning",
               "inputs": {"clip_vision": ["1", 1], "init_image": ["2", 0], "vae": ["1", 2],
                           "width": width, "height": height, "video_frames": frames,
-                          "motion_bucket_id": 110, "fps": 8, "augmentation_level": 0.02}},
+                          "motion_bucket_id": 70, "fps": 8, "augmentation_level": 0.02}},
         "4": {"class_type": "VideoLinearCFGGuidance",
               "inputs": {"model": ["1", 0], "min_cfg": 1.0}},
         "5": {"class_type": "KSampler",
               "inputs": {"model": ["4", 0], "positive": ["3", 0], "negative": ["3", 1],
-                          "latent_image": ["3", 2], "seed": seed, "steps": 14, "cfg": 2.5,
+                          "latent_image": ["3", 2], "seed": seed, "steps": 25, "cfg": 2.5,
                           "sampler_name": "euler", "scheduler": "karras", "denoise": 1.0}},
         "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
         "7": {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": "mf_open"}},
@@ -212,8 +212,10 @@ def encode_clip(fdir, clip_mp4):
     (slow, majestic motion), interpolated to smooth 24fps."""
     n = len([f for f in os.listdir(fdir) if f.endswith(".png")])
     rate = max(n / SECONDS_PER_SHOT, 1.0)
+    # Plain fps duplication — motion-compensated warping was the "AI slop"
+    # smear. Native-pace frames read as a living painting instead.
     subprocess.run([FFMPEG, "-y", "-framerate", f"{rate:.4f}", "-i", os.path.join(fdir, "f_%04d.png"),
-                    "-vf", f"minterpolate=fps={FPS_OUT}:mi_mode=mci:mc_mode=aobmc:vsbmc=1,scale=1280:720:flags=lanczos",
+                    "-vf", f"fps={FPS_OUT},scale=1280:720:flags=lanczos",
                     "-c:v", "libx264", "-preset", "slow", "-crf", "16",
                     "-pix_fmt", "yuv420p", clip_mp4], check=True, capture_output=True)
 

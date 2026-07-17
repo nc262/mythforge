@@ -58,8 +58,10 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), scrim))
 		for edge_r in [[Rect2(Vector2.ZERO, Vector2(size.x, 46)), true], [Rect2(Vector2(0, size.y - 46), Vector2(size.x, 46)), true]]:
 			draw_rect(edge_r[0], Color(Ui.c("night"), 0.28))
-	# Volumetric shafts breathe from the upper light.
-	if not Ui.reduce_motion:
+	# Volumetric shafts breathe from the upper light — only in rooms with a
+	# painting; over live play they read as screen flicker, so the pure
+	# atmosphere overlay keeps its dust and loses the shafts.
+	if not Ui.reduce_motion and has_bg:
 		for i in 2:
 			var breathe := 0.028 + 0.016 * sin(_phase * 0.5 + i * 2.1)
 			var x0 := size.x * (0.18 + i * 0.42)
