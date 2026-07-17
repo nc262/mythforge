@@ -5,7 +5,7 @@ then assemble the four moving shots with crossfades into a Theora .ogv that
 Godot's VideoStreamPlayer plays natively.
 
 Usage:  python -X utf8 scripts/make_opening_video.py
-Needs:  ComfyUI at :8188 with models/checkpoints/svd_xt.safetensors,
+Needs:  ComfyUI at :8188 with Wan 2.2 TI2V-5B + umt5-xxl + wan2.2 VAE,
         pip install imageio-ffmpeg pillow requests.
 Output: godot/assets/video/opening.ogv (+ per-shot mp4 masters in build/)
 """
@@ -16,10 +16,19 @@ ART = os.path.expandvars(r"%APPDATA%/Godot/app_userdata/Mythforge/art")
 OUT_DIR = os.path.join(os.path.dirname(__file__), "..", "build", "opening")
 FINAL = os.path.join(os.path.dirname(__file__), "..", "godot", "assets", "video", "opening.ogv")
 SHOTS = ["cine-fantasy", "cine-neonspire", "cine-everyday", "cine-space"]
-FRAMES = 25          # XT-native; quality pass — expect ~40min/clip under quad attention
-FPS_OUT = 24         # minterpolated output
-SECONDS_PER_SHOT = 3.125
+## Wan 2.2 is DIRECTED video: each shot gets cinematography, not guesses.
+MOTION = {
+    "cine-fantasy": "The massive dragon slowly beats its wings and glides forward over the misty valley, castles below, morning mist drifting through the mountains, camera pushes in gently, epic fantasy film, smooth coherent motion, highly detailed",
+    "cine-neonspire": "The glowing holographic dragon undulates slowly above the rain-slick cyberpunk city, neon signs flickering, light rain falling, camera drifts sideways slowly, cinematic, smooth coherent motion",
+    "cine-everyday": "A peaceful suburban street at golden sunset, tree leaves rustling gently in the breeze, warm light shifting, camera dollies forward slowly, cinematic, calm smooth motion",
+    "cine-space": "Starships cruise slowly past glowing nebulae toward a vast orbital station, engine lights pulsing, stars shimmering, camera drifts majestically through the fleet, cinematic space epic, smooth coherent motion",
+}
+NEGATIVE = "static image, no motion, frozen, jitter, warping, morphing, deformed, low quality, artifacts, watermark, text, subtitles"
+FRAMES = 81          # 81 frames @ 24fps = 3.375s per shot, Wan 2.2 native pace
+FPS_OUT = 24
+SECONDS_PER_SHOT = 3.375
 XFADE = 0.6
+WIDTH, HEIGHT = 1280, 704
 
 import imageio_ffmpeg
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
@@ -49,23 +58,28 @@ def upload_image(png_path, name):
         return json.load(r)["name"]
 
 
-def svd_workflow(image_name, seed, width=1024, height=576, frames=FRAMES):
+def wan_workflow(image_name, prompt, seed):
     return {
-        "1": {"class_type": "ImageOnlyCheckpointLoader",
-              "inputs": {"ckpt_name": "svd_xt.safetensors"}},
-        "2": {"class_type": "LoadImage", "inputs": {"image": image_name}},
-        "3": {"class_type": "SVD_img2vid_Conditioning",
-              "inputs": {"clip_vision": ["1", 1], "init_image": ["2", 0], "vae": ["1", 2],
-                          "width": width, "height": height, "video_frames": frames,
-                          "motion_bucket_id": 70, "fps": 8, "augmentation_level": 0.02}},
-        "4": {"class_type": "VideoLinearCFGGuidance",
-              "inputs": {"model": ["1", 0], "min_cfg": 1.0}},
-        "5": {"class_type": "KSampler",
-              "inputs": {"model": ["4", 0], "positive": ["3", 0], "negative": ["3", 1],
-                          "latent_image": ["3", 2], "seed": seed, "steps": 25, "cfg": 2.5,
-                          "sampler_name": "euler", "scheduler": "karras", "denoise": 1.0}},
-        "6": {"class_type": "VAEDecode", "inputs": {"samples": ["5", 0], "vae": ["1", 2]}},
-        "7": {"class_type": "SaveImage", "inputs": {"images": ["6", 0], "filename_prefix": "mf_open"}},
+        "1": {"class_type": "UNETLoader",
+              "inputs": {"unet_name": "wan2.2_ti2v_5B_fp16.safetensors", "weight_dtype": "default"}},
+        "2": {"class_type": "CLIPLoader",
+              "inputs": {"clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors", "type": "wan", "device": "default"}},
+        "3": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": prompt}},
+        "4": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["2", 0], "text": NEGATIVE}},
+        "5": {"class_type": "VAELoader", "inputs": {"vae_name": "wan2.2_vae.safetensors"}},
+        "6": {"class_type": "LoadImage", "inputs": {"image": image_name}},
+        "7": {"class_type": "Wan22ImageToVideoLatent",
+              "inputs": {"vae": ["5", 0], "width": WIDTH, "height": HEIGHT,
+                          "length": FRAMES, "batch_size": 1, "start_image": ["6", 0]}},
+        "8": {"class_type": "ModelSamplingSD3", "inputs": {"model": ["1", 0], "shift": 8.0}},
+        "9": {"class_type": "KSampler",
+              "inputs": {"model": ["8", 0], "positive": ["3", 0], "negative": ["4", 0],
+                          "latent_image": ["7", 0], "seed": seed, "steps": 20, "cfg": 5.0,
+                          "sampler_name": "uni_pc", "scheduler": "simple", "denoise": 1.0}},
+        "10": {"class_type": "VAEDecodeTiled",
+               "inputs": {"samples": ["9", 0], "vae": ["5", 0], "tile_size": 256,
+                           "overlap": 64, "temporal_size": 32, "temporal_overlap": 8}},
+        "11": {"class_type": "SaveImage", "inputs": {"images": ["10", 0], "filename_prefix": "mf_wan"}},
     }
 
 
@@ -122,7 +136,7 @@ def prep_input(shot):
     from PIL import Image
     src = os.path.join(ART, shot + ".png")
     img = Image.open(src).convert("RGB")
-    tw, th = 1024, 576
+    tw, th = WIDTH, HEIGHT
     s = max(tw / img.width, th / img.height)
     img = img.resize((round(img.width * s), round(img.height * s)), Image.LANCZOS)
     x = (img.width - tw) // 2
@@ -135,7 +149,10 @@ def prep_input(shot):
 
 def _prompt_shot(prompt_nodes):
     try:
-        return str(prompt_nodes.get("2", {}).get("inputs", {}).get("image", "")).replace("_in.png", "")
+        for node in prompt_nodes.values():
+            if isinstance(node, dict) and node.get("class_type") == "LoadImage":
+                return str(node.get("inputs", {}).get("image", "")).replace("_in.png", "")
+        return ""
     except Exception:
         return ""
 
@@ -198,7 +215,7 @@ def make_clip(shot, idx):
     else:
         inp = prep_input(shot)
         name = upload_image(inp, f"{shot}_in.png")
-        frames = run_prompt(svd_workflow(name, seed=1000 + idx), shot)
+        frames = run_prompt(wan_workflow(name, MOTION[shot], seed=2000 + idx), shot)
     fdir = os.path.join(OUT_DIR, shot + "_frames")
     if os.path.isdir(fdir):
         shutil.rmtree(fdir)
@@ -244,9 +261,9 @@ def assemble(clips):
 
 def main():
     os.makedirs(OUT_DIR, exist_ok=True)
-    ck = r"C:/Users/cptahabb/Documents/Code/ComfyUI-Zluda/models/checkpoints/svd_xt.safetensors"
+    ck = r"C:/Users/cptahabb/Documents/Code/ComfyUI-Zluda/models/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors"
     if not os.path.exists(ck):
-        sys.exit("svd_xt.safetensors not in ComfyUI checkpoints — download still running?")
+        sys.exit("wan2.2_ti2v_5B not in diffusion_models — download still running?")
     clips = []
     for i, shot in enumerate(SHOTS):
         clips.append(make_clip(shot, i))
