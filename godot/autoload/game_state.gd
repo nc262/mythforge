@@ -200,6 +200,16 @@ func sell_item(id: String) -> String:
 	return ""
 
 
+## A table rule set at the Campaign Forge (world.rules) — engine-enforced:
+## difficulty scales foes, permadeath archives the save, fog hides the map,
+## companions gates recruiting, house feeds the envelope.
+func rule(key: String, dflt = null):
+	var w = state.get("world")
+	if w is Dictionary and w.get("rules") is Dictionary:
+		return w["rules"].get(key, dflt)
+	return dflt
+
+
 ## Cast a known spell, spending the lowest fitting slot. → note, or "" on fail.
 func cast_spell(nm: String) -> String:
 	var s := sheet()

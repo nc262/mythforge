@@ -10,6 +10,7 @@ signal travel_requested(place: String)
 var locations: Array = []
 var here := ""
 var seen: Array = []          # visited place names (world.seen + here)
+var fog := true               # table rule: false = the whole chart is known
 var quest_text := ""          # active quest prose — matched against names
 var _hover := -1
 var _zoom := 1.0
@@ -34,7 +35,7 @@ func _process(delta: float) -> void:
 
 
 func _known(nm: String) -> bool:
-	return nm == here or seen.has(nm)
+	return not fog or nm == here or seen.has(nm)
 
 
 func _questward(nm: String) -> bool:

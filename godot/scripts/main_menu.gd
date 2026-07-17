@@ -644,6 +644,7 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 		"personality": Composer.compose_world_gm(full, story),
 		"relationship": "Dungeon Master", "world_id": wid,
 	})
+	await _seed_forge_defaults(w, "dm-%s-%s" % [wid, slug])
 	_busy = false
 	var adv := {"id": "dm-%s-%s" % [wid, slug], "name": name, "world_id": wid}
 	# A live save already? Continue it or start over (archive + wipe).
@@ -654,6 +655,18 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 		_ask_continue_or_new(adv, sid)
 	else:
 		_play(adv)
+
+
+## The forge's voice and table rules seed every adventure begun in a forged
+## world — including fresh starts after a reset.
+func _seed_forge_defaults(w: Dictionary, adv_id: String) -> void:
+	var fd: Dictionary = w.get("forge_defaults") if w.get("forge_defaults") is Dictionary else {}
+	if fd.is_empty():
+		return
+	if fd.get("gm") is Dictionary and not fd["gm"].is_empty():
+		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/gm" % adv_id.uri_encode(), {"value": fd["gm"]})
+	if fd.get("rules") is Dictionary and not fd["rules"].is_empty():
+		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/world" % adv_id.uri_encode(), {"value": {"rules": fd["rules"]}})
 
 
 func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
@@ -678,9 +691,11 @@ func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
 		cfg.set_value("sessions", str(adv["id"]), null)
 		cfg.save(Api.COOKIE_FILE)
 		# Reset this adventure's world-state so the hero forge runs fresh.
-		for kind in ["sheet", "inv", "combat", "clock", "quests", "codex", "mem", "bmap", "gm"]:
+		for kind in ["sheet", "inv", "combat", "clock", "quests", "codex", "mem", "bmap", "gm", "world"]:
 			await Api.call_json(HTTPClient.METHOD_PUT,
 				"/api/characters/studio/state/%s/%s" % [str(adv["id"]).uri_encode(), kind], {"value": null})
+		# A forged world's voice and rules survive the reset.
+		await _seed_forge_defaults(_world_by_id(str(adv.get("world_id", ""))), str(adv["id"]))
 		_play(adv))
 
 

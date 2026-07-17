@@ -27,7 +27,7 @@ func envelope(player_msg: String, beats: Array = []) -> String:
 	parts.append("[%s]" % GameState.clock_text())
 	for extra in [GameState.inv_text(), GameState.spell_text(),
 			Chronicle.recall_text(beats), Chronicle.codex_text(), Chronicle.quests_text(),
-			gm_directive()]:
+			gm_directive(), house_rules_text()]:
 		if str(extra) != "":
 			parts.append("[%s]" % extra)
 	parts.append(PROTOCOL)
@@ -51,9 +51,19 @@ func gm_directive() -> String:
 	lohi.call(int(k.get("grit", 50)), "keep danger gentle and forgiving", "the world is brutal — wounds, costs, and consequences bite")
 	lohi.call(int(k.get("pace", 55)), "linger in scenes; let moments breathe", "keep scenes brisk and cut hard to the action")
 	lohi.call(int(k.get("rules", 50)), "rule loosely and favor the story", "run the rules strictly by the book")
+	var style := str(k.get("style", ""))
+	var prefix := ("Run the table as a %s GM. " % style) if style != "" and style != "Tuned by hand" else ""
 	if bits.is_empty():
+		return prefix.strip_edges()
+	return prefix + "GM style — " + "; ".join(bits) + "."
+
+
+## Table rules written at the Campaign Forge ride every turn.
+func house_rules_text() -> String:
+	var house := str(GameState.rule("house", ""))
+	if house == "":
 		return ""
-	return "GM style — " + "; ".join(bits) + "."
+	return "TABLE RULES, set when this campaign was forged — honor them: %s" % house
 
 
 ## The persona prompt for a forged world's GM (port of _composeDMPrompt's

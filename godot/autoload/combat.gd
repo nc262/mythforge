@@ -34,6 +34,12 @@ func current(c: Dictionary) -> Dictionary:
 	return ord[int(c.get("turn", 0)) % ord.size()] if not ord.is_empty() else {}
 
 
+## The table's difficulty rule, clamped sane. Scales foe HP and damage
+## (attack bonus follows HP naturally — no double-dipping).
+func difficulty() -> float:
+	return clampf(float(GameState.rule("difficulty", 1.0)), 0.5, 2.0)
+
+
 func enemy_hp_guess(nm: String) -> int:
 	var n := nm.to_lower()
 	var hp: int
@@ -45,8 +51,8 @@ func enemy_hp_guess(nm: String) -> int:
 		hp = 6 + randi() % 7
 	else:
 		hp = 12 + randi() % 8
-	# Foes keep pace with the hero: +20% per level past 1st.
-	return roundi(hp * (1.0 + 0.2 * (int(GameState.sheet().get("level", 1)) - 1)))
+	# Foes keep pace with the hero (+20%/level) and honor the table's rule.
+	return maxi(1, roundi(hp * (1.0 + 0.2 * (int(GameState.sheet().get("level", 1)) - 1)) * difficulty()))
 
 
 func bestiary_for(nm: String) -> Dictionary:
@@ -403,7 +409,7 @@ func enemy_turn(enemy: Dictionary) -> Dictionary:
 	var dmg := int(enemy.get("hpMax", 10)) / 18
 	for i in (2 if crit else 1):
 		dmg += randi_range(1, 6)
-	dmg = maxi(1, dmg)
+	dmg = maxi(1, roundi(dmg * difficulty()))
 	var reactions := available_reactions(total, ac)
 	if not reactions.is_empty():
 		return {"pending": {"enemy": enemy, "dmg": dmg, "crit": crit, "total": total, "ac": ac},

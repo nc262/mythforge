@@ -203,6 +203,21 @@ func _ready() -> void:
 	assert(Combat.positions().is_empty(), "the board clears with the field")
 	assert(int(GameState.sheet()["xp"]) > 300)  # victory XP landed
 
+	# Table rules (Campaign Forge C2): engine levers read from world.rules
+	assert(GameState.rule("difficulty", 1.0) == 1.0, "rule default")
+	assert(Combat.difficulty() == 1.0)
+	GameState.state["world"] = {"rules": {"difficulty": 1.5, "fog": false, "companions": false, "permadeath": true, "house": "no resurrection"}}
+	assert(float(GameState.rule("difficulty", 1.0)) == 1.5)
+	assert(Combat.difficulty() == 1.5)
+	assert(GameState.rule("fog", true) == false)
+	assert(GameState.rule("companions", true) == false)
+	assert(GameState.rule("permadeath", false) == true)
+	assert(Composer.house_rules_text().contains("no resurrection"))
+	GameState.state["world"] = {"rules": {"difficulty": 9.0}}
+	assert(Combat.difficulty() == 2.0, "difficulty clamps sane")
+	GameState.state.erase("world")
+	assert(Combat.difficulty() == 1.0, "no rules block = the intended fight")
+
 	# FSM: transitions, action gating, busy blocking
 	assert(Mode.state == "Boot")
 	Mode.enter("MainMenu")

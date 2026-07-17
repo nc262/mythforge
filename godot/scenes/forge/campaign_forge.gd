@@ -38,7 +38,23 @@ const Rail := preload("res://ui/myth_stage_rail.gd")
 const Header := preload("res://ui/myth_header.gd")
 const Fold := preload("res://ui/myth_fold.gd")
 
-var draft := {"name": "", "theme": {}, "fields": {}, "idea": ""}
+## The GM's Voice presets → Session-Zero knob bundles (humor/spice/grit/
+## pace/rules, 0-100) + a persona line the envelope carries every turn.
+const VOICES := [
+	{"glyph": "🎩", "title": "Classic DM", "body": "fair, steady, by the book", "knobs": {"humor": 40, "spice": 0, "grit": 55, "pace": 50, "rules": 75}},
+	{"glyph": "📖", "title": "Narrative", "body": "story first, rules soft", "knobs": {"humor": 55, "spice": 40, "grit": 45, "pace": 40, "rules": 25}},
+	{"glyph": "💀", "title": "Hardcore", "body": "brutal, strict, earned", "knobs": {"humor": 20, "spice": 0, "grit": 95, "pace": 60, "rules": 90}},
+	{"glyph": "🧭", "title": "Sandbox", "body": "player-led, world breathes", "knobs": {"humor": 45, "spice": 20, "grit": 50, "pace": 70, "rules": 40}},
+	{"glyph": "🎬", "title": "Cinematic", "body": "set pieces, hard cuts", "knobs": {"humor": 50, "spice": 30, "grit": 65, "pace": 85, "rules": 35}},
+]
+const DIFFICULTIES := [
+	{"glyph": "🕊", "title": "Story", "body": "foes soften — the tale leads", "mult": 0.75},
+	{"glyph": "⚔", "title": "Adventurer", "body": "the intended fight", "mult": 1.0},
+	{"glyph": "🛡", "title": "Veteran", "body": "foes hit harder, last longer", "mult": 1.25},
+	{"glyph": "☠", "title": "Merciless", "body": "the world does not blink", "mult": 1.5},
+]
+
+var draft := {"name": "", "theme": {}, "fields": {}, "idea": "", "gm": {}, "rules": {}}
 var _rail: MythStageRail
 var _stage_box: VBoxContainer
 var _table_note: Label
@@ -148,6 +164,10 @@ func _enter_stage(i: int) -> void:
 			_stage_ruleset()
 		3:
 			_stage_theme()
+		4:
+			_stage_voice()
+		5:
+			_stage_rules()
 		6:
 			_stage_forging()
 	Ui.polish(_stage_box)
@@ -274,12 +294,7 @@ func _stage_theme() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	var note := Label.new()
-	note.theme_type_variation = "HintLabel"
-	note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	note.text = "The GM's Voice and Table Rules stones arrive with the next forging (C2)."
-	_stage_box.add_child(note)
-	_nav(2, "⚒ To the forging ›", func():
+	_nav(2, "Continue ›", func():
 		draft["idea"] = idea.text.strip_edges()
 		for k in pillar_inputs:
 			var v: String = pillar_inputs[k].text.strip_edges()
@@ -288,6 +303,104 @@ func _stage_theme() -> void:
 		if draft["theme"].is_empty() and draft["idea"] == "" and draft["fields"].is_empty():
 			_status.text = "Choose a theme — or open the pillars and write your own."
 			return
+		_enter_stage(4))
+
+
+# ── Stage 4: the GM's Voice (Session Zero, absorbed) ────────────────────────
+func _stage_voice() -> void:
+	_title_label("Choose the GM's Voice")
+	var cards: Array = []
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["s"])
+	for v in VOICES:
+		var card := Card.new(v)
+		card.set_selected(str(draft["gm"].get("style", "")) == str(v["title"]))
+		card.pressed.connect(func():
+			draft["gm"] = v["knobs"].duplicate()
+			draft["gm"]["style"] = v["title"]
+			for c in cards:
+				c.set_selected(c == card))
+		cards.append(card)
+		row.add_child(card)
+	_stage_box.add_child(row)
+	# Tune by hand: the raw Session-Zero knobs, for those who know the table.
+	var adv := Fold.new("Tune the voice by hand", false)
+	var sliders := {}
+	for k in [["humor", "Humor — serious ↔ comedic"], ["spice", "Romance & spice — none ↔ bold"],
+			["grit", "Grit & danger — gentle ↔ brutal"], ["pace", "Pace — slow ↔ fast"], ["rules", "Rules — loose ↔ strict"]]:
+		var lbl := Label.new()
+		lbl.theme_type_variation = "HintLabel"
+		lbl.text = str(k[1])
+		adv.content.add_child(lbl)
+		var sl := HSlider.new()
+		sl.min_value = 0
+		sl.max_value = 100
+		sl.step = 5
+		sl.value = int(draft["gm"].get(k[0], 50))
+		sl.custom_minimum_size = Vector2(360, 0)
+		adv.content.add_child(sl)
+		sliders[k[0]] = sl
+	var ac := CenterContainer.new()
+	ac.add_child(adv)
+	_stage_box.add_child(ac)
+	_nav(3, "Continue ›", func():
+		if adv.content.visible:
+			for key in sliders:
+				draft["gm"][key] = int(sliders[key].value)
+			if str(draft["gm"].get("style", "")) == "":
+				draft["gm"]["style"] = "Tuned by hand"
+		if draft["gm"].is_empty():
+			draft["gm"] = VOICES[0]["knobs"].duplicate()
+			draft["gm"]["style"] = VOICES[0]["title"]
+		_enter_stage(5))
+
+
+# ── Stage 5: table rules — every lever engine-enforced ──────────────────────
+func _stage_rules() -> void:
+	_title_label("Set the Table Rules")
+	var cards: Array = []
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["s"])
+	for d in DIFFICULTIES:
+		var card := Card.new(d)
+		card.set_selected(float(draft["rules"].get("difficulty", 1.0)) == float(d["mult"]))
+		card.pressed.connect(func():
+			draft["rules"]["difficulty"] = float(d["mult"])
+			for c in cards:
+				c.set_selected(c == card))
+		cards.append(card)
+		row.add_child(card)
+	_stage_box.add_child(row)
+	var toggles := VBoxContainer.new()
+	toggles.add_theme_constant_override("separation", Ui.SPACE["xs"])
+	var toggle_defs := [["permadeath", "☠ Permadeath — death archives the save; the tale truly ends", false],
+		["companions", "🛡 Companions — allies may join the party", true],
+		["fog", "☁ Fog of War — the map hides what you haven't walked", true]]
+	var checks := {}
+	for td in toggle_defs:
+		var cb := CheckButton.new()
+		cb.text = str(td[1])
+		cb.button_pressed = bool(draft["rules"].get(td[0], td[2]))
+		toggles.add_child(cb)
+		checks[td[0]] = cb
+	var tc := CenterContainer.new()
+	tc.add_child(toggles)
+	_stage_box.add_child(tc)
+	var house := LineEdit.new()
+	house.placeholder_text = "🖋 House rules, in your words — e.g. no resurrection, critical fumbles hurt…"
+	house.text = str(draft["rules"].get("house", ""))
+	house.custom_minimum_size = Vector2(520, 0)
+	var hc := CenterContainer.new()
+	hc.add_child(house)
+	_stage_box.add_child(hc)
+	_nav(4, "⚒ To the forging ›", func():
+		if not draft["rules"].has("difficulty"):
+			draft["rules"]["difficulty"] = 1.0
+		for key in checks:
+			draft["rules"][key] = checks[key].button_pressed
+		draft["rules"]["house"] = house.text.strip_edges()
 		_enter_stage(6))
 
 
@@ -386,8 +499,8 @@ func _show_take() -> void:
 	row.add_child(seal)
 	var back := Button.new()
 	back.theme_type_variation = "GhostButton"
-	back.text = "‹ the theme"
-	back.pressed.connect(func(): _enter_stage(3))
+	back.text = "‹ the rules"
+	back.pressed.connect(func(): _enter_stage(5))
 	row.add_child(back)
 	_stage_box.add_child(row)
 
@@ -404,6 +517,9 @@ func _seal() -> void:
 	var world := {"id": wid, "custom": true}
 	for k in ["name", "kind", "tagline", "lore", "backdrop", "locations", "cast", "stories", "creatures"]:
 		world[k] = w.get(k)
+	# The table's choices ride with the world: every adventure begun in it
+	# is seeded with this voice and these rules (menu applies them on start).
+	world["forge_defaults"] = {"gm": draft["gm"], "rules": draft["rules"], "campaign": str(draft["name"])}
 	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
 	var cworlds: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
 	cworlds.append(world)

@@ -61,7 +61,7 @@ docs/forges/CharacterForge.md. F1 shell+rail+3 stages+Quenching (screenshot
 gate) → F2 origins/ruleset/kits → F3 evolving portrait → F4 nature/array →
 F5 voice placeholder + cinematic quench + memory/relationship seeds.
 
-## M7 — The Campaign Forge (pillar) 🟡 APPROVED — C1 SHIPPED (build order: M7 before M6)
+## M7 — The Campaign Forge (pillar) 🟡 APPROVED — C2 SHIPPED (build order: M7 before M6)
 docs/forges/CampaignForge.md. C1 shell+war table+name/theme (screenshot
 gate) → C2 GM's voice + engine-enforced table rules → C3 THE FORGING
 (staged generation + cast portrait queue) → C4 settlement/intro/dossier/

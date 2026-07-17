@@ -260,6 +260,14 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	_build_dice_menu()
 	_render_sheet()
 	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])
+	# The Campaign Forge already chose the GM's voice? Skip Session Zero and
+	# open the tale directly with the forged tone in force.
+	if GameState.state.get("gm") is Dictionary and not GameState.state.get("gm", {}).is_empty():
+		Mode.enter("Exploration")
+		_say_system("🎩 The GM speaks in the voice chosen at the forge: %s." % str(GameState.state["gm"].get("style", "as tuned")))
+		_last_player_msg = "I arrive."
+		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s%s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls, (", " + str(Rules.tables.get("backgrounds", {}).get(background, {}).get("line", ""))) if background != "" else ""]))
+		return
 	_session_zero(nm, race, cls, background)
 
 
@@ -552,7 +560,9 @@ func _apply_world_tags(tags: Array) -> void:
 					_repaint_scene(place)
 			"companion":
 				var cn := str(a.get("name", "")).strip_edges()
-				if cn != "":
+				if not bool(GameState.rule("companions", true)):
+					_say_system("🛡 The table rules bar companions — %s walks their own road." % (cn if cn != "" else "the stranger"))
+				elif cn != "":
 					var note := GameState.add_companion(cn, str(a.get("role", "")))
 					if note != "":
 						Sfx.play("chime")
@@ -778,7 +788,18 @@ func _roll_pending() -> void:
 				Ui.c("danger").to_html(false), _bb(str(s.get("name", "?")).to_upper()),
 				int(s.get("level", 1)), _bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))),
 				int(c.get("day", 1)), int(s.get("xp", 0)), int(s.get("gold", 0))])
-			_say_system("A long rest starts a new dawn… if the GM allows it.")
+			if bool(GameState.rule("permadeath", false)):
+				# The table rule: the tale truly ends. The save is archived.
+				_say_system("☠ Permadeath — this save is being sealed into the archive.")
+				var cfg := ConfigFile.new()
+				cfg.load(Api.COOKIE_FILE)
+				var sid := str(cfg.get_value("sessions", GameState.cid(), ""))
+				if sid != "":
+					Api.call_json(HTTPClient.METHOD_POST, "/api/session/%s/archive" % sid)
+					cfg.set_value("sessions", GameState.cid(), null)
+					cfg.save(Api.COOKIE_FILE)
+			else:
+				_say_system("A long rest starts a new dawn… if the GM allows it.")
 			_stream(Composer.envelope("[Three death saves failed — I am dying, my tale at its end. Narrate my final moment with the weight it deserves.]"))
 		else:
 			_stream(Composer.envelope(str(dr["msg"])))
@@ -1943,6 +1964,7 @@ func _open_world_map() -> void:
 	var world_d: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	map.here = str(world_d.get("here", ""))
 	map.seen = world_d.get("seen") if world_d.get("seen") is Array else []
+	map.fog = bool(GameState.rule("fog", true))
 	map.quest_text = Chronicle.quests_text()
 	map.travel_requested.connect(func(place):
 		dlg.queue_free()

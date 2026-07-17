@@ -85,9 +85,9 @@ Original = static/js/characterStudio.js (+studioWorlds.js) unless noted.
 | Feature | Original | Godot status | Pri | Deps | Cx | Missing / notes |
 |---|---|---|---|---|---|---|
 | **Character Forge** (pillar): multi-stage hero ritual — origin/ruleset/heritage/class/background/nature/appearance/evolving portrait/voice/equipment/Quenching | absorbs hero forge + prebuilts + backgrounds | 📐 designed, awaiting approval | P1 | MDL, SDXL | XL | docs/forges/CharacterForge.md; F1-F5 milestones |
-| **Campaign Forge** (pillar): war-table ritual — name/ruleset/theme/GM's voice/table rules/THE FORGING/dossier | absorbs ⚒ world forge + campaign smith + Session Zero | 🟡 C1 shipped: shell, rail, Welcome/Name/Ruleset/Theme, forging wrap w/ refine loop + seal, menu pillar button | P1 | MDL, worldsmith | XL | C2 voice+rules → C3 staged forging → C4 dossier/save → C5 polish |
+| **Campaign Forge** (pillar): war-table ritual — name/ruleset/theme/GM's voice/table rules/THE FORGING/dossier | absorbs ⚒ world forge + campaign smith + Session Zero | 🟡 C2 shipped: + GM's Voice (5 presets absorbing Session Zero, tune-by-hand fold) + Table Rules stage | P1 | MDL, worldsmith | XL | C3 staged forging → C4 dossier/save → C5 polish |
 | Shared forge components: MythChoiceCard · MythStageRail | (new) | ✅ in the gallery | P1 | MDL | M | MythForgeStep arrives C3 |
-| Table rules engine levers: difficulty multiplier · permadeath · fog toggle · companions toggle · house rules | (new) | 📐 designed | P1 | — | M | each engine-enforced, C2 |
+| Table rules engine levers | (new) | ✅ ALL engine-enforced: difficulty scales foe HP+damage (clamped 0.5-2.0) · permadeath archives the save on final death · fog toggle honored by the living map · companions gate refuses recruit tags · house rules ride every envelope; forge defaults seed each adventure and survive resets | P1 | — | M | self-check rows green |
 | Character voice stage | — | ⛔ blocked w/ TTS provider; ships as visible placeholder rune-stone | P3 | backend voice | S | F5 |
 | 3D character generation | — | 🔲 future | P4 | — | XL | FutureIdeas |
 
