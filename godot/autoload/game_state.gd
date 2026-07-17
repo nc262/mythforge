@@ -81,6 +81,13 @@ func world_id() -> String:
 	return str(character.get("world_id", ""))
 
 
+## The campaign's narration language (default English) — the language guard
+## keeps the GM inside it. Settable via world.rules.language at the Forge.
+func language() -> String:
+	var l := str(rule("language", "English"))
+	return l if l != "" else "English"
+
+
 ## One number, three names: gold in the vale, credits in the spire, cash at home.
 func currency() -> String:
 	return {"embervale": "gold", "neonspire": "credits", "everyday": "cash"}.get(world_id(), "gold")

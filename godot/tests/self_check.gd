@@ -241,5 +241,14 @@ func _ready() -> void:
 			assert(Mode.STATES.has(nxt), "undeclared target %s from %s" % [nxt, st])
 	Mode.state = "Boot"  # leave the machine as the game boots it
 
+	# Language guard (Issue 4): English passes, wholesale drift is caught,
+	# a stray accent or a short fragment never false-positives.
+	assert(not Composer.looks_like_drift("You slip into the moonlit chapel, blade drawn.", "English"))
+	assert(not Composer.looks_like_drift("The café owner, Renée, nods coolly.", "English"))  # Latin-1 accents ok
+	assert(Composer.looks_like_drift("你推开门，寒风扑面而来，火把在墙上摇曳。", "English"))  # CJK drift
+	assert(Composer.looks_like_drift("Вы входите в тёмный зал, где горят свечи.", "English"))  # Cyrillic drift
+	assert(not Composer.looks_like_drift("你好", "English"))  # too short to judge
+	assert(not Composer.looks_like_drift("你推开门，寒风扑面而来。", "Chinese"))  # non-English campaign opts out
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

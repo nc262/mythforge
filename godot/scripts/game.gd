@@ -5,6 +5,11 @@ extends Control
 var _streaming := false
 var _acc := ""          # full raw GM reply
 var _shown := 0         # chars of _acc already printed (tags are held back)
+var _lang_gate := false     # holding the opening back until its language is judged
+var _lang_drifted := false  # opening was non-target language — retry on done
+var _lang_retry := 0        # at most one silent retry per player turn
+var _gm_started := false    # the typing glyphs have been replaced by real content
+const _GATE_MIN := 40       # visible chars to see before judging the language
 var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
 var _conjuring := false
@@ -404,6 +409,7 @@ func _send(raw: String) -> void:
 	_set_check({})
 	_say_me(_bb(msg))
 	_last_player_msg = msg
+	_lang_retry = 0  # fresh turn: the language guard's one retry is available again
 	if not GameState.is_dm():
 		_stream(msg)  # companions get your words, not a rules envelope
 		return
@@ -425,6 +431,9 @@ func _stream(framed: String) -> void:
 	Mode.busy = true
 	_acc = ""
 	_shown = 0
+	_lang_gate = true       # hold the opening until its language is judged
+	_lang_drifted = false
+	_gm_started = false
 	_send_btn.disabled = true
 	_gm_rt = _bubble("gm")
 	_gm_rt.append_text("[color=%s]✦ ✦ ✦[/color]" % Ui.c("ink_dim").to_html(false))
@@ -433,9 +442,25 @@ func _stream(framed: String) -> void:
 
 
 func _on_delta(t: String) -> void:
-	if _acc == "" and _gm_rt != null:
-		_gm_rt.clear()  # first token replaces the typing glyphs
 	_acc += t
+	if _lang_drifted:
+		return  # a drifted opening is held, hidden; the retry fires on done
+	if _lang_gate:
+		if str(Tags.parse(_acc)["clean"]).strip_edges().length() >= _GATE_MIN:
+			_open_language_gate()
+		return  # nothing shows until the gate opens (imperceptible on clean turns)
+	_flush_stream()
+
+
+## Judge the buffered opening: if it drifted to another language, hold it
+## hidden for a silent retry; otherwise release it to the screen.
+func _open_language_gate() -> void:
+	_lang_gate = false
+	var visible := str(Tags.parse(_acc)["clean"]).strip_edges()
+	if _lang_retry < 1 and Composer.looks_like_drift(visible, GameState.language()):
+		_lang_drifted = true
+		_log_drift(visible)
+		return
 	_flush_stream()
 
 
@@ -444,6 +469,9 @@ func _on_delta(t: String) -> void:
 func _flush_stream() -> void:
 	if _gm_rt == null:
 		return
+	if not _gm_started:
+		_gm_rt.clear()  # first real content replaces the typing glyphs
+		_gm_started = true
 	while true:
 		var safe := _acc.substr(_shown)
 		var i := safe.find("[[")
@@ -469,7 +497,21 @@ func _regen() -> void:
 	if row != null and row.get_parent() == _thread:
 		row.queue_free()
 	_gm_rt = null
+	_lang_retry = 0
 	_stream(_last_framed)
+
+
+## Silent log of a language-drift incident (Issue 4) — never shown to the player.
+func _log_drift(snippet: String) -> void:
+	DirAccess.make_dir_recursive_absolute("user://logs")
+	var f := FileAccess.open("user://logs/lang_drift.log", FileAccess.READ_WRITE)
+	if f == null:
+		f = FileAccess.open("user://logs/lang_drift.log", FileAccess.WRITE)
+	if f == null:
+		return
+	f.seek_end()
+	f.store_line("[%s] cid=%s :: %s" % [Time.get_datetime_string_from_system(), GameState.cid(), snippet.left(140)])
+	f.close()
 
 
 func _on_event(d: Dictionary) -> void:
@@ -481,6 +523,21 @@ func _on_event(d: Dictionary) -> void:
 
 
 func _on_done(_ok: bool) -> void:
+	# Language guard first: a short reply may never have hit the gate threshold.
+	if _lang_gate:
+		_open_language_gate()
+	if _lang_drifted:
+		_lang_drifted = false
+		_lang_retry += 1
+		# Drop the silent (drifted) bubble and strike again, harder-anchored.
+		var row := _gm_rt.get_parent().get_parent() if _gm_rt != null else null
+		if row != null and row.get_parent() == _thread:
+			row.queue_free()
+		_gm_rt = null
+		var orig := _last_framed
+		_stream("[SYSTEM: your previous reply was in the wrong language. Respond ONLY in %s, from the first word.]\n%s" % [GameState.language(), orig])
+		_last_framed = orig  # a later Retell uses the clean framing, not the anchor
+		return
 	_streaming = false
 	Mode.busy = false
 	_send_btn.disabled = false
