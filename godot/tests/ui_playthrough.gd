@@ -27,6 +27,7 @@ func _ready() -> void:
 		Combat.save({"active": false})  # leave the fight before the level-up ceremony blocks play
 		await get_tree().process_frame
 	await _turn_levelup()  # last: the ceremony correctly blocks further sends
+	_check_persistence()
 	await _build_windows()
 	if is_instance_valid(_game):
 		_game.queue_free()
@@ -145,6 +146,18 @@ func _turn_damage_heal() -> void:
 	assert(int(GameState.sheet().get("hp", 0)) > hp1, "heal: the roll did not restore HP (was %d)" % hp1)
 	await _settle()  # the heal roll narrates too; settle before the next turn's send
 	print("  turn damage/heal: ok (%d → %d → %d)" % [hp0, hp1, int(GameState.sheet().get("hp", 0))])
+
+
+## Bug #8 guard — a forged hero must survive a shutdown. bank_hero writes the
+## roster to disk; banked_heroes() re-reads that file, so a fresh read proves
+## the hero persists across a process restart (the exact path that lost heroes).
+func _check_persistence() -> void:
+	var name := "Pathfinder_%d" % (GameState.sheet().get("level", 1))  # unique-ish, avoids clobbering a real roster entry
+	GameState.bank_hero({"name": name, "race": "Human", "cls": "Fighter", "level": 3})
+	var found := GameState.banked_heroes().any(func(h): return str(h.get("name", "")) == name)
+	GameState.unbank_hero(name)  # keep the run hermetic — don't leave a test hero in the roster
+	assert(found, "persistence: banked hero did not survive a fresh roster read (bug #8)")
+	print("  persistence: forged hero survives a disk round-trip")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).
