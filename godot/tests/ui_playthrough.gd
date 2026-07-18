@@ -18,8 +18,13 @@ func _ready() -> void:
 	await _boot_game()
 	await _turn("loot", "I pry the old chest open.",
 		"Rusted hinges give. [[loot name=\"Iron Dagger\" rarity=common]] [[gold delta=+15]]", _check_loot)
+	await _turn_equip()
 	await _turn("combat", "I ready my blade and step in.",
 		"A giant rat bursts from the dark, teeth bared! [[combat-start foes=\"giant rat\"]]", _check_combat)
+	if Combat.active():
+		Combat.save({"active": false})  # leave the fight before the level-up ceremony blocks play
+		await get_tree().process_frame
+	await _turn_levelup()  # last: the ceremony correctly blocks further sends
 	await _build_windows()
 	if is_instance_valid(_game):
 		_game.queue_free()
@@ -73,6 +78,48 @@ func _turn(label: String, msg: String, reply: String, check: Callable) -> void:
 func _check_loot(_quiet := false) -> bool:
 	var names: Array = GameState.inv().get("items", []).map(func(it): return str(it.get("name", "")))
 	return int(GameState.sheet().get("gold", 0)) == 35 and "Iron Dagger" in names
+
+
+## Loot a weapon, then equip it through the real equip logic the paper doll and
+## pack both call — and assert it landed in the weapon slot and lifts attack.
+func _turn_equip() -> void:
+	Api.test_replies = ["A gleaming longsword rests on the altar. [[loot name=\"Longsword\" rarity=common]]"]
+	_game._send("I take up the sword")
+	for i in 45:
+		await get_tree().process_frame
+		if not _game._streaming and _has_item("Longsword"):
+			break
+	assert(_has_item("Longsword"), "equip: the longsword was never looted")
+	var sword_id := ""
+	for it in GameState.inv().get("items", []):
+		if str(it.get("name", "")) == "Longsword":
+			sword_id = str(it.get("id", ""))
+	var atk0 := Rules.attack_mod(GameState.sheet(), GameState.inv())
+	GameState.toggle_equip(sword_id)
+	assert(str(GameState.inv().get("equipped", {}).get("weapon", "")) == sword_id, "equip: sword not seated in the weapon slot")
+	assert(Rules.attack_mod(GameState.sheet(), GameState.inv()) >= atk0, "equip: attack modifier regressed")
+	print("  turn equip: ok (Longsword equipped)")
+
+
+## Award XP through the [[xp]] tag and assert the real level-up math applied.
+func _turn_levelup() -> void:
+	var lvl0 := int(GameState.sheet().get("level", 1))
+	Api.test_replies = ["The rat falls; hard-won insight settles in your bones. [[xp delta=400 reason=\"a clean kill\"]]"]
+	_game._send("I finish it")
+	for i in 45:
+		await get_tree().process_frame
+		if not _game._streaming and int(GameState.sheet().get("level", 1)) > lvl0:
+			break
+	assert(int(GameState.sheet().get("level", 1)) > lvl0, "levelup: never leveled (xp=%d)" % int(GameState.sheet().get("xp", 0)))
+	assert(int(GameState.sheet().get("hpMax", 0)) > 12, "levelup: hpMax did not grow")
+	print("  turn levelup: ok (now level %d, HP %d)" % [int(GameState.sheet().get("level", 1)), int(GameState.sheet().get("hpMax", 0))])
+
+
+func _has_item(nm: String) -> bool:
+	for it in GameState.inv().get("items", []):
+		if str(it.get("name", "")) == nm:
+			return true
+	return false
 
 
 func _check_combat(_quiet := false) -> bool:
