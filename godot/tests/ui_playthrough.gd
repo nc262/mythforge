@@ -200,7 +200,12 @@ func _build_windows() -> void:
 	for i in 5:
 		await get_tree().process_frame
 	book.queue_free()
-	print("  windows: sheet(+Gear), pack, skill tree, lore book all built")
+	# The merchant lives inside game.gd and reads vendor stock + world lore +
+	# haggle markup — drive the real open so a crash there surfaces here, not
+	# when a player walks up to a keeper mid-adventure.
+	_game._open_shop()
+	await get_tree().process_frame
+	print("  windows: sheet(+Gear), pack, skill tree, lore book, shop all built")
 	# The full-screen forges carry heavy _ready logic — build each so any
 	# instantiation-time error (the kind --editor --quit misses) surfaces here.
 	for path in ["res://scenes/forge/character_forge.tscn", "res://scenes/forge/campaign_forge.tscn",
