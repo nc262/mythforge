@@ -128,7 +128,9 @@ func _pump() -> void:
 
 # ── Prompt builders: one voice for each art family ──────────────────────────
 func world_flavor() -> String:
-	return {"neonspire": "cyberpunk sci-fi", "everyday": "warm contemporary slice-of-life"}.get(GameState.world_id(), "high fantasy")
+	# The active World Skin's art style — every generated image inherits the
+	# campaign's visual language, not a hardcoded fantasy default (M-B).
+	return str(WorldSkin.skin_for_id(GameState.world_id()).get("flavor", {}).get("world", "high fantasy"))
 
 
 ## Commission one of the EAS environments (queued like all art).

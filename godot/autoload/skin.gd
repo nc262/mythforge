@@ -2,7 +2,7 @@ extends Node
 ## Skin — the web studio's "Enchanted Arcane" design system, ported.
 ## Palettes lifted verbatim from static/studio.css (.studio-root tokens and
 ## the per-world overrides). apply(world_id) rebuilds the Theme; screens set
-## `theme = Skin.theme` and listen to `changed` if they're already on screen.
+## `theme = WorldSkin.theme` and listen to `changed` if they're already on screen.
 
 signal changed
 
@@ -34,6 +34,51 @@ const PALETTES := {
 		"amethyst": Color("6ea8fe"), "amethyst_deep": Color("4571c4"),
 		"ember": Color("f0a868"), "danger": Color("f0788a"),
 	},
+	"space": {  # cold void — starlight blue on deep black
+		"night": Color("03060f"), "night2": Color("070c1a"),
+		"surface": Color("0c1424"), "surface2": Color("111d33"), "sheet": Color("0d1626"),
+		"border": Color("1e3358"), "border_soft": Color("15243f"),
+		"ink": Color("eaf1ff"), "ink_soft": Color("b7c6e6"), "ink_dim": Color("7d8fb8"),
+		"gold": Color("7fb2ff"), "gold_soft": Color("aecdff"),
+		"amethyst": Color("62e0ff"), "amethyst_deep": Color("2b7fd6"),
+		"ember": Color("ffb066"), "danger": Color("ff6b7a"),
+	},
+	"steam": {  # brass & soot — copper on warm bitumen
+		"night": Color("120c07"), "night2": Color("1c1109"),
+		"surface": Color("241811"), "surface2": Color("2f2013"), "sheet": Color("241a10"),
+		"border": Color("4a3320"), "border_soft": Color("332416"),
+		"ink": Color("f4ead9"), "ink_soft": Color("d8c3a5"), "ink_dim": Color("a68a68"),
+		"gold": Color("d69a52"), "gold_soft": Color("edc088"),
+		"amethyst": Color("9cc0d0"), "amethyst_deep": Color("5c8496"),
+		"ember": Color("f0a868"), "danger": Color("e0788a"),
+	},
+	"pirate": {  # salt & teak — weathered gold on deep teal
+		"night": Color("06110f"), "night2": Color("0a1a17"),
+		"surface": Color("102420"), "surface2": Color("163029"), "sheet": Color("11211d"),
+		"border": Color("264840"), "border_soft": Color("18302a"),
+		"ink": Color("f1ede0"), "ink_soft": Color("c6cabb"), "ink_dim": Color("8a9587"),
+		"gold": Color("e0c070"), "gold_soft": Color("f0d79a"),
+		"amethyst": Color("6fb0a8"), "amethyst_deep": Color("3e7a72"),
+		"ember": Color("f0a868"), "danger": Color("e8707e"),
+	},
+	"horror": {  # candlelit dread — sickly green & blood
+		"night": Color("07090a"), "night2": Color("0d1012"),
+		"surface": Color("121517"), "surface2": Color("1a1e20"), "sheet": Color("141719"),
+		"border": Color("2c3330"), "border_soft": Color("1f2422"),
+		"ink": Color("e6e8e0"), "ink_soft": Color("b3b8a8"), "ink_dim": Color("77806d"),
+		"gold": Color("9fb08a"), "gold_soft": Color("c2cfa8"),
+		"amethyst": Color("8a9c7a"), "amethyst_deep": Color("5a6b4c"),
+		"ember": Color("c98a4a"), "danger": Color("d0455a"),
+	},
+	"norse": {  # cold slate — pale steel on fjord blue-grey
+		"night": Color("0a0d12"), "night2": Color("11151c"),
+		"surface": Color("161c24"), "surface2": Color("1e2732"), "sheet": Color("171d26"),
+		"border": Color("303e4c"), "border_soft": Color("212b35"),
+		"ink": Color("eef2f6"), "ink_soft": Color("bcc7d2"), "ink_dim": Color("7e8b98"),
+		"gold": Color("cbd3dc"), "gold_soft": Color("e6ebf0"),
+		"amethyst": Color("7fa8c0"), "amethyst_deep": Color("4d7288"),
+		"ember": Color("e0a868"), "danger": Color("d97684"),
+	},
 }
 
 # ── Design-language tokens (docs/DesignSystem.md) — the ONLY numbers allowed
@@ -46,6 +91,7 @@ const RARITY := {"common": "border", "uncommon": "gold_soft", "rare": "amethyst"
 var world_id := ""
 var reduce_motion := false
 var pal: Dictionary = PALETTES["arcane"]
+var skin: Dictionary = {}   # the active World Skin (WorldSkin.FAMILIES entry); set by apply()
 var theme := Theme.new()
 var serif := SystemFont.new()
 var sans := SystemFont.new()
@@ -259,15 +305,23 @@ func brass_tex(lit := 0.0) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
-## A material plate for MythButton: oak / steel / leather / brass.
-func material_sb(kind: String, lit := 0.0) -> StyleBoxTexture:
-	if kind == "steel":
-		return _nine(forged_tex(c("surface2").lightened(lit), c("border")), 6, 12)
-	if kind == "leather":
-		return _nine(leather_tex(), 12, 12)
-	if kind == "brass":
-		return _nine(brass_tex(lit), 6, 12)
-	return _nine(wood_tex(lit), 6, 12)
+## A material plate for MythButton. The four callers name SEMANTIC roles
+## (steel/leather/brass/oak); the active World Skin remaps each role to its
+## own material vocabulary (e.g. cyber: steel→glass, brass→neon). All the
+## generators pull palette colours, so the plate is auto-tinted to the world.
+## Bespoke glass/neon/copper textures are the next skin slice; for now each
+## resolves to the nearest existing generator.
+func material_sb(role: String, lit := 0.0) -> StyleBoxTexture:
+	var mat := str(skin.get("materials", {}).get(role, role))
+	match mat:
+		"steel", "glass":
+			return _nine(forged_tex(c("surface2").lightened(lit), c("border")), 6, 12)
+		"leather", "carbon":
+			return _nine(leather_tex(), 12, 12)
+		"brass", "neon", "copper":
+			return _nine(brass_tex(lit), 6, 12)
+		_:
+			return _nine(wood_tex(lit), 6, 12)
 
 
 # ── Motion vocabulary (docs/DesignSystem.md §3) — all honor reduce_motion ───
@@ -390,9 +444,13 @@ func _nine(tex: ImageTexture, margin: int, content: int) -> StyleBoxTexture:
 	return sb
 
 
+## Install the active world's skin: its palette drives the whole theme, and
+## its material/flavor vocabulary drives material_sb() and downstream nouns.
 func apply(wid: String) -> void:
 	world_id = wid
-	pal = PALETTES.get(wid if PALETTES.has(wid) else "arcane", PALETTES["arcane"])
+	skin = WorldSkin.skin_for_id(wid)
+	var pkey := str(skin.get("palette", "arcane"))
+	pal = PALETTES.get(pkey if PALETTES.has(pkey) else "arcane", PALETTES["arcane"])
 	_build()
 	changed.emit()
 

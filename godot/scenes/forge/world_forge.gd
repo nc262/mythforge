@@ -347,6 +347,8 @@ func _seal() -> void:
 	var world := {"id": wid, "custom": true}
 	for k in ["name", "kind", "tagline", "lore", "backdrop", "locations", "cast", "stories", "creatures"]:
 		world[k] = w.get(k)
+	world["skin_family"] = WorldSkin.family_of(world)  # freeze its visual language, travels with the world
+	WorldSkin.remember(world)
 	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
 	var cworlds: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
 	cworlds.append(world)

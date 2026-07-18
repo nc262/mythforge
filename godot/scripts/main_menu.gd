@@ -146,6 +146,8 @@ func _refresh() -> void:
 	_templates = await Api.list_characters()
 	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
 	_cworlds = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	for w in _all_worlds():  # warm the World Skin cache so every world themes correctly in play
+		WorldSkin.remember(w)
 	$Title/Box/Status.text = ""
 	_refresh_hero_count()
 	# Continue: the last adventure, with its save-file caption.
@@ -245,7 +247,8 @@ func _import_world() -> void:
 
 func _world_card(w: Dictionary) -> Button:
 	var wid := str(w.get("id", ""))
-	var pal: Dictionary = Ui.PALETTES.get(wid if Ui.PALETTES.has(wid) else "arcane", Ui.PALETTES["arcane"])
+	# The card wears the world's own skin palette (M-B), not a fantasy default.
+	var pal: Dictionary = Ui.PALETTES.get(str(WorldSkin.skin_for_id(wid).get("palette", "arcane")), Ui.PALETTES["arcane"])
 	var btn := _big_card("%s\n" % str(w.get("name", "?")), "", pal["gold"])
 	btn.clip_contents = true
 	var tex := Art.texture_for(wid)
@@ -327,6 +330,7 @@ func _big_card(title: String, sub: String, accent: Color) -> Button:
 # ── World detail (step 2: pick a campaign, or meet the cast) ─────────────────
 func _show_detail(w: Dictionary) -> void:
 	var wid := str(w.get("id", ""))
+	WorldSkin.remember(w)  # this world may be freshly forged — resolve its skin now
 	_show_sub(str(w.get("name", "?")), "New adventure · Step 2 of 3 — world › campaign › hero")
 	Ui.apply(wid)
 	# A vivid reveal: tagline, lore, and the world's places and beasts named

@@ -88,9 +88,9 @@ func language() -> String:
 	return l if l != "" else "English"
 
 
-## One number, three names: gold in the vale, credits in the spire, cash at home.
+## One number, many names: gold, credits, doubloons, cogs… from the World WorldSkin.
 func currency() -> String:
-	return {"embervale": "gold", "neonspire": "credits", "everyday": "cash"}.get(world_id(), "gold")
+	return str(WorldSkin.skin_for_id(world_id()).get("currency", "gold"))
 
 
 ## DM adventures carry the game systems; everything else is pure conversation.

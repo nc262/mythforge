@@ -88,7 +88,7 @@ func _ready() -> void:
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
 		("  ·  " + world) if world != "" else ""]
-	Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
+	Sfx.music(WorldSkin.music_for_id(GameState.world_id()))
 	# The world's key art is the room you sit in from the first breath.
 	var world_tex := Art.texture_for(world)
 	if world_tex != null:
@@ -1397,7 +1397,7 @@ func _render_combat() -> void:
 		if fighting:
 			Sfx.music("combat")
 		else:
-			Sfx.music(GameState.world_id() if GameState.world_id() in ["embervale", "neonspire", "everyday"] else "arcane")
+			Sfx.music(WorldSkin.music_for_id(GameState.world_id()))
 	if not fighting:
 		return
 	if Mode.state not in ["Combat", "Death", "GameOver", "LevelUp"]:
@@ -1571,8 +1571,7 @@ func _show_image(url: String) -> void:
 func _repaint_scene(place: String) -> void:
 	_conjuring = true
 	var prompt := "%s, in the world of %s. Atmospheric %s establishing scene, cinematic lighting, no people, no text." % [
-		place, str(GameState.character.get("name", "")).split(":")[0],
-		{"neonspire": "cyberpunk sci-fi", "everyday": "slice-of-life"}.get(GameState.world_id(), "high fantasy")]
+		place, str(GameState.character.get("name", "")).split(":")[0], Art.world_flavor()]
 	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
 	_conjuring = false
 	if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":

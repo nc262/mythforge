@@ -250,5 +250,17 @@ func _ready() -> void:
 	assert(not Composer.looks_like_drift("你好", "English"))  # too short to judge
 	assert(not Composer.looks_like_drift("你推开门，寒风扑面而来。", "Chinese"))  # non-English campaign opts out
 
+	# World Skin (M-B): deterministic family resolution, built-ins + keywords.
+	assert(WorldSkin.family_of({"id": "embervale"}) == "fantasy")
+	assert(WorldSkin.family_of({"id": "neonspire"}) == "cyber")
+	assert(WorldSkin.family_of({"id": "cw-a", "kind": "cyberpunk sci-fi", "tagline": "neon and rain"}) == "cyber")
+	assert(WorldSkin.family_of({"id": "cw-b", "kind": "space opera", "tagline": "starfaring salvage crews"}) == "space")
+	assert(WorldSkin.family_of({"id": "cw-c", "kind": "steampunk", "tagline": "brass and clockwork"}) == "steam")
+	assert(WorldSkin.family_of({"id": "cw-d", "kind": "swashbuckling", "tagline": "pirate havens, buccaneer ports"}) == "pirate")
+	assert(WorldSkin.family_of({"id": "cw-e", "kind": "high fantasy", "tagline": "banners and old dragons"}) == "fantasy")
+	assert(WorldSkin.family_of({"id": "cw-f", "skin_family": "norse", "kind": "whatever"}) == "norse")  # stored family wins
+	assert(WorldSkin.skin("cyber")["currency"] == "credits" and WorldSkin.skin("pirate")["currency"] == "doubloons")
+	assert(Ui.PALETTES.has(WorldSkin.skin("space")["palette"]))  # every family's palette exists
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
