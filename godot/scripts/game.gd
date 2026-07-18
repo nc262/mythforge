@@ -58,6 +58,7 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/ShortRest.pressed.connect(func(): _rest("short"))
 	$Margin/Split/ChatBox/Input/LongRest.pressed.connect(func(): _rest("long"))
 	$Margin/Split/ChatBox/Input/Scene.pressed.connect(_conjure_scene)
+	$Margin/Split/ChatBox/Input/Lore.pressed.connect(_open_lore_book)
 	$Margin/Split/ChatBox/Input/Shop.pressed.connect(_open_shop)
 	$Margin/Split/ChatBox/Input/Bag.pressed.connect(_open_inventory)
 	$Margin/Split/ChatBox/Input/Retell.pressed.connect(_regen)
@@ -121,7 +122,7 @@ func _ready() -> void:
 func _iconify_toolbar() -> void:
 	var input := $Margin/Split/ChatBox/Input
 	for pair in [["Retell", "retell"], ["Bag", "pack"], ["CodexBtn", "scroll"],
-			["Dice", "die"], ["Scene", "easel"], ["Shop", "coins"],
+			["Dice", "die"], ["Scene", "easel"], ["Lore", "book"], ["Shop", "coins"],
 			["ShortRest", "moon"], ["LongRest", "tent"]]:
 		var btn: Button = input.get_node_or_null(str(pair[0]))
 		if btn == null:
@@ -2185,6 +2186,15 @@ func _open_skill_tree(pulse_level := -1) -> void:
 
 ## 🛡 The Hero's Record (docs/rituals/CharacterScreen.md): identity before
 ## statistics — a reading surface; actions live in the Pack and side sheet.
+## The Lore Book (M-C): the world's illustrated encyclopedia, grown from play.
+func _open_lore_book() -> void:
+	if _streaming:
+		return
+	var book := preload("res://scenes/ui/lore_book.tscn").instantiate()
+	add_child(book)
+	Ui.reveal(book)
+
+
 func _open_character_screen() -> void:
 	if not Mode.can("panels"):
 		return
