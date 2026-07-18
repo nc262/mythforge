@@ -367,6 +367,22 @@ func spell_text() -> String:
 	return t
 
 
+## A lasting world fact the player discovered — inscribed into the Lore Book
+## (M-C). Deduped by title. → true if newly added.
+func add_lore(category: String, title: String, note: String) -> bool:
+	if title == "":
+		return false
+	var lore = state.get("lore")
+	var entries: Array = lore.get("entries", []) if lore is Dictionary else []
+	for e in entries:
+		if e is Dictionary and str(e.get("title", "")).nocasecmp_to(title) == 0:
+			return false
+	entries.append({"category": category if category != "" else "Discoveries",
+		"title": title, "note": note, "day": int(clock().get("day", 1))})
+	save_kind("lore", {"entries": entries})
+	return true
+
+
 ## An NPC joins the party (port of _toggleCompanion's recruit half).
 func add_companion(nm: String, role := "") -> String:
 	var s := sheet()

@@ -305,23 +305,115 @@ func brass_tex(lit := 0.0) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+## Glass / holo panel (cyber "steel"): a cool translucent slab, bright rim,
+## a diagonal reflection streak. The rim uses the palette accent (cyan in the
+## Neonspire skin), so it reads as lit glass, not metal.
+func glass_tex(lit := 0.0) -> ImageTexture:
+	var s := 26
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	var base: Color = c("surface2").lightened(lit)
+	for y in s:
+		var t := float(y) / float(s - 1)
+		var row := base.lightened(0.16).lerp(base.darkened(0.12), t)
+		var a := 0.58 + 0.18 * (1.0 - t)
+		for x in s:
+			img.set_pixel(x, y, Color(row.r, row.g, row.b, a))
+	var rim := Color(c("gold"), 0.9)
+	for i in s:
+		img.set_pixel(i, 0, rim)
+		img.set_pixel(0, i, rim)
+		img.set_pixel(i, s - 1, Color(c("gold"), 0.4))
+		img.set_pixel(s - 1, i, Color(c("gold"), 0.4))
+	for i in range(2, s - 2):
+		img.set_pixel(i, 2, Color(1, 1, 1, 0.16))  # glass streak
+	return ImageTexture.create_from_image(img)
+
+
+## Neon panel (cyber "brass"): a near-black slab ringed by a glowing tube —
+## magenta outer, cyan inner (the palette's amethyst + gold accents).
+func neon_tex(lit := 0.0) -> ImageTexture:
+	var s := 26
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(c("night2").lightened(lit), 0.96))
+	var edge := Color(0, 0, 0, 0.6)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	for i in range(1, s - 1):
+		img.set_pixel(i, 1, Color(c("amethyst"), 0.95))
+		img.set_pixel(1, i, Color(c("amethyst"), 0.95))
+		img.set_pixel(i, s - 2, Color(c("gold"), 0.85))
+		img.set_pixel(s - 2, i, Color(c("gold"), 0.85))
+	return ImageTexture.create_from_image(img)
+
+
+## Riveted copper (steam "steel"/"brass"): a warm metal gradient with four
+## corner rivets. Palette gold reads as copper in the Steam skin.
+func copper_tex(lit := 0.0) -> ImageTexture:
+	var s := 26
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	var base: Color = c("surface2").lerp(c("gold"), 0.35).lightened(lit)
+	for y in s:
+		var t := float(y) / float(s - 1)
+		var row := base.lightened(0.12).lerp(base.darkened(0.28), t)
+		for x in s:
+			img.set_pixel(x, y, row)
+	var outer := base.darkened(0.7)
+	for i in s:
+		img.set_pixel(i, 0, outer)
+		img.set_pixel(i, s - 1, outer)
+		img.set_pixel(0, i, outer)
+		img.set_pixel(s - 1, i, outer)
+	for rv in [[3, 3], [s - 4, 3], [3, s - 4], [s - 4, s - 4]]:  # corner rivets
+		img.set_pixel(rv[0], rv[1], Color(c("gold_soft"), 0.95))
+		img.set_pixel(rv[0], rv[1] + 1, Color(0, 0, 0, 0.4))
+	return ImageTexture.create_from_image(img)
+
+
+## Carbon fibre (cyber/space "leather"): a fine dark cross-weave.
+func carbon_tex(lit := 0.0) -> ImageTexture:
+	var s := 32
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	var base: Color = c("night2").lightened(lit)
+	for y in s:
+		for x in s:
+			var block := (int(x / 3.0) + int(y / 3.0)) % 2 == 0
+			var shade := base.lightened(0.06) if block else base.darkened(0.06)
+			img.set_pixel(x, y, Color(shade.r, shade.g, shade.b, 0.98))
+	var edge := base.darkened(0.6)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	return ImageTexture.create_from_image(img)
+
+
 ## A material plate for MythButton. The four callers name SEMANTIC roles
-## (steel/leather/brass/oak); the active World Skin remaps each role to its
-## own material vocabulary (e.g. cyber: steel→glass, brass→neon). All the
-## generators pull palette colours, so the plate is auto-tinted to the world.
-## Bespoke glass/neon/copper textures are the next skin slice; for now each
-## resolves to the nearest existing generator.
+## (steel/leather/brass/oak); the active World Skin remaps each role to its own
+## material vocabulary, each with its own bespoke procedural texture. Every
+## generator pulls palette colours, so the plate is also tinted to the world.
 func material_sb(role: String, lit := 0.0) -> StyleBoxTexture:
 	var mat := str(skin.get("materials", {}).get(role, role))
 	match mat:
-		"steel", "glass":
-			return _nine(forged_tex(c("surface2").lightened(lit), c("border")), 6, 12)
-		"leather", "carbon":
+		"glass":
+			return _nine(glass_tex(lit), 6, 12)
+		"neon":
+			return _nine(neon_tex(lit), 6, 12)
+		"copper":
+			return _nine(copper_tex(lit), 6, 12)
+		"carbon":
+			return _nine(carbon_tex(lit), 8, 12)
+		"leather":
 			return _nine(leather_tex(), 12, 12)
-		"brass", "neon", "copper":
+		"brass":
 			return _nine(brass_tex(lit), 6, 12)
-		_:
+		"oak":
 			return _nine(wood_tex(lit), 6, 12)
+		_:  # steel and anything unmapped: the forged plate
+			return _nine(forged_tex(c("surface2").lightened(lit), c("border")), 6, 12)
 
 
 # ── Motion vocabulary (docs/DesignSystem.md §3) — all honor reduce_motion ───

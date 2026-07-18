@@ -8,7 +8,7 @@ extends Control
 
 signal closed
 
-const CATS := ["Places", "The Cast", "Bestiary", "Campaigns", "Quests", "Chronicle"]
+const CATS := ["Places", "The Cast", "Bestiary", "Campaigns", "Discoveries", "Quests", "Chronicle"]
 
 var _world := {}
 var _host: VBoxContainer
@@ -103,6 +103,8 @@ func _show_cat(cat: String) -> void:
 			_bestiary()
 		"Campaigns":
 			_campaigns()
+		"Discoveries":
+			_discoveries()
 		"Quests":
 			_quests()
 		"Chronicle":
@@ -171,6 +173,15 @@ func _campaigns() -> void:
 	for st in (_world.get("stories") if _world.get("stories") is Array else Rules.world_stories(GameState.world_id())):
 		if st is Dictionary and str(st.get("title", "")) != "":
 			_host.add_child(_entry(str(st["title"]), str(st.get("premise", "")) + ("\n\n[i]" + str(st.get("hook", "")) + "[/i]" if str(st.get("hook", "")) != "" else ""), "", ""))
+
+
+func _discoveries() -> void:
+	var lore = GameState.state.get("lore")
+	var entries: Array = lore.get("entries", []) if lore is Dictionary else []
+	for e in entries:
+		if e is Dictionary and str(e.get("title", "")) != "":
+			_host.add_child(_entry(str(e["title"]),
+				"[i]%s · day %d[/i]\n%s" % [str(e.get("category", "")), int(e.get("day", 1)), str(e.get("note", ""))], "", ""))
 
 
 func _quests() -> void:

@@ -14,6 +14,7 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[xp delta=50 reason="outwitted the toll-keeper"]] when the player earns experience (25-75 for a scene; combat XP is automatic — never tag xp for kills).
 [[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. [[combat-end]] only when foes flee or surrender (victory ends it automatically).
 [[scene place="the chapel crypt at midnight"]] whenever the player arrives somewhere visually new.
+[[lore cat="Places" title="The Sunken Vault" note="one vivid sentence of what was learned"]] when the player discovers a LASTING fact worth remembering — a place, person, creature, faction, history, or truth (cat: History/Places/People/Bestiary/Magic/Faction). Use sparingly, only for real discoveries.
 During combat the game resolves ALL attacks, damage, and HP — narrate around the numbers the player reports, never invent your own.
 Never write dice results, totals, remaining HP, or the success/failure of a player's roll in prose — the game rolls and reports the result in the player's next message. Use one tag per mechanical effect, each on its own line.
 Describe only the ATTEMPT when calling for a roll. NEVER pre-narrate results and NEVER write conditional branches like "If you hit: … / If you miss: …" — end your reply at the tag and wait for the rolled outcome before narrating what happens.]"""
