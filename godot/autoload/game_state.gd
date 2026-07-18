@@ -212,25 +212,35 @@ func toggle_equip(id: String) -> String:
 			break
 	if it.is_empty():
 		return ""
-	var slot := str(it.get("type", "gear"))
-	if not slot in ["weapon", "armor", "shield"]:
+	var typ := str(it.get("type", "gear"))
+	if not typ in Rules.WEARABLE:
 		return ""
 	var eq: Dictionary = v.get("equipped", {})
+	var slot := typ
+	# Rings fill either finger; a worn ring toggles off from whichever it holds.
+	if typ == "ring":
+		if str(eq.get("ring1", "")) == id or str(eq.get("ring2", "")) == id:
+			eq.erase("ring1" if str(eq.get("ring1", "")) == id else "ring2")
+			v["equipped"] = eq
+			save_kind("inv", v)
+			return "You slip off the %s." % it["name"]
+		slot = "ring1" if str(eq.get("ring1", "")) == "" else "ring2"
 	# A second light weapon slips into the off-hand (two-weapon fighting).
-	if slot == "weapon" and str(eq.get("weapon", "")) != "" and str(eq.get("weapon", "")) != id:
+	elif typ == "weapon" and str(eq.get("weapon", "")) != "" and str(eq.get("weapon", "")) != id:
 		var light_re := RegEx.create_from_string("(?i)dagger|shortsword|handaxe|hatchet|scimitar|club|sickle|knife")
 		if light_re.search(str(it.get("name", ""))) != null:
 			slot = "offhand"
 	if str(eq.get(slot, "")) == id:
 		eq.erase(slot)
+		v["equipped"] = eq
 		save_kind("inv", v)
 		return "You put away the %s." % it["name"]
 	eq[slot] = id
 	v["equipped"] = eq
 	save_kind("inv", v)
 	return "You ready the %s%s." % [it["name"],
-		(" (%s, %+d to hit)" % [it.get("dmg", ""), int(it.get("atk", 0))]) if slot == "weapon" and int(it.get("atk", 0)) > 0
-		else (" (+%d AC)" % int(it.get("acBonus", 0))) if it.get("acBonus") != null else ""]
+		(" (%s, %+d to hit)" % [it.get("dmg", ""), int(it.get("atk", 0))]) if slot in ["weapon", "offhand"] and int(it.get("atk", 0)) > 0
+		else (" (+%d AC)" % int(it.get("acBonus", 0))) if int(it.get("acBonus", 0)) > 0 else ""]
 
 
 ## Sell one of the item at half value. → note text.

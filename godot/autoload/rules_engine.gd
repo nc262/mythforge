@@ -88,11 +88,41 @@ func armor_ac_bonus(nm: String) -> int:
 	return 2
 
 
+## Every worn slot the paper doll knows (key, label). Rings are two slots.
+const EQUIP_SLOTS := [
+	["head", "Head"], ["neck", "Neck"], ["cloak", "Cloak"], ["armor", "Chest"],
+	["hands", "Hands"], ["waist", "Waist"], ["legs", "Legs"], ["feet", "Feet"],
+	["ring1", "Ring"], ["ring2", "Ring"], ["weapon", "Main Hand"],
+	["offhand", "Off Hand"], ["shield", "Shield"],
+]
+## Item type → the slot key(s) it can occupy.
+const TYPE_SLOTS := {
+	"weapon": ["weapon", "offhand"], "offhand": ["offhand"], "shield": ["shield"],
+	"armor": ["armor"], "head": ["head"], "neck": ["neck"], "cloak": ["cloak"],
+	"hands": ["hands"], "waist": ["waist"], "legs": ["legs"], "feet": ["feet"],
+	"ring": ["ring1", "ring2"],
+}
+const WEARABLE := ["weapon", "armor", "shield", "head", "neck", "cloak", "hands", "waist", "legs", "feet", "ring"]
+
+
 func item_type(nm: String) -> String:
 	if _shield_re.search(nm):
 		return "shield"
 	if _weapon_re.search(nm):
 		return "weapon"
+	var n := nm.to_lower()
+	# Worn gear beyond armour — checked before the generic armour test so
+	# "leather boots" is feet, not chest (the paper doll's many slots, Issue 5).
+	for pat in [["head", "helmet|helm\\b|\\bcap\\b|\\bhat\\b|hood|crown|circlet|coif|\\bmask\\b|visor"],
+			["neck", "amulet|necklace|pendant|torc|medallion|locket|\\bcollar"],
+			["ring", "\\bring\\b|signet"],
+			["hands", "glove|gauntlet|bracer|vambrace|\\bmitt"],
+			["waist", "\\bbelt\\b|\\bsash\\b|girdle"],
+			["feet", "boot|sabaton|\\bshoe|sandal|\\bgreave"],
+			["legs", "pants|trouser|legging|breeches|\\bkilt\\b|chausses|\\bskirt"],
+			["cloak", "cloak|cape|mantle|\\brobe\\b|shawl"]]:
+		if RegEx.create_from_string("(?i)" + str(pat[1])).search(n):
+			return str(pat[0])
 	if _armor_re.search(nm):
 		return "armor"
 	return "gear"
@@ -117,6 +147,9 @@ func mk_item(nm: String, rarity := "common", qty := 1) -> Dictionary:
 		var ac := 2 if it["type"] == "shield" else armor_ac_bonus(nm)
 		ac += {"epic": 1, "legendary": 2}.get(rarity, 0)
 		it["acBonus"] = ac
+	elif it["type"] in ["head", "neck", "cloak", "hands", "waist", "legs", "feet", "ring"]:
+		# Worn accessories are cosmetic until they're magical — keeps AC sane.
+		it["acBonus"] = {"epic": 1, "legendary": 2}.get(rarity, 0)
 	return it
 
 

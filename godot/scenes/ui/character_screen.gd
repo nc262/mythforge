@@ -8,11 +8,15 @@ extends AcceptDialog
 signal open_pack
 
 const DOLL_SLOTS := [["weapon", "Main hand"], ["armor", "Armor"], ["offhand", "Off hand"], ["shield", "Shield"]]
-const TABS := ["Record", "Skills", "Powers", "Story"]
+const TABS := ["Record", "Gear", "Skills", "Powers", "Story"]
+const GEAR_LEFT := ["head", "neck", "cloak", "armor", "hands"]
+const GEAR_RIGHT := ["waist", "legs", "feet", "ring1", "ring2"]
+const GEAR_BOTTOM := ["weapon", "offhand", "shield"]
 
 var _pages := {}      # tab name → page Control
 var _tabs := {}       # tab name → Button
 var _host: Control     # the page container
+var _gear_host: VBoxContainer  # the paper-doll page, rebuilt whenever gear changes
 var _active := "Record"
 
 
@@ -63,6 +67,7 @@ func _ready() -> void:
 	add_child(margin)
 	# Build every page once; the rail toggles visibility.
 	_pages["Record"] = _page_record()
+	_pages["Gear"] = _page_gear()
 	_pages["Skills"] = _page_skills()
 	_pages["Powers"] = _page_powers()
 	_pages["Story"] = _page_story()
@@ -79,6 +84,8 @@ func _show_page(name: String) -> void:
 		_pages[k].visible = (k == name)
 	for k in _tabs:
 		_style_tab(_tabs[k], k == name)
+	if name == "Gear":
+		_refill_gear()  # the paper doll reflects live equipment
 	if _pages.has(name):
 		Ui.reveal(_pages[name])
 
@@ -396,6 +403,157 @@ func _page_story() -> Control:
 	if v.get_child_count() == 0:
 		v.add_child(_body("The story is still being written.", "ink_dim"))
 	return v
+
+
+# ── Page: Gear — the full-body paper doll (M-F Stage A) ─────────────────────
+func _page_gear() -> Control:
+	_gear_host = _page()
+	return _gear_host
+
+
+## Rebuilt whenever equipment changes: a generated full-body figure flanked by
+## every worn slot; tap a slot to swap what fills it.
+func _refill_gear() -> void:
+	if _gear_host == null:
+		return
+	for c in _gear_host.get_children():
+		c.queue_free()
+	var s := GameState.sheet()
+	var inv := GameState.inv()
+	_gear_host.add_child(MythHeader.new("Equipment"))
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["l"])
+	row.add_child(_socket_col(GEAR_LEFT))
+	row.add_child(_body_view(s, inv))
+	row.add_child(_socket_col(GEAR_RIGHT))
+	var rc := CenterContainer.new()
+	rc.add_child(row)
+	_gear_host.add_child(rc)
+	var bottom := HBoxContainer.new()
+	bottom.alignment = BoxContainer.ALIGNMENT_CENTER
+	bottom.add_theme_constant_override("separation", Ui.SPACE["m"])
+	for key in GEAR_BOTTOM:
+		bottom.add_child(_gear_socket(str(key)))
+	var bc := CenterContainer.new()
+	bc.add_child(bottom)
+	_gear_host.add_child(bc)
+	var worn := 0
+	for k in inv.get("equipped", {}):
+		if str(inv["equipped"][k]) != "":
+			worn += 1
+	var stat := Label.new()
+	stat.theme_type_variation = "HintLabel"
+	stat.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	stat.text = "Armour Class %d   ·   %d pieces worn   ·   tap a slot to change it" % [Rules.eff_ac(s, inv), worn]
+	_gear_host.add_child(stat)
+
+
+func _socket_col(keys: Array) -> Control:
+	var col := VBoxContainer.new()
+	col.add_theme_constant_override("separation", Ui.SPACE["s"])
+	for key in keys:
+		col.add_child(_gear_socket(str(key)))
+	return col
+
+
+func _gear_socket(key: String) -> Control:
+	var wrap := VBoxContainer.new()
+	wrap.add_theme_constant_override("separation", 2)
+	var sock := MythSocket.new(key, "◇", 64)
+	var it := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get(key, "")))
+	if not it.is_empty():
+		var p := it.duplicate()
+		p["tip_title"] = str(it.get("name", "?"))
+		p["tip_rows"] = [[str(it.get("rarity", "common")).capitalize(), "ink_dim"]]
+		sock.set_item(p, Art.item_tex(str(it.get("name", ""))))
+	sock.gui_input.connect(func(e):
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			_open_slot_picker(key))
+	wrap.add_child(sock)
+	var lbl := Label.new()
+	lbl.theme_type_variation = "HintLabel"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.add_theme_font_size_override("font_size", 10)
+	lbl.text = _slot_label(key)
+	wrap.add_child(lbl)
+	return wrap
+
+
+func _slot_label(key: String) -> String:
+	for pair in Rules.EQUIP_SLOTS:
+		if str(pair[0]) == key:
+			return str(pair[1])
+	return key.capitalize()
+
+
+func _body_view(s: Dictionary, inv: Dictionary) -> Control:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(238, 0)
+	col.add_theme_constant_override("separation", Ui.SPACE["s"])
+	var body := TextureRect.new()
+	body.custom_minimum_size = Vector2(230, 336)
+	body.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	body.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	var key := "herobody-" + GameState.cid().validate_filename()
+	if Art.has_art(key):
+		body.texture = Art.texture_for(key)
+	else:
+		body.texture = Art.texture_for("hero-" + GameState.cid().validate_filename())  # the portrait stands in until the full figure lands
+		Art.ensure(key, _body_prompt(s, inv))
+	# ponytail: stale (freed-body) connections are is_instance_valid-guarded; refills are rare
+	Art.art_ready.connect(func(k):
+		if str(k) == key and is_instance_valid(body):
+			body.texture = Art.texture_for(key)
+			Ui.pulse(body))
+	col.add_child(body)
+	var rerender := Button.new()
+	rerender.theme_type_variation = "GhostButton"
+	rerender.text = "Re-render with current gear"
+	rerender.pressed.connect(func():
+		Art.forget(key)
+		Art.ensure(key, _body_prompt(GameState.sheet(), GameState.inv())))
+	col.add_child(rerender)
+	return col
+
+
+func _body_prompt(s: Dictionary, inv: Dictionary) -> String:
+	var worn: Array[String] = []
+	for k in inv.get("equipped", {}):
+		var it := GameState.item_by_id(str(inv["equipped"][k]))
+		if not it.is_empty():
+			worn.append(str(it.get("name", "")))
+	var gear := (", wearing " + ", ".join(worn)) if not worn.is_empty() else ", in simple travel clothes"
+	return "full body character illustration of %s, a %s %s%s, standing heroic pose, front view, %s, plain dark background, no text" % [
+		str(s.get("name", "a hero")), str(s.get("race", "")), str(s.get("cls", "")), gear, Art.world_flavor()]
+
+
+func _open_slot_picker(slot_key: String) -> void:
+	var pop := PopupMenu.new()
+	add_child(pop)
+	var ids: Array = []
+	var cur := str(GameState.inv().get("equipped", {}).get(slot_key, ""))
+	for it in GameState.inv().get("items", []):
+		if it is Dictionary and slot_key in Rules.TYPE_SLOTS.get(str(it.get("type", "")), []):
+			pop.add_item(("● " if str(it.get("id", "")) == cur else "    ") + str(it.get("name", "?")))
+			ids.append(str(it.get("id", "")))
+	if pop.item_count == 0:
+		pop.add_item("Nothing in your pack fits this slot")
+		pop.set_item_disabled(0, true)
+		ids.append("")
+	if cur != "":
+		pop.add_separator()
+		pop.add_item("Unequip")
+		ids.append("__off__")
+	pop.id_pressed.connect(func(i):
+		var chosen: String = str(ids[i]) if i < ids.size() else ""
+		if chosen == "__off__":
+			GameState.toggle_equip(cur)
+		elif chosen != "":
+			GameState.toggle_equip(chosen)
+		_refill_gear())
+	pop.close_requested.connect(pop.queue_free)
+	pop.popup(Rect2i(Vector2i(get_global_mouse_position()), Vector2i(240, 10)))
 
 
 func _has_ci(arr: Array, needle: String) -> bool:

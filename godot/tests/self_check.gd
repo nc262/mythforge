@@ -262,5 +262,18 @@ func _ready() -> void:
 	assert(WorldSkin.skin("cyber")["currency"] == "credits" and WorldSkin.skin("pirate")["currency"] == "doubloons")
 	assert(Ui.PALETTES.has(WorldSkin.skin("space")["palette"]))  # every family's palette exists
 
+	# M-F: expanded equipment slots — the paper doll's item types.
+	assert(Rules.item_type("Leather Boots") == "feet")
+	assert(Rules.item_type("Iron Helmet") == "head")
+	assert(Rules.item_type("Gold Ring of Power") == "ring")
+	assert(Rules.item_type("Silver Amulet") == "neck")
+	assert(Rules.item_type("Leather Gloves") == "hands")
+	assert(Rules.item_type("Traveler's Cloak") == "cloak")
+	assert(Rules.item_type("Studded Belt") == "waist")
+	assert(Rules.item_type("Padded Leggings") == "legs")
+	assert(Rules.item_type("Studded Leather") == "armor")  # still chest armour
+	assert(Rules.item_type("Longsword") == "weapon" and Rules.item_type("Oak Shield") == "shield")
+	assert("ring1" in Rules.TYPE_SLOTS["ring"] and "ring2" in Rules.TYPE_SLOTS["ring"])
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
