@@ -293,5 +293,12 @@ func _ready() -> void:
 	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
 	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
 
+	# A2 art manifest: an asset can be noted and evicted (LRU bookkeeping).
+	Art._manifest_loaded = true  # skip the disk scan in this unit check
+	Art._manifest = {"unit-old": {"size": 100, "used": 1.0}, "unit-new": {"size": 100, "used": 9.0}}
+	Art._evict("unit-old")
+	assert(not Art._manifest.has("unit-old") and Art._manifest.has("unit-new"))
+	Art._manifest = {}
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

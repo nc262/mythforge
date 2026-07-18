@@ -39,9 +39,112 @@ var _tex_cache := {}     # key -> ImageTexture (avoid re-reading disk every fram
 var _queue: Array = []   # [{key, prompt, size}] — one generation at a time
 var _pumping := false
 
+## A2 — the generative-art pipeline: a manifest (key → {size, used}) drives LRU
+## eviction so the cache stops growing forever; a per-asset .json sidecar records
+## how it was made (prompt/size/seed/model/…) so anything can be regenerated.
+const CACHE_BUDGET := 700 * 1024 * 1024   # ~700 MB of paintings before eviction
+var _manifest := {}
+var _manifest_loaded := false
+
 
 func path_for(key: String) -> String:
 	return "user://art/%s.png" % key.validate_filename()
+
+
+func _meta_path(key: String) -> String:
+	return "user://art/%s.json" % key.validate_filename()
+
+
+func _load_manifest() -> void:
+	if _manifest_loaded:
+		return
+	_manifest_loaded = true
+	if FileAccess.file_exists("user://art/manifest.json"):
+		var p = JSON.parse_string(FileAccess.get_file_as_string("user://art/manifest.json"))
+		if p is Dictionary:
+			_manifest = p
+	# Bring any art already on disk (pre-manifest) under management — oldest first.
+	var d := DirAccess.open("user://art")
+	if d != null:
+		for fn in d.get_files():
+			if fn.ends_with(".png"):
+				var k := fn.trim_suffix(".png")
+				if not _manifest.has(k):
+					_manifest[k] = {"size": _file_size(path_for(k)), "used": 0.0}
+
+
+func _save_manifest() -> void:
+	DirAccess.make_dir_recursive_absolute("user://art")
+	var f := FileAccess.open("user://art/manifest.json", FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(_manifest))
+		f.close()
+
+
+func _file_size(p: String) -> int:
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return 0
+	var n := int(f.get_length())
+	f.close()
+	return n
+
+
+## Record a freshly-generated asset in the manifest, then enforce the budget.
+func _note_asset(key: String) -> void:
+	_load_manifest()
+	_manifest[key] = {"size": _file_size(path_for(key)), "used": Time.get_unix_time_from_system()}
+	_save_manifest()
+	_enforce_budget()
+
+
+## Mark an asset recently used, so the LRU keeps what's on screen.
+func _touch(key: String) -> void:
+	_load_manifest()
+	if _manifest.has(key):
+		_manifest[key]["used"] = Time.get_unix_time_from_system()
+
+
+## The regeneration record beside each painting: how it was made.
+func _write_sidecar(key: String, job: Dictionary, r: Dictionary) -> void:
+	var meta := {
+		"prompt": str(job.get("prompt", "")), "size": str(job.get("size", "")),
+		"world": GameState.world_id(), "created": Time.get_datetime_string_from_system(),
+		"seed": r.get("seed"), "model": r.get("model"), "workflow": r.get("workflow"),
+		"negative": r.get("negative_prompt", r.get("negative")),
+	}
+	var f := FileAccess.open(_meta_path(key), FileAccess.WRITE)
+	if f != null:
+		f.store_string(JSON.stringify(meta))
+		f.close()
+
+
+## Evict least-recently-used paintings until back under budget. Evicted art
+## self-heals: the next ensure(key, prompt) simply repaints it.
+func _enforce_budget() -> void:
+	var total := 0
+	for k in _manifest:
+		total += int(_manifest[k].get("size", 0))
+	if total <= CACHE_BUDGET:
+		return
+	var keys := _manifest.keys()
+	keys.sort_custom(func(a, b): return float(_manifest[a].get("used", 0)) < float(_manifest[b].get("used", 0)))
+	for k in keys:
+		if total <= CACHE_BUDGET:
+			break
+		total -= int(_manifest[k].get("size", 0))
+		_evict(str(k))
+	_save_manifest()
+
+
+func _evict(key: String) -> void:
+	if has_art(key):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path_for(key)))
+	if FileAccess.file_exists(_meta_path(key)):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_meta_path(key)))
+	_tex_cache.erase(key)
+	_round_cache.erase(key)
+	_manifest.erase(key)
 
 
 func has_art(key: String) -> bool:
@@ -49,6 +152,7 @@ func has_art(key: String) -> bool:
 
 
 func texture_for(key: String) -> ImageTexture:
+	_touch(key)
 	if _tex_cache.has(key):
 		return _tex_cache[key]
 	if not has_art(key):
@@ -63,6 +167,7 @@ func texture_for(key: String) -> ImageTexture:
 
 ## A circular-alpha version (tokens, avatars). Cached in memory.
 func round_tex(key: String, size := 128) -> ImageTexture:
+	_touch(key)
 	if _round_cache.has(key):
 		return _round_cache[key]
 	if not has_art(key):
@@ -120,6 +225,8 @@ func _pump() -> void:
 			continue
 		DirAccess.make_dir_recursive_absolute("user://art")
 		img.save_png(path_for(str(job["key"])))
+		_write_sidecar(str(job["key"]), job, r)  # A2: how it was made, for regeneration
+		_note_asset(str(job["key"]))              # A2: manifest + LRU budget
 		_tex_cache.erase(str(job["key"]))
 		_round_cache.erase(str(job["key"]))
 		art_ready.emit(str(job["key"]))
@@ -186,6 +293,7 @@ func copy(from_key: String, to_key: String) -> bool:
 	img.save_png(path_for(to_key))
 	_tex_cache.erase(to_key)
 	_round_cache.erase(to_key)
+	_note_asset(to_key)  # the copy is a managed asset too
 	return true
 
 
@@ -194,8 +302,11 @@ func forget(key: String) -> void:
 	_tex_cache.erase(key)
 	_round_cache.erase(key)
 	_generating.erase(key)
+	_manifest.erase(key)
 	if has_art(key):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path_for(key)))
+	if FileAccess.file_exists(_meta_path(key)):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(_meta_path(key)))
 
 
 func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
