@@ -91,9 +91,11 @@ func _draw() -> void:
 				Color(Ui.c("gold_soft"), 0.10 + 0.08 * sin(_phase * 1.5 + float(m[0]) * 30.0)))
 
 
-## Mount an environment behind a host's existing children.
+## Mount an environment behind a host's existing children. The room key is
+## resolved through the active World Skin, so each world wears its own rooms.
 static func mount(host: Node, key: String, m := "dust", light_anchors: Array = []) -> MythEnvironment:
-	var env := MythEnvironment.new(key, m, light_anchors)
+	var resolved := Art.env_resolved(key) if key != "" else key
+	var env := MythEnvironment.new(resolved, m, light_anchors)
 	host.add_child(env)
 	host.move_child(env, 0)
 	if key != "":

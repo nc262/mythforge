@@ -133,9 +133,39 @@ func world_flavor() -> String:
 	return str(WorldSkin.skin_for_id(GameState.world_id()).get("flavor", {}).get("world", "high fantasy"))
 
 
-## Commission one of the EAS environments (queued like all art).
-func ensure_environment(key: String) -> void:
-	ensure(key, str(ENV_PROMPTS.get(key, "")), "1344x768")
+## Role templates for non-fantasy skins: a room by what it's FOR, flavoured by
+## the World Skin's setting, so a cyberpunk campaign gets a cyber war room, not
+## a fantasy one (per-world EAS variants — the World Style Guide driving
+## environment generation). Fantasy keeps its richly-authored ENV_PROMPTS.
+const ENV_ROLE := {
+	"env-wartable": "a %s campaign war room seen from a seated player's view: a great table spread with a huge map, markers, plans, and the tools of command, dramatic focused light, dust in the air, ultra detailed interior illustration, no people, no text",
+	"env-forge": "a %s place of making where heroes are equipped and created: the tools and energy of creation glowing against deep shadow, sparks of light, ultra detailed interior illustration, no people, no text",
+	"env-pack": "an opened %s traveler's kit laid out on a surface: pouches, gear, and belongings, warm focused light, ultra detailed still life, slightly top-down view, no people, no text",
+	"env-merchant": "a %s merchant's stall interior: wares, curios, and coin on worn shelves, warm lamplight and deep shadow, ultra detailed interior illustration, no people, no text",
+	"env-journal": "a %s archive where the world's lore is kept and read: an open record on a desk under focused warm light, ultra detailed still life, slightly top-down view, no people, no text",
+	"env-maptable": "a %s cartographer's table seen from above: a chart with route markers and instruments, a light at one corner, ultra detailed still life, no people, no text",
+	"env-fireside": "a warm %s gathering corner: two seats across a small table, a source of warmth and light, rich shadow, ultra detailed interior illustration, no people, no text",
+}
+
+
+## The active skin's family scopes the cache key so each world keeps its own
+## rooms; fantasy reuses the base key (and its authored art).
+func env_resolved(base_key: String) -> String:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	return base_key if fam == "fantasy" else "%s-%s" % [base_key, fam]
+
+
+func env_prompt(base_key: String) -> String:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	if fam == "fantasy" or not ENV_ROLE.has(base_key):
+		return str(ENV_PROMPTS.get(base_key, ""))
+	var setting := str(WorldSkin.skin(fam).get("flavor", {}).get("world", "high fantasy"))
+	return ENV_ROLE[base_key] % setting
+
+
+## Commission one of the EAS environments (queued like all art), skin-scoped.
+func ensure_environment(base_key: String) -> void:
+	ensure(env_resolved(base_key), env_prompt(base_key), "1344x768")
 
 
 ## Duplicate a painting under a new key (e.g. the approved forge-preview
