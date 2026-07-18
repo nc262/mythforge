@@ -101,3 +101,13 @@ func _build_windows() -> void:
 		await get_tree().process_frame
 	book.queue_free()
 	print("  windows: sheet(+Gear), pack, skill tree, lore book all built")
+	# The full-screen forges carry heavy _ready logic — build each so any
+	# instantiation-time error (the kind --editor --quit misses) surfaces here.
+	for path in ["res://scenes/forge/character_forge.tscn", "res://scenes/forge/campaign_forge.tscn",
+			"res://scenes/forge/world_forge.tscn", "res://scenes/forge/adventure_forge.tscn"]:
+		var f: Node = load(path).instantiate()
+		get_tree().root.add_child(f)
+		for i in 6:
+			await get_tree().process_frame
+		f.queue_free()
+	print("  forges: character, campaign, world, adventure all built")
