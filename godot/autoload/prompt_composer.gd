@@ -25,9 +25,13 @@ Describe only the ATTEMPT when calling for a roll. NEVER pre-narrate results and
 
 func envelope(player_msg: String, beats: Array = []) -> String:
 	var parts: Array[String] = []
+	# A6 — the Director framing: narrate only from established context, and
+	# establish (never assume) anything the moment needs but the world lacks.
+	parts.append("[You are the Narrative Director of this living world — not a chatbot. Everything below is the established context: the scene, the player's sheet, the cast, quests, the clock, and past events. Narrate ONLY from it. If a place or person the moment needs is not yet established, establish it in-fiction rather than inventing something that contradicts what's known. Verify you have what you need before you narrate.]")
 	var summary := sheet_summary(GameState.sheet())
 	if summary != "":
 		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s]" % summary)
+	parts.append("[%s]" % scene_context())
 	parts.append("[%s]" % GameState.clock_text())
 	for extra in [GameState.inv_text(), GameState.spell_text(),
 			Chronicle.recall_text(beats), Chronicle.codex_text(), GameState.cast_summary(), Chronicle.quests_text(),
@@ -61,6 +65,23 @@ func looks_like_drift(text: String, lang := "English") -> bool:
 			if foreign >= 3:
 				return true
 	return false
+
+
+## A6 — the current scene as structured context: where the player is and who
+## may be near, so the Director grounds each turn instead of hallucinating.
+func scene_context() -> String:
+	var w = GameState.state.get("world")
+	var here := str(w.get("here", "")) if w is Dictionary else ""
+	var names: Array[String] = []
+	for nm in GameState.cast():
+		if not str(nm) in names:
+			names.append(str(nm))
+	for n in (GameState.state.get("codex") if GameState.state.get("codex") is Array else []):
+		if n is Dictionary and str(n.get("name", "")) != "" and not str(n["name"]) in names:
+			names.append(str(n["name"]))
+	var loc := here if here != "" else "not yet established — establish where the player is before acting"
+	var near := ", ".join(names.slice(0, 6)) if not names.is_empty() else "no one named yet — establish who, if anyone, is present"
+	return "SCENE — location: %s. Cast who may be near: %s" % [loc, near]
 
 
 ## Session Zero's tone knobs → one style line per turn (port of _gmDirective).

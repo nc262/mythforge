@@ -311,5 +311,12 @@ func _ready() -> void:
 	assert(GameState.cast_summary().contains("Aldric"))
 	GameState.state = {}
 
+	# A6 Director scene context: reflects the location and the known cast.
+	GameState.state = {"world": {"here": "the drowned chapel"}, "cast": {"Mara": {"role": "priestess"}}}
+	var sctx := Composer.scene_context()
+	assert(sctx.contains("drowned chapel") and sctx.contains("Mara"))
+	GameState.state = {}
+	assert(Composer.scene_context().contains("not yet established"))
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
