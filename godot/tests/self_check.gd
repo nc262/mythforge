@@ -318,5 +318,16 @@ func _ready() -> void:
 	GameState.state = {}
 	assert(Composer.scene_context().contains("not yet established"))
 
+	# A5 persistence: save_kind updates local state instantly + queues the write.
+	GameState.state = {}
+	GameState._writing = true  # hold the drain so no real PUT fires in this check
+	GameState._write_queue = {}
+	GameState.save_kind("unit_kind", {"v": 7})
+	assert(GameState.state.get("unit_kind") == {"v": 7})
+	assert(GameState._write_queue.get("unit_kind") == {"v": 7})
+	GameState._writing = false
+	GameState._write_queue = {}
+	GameState.state = {}
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

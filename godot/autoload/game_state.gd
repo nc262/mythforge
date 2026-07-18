@@ -105,10 +105,37 @@ func hydrate() -> void:
 		state = r["state"]
 
 
+## Local state updates INSTANTLY (never blocks gameplay); persistence rides a
+## coalesced, retrying background queue so a transient network blip can't
+## silently lose a mutation (A5 — pays down the fire-and-forget-PUT debt).
+var _write_queue := {}   # kind → latest value (coalesced: last write wins)
+var _writing := false
+
+
 func save_kind(kind: String, value) -> void:
 	state[kind] = value
-	await Api.call_json(HTTPClient.METHOD_PUT,
-		"/api/characters/studio/state/%s/%s" % [cid().uri_encode(), kind], {"value": value})
+	_write_queue[kind] = value
+	if not _writing:
+		_writing = true
+		_drain_writes()
+
+
+func _drain_writes() -> void:
+	while not _write_queue.is_empty():
+		var kind := str(_write_queue.keys()[0])
+		var value = _write_queue[kind]
+		_write_queue.erase(kind)
+		var saved := false
+		for attempt in 3:
+			var r := await Api.call_json(HTTPClient.METHOD_PUT,
+				"/api/characters/studio/state/%s/%s" % [cid().uri_encode(), kind], {"value": value})
+			if r.get("_status", 0) == 200:
+				saved = true
+				break
+			await get_tree().create_timer(0.4 * (attempt + 1)).timeout  # backoff before retry
+		if not saved:
+			push_warning("GameState: persist of '%s' failed after retries (kept in local state)" % kind)
+	_writing = false
 
 
 func _merged(kind: String, defaults: Dictionary) -> Dictionary:
