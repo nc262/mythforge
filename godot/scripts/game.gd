@@ -1823,7 +1823,7 @@ func _open_shop() -> void:
 			here_shop = str(l.get("shop", ""))
 	var dlg := AcceptDialog.new()
 	MythEnvironment.mount(dlg, "env-merchant", "dust", [Vector2(0.12, 0.14), Vector2(0.88, 0.1)])
-	dlg.title = "🛒 %s" % (here if here_shop != "" else "The trading post")
+	dlg.title = here if here_shop != "" else "The trading post"
 	dlg.ok_button_text = "Leave the counter"
 	dlg.min_size = Vector2i(720, 480)
 	var root := VBoxContainer.new()
@@ -1903,7 +1903,7 @@ func _open_shop() -> void:
 	cols.add_child(left)
 	cols.add_child(right)
 	var haggle := Button.new()
-	haggle.text = "💬 Haggle with the keeper (Persuasion, DC 12)"
+	haggle.text = "Haggle with the keeper (Persuasion, DC 12)"
 	haggle.pressed.connect(func():
 		if _shop_markup != 1.0:
 			return
@@ -1929,7 +1929,7 @@ func _open_shop() -> void:
 		Mode.enter("Exploration")
 		_render_sheet()
 		if not deals.is_empty():
-			var summary := "🛒 *At the trader: %s.*" % "; ".join(deals)
+			var summary := "*At the trader: %s.*" % "; ".join(deals)
 			_say_me(_md(summary))
 			_last_player_msg = summary
 			_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail.]" % summary.replace("*", ""))))

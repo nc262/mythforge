@@ -23,6 +23,7 @@ const FROM_EMOJI := {
 	"🏔": "mountain", "⛰": "mountain", "⚓": "ship", "🛰": "ship", "🚀": "ship",
 	"⚒": "anvil", "⛏": "hammer", "🔨": "hammer", "📖": "book", "📚": "book",
 	"📜": "scroll", "🎲": "die", "🧭": "compass", "🌍": "compass", "🌐": "compass",
+	"🛒": "coins", "💰": "coins", "🪙": "coins",
 	"⚙": "runewheel", "🧬": "sigil", "🧪": "sigil", "🔇": "sigil", "🎬": "sigil",
 	"🕊": "sigil", "🌑": "moon", "🌙": "moon", "⛺": "tent",
 }
