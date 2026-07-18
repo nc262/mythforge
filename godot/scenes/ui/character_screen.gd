@@ -523,7 +523,7 @@ func _body_prompt(s: Dictionary, inv: Dictionary) -> String:
 		var it := GameState.item_by_id(str(inv["equipped"][k]))
 		if not it.is_empty():
 			worn.append(str(it.get("name", "")))
-	var gear := (", wearing " + ", ".join(worn)) if not worn.is_empty() else ", in simple travel clothes"
+	var gear := (", wearing " + ", ".join(worn)) if not worn.is_empty() else (", " + Art.subject_style("char"))
 	return "full body character illustration of %s, a %s %s%s, standing heroic pose, front view, %s, plain dark background, no text" % [
 		str(s.get("name", "a hero")), str(s.get("race", "")), str(s.get("cls", "")), gear, Art.world_flavor()]
 

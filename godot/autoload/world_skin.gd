@@ -38,6 +38,29 @@ const FAMILIES := {
 
 const BUILTIN := {"embervale": "fantasy", "neonspire": "cyber", "everyday": "everyday"}
 
+## The World Style Guide's generative + voice descriptors, per family (A1 —
+## ArchitectureEvolution §6). Referenced by the Art prompt builders (character
+## fashion, creature kind, item materials) AND the GM persona (dialogue diction,
+## lore tone), so everything a world generates — pictures and prose — matches it.
+const STYLE := {
+	"fantasy": {"char": "in medieval fantasy attire of leather, cloth, and plate", "beast": "a fantasy creature",
+		"item": "forged metal, leather, and wood", "dialogue": "evocative, slightly archaic high-fantasy diction", "lore_tone": "mythic and grand"},
+	"cyber": {"char": "in cyberpunk streetwear with chrome augments and neon trim", "beast": "a bio-engineered or cybernetic creature",
+		"item": "sleek tech, glass, and carbon", "dialogue": "clipped, slang-laced neon-noir cyberpunk voice", "lore_tone": "gritty and corporate-dystopian"},
+	"everyday": {"char": "in ordinary modern clothing", "beast": "an ordinary or slightly uncanny animal",
+		"item": "everyday modern objects", "dialogue": "warm, natural, contemporary speech", "lore_tone": "grounded and personal"},
+	"space": {"char": "in a sleek spacesuit or starfarer's uniform", "beast": "an alien lifeform",
+		"item": "advanced alloys and energy tech", "dialogue": "cool, precise, spacefaring cadence", "lore_tone": "vast and coldly wondrous"},
+	"steam": {"char": "in Victorian steampunk dress with brass fittings and goggles", "beast": "a clockwork or steam-driven creature",
+		"item": "brass, copper, and clockwork", "dialogue": "ornate, mannered, Victorian phrasing", "lore_tone": "inventive and smoke-stained"},
+	"pirate": {"char": "in weathered age-of-sail garb of coat, sash, and tricorn", "beast": "a sea beast or drowned thing",
+		"item": "salt-worn wood, rope, and iron", "dialogue": "salty, rakish, seafaring speech", "lore_tone": "briny and roguish"},
+	"horror": {"char": "in drab period dress, pale and wary", "beast": "an eldritch horror",
+		"item": "tarnished, worn, faintly wrong objects", "dialogue": "hushed, dread-laced, foreboding prose", "lore_tone": "creeping and doom-laden"},
+	"norse": {"char": "in furs, wool, and iron with rune-carved trim", "beast": "a saga beast of frost and legend",
+		"item": "cold iron, bone, and carved wood", "dialogue": "stark, oath-bound, saga-like speech", "lore_tone": "cold, fated, and heroic"},
+}
+
 ## family → an existing ambient track (Sfx has embervale/neonspire/everyday/arcane).
 const MUSIC := {"fantasy": "embervale", "cyber": "neonspire", "everyday": "everyday",
 	"space": "neonspire", "steam": "embervale", "pirate": "embervale", "horror": "arcane", "norse": "embervale"}
@@ -93,6 +116,17 @@ func skin_for_id(world_id: String) -> Dictionary:
 
 func music_for_id(world_id: String) -> String:
 	return MUSIC.get(family_for_id(world_id), "arcane")
+
+
+## The style guide for the active adventure's world (by id, uses the cache).
+func style_for_id(world_id: String) -> Dictionary:
+	return STYLE.get(family_for_id(world_id), STYLE["fantasy"])
+
+
+## The style guide for a full world descriptor (by keywords — used at forge time
+## before the world is cached, e.g. when composing the GM persona).
+func style_of(world: Dictionary) -> Dictionary:
+	return STYLE.get(family_of(world), STYLE["fantasy"])
 
 
 ## The name of a hero's progression road, per family (Issue 6 flavor).

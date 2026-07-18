@@ -133,6 +133,12 @@ func world_flavor() -> String:
 	return str(WorldSkin.skin_for_id(GameState.world_id()).get("flavor", {}).get("world", "high fantasy"))
 
 
+## A subject's world-style phrase (character fashion, creature kind, item
+## materials) from the World Style Guide — shapes generated art per world (A1).
+func subject_style(kind: String) -> String:
+	return str(WorldSkin.style_for_id(GameState.world_id()).get(kind, ""))
+
+
 ## Role templates for non-fantasy skins: a room by what it's FOR, flavoured by
 ## the World Skin's setting, so a cyberpunk campaign gets a cyber war room, not
 ## a fantasy one (per-world EAS variants — the World Style Guide driving
@@ -194,14 +200,14 @@ func forget(key: String) -> void:
 
 func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
 	ensure("hero-" + cid.validate_filename(),
-		"character portrait of %s, a %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
+		"character portrait of %s, a %s %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
 			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")),
-			(extra + ", ") if extra != "" else "", world_flavor()])
+			subject_style("char"), (extra + ", ") if extra != "" else "", world_flavor()])
 
 
 func ensure_item_icon(nm: String) -> void:
 	ensure("item-" + nm.to_lower().replace(" ", "-"),
-		"game inventory icon of a %s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [nm, world_flavor()], "1024x1024")
+		"game inventory icon of a %s of %s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [nm, subject_style("item"), world_flavor()], "1024x1024")
 
 
 func item_tex(nm: String) -> ImageTexture:
@@ -222,7 +228,7 @@ func combatant_tex(m: Dictionary) -> ImageTexture:
 		var key := "beast-" + str(entry.get("slug", ""))
 		if has_art(key):
 			return round_tex(key)
-		ensure(key, str(entry.get("art", "")) + ", painted creature portrait, dark background, no text")
+		ensure(key, "%s, %s, painted creature portrait, %s style, dark background, no text" % [str(entry.get("art", "")), subject_style("beast"), world_flavor()])
 	return null
 
 

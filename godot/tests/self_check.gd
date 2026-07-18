@@ -285,5 +285,13 @@ func _ready() -> void:
 		assert(absf(lum.call(pal["ink"]) - surf) > 0.35, "low ink contrast: " + str(fam))
 		assert(absf(lum.call(pal["gold"]) - surf) > 0.12, "low accent contrast: " + str(fam))
 
+	# A1 World Style Guide: every family carries generative + voice descriptors.
+	assert(WorldSkin.STYLE.size() == WorldSkin.FAMILIES.size())
+	for fam in WorldSkin.FAMILIES:
+		for k in ["char", "beast", "item", "dialogue", "lore_tone"]:
+			assert(WorldSkin.STYLE[fam].has(k), "style missing %s in %s" % [k, fam])
+	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
+	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
