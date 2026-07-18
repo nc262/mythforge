@@ -143,8 +143,8 @@ func _draw_decor() -> void:
 				draw_line(Vector2(0, gy), Vector2(size.x, gy), Color(Ui.c("border"), 0.14), 1.0)
 				gy += step
 			for i in 40:  # solder pads at pseudo-random intersections
-				var cx := (0.5 + floor(absf(fmod(sin(i * 91.7) * 4137.1, 1.0)) * size.x / step)) * step
-				var cy := (0.5 + floor(absf(fmod(sin(i * 57.3) * 7351.9, 1.0)) * size.y / step)) * step
+				var cx: float = (0.5 + floor(absf(fmod(sin(i * 91.7) * 4137.1, 1.0)) * size.x / step)) * step
+				var cy: float = (0.5 + floor(absf(fmod(sin(i * 57.3) * 7351.9, 1.0)) * size.y / step)) * step
 				draw_circle(Vector2(cx, cy), 1.6, Color(Ui.c("gold"), 0.25))
 		"gears":
 			for spec in [[0.16, 0.2, 120.0], [0.86, 0.78, 160.0], [0.78, 0.16, 90.0]]:

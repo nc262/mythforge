@@ -553,7 +553,7 @@ func _open_slot_picker(slot_key: String) -> void:
 			GameState.toggle_equip(chosen)
 		_refill_gear())
 	pop.close_requested.connect(pop.queue_free)
-	pop.popup(Rect2i(Vector2i(get_global_mouse_position()), Vector2i(240, 10)))
+	pop.popup(Rect2i(DisplayServer.mouse_get_position(), Vector2i(240, 10)))  # Window has no get_global_mouse_position
 
 
 func _has_ci(arr: Array, needle: String) -> bool:

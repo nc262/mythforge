@@ -13,6 +13,22 @@ signal sse_done(ok: bool)
 
 var cookie := ""
 
+## Integration-test hooks (tests/ui_playthrough): when test_mode is on, no real
+## network happens — call_json/call_form return canned responses matched by a
+## path substring, stream_chat replays scripted GM turns through the REAL tag
+## pipeline, and images resolve to nothing. Drives the actual game scene headless.
+var test_mode := false
+var test_json := {}       # path-substring → response Dictionary
+var test_replies: Array = []  # queue of GM reply strings for stream_chat
+
+
+func _test_response(path: String) -> Dictionary:
+	for k in test_json:
+		if path.find(str(k)) != -1:
+			var v = test_json[k]
+			return v.duplicate(true) if v is Dictionary else {"_status": 200}
+	return {"_status": 200}
+
 
 func _ready() -> void:
 	_load_cookie()
@@ -44,6 +60,8 @@ func _headers(extra: Array = []) -> PackedStringArray:
 ## Returns the parsed JSON body. Arrays come back as {"data": [...]}. Every
 ## result carries "_status" (0 = transport failure).
 func call_json(method: int, path: String, body = null) -> Dictionary:
+	if test_mode:
+		return _test_response(path)
 	var payload := "" if body == null else JSON.stringify(body)
 	var extra := [] if body == null else ["Content-Type: application/json"]
 	return await _request(method, path, _headers(extra), payload)
@@ -51,6 +69,8 @@ func call_json(method: int, path: String, body = null) -> Dictionary:
 
 ## POST application/x-www-form-urlencoded (the backend's Form(...) endpoints).
 func call_form(path: String, fields: Dictionary) -> Dictionary:
+	if test_mode:
+		return _test_response(path)
 	return await _request(HTTPClient.METHOD_POST, path,
 		_headers(["Content-Type: application/x-www-form-urlencoded"]), _urlencode(fields))
 
@@ -87,6 +107,8 @@ func _urlencode(fields: Dictionary) -> String:
 
 ## Raw bytes (images). Empty array on any failure.
 func fetch_bytes(path: String) -> PackedByteArray:
+	if test_mode:
+		return PackedByteArray()
 	var req := HTTPRequest.new()
 	add_child(req)
 	if req.request(BASE + path, _headers()) != OK:
@@ -123,6 +145,8 @@ func activate(char_id: String, char_name: String) -> void:
 ## reuse a remembered session if /api/history/{sid} still 200s, else create one
 ## seeded with the caller's default chat endpoint (/api/default-chat).
 func ensure_session(char_id: String, char_name: String) -> String:
+	if test_mode:
+		return "test-session"
 	var cfg := ConfigFile.new()
 	cfg.load(COOKIE_FILE)
 	var sid: String = cfg.get_value("sessions", char_id, "")
@@ -157,6 +181,14 @@ func ensure_session(char_id: String, char_name: String) -> String:
 ## Streams one GM turn. Emits sse_delta per token batch, sse_event for
 ## message_saved / tool_output / error, then sse_done exactly once.
 func stream_chat(message: String, session_id: String) -> void:
+	if test_mode:
+		var reply := str(test_replies.pop_front()) if not test_replies.is_empty() else "The quiet holds a moment longer."
+		await get_tree().process_frame
+		await get_tree().process_frame
+		sse_delta.emit(reply)  # one batch — the game's language gate + tag pipeline run for real
+		await get_tree().process_frame
+		sse_done.emit(true)
+		return
 	var client := HTTPClient.new()
 	if client.connect_to_host(HOST, PORT) != OK:
 		sse_done.emit(false)
