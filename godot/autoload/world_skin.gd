@@ -93,3 +93,11 @@ func skin_for_id(world_id: String) -> Dictionary:
 
 func music_for_id(world_id: String) -> String:
 	return MUSIC.get(family_for_id(world_id), "arcane")
+
+
+## The name of a hero's progression road, per family (Issue 6 flavor).
+const TREE := {"cyber": "Augment Web", "steam": "Clockwork", "pirate": "Navigator's Chart"}
+
+
+func tree_title(world_id: String) -> String:
+	return TREE.get(family_for_id(world_id), "Constellation")

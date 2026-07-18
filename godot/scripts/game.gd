@@ -2173,7 +2173,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 ## whole road as a night sky; a fresh level flares alight after the ceremony.
 func _open_skill_tree(pulse_level := -1) -> void:
 	var dlg := AcceptDialog.new()
-	dlg.title = "✨ The Constellation of %s" % str(GameState.sheet().get("name", "the hero"))
+	dlg.title = "The %s of %s" % [WorldSkin.tree_title(GameState.world_id()), str(GameState.sheet().get("name", "the hero"))]
 	dlg.ok_button_text = "Return to the tale"
 	var tree := preload("res://scenes/ui/skill_tree.gd").new()
 	tree.pulse_level = pulse_level

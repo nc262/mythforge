@@ -14,8 +14,12 @@ var _nodes: Array = []  # {kind, lv, label, desc, side, rank}
 var _hover := -1
 var _phase := 0.0
 var _level := 1
+var _motif := "constellation"   # skin-driven idiom: the road's whole visual language
 
 const ASI_LEVELS := [4, 8, 12, 16, 19]
+## family → presentation idiom (Issue 6): progression is identical, only the
+## motif changes. Unlisted families read as the constellation night sky.
+const MOTIF := {"cyber": "circuit", "steam": "gears", "pirate": "chart"}
 
 
 func _ready() -> void:
@@ -36,6 +40,7 @@ func _build() -> void:
 	_nodes.clear()
 	var s := GameState.sheet()
 	_level = int(s.get("level", 1))
+	_motif = MOTIF.get(WorldSkin.family_for_id(GameState.world_id()), "constellation")
 	var cls := str(s.get("cls", "Adventurer"))
 	for l in range(1, 21):
 		_nodes.append({"kind": "level", "lv": l, "label": "Level %d" % l, "desc": "", "side": 0, "rank": 0})
@@ -110,49 +115,123 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 
 
+## The screen-space fill behind everything — each motif its own ground.
+func _bg_color() -> Color:
+	match _motif:
+		"circuit":
+			return Ui.c("night2").darkened(0.15)
+		"gears":
+			return Ui.c("night").lerp(Color(0.16, 0.10, 0.05), 0.35)
+		"chart":
+			return Ui.c("surface").darkened(0.08)
+		_:
+			return Ui.c("night").darkened(0.3)
+
+
+## Motif decor drawn in map space (scrolls with the camera): the star field,
+## the circuit grid, the gearworks, or the cartographer's rhumb lines.
+func _draw_decor() -> void:
+	match _motif:
+		"circuit":
+			var step := 46.0
+			var gx := 0.0
+			while gx < size.x:
+				draw_line(Vector2(gx, 0), Vector2(gx, size.y), Color(Ui.c("border"), 0.18), 1.0)
+				gx += step
+			var gy := 0.0
+			while gy < size.y:
+				draw_line(Vector2(0, gy), Vector2(size.x, gy), Color(Ui.c("border"), 0.14), 1.0)
+				gy += step
+			for i in 40:  # solder pads at pseudo-random intersections
+				var cx := (0.5 + floor(absf(fmod(sin(i * 91.7) * 4137.1, 1.0)) * size.x / step)) * step
+				var cy := (0.5 + floor(absf(fmod(sin(i * 57.3) * 7351.9, 1.0)) * size.y / step)) * step
+				draw_circle(Vector2(cx, cy), 1.6, Color(Ui.c("gold"), 0.25))
+		"gears":
+			for spec in [[0.16, 0.2, 120.0], [0.86, 0.78, 160.0], [0.78, 0.16, 90.0]]:
+				var c := Vector2(size.x * float(spec[0]), size.y * float(spec[1]))
+				var rad := float(spec[2])
+				var spin := _phase * 0.15 if not Ui.reduce_motion else 0.0
+				for teeth in [rad, rad * 0.6]:
+					draw_arc(c, teeth, 0, TAU, 40, Color(Ui.c("gold"), 0.12), 2.0)
+				for k in 12:
+					var ang := k * TAU / 12.0 + spin
+					draw_line(c + Vector2(cos(ang), sin(ang)) * rad, c + Vector2(cos(ang), sin(ang)) * (rad + 8.0), Color(Ui.c("gold"), 0.12), 2.0)
+		"chart":
+			var step2 := 60.0
+			var gx2 := 0.0
+			while gx2 < size.x:
+				draw_line(Vector2(gx2, 0), Vector2(gx2, size.y), Color(Ui.c("border"), 0.16), 1.0)
+				gx2 += step2
+			var gy2 := 0.0
+			while gy2 < size.y:
+				draw_line(Vector2(0, gy2), Vector2(size.x, gy2), Color(Ui.c("border"), 0.12), 1.0)
+				gy2 += step2
+			var rose := Vector2(size.x * 0.5, size.y * 0.5)  # a faint compass rose watermark
+			for k in 8:
+				var ang := k * PI / 4.0
+				draw_line(rose, rose + Vector2(sin(ang), -cos(ang)) * (size.y * 0.42 if k % 2 == 0 else size.y * 0.24), Color(Ui.c("gold"), 0.08), 1.0)
+		_:  # constellation: deep field, drifting nebulae, fixed stars
+			if not Ui.reduce_motion:
+				for spec in [[0.25, 0.3, 340.0, "amethyst_deep", 11.0], [0.7, 0.62, 420.0, "gold", -7.0]]:
+					var ns := float(spec[2])
+					var np := Vector2(size.x * float(spec[0]) + sin(_phase * 0.1) * float(spec[4]),
+						size.y * float(spec[1]) + cos(_phase * 0.08) * float(spec[4]))
+					draw_texture_rect(Ui.glow_tex(), Rect2(np - Vector2(ns, ns) / 2.0, Vector2(ns, ns)),
+						false, Color(Ui.c(str(spec[3])), 0.10))
+			for i in 110:
+				var h1 := fmod(sin(i * 127.1) * 43758.5453, 1.0)
+				var h2 := fmod(sin(i * 311.7) * 12543.8367, 1.0)
+				var sp := Vector2(absf(h1) * size.x, absf(h2) * size.y)
+				var tw := 0.25 + 0.2 * sin(_phase * 1.4 + i)
+				draw_circle(sp, 0.9, Color(Ui.c("ink_soft"), tw))
+
+
+## One connective link between two road points, styled to the motif.
+func _link(pts: PackedVector2Array, earned: bool, role: String) -> void:
+	var lit := Color(Ui.c(role), 0.8) if earned else Color(Ui.c("ink_dim"), 0.3)
+	match _motif:
+		"circuit":  # a trace with a solder node where it lands
+			draw_polyline(pts, lit, 1.8 if earned else 1.2, true)
+			if earned:
+				draw_circle(pts[pts.size() - 1], 2.2, Ui.c(role))
+		"gears":  # a solid brass linkage
+			draw_polyline(pts, lit, 2.4 if earned else 1.4, true)
+		"chart":  # a dashed rhumb line
+			var k := 0
+			while k < pts.size() - 1:
+				draw_line(pts[k], pts[k + 1], lit, 1.5)
+				k += 2
+		_:  # constellation: a glowing thread
+			if earned:
+				draw_polyline(pts, Color(Ui.c(role), 0.16), 6.0, true)
+			draw_polyline(pts, Color(Ui.c(role), 0.75) if earned else Color(Ui.c("ink_dim"), 0.3), 1.6, true)
+
+
 func _draw() -> void:
-	# The night: deep field, drifting nebulae, fixed stars.
-	draw_rect(Rect2(Vector2.ZERO, size), Ui.c("night").darkened(0.3))
+	draw_rect(Rect2(Vector2.ZERO, size), _bg_color())
 	draw_set_transform(_cam.cam, 0.0, Vector2(_cam.zoom, _cam.zoom))
-	if not Ui.reduce_motion:
-		for spec in [[0.25, 0.3, 340.0, "amethyst_deep", 11.0], [0.7, 0.62, 420.0, "gold", -7.0]]:
-			var ns := float(spec[2])
-			var np := Vector2(size.x * float(spec[0]) + sin(_phase * 0.1) * float(spec[4]),
-				size.y * float(spec[1]) + cos(_phase * 0.08) * float(spec[4]))
-			draw_texture_rect(Ui.glow_tex(), Rect2(np - Vector2(ns, ns) / 2.0, Vector2(ns, ns)),
-				false, Color(Ui.c(str(spec[3])), 0.10))
-	for i in 110:
-		var h1 := fmod(sin(i * 127.1) * 43758.5453, 1.0)
-		var h2 := fmod(sin(i * 311.7) * 12543.8367, 1.0)
-		var sp := Vector2(absf(h1) * size.x, absf(h2) * size.y)
-		var tw := 0.25 + 0.2 * sin(_phase * 1.4 + i)
-		draw_circle(sp, 0.9, Color(Ui.c("ink_soft"), tw))
-	# The threads: earned segments glow; the road ahead is a dim promise.
+	_draw_decor()
+	# The threads: earned segments read strong; the road ahead is a dim promise.
 	for l in range(1, 20):
 		var a := _spine(l)
 		var b := _spine(l + 1)
 		var mid := (a + b) / 2.0 + (b - a).orthogonal().normalized() * 7.0
-		var earned := l < _level
-		var col := Color(Ui.c("gold"), 0.75) if earned else Color(Ui.c("ink_dim"), 0.3)
 		var pts := PackedVector2Array()
 		for k in 13:
 			var t := k / 12.0
 			pts.append(a.lerp(mid, t).lerp(mid.lerp(b, t), t))
-		if earned:
-			draw_polyline(pts, Color(Ui.c("gold"), 0.16), 6.0, true)
-		draw_polyline(pts, col, 1.6, true)
+		_link(pts, l < _level, "gold")
 	for n in _nodes:
 		if int(n["side"]) == 0:
 			continue
 		var a2 := _spine(int(n["lv"]))
 		var b2 := _node_pos(n)
 		var mid2 := (a2 + b2) / 2.0 + (b2 - a2).orthogonal().normalized() * 9.0
-		var earned2: bool = int(n["lv"]) <= _level
 		var pts2 := PackedVector2Array()
 		for k in 11:
 			var t2 := k / 10.0
 			pts2.append(a2.lerp(mid2, t2).lerp(mid2.lerp(b2, t2), t2))
-		draw_polyline(pts2, Color(Ui.c("amethyst"), 0.5) if earned2 else Color(Ui.c("ink_dim"), 0.22), 1.3, true)
+		_link(pts2, int(n["lv"]) <= _level, "amethyst")
 	# The stars themselves.
 	var font := get_theme_default_font()
 	var breathe := (0.5 + 0.5 * sin(_phase * 2.0)) if not Ui.reduce_motion else 0.5
