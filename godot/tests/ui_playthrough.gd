@@ -13,12 +13,14 @@ var _game: Control
 func _ready() -> void:
 	await get_tree().process_frame
 	Ui.apply("")
+	Ui.reduce_motion = true  # instant tweens/dice so the headless run is deterministic
 	Api.test_mode = true
 	_seed()
 	await _boot_game()
 	await _turn("loot", "I pry the old chest open.",
 		"Rusted hinges give. [[loot name=\"Iron Dagger\" rarity=common]] [[gold delta=+15]]", _check_loot)
 	await _turn_equip()
+	await _turn_damage_heal()
 	await _turn("combat", "I ready my blade and step in.",
 		"A giant rat bursts from the dark, teeth bared! [[combat-start foes=\"giant rat\"]]", _check_combat)
 	if Combat.active():
@@ -115,6 +117,44 @@ func _turn_levelup() -> void:
 	print("  turn levelup: ok (now level %d, HP %d)" % [int(GameState.sheet().get("level", 1)), int(GameState.sheet().get("hpMax", 0))])
 
 
+## The damage/heal tag path — the core of combat's HP math, driven for real.
+func _turn_damage_heal() -> void:
+	var hp0 := int(GameState.sheet().get("hp", 0))
+	Api.test_replies = ["A dart snaps from the wall and bites deep. [[damage roll=1d4]]"]
+	_game._send("I step on the pressure plate")
+	for i in 45:
+		await get_tree().process_frame
+		if not _game._streaming:
+			break
+	# [[damage]] arms the dice moment — the engine rolls when the player acts.
+	assert(str(_game._pending_check.get("type", "")) == "damage", "damage: tag did not arm a damage roll")
+	await _game._roll_pending()  # resolve the roll (awaits the die), as clicking the roll bar would
+	await get_tree().process_frame
+	assert(int(GameState.sheet().get("hp", 0)) < hp0, "damage: the roll did not reduce HP (was %d)" % hp0)
+	var hp1 := int(GameState.sheet().get("hp", 0))
+	await _settle()  # the roll narrates a follow-up turn; let it finish before the next send
+	Api.test_replies = ["Warm light knits the wound closed. [[heal roll=1d6]]"]
+	_game._send("I press a healing draught to my lips")
+	for i in 45:
+		await get_tree().process_frame
+		if not _game._streaming:
+			break
+	assert(bool(_game._pending_check.get("heal", false)), "heal: tag did not arm a heal roll")
+	await _game._roll_pending()
+	await get_tree().process_frame
+	assert(int(GameState.sheet().get("hp", 0)) > hp1, "heal: the roll did not restore HP (was %d)" % hp1)
+	await _settle()  # the heal roll narrates too; settle before the next turn's send
+	print("  turn damage/heal: ok (%d → %d → %d)" % [hp0, hp1, int(GameState.sheet().get("hp", 0))])
+
+
+## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).
+func _settle() -> void:
+	for i in 45:
+		await get_tree().process_frame
+		if not _game._streaming:
+			return
+
+
 func _has_item(nm: String) -> bool:
 	for it in GameState.inv().get("items", []):
 		if str(it.get("name", "")) == nm:
@@ -137,7 +177,7 @@ func _build_windows() -> void:
 	sheet.call("_show_page", "Gear")  # exercise the paper-doll build
 	await get_tree().process_frame
 	sheet.queue_free()
-	for path in ["res://scenes/ui/inventory_window.gd", "res://scenes/ui/skill_tree.gd"]:
+	for path in ["res://scenes/ui/inventory_window.gd", "res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd"]:
 		var w: Node = load(path).new()  # inventory = AcceptDialog, skill tree = Control
 		get_tree().root.add_child(w)
 		await get_tree().process_frame
