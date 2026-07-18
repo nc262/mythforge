@@ -43,8 +43,12 @@ theme_override_constants/separation = 12
 [node name="Brand" type="Label" parent="Title/Box"]
 layout_mode = 2
 theme_type_variation = &"TitleLabel"
-theme_override_font_sizes/font_size = 84
-theme_override_constants/outline_size = 18
+theme_override_font_sizes/font_size = 92
+theme_override_colors/font_outline_color = Color(0.04, 0.03, 0.09, 0.96)
+theme_override_colors/font_shadow_color = Color(0, 0, 0, 0.55)
+theme_override_constants/outline_size = 20
+theme_override_constants/shadow_offset_y = 5
+theme_override_constants/shadow_offset_x = 0
 text = "MYTHFORGE"
 horizontal_alignment = 1
 

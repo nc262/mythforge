@@ -34,18 +34,24 @@ func _init(label := "", icon_name := "", mat := "oak", subtitle := "") -> void:
 	lab.name = "Engraving"
 	lab.text = label
 	lab.add_theme_font_override("font", Ui.display)
-	lab.add_theme_font_size_override("font_size", 17)
-	# The engraving: dark glyphs cut into the plate, light catching below.
-	lab.add_theme_color_override("font_color", Ui.c("night").lightened(0.06))
-	lab.add_theme_color_override("font_shadow_color", Color(1.0, 0.92, 0.7, 0.4))
-	lab.add_theme_constant_override("shadow_offset_y", 1)
+	lab.add_theme_font_size_override("font_size", 19)
+	# Raised metal lettering: warm cream glyphs, a hard dark outline so they stay
+	# crisp on ANY plate (the old dark-on-dark engraving was hard to read), and a
+	# soft drop-shadow for depth.
+	lab.add_theme_color_override("font_color", Color(0.97, 0.92, 0.80))
+	lab.add_theme_color_override("font_outline_color", Color(Ui.c("night"), 0.92))
+	lab.add_theme_constant_override("outline_size", 5)
+	lab.add_theme_color_override("font_shadow_color", Color(0, 0, 0, 0.5))
+	lab.add_theme_constant_override("shadow_offset_y", 2)
 	col.add_child(lab)
 	if subtitle != "":
 		var sub := Label.new()
 		sub.name = "Sub"
 		sub.text = subtitle
-		sub.add_theme_font_size_override("font_size", 11)
-		sub.add_theme_color_override("font_color", Color(Ui.c("night"), 0.75))
+		sub.add_theme_font_size_override("font_size", 12)
+		sub.add_theme_color_override("font_color", Color(0.88, 0.84, 0.74, 0.9))
+		sub.add_theme_color_override("font_outline_color", Color(Ui.c("night"), 0.85))
+		sub.add_theme_constant_override("outline_size", 3)
 		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		col.add_child(sub)
 	row.add_child(col)
