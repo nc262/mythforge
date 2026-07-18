@@ -275,5 +275,15 @@ func _ready() -> void:
 	assert(Rules.item_type("Longsword") == "weapon" and Rules.item_type("Oak Shield") == "shield")
 	assert("ring1" in Rules.TYPE_SLOTS["ring"] and "ring2" in Rules.TYPE_SLOTS["ring"])
 
+	# World Skin legibility guard: ink and accent must read on every palette's
+	# surface (the contrast floor that a future LLM-refined palette gets clamped
+	# to; the eight authored palettes must already clear it).
+	var lum := func(col: Color) -> float: return 0.299 * col.r + 0.587 * col.g + 0.114 * col.b
+	for fam in WorldSkin.FAMILIES:
+		var pal: Dictionary = Ui.PALETTES[WorldSkin.FAMILIES[fam]["palette"]]
+		var surf: float = lum.call(pal["surface"])
+		assert(absf(lum.call(pal["ink"]) - surf) > 0.35, "low ink contrast: " + str(fam))
+		assert(absf(lum.call(pal["gold"]) - surf) > 0.12, "low accent contrast: " + str(fam))
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

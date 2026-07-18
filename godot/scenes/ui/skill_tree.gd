@@ -186,6 +186,39 @@ func _draw_decor() -> void:
 				draw_circle(sp, 0.9, Color(Ui.c("ink_soft"), tw))
 
 
+## A road node's base marker, shaped to the motif: a chip, a cog, a compass
+## point, or a star. Level nodes wear it (features/circles keep their sigils).
+func _node_marker(p: Vector2, r: float, filled: bool, role: String) -> void:
+	var col := Ui.c(role) if filled else Color(Ui.c(role), 0.7)
+	match _motif:
+		"circuit":  # a chip
+			var sq := Rect2(p - Vector2(r, r), Vector2(r, r) * 2.0)
+			if filled:
+				draw_rect(sq, col)
+				draw_rect(Rect2(p - Vector2(r, r), Vector2(r * 2.0, r * 0.5)), Color(1, 1, 1, 0.15))
+			else:
+				draw_rect(sq, col, false, 1.2)
+		"gears":  # a cog
+			if filled:
+				draw_circle(p, r, col)
+				for k in 8:
+					var ang := k * TAU / 8.0
+					draw_line(p + Vector2(cos(ang), sin(ang)) * r, p + Vector2(cos(ang), sin(ang)) * (r + 2.2), col, 1.4)
+			else:
+				draw_arc(p, r, 0, TAU, 16, col, 1.2, true)
+		"chart":  # a compass point
+			var dia := PackedVector2Array([p + Vector2(0, -r * 1.35), p + Vector2(r, 0), p + Vector2(0, r * 1.35), p + Vector2(-r, 0)])
+			if filled:
+				draw_colored_polygon(dia, col)
+			else:
+				draw_polyline(dia + PackedVector2Array([dia[0]]), col, 1.2, true)
+		_:  # constellation: a star point
+			if filled:
+				draw_circle(p, r, col)
+			else:
+				draw_arc(p, r, 0, TAU, 16, col, 1.2, true)
+
+
 ## One connective link between two road points, styled to the motif.
 func _link(pts: PackedVector2Array, earned: bool, role: String) -> void:
 	var lit := Color(Ui.c(role), 0.8) if earned else Color(Ui.c("ink_dim"), 0.3)
@@ -246,12 +279,12 @@ func _draw() -> void:
 		match str(n["kind"]):
 			"level":
 				if earned:
-					draw_circle(p, 4.5 * flare, Ui.c("gold"))
+					_node_marker(p, 4.5 * flare, true, "gold")
 					if lv == _level:
 						draw_arc(p, (8.0 + 2.0 * breathe) * flare, 0, TAU, 24, Ui.c("gold_soft"), 1.8, true)
 						draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(22, 22), Vector2(44, 44)), false, Color(Ui.c("gold"), 0.3))
 				else:
-					draw_arc(p, 3.5, 0, TAU, 16, Color(Ui.c("ink_dim"), 0.7), 1.2, true)
+					_node_marker(p, 3.5, false, "ink_dim")
 			"feature":
 				if earned:
 					draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(16, 16), Vector2(32, 32)), false, Color(Ui.c("amethyst"), 0.35))

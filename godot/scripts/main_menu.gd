@@ -756,23 +756,106 @@ func _continue_last() -> void:
 	_show_saves(saved)
 
 
+## Chronicles: every begun tale as an illustrated cover card — take up the
+## thread (Continue, folded in here) or open its Lore Book from the Hall.
 func _show_saves(saved: Array) -> void:
-	_show_sub("Your tales", "Pick up where a story left off")
+	_show_sub("Chronicles", "Every tale you've begun — take up the thread, or open its book")
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)
 	var last = JSON.parse_string(str(cfg.get_value("last", "adventure", "")))
 	var last_id := str(last.get("id", "")) if last is Dictionary else ""
+	if saved.is_empty():
+		_content.add_child(_section("No chronicles yet — begin an adventure and its story is kept here."))
+		return
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 16)
+	grid.add_theme_constant_override("v_separation", 16)
+	_content.add_child(grid)
 	for t in saved:
-		var cid := str(t.get("id"))
-		var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid.uri_encode())
-		var sheet: Dictionary = st.get("state", {}).get("sheet", {}) if st.get("state") is Dictionary and st["state"].get("sheet") is Dictionary else {}
-		var clock: Dictionary = st.get("state", {}).get("clock", {}) if st.get("state") is Dictionary and st["state"].get("clock") is Dictionary else {}
-		var row := _big_card("%s%s" % [str(t.get("name", "?")), "   · latest" if cid == last_id else ""],
-			"%s · Level %d · Day %d" % [str(sheet.get("name", "a new hero")), int(sheet.get("level", 1)), int(clock.get("day", 1))],
-			Ui.pal["gold"] if cid == last_id else Ui.pal["ink_soft"])
-		row.custom_minimum_size = Vector2(560, 84)
-		row.pressed.connect(func(): _play({"id": cid, "name": t.get("name", ""), "world_id": t.get("world_id", "")}))
-		_content.add_child(row)
+		grid.add_child(await _chronicle_card(t, last_id))
+
+
+func _chronicle_card(t: Dictionary, last_id: String) -> Control:
+	var cid := str(t.get("id"))
+	var wid := str(t.get("world_id", ""))
+	var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid.uri_encode())
+	var sheet: Dictionary = st.get("state", {}).get("sheet", {}) if st.get("state") is Dictionary and st["state"].get("sheet") is Dictionary else {}
+	var clock: Dictionary = st.get("state", {}).get("clock", {}) if st.get("state") is Dictionary and st["state"].get("clock") is Dictionary else {}
+	var is_last := cid == last_id
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size = Vector2(440, 172)
+	panel.add_theme_stylebox_override("panel", Ui.sb_card("legendary" if is_last else "common"))
+	panel.clip_contents = true
+	var tex := Art.texture_for(wid)
+	if tex != null:  # the world's key art is the cover
+		var art := TextureRect.new()
+		art.texture = tex
+		art.set_anchors_preset(Control.PRESET_FULL_RECT)
+		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		art.modulate = Color(0.62, 0.6, 0.68, 0.6)
+		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(art)
+		var scrim := ColorRect.new()
+		scrim.color = Color(Ui.c("night"), 0.45)
+		scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+		scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		panel.add_child(scrim)
+	var mar := MarginContainer.new()
+	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		mar.add_theme_constant_override(m, 16)
+	panel.add_child(mar)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 4)
+	mar.add_child(box)
+	var nm := Label.new()
+	nm.text = str(t.get("name", "?"))
+	nm.add_theme_font_override("font", Ui.serif)
+	nm.add_theme_font_size_override("font_size", 22)
+	nm.add_theme_color_override("font_color", Ui.c("gold_soft") if is_last else Ui.c("ink"))
+	box.add_child(nm)
+	var cap := Label.new()
+	cap.theme_type_variation = "HintLabel"
+	cap.text = "%s · Level %d · Day %d%s" % [str(sheet.get("name", "a new hero")), int(sheet.get("level", 1)),
+		int(clock.get("day", 1)), "   ·   latest" if is_last else ""]
+	box.add_child(cap)
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(spacer)
+	var actions := HBoxContainer.new()
+	actions.add_theme_constant_override("separation", 8)
+	var cont := Button.new()
+	cont.theme_type_variation = "AccentButton"
+	cont.text = "▶ Continue"
+	cont.pressed.connect(func(): _play({"id": cid, "name": t.get("name", ""), "world_id": wid}))
+	var chron := Button.new()
+	chron.theme_type_variation = "GhostButton"
+	chron.text = "Open the Lore Book"
+	chron.pressed.connect(func(): _open_campaign_chronicle(t))
+	actions.add_child(cont)
+	actions.add_child(chron)
+	box.add_child(actions)
+	return panel
+
+
+## Open a campaign's Lore Book from the Hall: load its state read-only, theme
+## the Hall to its world, show the book, and restore the Hall on close.
+func _open_campaign_chronicle(t: Dictionary) -> void:
+	if _busy:
+		return
+	_busy = true
+	_sub_status.text = "Opening the chronicle…"
+	GameState.character = {"id": t.get("id"), "name": t.get("name", ""), "world_id": t.get("world_id", "")}
+	await GameState.hydrate()
+	WorldSkin.remember(_world_by_id(str(t.get("world_id", ""))))
+	Ui.apply(str(t.get("world_id", "")))
+	_busy = false
+	_sub_status.text = ""
+	var book := preload("res://scenes/ui/lore_book.tscn").instantiate()
+	book.closed.connect(func(): Ui.apply(""))  # restore the Hall's own theme
+	add_child(book)
+	Ui.reveal(book)
 
 
 func _play(c: Dictionary) -> void:
