@@ -393,6 +393,71 @@ func add_lore(category: String, title: String, note: String) -> bool:
 	return true
 
 
+# ── The Cast: structured Character Resources (A4) ────────────────────────────
+## Data-driven NPCs the GM inscribes via [[npc]]/[[relate]] — identity, goal,
+## fear, faction, secret, feeling, and a relationship bond — persisted in the
+## `cast` kind and fed to the Director as structured context, not a prose blob.
+func cast() -> Dictionary:
+	var c = state.get("cast")
+	return c if c is Dictionary else {}
+
+
+func record_npc(fields: Dictionary) -> void:
+	var nm := str(fields.get("name", "")).strip_edges()
+	if nm == "":
+		return
+	var c := cast()
+	var e: Dictionary = c.get(nm, {})
+	for k in ["role", "goal", "fear", "faction", "secret", "feeling"]:
+		if str(fields.get(k, "")).strip_edges() != "":
+			e[k] = str(fields[k]).strip_edges()
+	c[nm] = e
+	save_kind("cast", c)
+
+
+## Shift a relationship bond (−5..+5) and remember why.
+func relate(npc_name: String, delta: int, note := "") -> void:
+	var nm := npc_name.strip_edges()
+	if nm == "":
+		return
+	var c := cast()
+	var e: Dictionary = c.get(nm, {})
+	e["bond"] = clampi(int(e.get("bond", 0)) + delta, -5, 5)
+	if note.strip_edges() != "":
+		var notes: Array = e.get("notes", [])
+		notes.append(note.strip_edges())
+		e["notes"] = notes.slice(-4)
+	c[nm] = e
+	save_kind("cast", c)
+
+
+## The cast as structured context for the envelope — canon the GM must honor.
+func cast_summary() -> String:
+	var c := cast()
+	if c.is_empty():
+		return ""
+	var parts: Array[String] = []
+	for nm in c:
+		var e: Dictionary = c[nm]
+		var bits: Array[String] = [str(nm)]
+		if str(e.get("role", "")) != "":
+			bits.append(str(e["role"]))
+		if str(e.get("faction", "")) != "":
+			bits.append("of " + str(e["faction"]))
+		if str(e.get("goal", "")) != "":
+			bits.append("wants " + str(e["goal"]))
+		if str(e.get("fear", "")) != "":
+			bits.append("fears " + str(e["fear"]))
+		if str(e.get("feeling", "")) != "":
+			bits.append("feels %s toward the player" % str(e["feeling"]))
+		if int(e.get("bond", 0)) != 0:
+			bits.append("relationship %+d" % int(e["bond"]))
+		if str(e.get("secret", "")) != "":
+			bits.append("(secret, not yet known to the player: %s)" % str(e["secret"]))
+		parts.append(" — ".join(bits))
+	return "The cast you know (their goals, fears, feelings, and secrets are CANON — keep them consistent): %s." % "; ".join(parts)
+
+
 ## An NPC joins the party (port of _toggleCompanion's recruit half).
 func add_companion(nm: String, role := "") -> String:
 	var s := sheet()

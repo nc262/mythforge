@@ -13,6 +13,7 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[spell-learned name="Misty Step"]] when the player learns a spell. [[time advance=1]] when notable in-world time passes.
 [[xp delta=50 reason="outwitted the toll-keeper"]] when the player earns experience (25-75 for a scene; combat XP is automatic — never tag xp for kills).
 [[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. [[combat-end]] only when foes flee or surrender (victory ends it automatically).
+[[npc name="Ser Aldric" role="knight" goal="reclaim his keep" fear="his own cowardice" faction="the Grey Watch" feeling="wary" secret="he betrayed his lord"]] when you introduce or reveal something lasting about a named character (include only the fields you're establishing). [[relate name="Ser Aldric" bond=+1 note="the player spared him"]] when the player's deeds shift how a character feels about them (bond −5..+5).
 [[scene place="the chapel crypt at midnight"]] whenever the player arrives somewhere visually new.
 [[lore cat="Places" title="The Sunken Vault" note="one vivid sentence of what was learned"]] when the player discovers a LASTING fact worth remembering — a place, person, creature, faction, history, or truth (cat: History/Places/People/Bestiary/Magic/Faction). Use sparingly, only for real discoveries.
 You MAY also SUGGEST presentation — these change only how the moment looks and sounds, NEVER the game state; use at most one or two, and only when the beat truly calls for it:
@@ -29,7 +30,7 @@ func envelope(player_msg: String, beats: Array = []) -> String:
 		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s]" % summary)
 	parts.append("[%s]" % GameState.clock_text())
 	for extra in [GameState.inv_text(), GameState.spell_text(),
-			Chronicle.recall_text(beats), Chronicle.codex_text(), Chronicle.quests_text(),
+			Chronicle.recall_text(beats), Chronicle.codex_text(), GameState.cast_summary(), Chronicle.quests_text(),
 			gm_directive(), house_rules_text()]:
 		if str(extra) != "":
 			parts.append("[%s]" % extra)

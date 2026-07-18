@@ -300,5 +300,16 @@ func _ready() -> void:
 	assert(not Art._manifest.has("unit-old") and Art._manifest.has("unit-new"))
 	Art._manifest = {}
 
+	# A4 Character Resources: structured NPCs + a clamped relationship bond.
+	GameState.state = {}
+	GameState.record_npc({"name": "Aldric", "role": "knight", "goal": "reclaim his keep", "feeling": "wary"})
+	GameState.relate("Aldric", 2, "the player spared him")
+	var cst := GameState.cast()
+	assert(cst.has("Aldric") and str(cst["Aldric"]["role"]) == "knight" and int(cst["Aldric"]["bond"]) == 2)
+	GameState.relate("Aldric", 10, "")  # bond clamps at +5
+	assert(int(GameState.cast()["Aldric"]["bond"]) == 5)
+	assert(GameState.cast_summary().contains("Aldric"))
+	GameState.state = {}
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

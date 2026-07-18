@@ -636,6 +636,10 @@ func _apply_world_tags(tags: Array) -> void:
 				var lt := str(a.get("title", "")).strip_edges()
 				if lt != "" and GameState.add_lore(str(a.get("cat", a.get("category", "Discoveries"))).strip_edges(), lt, str(a.get("note", a.get("body", ""))).strip_edges()):
 					_say_system("The Lore Book records a new entry: %s." % lt)
+			"npc":
+				GameState.record_npc(a)  # a structured Character Resource (A4)
+			"relate":
+				GameState.relate(str(a.get("name", "")), int(str(a.get("bond", a.get("delta", "0"))).replace("+", "")), str(a.get("note", "")))
 			"time":
 				GameState.advance_time(maxi(1, int(a.get("advance", 1))))
 				var c: Dictionary = GameState.clock()

@@ -149,14 +149,35 @@ func _cast() -> void:
 			var nm := str(c["name"])
 			seen[nm.to_lower()] = true
 			var key := "npc-" + nm.to_lower().replace(" ", "-")
-			_host.add_child(_entry(nm, str(c.get("role", "")) + ("\n" + str(c.get("persona", "")) if str(c.get("persona", "")) != "" else ""),
+			_host.add_child(_entry(nm, str(c.get("role", "")) + ("\n" + str(c.get("persona", "")) if str(c.get("persona", "")) != "" else "") + _npc_extra(nm),
 				key, "character portrait of %s, %s, %s, dramatic rim light, dark background, no text" % [nm, str(c.get("role", "a figure of this world")), Art.world_flavor()]))
 	# The cast you've actually met (codex), beyond the world's authored roster.
 	for n in (GameState.state.get("codex") if GameState.state.get("codex") is Array else []):
 		if n is Dictionary and str(n.get("name", "")) != "" and not seen.has(str(n["name"]).to_lower()):
+			seen[str(n["name"]).to_lower()] = true
 			var nm2 := str(n["name"])
 			var key2 := "npc-" + nm2.to_lower().replace(" ", "-")
-			_host.add_child(_entry(nm2, str(n.get("role", "")) + ("\n" + str(n.get("note", "")) if str(n.get("note", "")) != "" else ""), key2, ""))
+			_host.add_child(_entry(nm2, str(n.get("role", "")) + ("\n" + str(n.get("note", "")) if str(n.get("note", "")) != "" else "") + _npc_extra(nm2), key2, ""))
+	# Characters the GM has inscribed as structured resources ([[npc]]) but who
+	# aren't in the authored roster or codex yet.
+	for nm3 in GameState.cast():
+		if not seen.has(str(nm3).to_lower()):
+			var e: Dictionary = GameState.cast()[nm3]
+			_host.add_child(_entry(str(nm3), str(e.get("role", "")) + _npc_extra(str(nm3)), "npc-" + str(nm3).to_lower().replace(" ", "-"), ""))
+
+
+## The player-facing structured facts about an NPC (secrets stay GM-only).
+func _npc_extra(name: String) -> String:
+	var e = GameState.cast().get(name)
+	if not (e is Dictionary) or e.is_empty():
+		return ""
+	var bits: Array[String] = []
+	for pair in [["faction", "Faction"], ["goal", "Wants"], ["fear", "Fears"], ["feeling", "Toward you"]]:
+		if str(e.get(pair[0], "")) != "":
+			bits.append("%s: %s" % [pair[1], str(e[pair[0]])])
+	if int(e.get("bond", 0)) != 0:
+		bits.append("Bond: %+d" % int(e["bond"]))
+	return ("\n" + "\n".join(bits)) if not bits.is_empty() else ""
 
 
 func _bestiary() -> void:
