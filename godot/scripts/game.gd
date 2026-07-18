@@ -30,6 +30,7 @@ var _turns_since_tick := 0  # the clock walks every 3 player turns
 @onready var _scene_art: TextureRect = $SceneArt
 @onready var _battle_tint: ColorRect = $BattleTint
 @onready var _die_layer: CenterContainer = $DieLayer
+var _mood_layer: ColorRect = null   # A3: the presentation mood wash (never touches state)
 
 
 func _ready() -> void:
@@ -85,6 +86,14 @@ func _ready() -> void:
 	# adventure screen wears no atmosphere overlay (rooms/forges still do).
 	_iconify_toolbar()
 	_add_leave_button()
+	# A3: a full-screen mood wash the AI can SUGGEST via presentation tags —
+	# above the scene art, below the UI, transparent until a mood lands.
+	_mood_layer = ColorRect.new()
+	_mood_layer.color = Color(0, 0, 0, 0)
+	_mood_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_mood_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_mood_layer)
+	move_child(_mood_layer, $ArtScrim.get_index() + 1)
 	Chronicle.reset()
 	var world := str(GameState.character.get("world_id", ""))
 	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
@@ -553,7 +562,8 @@ func _on_done(_ok: bool) -> void:
 		_scroll_bottom()  # pure conversation: no tags, no rolls, no chronicling
 		return
 	var parsed: Dictionary = Tags.parse(_acc)
-	_apply_world_tags(parsed["tags"])
+	_apply_world_tags(parsed["tags"])          # state — the deterministic domain
+	_apply_presentation_tags(parsed["tags"])   # presentation only — never state
 	Chronicle.record(_last_player_msg, str(parsed["clean"]))
 	if RegEx.create_from_string("\bTHE END\b").search(str(parsed["clean"])):
 		Sfx.play("chime")
@@ -656,6 +666,67 @@ func _apply_world_tags(tags: Array) -> void:
 		if foe != "":
 			_start_combat(foe)
 	_render_sheet()
+
+
+## A3 — presentation tags: the AI SUGGESTS how the moment looks and sounds.
+## HARD RULE: this routes ONLY to presentation systems (the mood wash, Sfx).
+## It must never touch GameState / Combat / Rules — state stays the sole domain
+## of _apply_world_tags, so the determinism guarantee is preserved.
+const _MOODS := {
+	"calm": Color(0.03, 0.06, 0.12, 0.10), "warm": Color(0.26, 0.12, 0.03, 0.15),
+	"tense": Color(0.10, 0.05, 0.15, 0.22), "eerie": Color(0.04, 0.15, 0.09, 0.20),
+	"somber": Color(0.05, 0.06, 0.10, 0.28), "dread": Color(0.12, 0.02, 0.05, 0.30),
+	"triumphant": Color(0.30, 0.22, 0.05, 0.14), "neutral": Color(0, 0, 0, 0),
+}
+
+
+func _apply_presentation_tags(tags: Array) -> void:
+	for t in tags:
+		var a: Dictionary = t["attrs"]
+		match str(t["name"]):
+			"mood":
+				_mood_tint(str(a.get("tone", a.get("value", ""))))
+			"music":
+				if not Combat.active():  # combat owns its own score
+					var track := _music_for_cue(str(a.get("cue", a.get("track", ""))))
+					if track != "":
+						Sfx.music(track)
+			"sfx", "sound":
+				var s := _sfx_for_cue(str(a.get("cue", a.get("name", ""))))
+				if s != "":
+					Sfx.play(s)
+			# "portrait" / "camera": parsed and reserved — consumers land in a later slice.
+
+
+func _mood_tint(tone: String) -> void:
+	if _mood_layer == null:
+		return
+	var c: Color = _MOODS.get(tone.to_lower(), Color(0, 0, 0, 0))
+	if Ui.reduce_motion:
+		_mood_layer.color = c
+	else:
+		create_tween().tween_property(_mood_layer, "color", c, 1.5)
+
+
+func _music_for_cue(cue: String) -> String:
+	var c := cue.to_lower()
+	if c in ["battle", "combat", "fight", "danger"]:
+		return "combat"
+	if c in ["tense", "eerie", "dread", "fear", "ominous", "suspense", "sorrow", "somber", "grief"]:
+		return "arcane"
+	# calm / warm / triumph / unknown → the world's own score (never guess silence)
+	return WorldSkin.music_for_id(GameState.world_id())
+
+
+func _sfx_for_cue(cue: String) -> String:
+	var c := cue.to_lower()
+	if c in ["impact", "hit", "blow", "strike", "clash"]:
+		return "hit"
+	if c in ["chime", "reveal", "magic", "shimmer", "discovery"]:
+		return "chime"
+	if c in ["tension", "sting", "alarm", "danger", "dread"]:
+		return "sting"
+	return ""  # unknown cue → nothing, rather than a wrong sound
 
 
 func _start_combat(foes: String) -> void:
