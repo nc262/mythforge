@@ -27,6 +27,9 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 | Paper doll + equipment breadth | "3D turntable 🔲", "paper doll (FutureIdeas)" | ✅ M-F Stage A: full-body doll + 13 slots |
 | Forge-time portrait preview | "forge-time preview 🔲" | ✅ live Envision in the Appearance stage |
 | Race art in hero forge | (not tracked) | ✅ per-race portraits in Heritage |
+| Real-UI playthrough test harness | (not tracked) | ✅ `tests/ui_playthrough` drives loot→equip→damage/heal→combat→levelup→persistence through the real game scene; caught 2 shipped crashes |
+| `THE END` completion never fired | (not tracked) | ✅ regex bug — `"\b"` was a backspace char; fixed + auto-snapshot + Chronicles complete badge |
+| Save-DC spells / class-feature actions / companion kits / B1 / B2 / write-queue | see §2–4 | ✅ all resolved 2026-07-18 (rows struck through below) |
 
 ---
 
@@ -34,8 +37,8 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 
 | # | Issue | Pri | Effort | Note |
 |---|---|---|---|---|
-| B1 | `_show_saves`/Chronicles fetches each save's state **serially** | **P2** | S | Got worse — the new cover gallery awaits state per card. Parallelize the awaits or add a batch endpoint. |
-| B2 | Art cache **never evicts** (no LRU) | **P2** | M | Got worse — we now generate race portraits, herobody, lore art, per-skin art. Disk grows unbounded; add a manifest + LRU. |
+| B1 | ~~`_show_saves`/Chronicles fetches each save's state **serially**~~ | ~~P2~~ | ✅ | **DONE 2026-07-18** — cards build sync; each state fetch fires concurrently, fills its caption when it lands. |
+| B2 | ~~Art cache **never evicts** (no LRU)~~ | ~~P2~~ | ✅ | **DONE** (A2) — 700 MB budget, manifest + LRU `_enforce_budget`/`_evict`. |
 | B3 | `Rules.attack_mod` couples to `GameState.inv()` when inv omitted | P3 | S | Latent wrong-bonus footgun; typed context object in the game.gd split. |
 | B4 | Combat attack rolls don't play the dice-moment overlay | P3 | M | Tracker rolls are internal — less drama. |
 | B5 | Multiple missing world key-arts generate **sequentially** on menu load, lagging chat image requests | P3 | M | Art queue priority lanes. |
@@ -49,7 +52,9 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 | **game.gd god-script** (~1.4k+ lines; grew again with the language guard, lore, paper-doll wiring) | **P2** | L | Split chat_view / panels / dialogs as child scenes under the FSM. The single biggest structural risk. |
 | **ForgeFlow base extraction** — now **four** forges (character/campaign/world/adventure) duplicate the ~60-line rail/title/nav scaffold | **P2** | M | The "extract when a 3rd appears" trigger is well past; a shared base would cut real duplication. |
 | **Per-world EAS room variants** — `Art.ENV_PROMPTS` are fantasy-flavored ("mythic forge", "war room"); a cyberpunk campaign gets a cyber *palette* but a fantasy *room* | **P2** | M | Exposed by M-B. Skin should drive env prompts too (a "skin slice 3"). |
-| State writes are fire-and-forget PUTs, no debounce/retry | **P2** | M | A dropped PUT silently loses a mutation; write-through queue + dirty flags. |
+| ~~State writes are fire-and-forget PUTs, no debounce/retry~~ | ~~P2~~ | ✅ | **DONE** (A5) — `save_kind` updates local instantly + enqueues; `_drain_writes` coalesces (last-write-wins) + retries. |
+| ~~Per-world EAS room variants (fantasy-flavored ENV_PROMPTS)~~ | ~~P2~~ | ✅ | **DONE** (A1) — `ENV_ROLE` + `env_resolved`/`env_prompt` drive per-world rooms from the skin. |
+| Companion kit generic (Fighter/AC13) | ~~P3~~ | ✅ | **DONE 2026-07-18** — `infer_companion_kit` maps role→class/AC/HP. |
 | Enemy stats by name-regex tiers vs bestiary stat blocks | P3 | M | Flavorless foes; derive from bestiary + world. |
 | Companion kit generic (Fighter/AC13) | P3 | S | Class inference from codex role. |
 | world_map carries its own pan/zoom (pre-MythCamera) | P3 | S | Adopt MythCamera next time it's touched. |
@@ -60,8 +65,8 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 ## 4. Feature gaps (from FeatureMatrix 🔲/🟡, still open)
 
 **Play systems**
-- Save-DC spells (only damage spells resolve today) — **P2 / M**
-- More class-feature actions: Bardic Inspiration, Lay on Hands, Wild Shape… — P2 / M
+- ~~Save-DC spells~~ — ✅ **DONE 2026-07-18**: foe rolls a save vs your spell DC (tier-derived save mod); for-half/negate; typed vuln/resist.
+- ~~More class-feature actions: Bardic Inspiration, Lay on Hands, Wild Shape~~ — ✅ **DONE 2026-07-18** (+ Channel Divinity).
 - Token **drag** on the battle grid (click-move shipped) — P3 / S
 - LLM-authored terrain layout — P3 / M
 - ASI split (+1/+1 vs +2) — P3 / S
