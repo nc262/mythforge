@@ -173,6 +173,12 @@ func _check_save_spells() -> void:
 	assert(str(GameState.infer_companion_kit("court wizard")["cls"]) == "Wizard", "companion: 'wizard' should infer Wizard")
 	assert(str(GameState.infer_companion_kit("sellsword")["cls"]) == "Fighter", "companion: unknown role falls back to Fighter")
 	print("  companions: kit inferred from role (healer→Cleric, mage→Wizard)")
+	# new class-feature actions apply and spend a use
+	var loh0 := GameState.feature_uses_left("Lay on Hands")
+	assert(GameState.use_feature("Bardic Inspiration") != "", "feature: Bardic Inspiration should apply")
+	assert(GameState.use_feature("Lay on Hands") != "", "feature: Lay on Hands should apply")
+	assert(GameState.feature_uses_left("Lay on Hands") == loh0 - 1, "feature: a use should be spent")
+	print("  class features: Bardic Inspiration / Lay on Hands / Wild Shape wired")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

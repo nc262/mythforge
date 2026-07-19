@@ -530,6 +530,10 @@ const FEATURE_ACTIONS := {
 	"Combat Maneuver": {"rest": "short", "uses": 4},
 	"Arcane Ward": {"rest": "long", "uses": 1},
 	"Cutting Words": {"rest": "long", "uses": 3},
+	"Lay on Hands": {"rest": "long", "uses": 3},
+	"Bardic Inspiration": {"rest": "short", "uses": 3},
+	"Channel Divinity": {"rest": "short", "uses": 1},
+	"Wild Shape": {"rest": "short", "uses": 2},
 }
 
 
@@ -579,6 +583,19 @@ func use_feature(key: String) -> String:
 			note = "*A woven ward of abjuration surrounds you — it absorbs the next **%d** damage before your HP does.*" % ward
 		"Cutting Words":
 			note = "*Cutting Words — your mockery lands where armor doesn't: **−%d** from an enemy's attack, check, or damage roll.*" % randi_range(1, 8)
+		"Lay on Hands":
+			var lh := 3 * int(s.get("level", 1))
+			s["hp"] = mini(int(s["hpMax"]), int(s.get("hp", 0)) + lh)
+			note = "*Lay on Hands — divine warmth flows from your palms, restoring **%d HP** (now %d/%d).*" % [lh, int(s["hp"]), int(s["hpMax"])]
+		"Bardic Inspiration":
+			s["conditions"] = s.get("conditions", []) + [{"name": "bardic inspiration (add 1d6 to one roll)", "rounds": 100}]
+			note = "*Bardic Inspiration — a rousing word grants a **1d6** to add to one attack, check, or save. Tell the GM when you spend it.*"
+		"Channel Divinity":
+			note = "*Channel Divinity — you invoke your deity's power: turn undead, a sacred weapon, or your oath's channel. Tell the GM which.*"
+		"Wild Shape":
+			var thp := 2 * int(s.get("level", 1)) + 5
+			s["conditions"] = s.get("conditions", []) + [{"name": "wild shape — beast form (+%d temp HP)" % thp, "rounds": 100}]
+			note = "*Wild Shape — your body flows into a beast's: **+%d** temporary vigor and a beast's senses. Describe the form to the GM.*" % thp
 	set_sheet(s)
 	return note
 
