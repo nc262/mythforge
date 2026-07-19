@@ -62,9 +62,12 @@ layout_mode = 2
 theme_type_variation = &"TitleLabel"
 text = "✦"
 
-[node name="Chips" type="Label" parent="Margin/Split/ChatBox"]
+[node name="Chips" type="RichTextLabel" parent="Margin/Split/ChatBox"]
 layout_mode = 2
-theme_type_variation = &"HintLabel"
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
+autowrap_mode = 0
 text = ""
 
 [node name="Scroll" type="ScrollContainer" parent="Margin/Split/ChatBox"]

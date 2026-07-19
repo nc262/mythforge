@@ -64,6 +64,10 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Input/Bag.pressed.connect(_open_inventory)
 	$Margin/Split/ChatBox/Input/Retell.pressed.connect(_regen)
 	_roll_bar.pressed.connect(_roll_pending)
+	_roll_bar.expand_icon = false
+	_roll_bar.add_theme_constant_override("icon_max_width", 22)
+	for st in ["icon_normal_color", "icon_hover_color", "icon_pressed_color", "icon_focus_color"]:
+		_roll_bar.add_theme_color_override(st, Ui.c("gold"))
 	_sheet_panel.meta_clicked.connect(_on_sheet_action)
 	_combat_panel.meta_clicked.connect(_on_combat_action)
 	_battle_grid.cell_clicked.connect(_on_grid_move)
@@ -296,12 +300,12 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 			(looks + (", " if looks != "" and brush != "" else "") + brush).strip_edges())
 	_build_dice_menu()
 	_render_sheet()
-	_say_system("⚒ %s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])])
+	_say_system("%s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])], "anvil")
 	# The Campaign Forge already chose the GM's voice? Skip Session Zero and
 	# open the tale directly with the forged tone in force.
 	if GameState.state.get("gm") is Dictionary and not GameState.state.get("gm", {}).is_empty():
 		Mode.enter("Exploration")
-		_say_system("🎩 The GM speaks in the voice chosen at the forge: %s." % str(GameState.state["gm"].get("style", "as tuned")))
+		_say_system("The GM speaks in the voice chosen at the forge: %s." % str(GameState.state["gm"].get("style", "as tuned")), "crown")
 		_last_player_msg = "I arrive."
 		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s%s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls, (", " + str(Rules.tables.get("backgrounds", {}).get(background, {}).get("line", ""))) if background != "" else ""]))
 		return
@@ -391,14 +395,35 @@ func _bubble(kind: String) -> RichTextLabel:
 func _say_me(bb: String) -> void:
 	_bubble("me").append_text(bb)
 
+## A button that leads with hand-drawn art instead of an emoji glyph.
+func _ico_button(glyph: String, label: String) -> Button:
+	var b := Button.new()
+	b.icon = Ui.ico_tex(glyph)
+	b.expand_icon = false
+	b.add_theme_constant_override("icon_max_width", 20)
+	b.add_theme_color_override("icon_normal_color", Ui.c("gold"))
+	b.text = label
+	return b
 
-func _say_system(text: String) -> void:
+
+func _say_system(text: String, glyph := "") -> void:
 	var l := Label.new()
 	l.theme_type_variation = "HintLabel"
 	l.text = text
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_thread.add_child(l)
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if glyph == "":
+		_thread.add_child(l)
+	else:
+		# a hand-drawn glyph leads the line — never an emoji
+		var row := HBoxContainer.new()
+		row.alignment = BoxContainer.ALIGNMENT_CENTER
+		row.add_theme_constant_override("separation", 7)
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(MythIcon.new(MythIcon.resolve(glyph), 18, "gold_soft"))
+		row.add_child(l)
+		_thread.add_child(row)
 	_scroll_bottom()
 
 
@@ -569,8 +594,8 @@ func _on_done(_ok: bool) -> void:
 		Sfx.play("chime")
 		Sfx.play("sting")
 		var fin_rt := _bubble("gm")
-		fin_rt.append_text("[color=%s][b]🏁 THE TALE IS COMPLETE[/b][/color]
-[i]This campaign has reached its end — the world remembers. Free roam continues if you keep talking, or return to the menu for a new tale.[/i]" % Ui.c("gold_soft").to_html(false))
+		fin_rt.append_text("%s [color=%s][b]THE TALE IS COMPLETE[/b][/color]
+[i]This campaign has reached its end — the world remembers. Free roam continues if you keep talking, or return to the menu for a new tale.[/i]" % [Ui.ico("banner", 20), Ui.c("gold_soft").to_html(false)])
 	var check: Dictionary = Tags.check_from_tags(parsed["tags"])
 	if check.is_empty():
 		check = Tags.detect_check(str(parsed["clean"]))
@@ -620,18 +645,18 @@ func _apply_world_tags(tags: Array) -> void:
 				if delta != 0:
 					var total := GameState.add_gold(delta)
 					Sfx.play("chime")
-					_say_system("%s %s %+d — purse now %d" % ["💰" if delta > 0 else "🪙", GameState.currency(), delta, total])
+					_say_system("%s %+d — purse now %d" % [GameState.currency(), delta, total], "coins")
 			"loot":
 				var nm := str(a.get("name", "")).strip_edges()
 				if nm != "":
 					GameState.add_item(nm, str(a.get("rarity", "common")), maxi(1, int(a.get("qty", 1))))
 					Art.ensure_item_icon(nm)
 					Sfx.play("chime")
-					_say_system("🎒 %s added to your pack" % nm)
+					_say_system("%s added to your pack" % nm, "pack")
 			"spell-learned":
 				var sp := str(a.get("name", "")).strip_edges()
 				if sp != "" and GameState.learn_spell(sp):
-					_say_system("📖 You learn %s" % sp)
+					_say_system("You learn %s" % sp, "book")
 			"lore":
 				var lt := str(a.get("title", "")).strip_edges()
 				if lt != "" and GameState.add_lore(str(a.get("cat", a.get("category", "Discoveries"))).strip_edges(), lt, str(a.get("note", a.get("body", ""))).strip_edges()):
@@ -643,7 +668,7 @@ func _apply_world_tags(tags: Array) -> void:
 			"time":
 				GameState.advance_time(maxi(1, int(a.get("advance", 1))))
 				var c: Dictionary = GameState.clock()
-				_say_system("🕰 %s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])])
+				_say_system("%s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])], "hourglass")
 			"xp":
 				var r: Dictionary = GameState.award_xp(int(str(a.get("delta", a.get("amount", "0"))).replace("+", "")), str(a.get("reason", "")))
 				if str(r["note"]) != "":
@@ -659,7 +684,7 @@ func _apply_world_tags(tags: Array) -> void:
 			"companion":
 				var cn := str(a.get("name", "")).strip_edges()
 				if not bool(GameState.rule("companions", true)):
-					_say_system("🛡 The table rules bar companions — %s walks their own road." % (cn if cn != "" else "the stranger"))
+					_say_system("The table rules bar companions — %s walks their own road." % (cn if cn != "" else "the stranger"), "shield")
 				elif cn != "":
 					var note := GameState.add_companion(cn, str(a.get("role", "")))
 					if note != "":
@@ -774,7 +799,7 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 	var s := GameState.sheet()
 	var cls := str(s.get("cls", ""))
 	var dlg := ConfirmationDialog.new()
-	dlg.title = "🎉 Level %d — %s grows" % [to_level, str(s.get("name", "the hero"))]
+	dlg.title = "Level %d — %s grows" % [to_level, str(s.get("name", "the hero"))]
 	dlg.ok_button_text = "Embrace it ›"
 	dlg.get_cancel_button().visible = false
 	dlg.min_size = Vector2i(480, 300)
@@ -788,7 +813,11 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 	hp_l.theme_type_variation = "HintLabel"
 	hp_l.text = "HP: took the average (+%d per level). Feeling lucky?" % maxi(1, die / 2 + 1 + con)
 	var hp_btn := Button.new()
-	hp_btn.text = "🎲 Roll the hit die instead (d%d%+d, per level)" % [die, con]
+	hp_btn.icon = Ui.ico_tex("die")
+	hp_btn.expand_icon = false
+	hp_btn.add_theme_constant_override("icon_max_width", 20)
+	hp_btn.add_theme_color_override("icon_normal_color", Ui.c("gold"))
+	hp_btn.text = "Roll the hit die instead (d%d%+d, per level)" % [die, con]
 	var rolled_hp := false
 	hp_btn.pressed.connect(func():
 		if rolled_hp:
@@ -801,7 +830,7 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		sh["hpMax"] = maxi(1, int(sh["hpMax"]) + delta)
 		sh["hp"] = sh["hpMax"]
 		GameState.set_sheet(sh)
-		hp_btn.text = "🎲 Rolled — %s%d HP vs the average" % ["+" if delta >= 0 else "", delta]
+		hp_btn.text = "Rolled — %s%d HP vs the average" % ["+" if delta >= 0 else "", delta]
 		hp_btn.disabled = true
 		_render_sheet())
 	box.add_child(hp_l)
@@ -883,7 +912,7 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		_build_dice_menu()
 		_render_sheet()
 		if not gains.is_empty():
-			_say_system("🎉 Level %d: you gain %s." % [to_level, ", ".join(gains)])
+			_say_system("Level %d: you gain %s." % [to_level, ", ".join(gains)], "star")
 		_open_skill_tree(to_level))  # the reward beat: the new star flares in the sky
 
 
@@ -910,14 +939,17 @@ func _set_check(check: Dictionary) -> void:
 		return
 	var sheet := GameState.sheet()
 	if check.get("type", "") == "attack":
-		_roll_bar.text = "⚔ Roll to hit  d20 %+d%s" % [Rules.attack_mod(sheet, GameState.inv()),
+		_roll_bar.icon = Ui.ico_tex("sword")
+		_roll_bar.text = "Roll to hit  d20 %+d%s" % [Rules.attack_mod(sheet, GameState.inv()),
 			("  vs AC %d" % int(check["ac"])) if check.get("ac") != null else ""]
 	elif check.get("type", "") == "damage":
-		_roll_bar.text = "🎲 Roll %s  %dd%d%s" % ["healing" if check.get("heal", false) else "damage",
+		_roll_bar.icon = Ui.ico_tex("die")
+		_roll_bar.text = "Roll %s  %dd%d%s" % ["healing" if check.get("heal", false) else "damage",
 			int(check["n"]), int(check["sides"]),
 			(" %+d" % int(check["bonus"])) if int(check.get("bonus", 0)) != 0 else ""]
 	else:
-		_roll_bar.text = "🎲 Roll %s  d20 %+d%s" % [Rules.check_label(check),
+		_roll_bar.icon = Ui.ico_tex("die")
+		_roll_bar.text = "Roll %s  d20 %+d%s" % [Rules.check_label(check),
 			Rules.check_mod(sheet, check),
 			("  vs DC %d" % int(check["dc"])) if check.get("dc") != null else ""]
 
@@ -943,13 +975,13 @@ func _roll_pending() -> void:
 			var s := GameState.sheet()
 			var c: Dictionary = GameState.clock()
 			var rt := _bubble("gm")
-			rt.append_text("[color=%s][b]☠ HERE ENDS THE TALE OF %s[/b][/color]\nLevel %d %s %s · survived to day %d · %d XP · %d gold in the purse\n[i]The dice remember what the living forget.[/i]" % [
+			rt.append_text("%s [color=%s][b]HERE ENDS THE TALE OF %s[/b][/color]\nLevel %d %s %s · survived to day %d · %d XP · %d gold in the purse\n[i]The dice remember what the living forget.[/i]" % [Ui.ico("skull", 20),
 				Ui.c("danger").to_html(false), _bb(str(s.get("name", "?")).to_upper()),
 				int(s.get("level", 1)), _bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))),
 				int(c.get("day", 1)), int(s.get("xp", 0)), int(s.get("gold", 0))])
 			if bool(GameState.rule("permadeath", false)):
 				# The table rule: the tale truly ends. The save is archived.
-				_say_system("☠ Permadeath — this save is being sealed into the archive.")
+				_say_system("Permadeath — this save is being sealed into the archive.", "skull")
 				var cfg := ConfigFile.new()
 				cfg.load(Api.COOKIE_FILE)
 				var sid := str(cfg.get_value("sessions", GameState.cid(), ""))
@@ -967,11 +999,11 @@ func _roll_pending() -> void:
 		check["adv"] = "adv"
 		_insp_armed = false
 		GameState.spend_inspiration()
-		_say_system("✨ Inspiration spent — advantage.")
+		_say_system("Inspiration spent — advantage.", "star")
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
 	if int(res.get("roll", 0)) == 20 and GameState.grant_inspiration():
 		Sfx.play("chime")
-		_say_system("✨ A natural 20 — you gain Inspiration.")
+		_say_system("A natural 20 — you gain Inspiration.", "star")
 	var caption := "d%d" % int(res.get("sides", 20))
 	if check.get("type", "") == "damage":
 		caption = "%dd%d" % [int(check["n"]), int(check["sides"])]
@@ -1006,11 +1038,15 @@ func _build_dice_menu() -> void:
 		idx += 1
 	pop.add_separator("Ask the GM")
 	idx += 1
-	pop.add_item("📖 Learn a spell…", 900)
-	pop.add_item("🤝 Recruit an ally…", 901)
-	pop.add_item("🔨 Craft something…", 902)
+	pop.add_icon_item(Ui.ico_tex("book"), "Learn a spell…", 900)
+	pop.add_icon_item(Ui.ico_tex("cups"), "Recruit an ally…", 901)
+	pop.add_icon_item(Ui.ico_tex("hammer"), "Craft something…", 902)
 	if bool(GameState.sheet().get("inspiration", false)):
-		pop.add_item("✨ Spend Inspiration — advantage on your next roll", 903)
+		pop.add_icon_item(Ui.ico_tex("star"), "Spend Inspiration — advantage on your next roll", 903)
+	for mi in range(pop.item_count):
+		if pop.get_item_icon(mi) != null:
+			pop.set_item_icon_max_width(mi, 18)
+			pop.set_item_icon_modulate(mi, Ui.c("gold_soft"))
 	if not pop.id_pressed.is_connected(_free_check):
 		pop.id_pressed.connect(_free_check)
 
@@ -1024,7 +1060,7 @@ func _free_check(id: int) -> void:
 		return
 	if id == 903:
 		_insp_armed = true
-		_say_system("✨ Inspiration armed — your next roll has advantage.")
+		_say_system("Inspiration armed — your next roll has advantage.", "star")
 		return
 	if id == 902:
 		_ask_gm("Craft something", "What do you try to make (and from what)?",
@@ -1050,11 +1086,11 @@ func _free_check(id: int) -> void:
 		check["adv"] = "adv"
 		_insp_armed = false
 		GameState.spend_inspiration()
-		_say_system("✨ Inspiration spent — advantage.")
+		_say_system("Inspiration spent — advantage.", "star")
 	var res: Dictionary = Rules.resolve_check(check, GameState.sheet(), GameState.inv())
 	if int(res.get("roll", 0)) == 20 and GameState.grant_inspiration():
 		Sfx.play("chime")
-		_say_system("✨ A natural 20 — you gain Inspiration.")
+		_say_system("A natural 20 — you gain Inspiration.", "star")
 	await _animate_die(20, int(res.get("roll", res["total"])), label)
 	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
@@ -1161,7 +1197,7 @@ func _on_sheet_action(meta) -> void:
 				return
 			GameState.add_gold(-price)
 			GameState.add_item(bits[0].uri_decode())
-			note = "🛒 *You buy the %s for %d gold.*" % [bits[0].uri_decode(), price]
+			note = "*You buy the %s for %d gold.*" % [bits[0].uri_decode(), price]
 			tell_gm = true
 	if note == "":
 		return
@@ -1192,9 +1228,9 @@ func _can_fight() -> bool:
 	if Mode.can("combat_action"):
 		return true
 	if Mode.busy:
-		_say_system("⏳ The GM is mid-tale — wait for the words to settle.")
+		_say_system("The GM is mid-tale — wait for the words to settle.", "hourglass")
 	elif Mode.state == "Death":
-		_say_system("☠ You are down — roll your death save.")
+		_say_system("You are down — roll your death save.", "skull")
 	return false
 
 
@@ -1233,7 +1269,7 @@ func _run_round() -> void:
 		if cid == "pc":
 			_render_combat()
 			if Combat.pc_down().is_empty():
-				_say_system("Round %d — your turn: move on the board, ⚔ attack, or ✦ cast." % int(c.get("round", 1)))
+				_say_system("Round %d — your turn: move on the board, attack, or cast." % int(c.get("round", 1)), "sword")
 			_flush_round_gm()
 			return
 		if cur.get("side") == "enemy" and int(cur.get("hp", 0)) > 0:
@@ -1311,7 +1347,7 @@ func _cast_in_combat(nm: String) -> void:
 func _reaction_overlay(pend: Dictionary, reactions: Array) -> void:
 	var enemy: Dictionary = pend["enemy"]
 	var dlg := AcceptDialog.new()
-	dlg.title = "⚡ Reaction!"
+	dlg.title = "Reaction!"
 	dlg.ok_button_text = "Take the hit"
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -1327,8 +1363,7 @@ func _reaction_overlay(pend: Dictionary, reactions: Array) -> void:
 		var r: Dictionary = Combat.resolve_enemy_hit(enemy, dmg, bool(pend["crit"]), note)
 		_deliver_enemy_result(r)
 	if reactions.has("shield"):
-		var b1 := Button.new()
-		b1.text = "🛡 Shield — +5 AC, spends a slot"
+		var b1 := _ico_button("shield", "Shield — +5 AC, spends a slot")
 		b1.pressed.connect(func():
 			GameState.cast_spell("Shield")
 			if int(pend["total"]) < int(pend["ac"]) + 5:
@@ -1337,13 +1372,11 @@ func _reaction_overlay(pend: Dictionary, reactions: Array) -> void:
 				resolve.call(int(pend["dmg"]), "even the ward can't stop this one"))
 		box.add_child(b1)
 	if reactions.has("dodge"):
-		var b2 := Button.new()
-		b2.text = "🌀 Uncanny Dodge — halve the damage"
+		var b2 := _ico_button("swirl", "Uncanny Dodge — halve the damage")
 		b2.pressed.connect(func(): resolve.call(ceili(int(pend["dmg"]) / 2.0), "you twist away at the last instant"))
 		box.add_child(b2)
 	if reactions.has("parry"):
-		var b3 := Button.new()
-		b3.text = "🎖 Parry — superiority die + mod off the damage"
+		var b3 := _ico_button("medal", "Parry — superiority die + mod off the damage")
 		b3.pressed.connect(func():
 			GameState.use_feature("Combat Maneuver")
 			var s := GameState.sheet()
@@ -1442,7 +1475,7 @@ func _how_do_you_want_to_do_this(mech_msg: String, won: bool) -> void:
 		if won:
 			_end_combat()
 		if flourish != "":
-			_say_me(_bb("⚔ " + flourish))
+			_say_me(Ui.ico("sword", 16) + " " + _bb(flourish))
 		_last_player_msg = mech_msg
 		var frame := "%s\n[%s%s]" % [mech_msg,
 			("My finishing flourish: " + flourish + ". ") if flourish != "" else "",
@@ -1486,13 +1519,14 @@ func _render_combat() -> void:
 		if Mode.state == "Combat":
 			Mode.enter("Death")  # the only roll that matters now is the save
 		_pending_check = {"type": "death"}
-		_roll_bar.text = "☠ Roll a death save"
+		_roll_bar.icon = Ui.ico_tex("skull")
+		_roll_bar.text = "Roll a death save"
 		_roll_bar.visible = true
 	var gold := Ui.c("gold_soft").to_html(false)
 	var danger := Ui.c("danger").to_html(false)
 	var cur: Dictionary = Combat.current(c)
 	var lines: Array[String] = []
-	lines.append("[color=%s][b]⚔ COMBAT — Round %d[/b][/color]    [url=cnext]End turn ›[/url]    [url=cend]End combat[/url]" % [gold, int(c.get("round", 1))])
+	lines.append("%s [color=%s][b]COMBAT — Round %d[/b][/color]    [url=cnext]End turn ›[/url]    [url=cend]End combat[/url]" % [Ui.ico("sword", 18), gold, int(c.get("round", 1))])
 	for m in Combat.order(c):
 		var here := "▶ " if str(m.get("id")) == str(cur.get("id")) else "   "
 		var hp := int(m.get("hp", 0))
@@ -1502,7 +1536,7 @@ func _render_combat() -> void:
 		var row := "%s[color=%s]%s[/color]  [color=%s]%s[/color][color=%s]%s[/color] %d/%d" % [here, color, _bb(str(m.get("name", "?"))),
 			color, "▰".repeat(bar_n), Ui.c("ink_dim").to_html(false), "▱".repeat(10 - bar_n), hp, hp_max]
 		if m.get("side") == "enemy" and hp > 0:
-			row += "   [url=atk:%s]⚔ attack[/url]" % str(m.get("id"))
+			row += "   [url=atk:%s]%s attack[/url]" % [str(m.get("id")), Ui.ico("sword", 16)]
 		elif hp <= 0:
 			row += "   ✝"
 		lines.append(row)
@@ -1580,7 +1614,7 @@ func _combat_spell_row(c: Dictionary) -> String:
 	if not slot_parts.is_empty():
 		bits.append("[color=%s]Slots %s[/color]" % [dim, " ".join(slot_parts)])
 	if str(Combat.current(c).get("id", "")) == "pc":
-		bits.append("[color=%s]🥾 %d ft left[/color]" % [dim, int(Combat.move_budget(c).get("left", 0)) * Combat.FEET_PER_CELL])
+		bits.append("[color=%s]%s %d ft left[/color]" % [dim, Ui.ico("boot", 16), int(Combat.move_budget(c).get("left", 0)) * Combat.FEET_PER_CELL])
 	return "    ".join(bits)
 
 
@@ -1692,7 +1726,7 @@ func _conjure_scene() -> void:
 		_say_system("Nothing to paint yet — play a scene first.")
 		return
 	_conjuring = true
-	_say_system("🖼 The scene paints itself…")
+	_say_system("The scene paints itself…", "easel")
 	var prompt := "The current scene: %s. Cinematic %s illustration, dramatic lighting, no text." % [
 		last_gm.left(400), {"neonspire": "cyberpunk sci-fi", "everyday": "warm slice-of-life"}.get(GameState.world_id(), "high fantasy")]
 	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
@@ -1944,7 +1978,7 @@ func _open_shop() -> void:
 func _render_codex() -> void:
 	var gold := Ui.c("gold_soft").to_html(false)
 	_sheet_panel.clear()
-	_sheet_panel.append_text("[color=%s][b]📜 The Cast[/b][/color]\n" % gold)
+	_sheet_panel.append_text("%s [color=%s][b]The Cast[/b][/color]\n" % [Ui.ico("scroll", 18), gold])
 	var codex = GameState.state.get("codex", [])
 	var any := false
 	if codex is Array:
@@ -1964,7 +1998,7 @@ func _render_codex() -> void:
 				var dcol := gold if disp in ["ally", "friendly", "warm"] else (Ui.c("danger").to_html(false) if disp in ["hostile", "enemy"] else Ui.c("ink_dim").to_html(false))
 				_sheet_panel.append_text("  [color=%s]● %s[/color]" % [dcol, disp])
 			if tex == null:
-				_sheet_panel.append_text("  [url=portrait:%s]🖼[/url]" % str(n["name"]).uri_encode())
+				_sheet_panel.append_text("  [url=portrait:%s]%s[/url]" % [str(n["name"]).uri_encode(), Ui.ico("easel", 16)])
 			var note := str(n.get("note", ""))
 			if note != "":
 				_sheet_panel.append_text("\n[color=%s]%s[/color]" % [Ui.c("ink_dim").to_html(false), _bb(note)])
@@ -2006,7 +2040,7 @@ func _conjure_portrait(nm: String) -> void:
 			entry = n
 			break
 	var look := str(entry.get("appearance", entry.get("note", "")))
-	_say_system("🖼 Painting %s…" % nm)
+	_say_system("Painting %s…" % nm, "easel")
 	await Art.ensure("npc-" + nm.to_lower().replace(" ", "-"),
 		"portrait of %s, %s. %s character portrait, painterly, head and shoulders" % [nm, look,
 		{"neonspire": "cyberpunk", "everyday": "contemporary"}.get(GameState.world_id(), "fantasy")])
@@ -2018,7 +2052,7 @@ func _conjure_portrait(nm: String) -> void:
 ## Re-open the Session Zero knobs mid-campaign; saved live to the gm kind.
 func _session_zero_retune() -> void:
 	var dlg := ConfirmationDialog.new()
-	dlg.title = "🎛 Tune the GM"
+	dlg.title = "Tune the GM"
 	dlg.ok_button_text = "So be it"
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", 8)
@@ -2046,7 +2080,7 @@ func _session_zero_retune() -> void:
 			out[key] = int(sliders[key].value)
 		GameState.save_kind("gm", out)
 		dlg.queue_free()
-		_say_system("🎛 The table's tone shifts."))
+		_say_system("The table's tone shifts.", "tune"))
 
 
 ## 💾 A chapter marker: the backend distills the recent tale into a snapshot.
@@ -2054,13 +2088,13 @@ func _save_snapshot() -> void:
 	if Chronicle.transcript.is_empty():
 		_say_system("Nothing to chronicle yet — play a little first.")
 		return
-	_say_system("💾 The chronicler sets down this chapter…")
+	_say_system("The chronicler sets down this chapter…", "save")
 	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/snapshot", {
 		"character_id": GameState.cid(), "character_name": str(GameState.character.get("name", "")),
 		"world_id": GameState.world_id(), "transcript": Chronicle.transcript})
 	if r.get("_status", 0) == 200:
 		var snap: Dictionary = r.get("snapshot", r)
-		_say_system("💾 Chapter saved: %s" % str(snap.get("title", "untitled")))
+		_say_system("Chapter saved: %s" % str(snap.get("title", "untitled")), "save")
 	else:
 		_say_system("The chronicler's ink ran dry (%s)." % str(r.get("_status", 0)))
 
@@ -2071,10 +2105,10 @@ func _open_chronicle() -> void:
 	var snaps: Array = r.get("snapshots", r.get("data", [])) if r.get("_status", 0) == 200 else []
 	var rt := _bubble("gm")
 	if snaps.is_empty():
-		rt.append_text("[i]The chronicle is blank — 💾 save a chapter when a moment deserves remembering.[/i]")
+		rt.append_text("[i]The chronicle is blank — %s save a chapter when a moment deserves remembering.[/i]" % Ui.ico("save", 16))
 		return
 	var gold := Ui.c("gold_soft").to_html(false)
-	rt.append_text("[color=%s][b]📜 The Chronicle[/b][/color]\n" % gold)
+	rt.append_text("%s [color=%s][b]The Chronicle[/b][/color]\n" % [Ui.ico("scroll", 18), gold])
 	for sn in snaps:
 		if not (sn is Dictionary):
 			continue
@@ -2097,7 +2131,7 @@ func _recall_snapshot(id: String) -> void:
 			return
 
 
-const KIND_ICO := {"tavern": "🍺", "shop": "🛒", "landmark": "🏛", "wilds": "🌲", "home": "🏠"}
+const KIND_ICO := {"tavern": "mug", "shop": "coins", "landmark": "pillar", "wilds": "tree", "home": "house"}
 
 
 ## 🧭 The atlas: the world's places; travel repaints the world (and risks it).
@@ -2111,7 +2145,7 @@ func _open_atlas() -> void:
 	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
 	var rt := _bubble("gm")
 	var gold := Ui.c("gold_soft").to_html(false)
-	rt.append_text("[color=%s][b]🧭 The Atlas[/b][/color]   [url=map]🗺 open the map[/url]\n" % gold)
+	rt.append_text("%s [color=%s][b]The Atlas[/b][/color]   [url=map]%s open the map[/url]\n" % [Ui.ico("compass", 18), gold, Ui.ico("wartable", 16)])
 	if locs.is_empty():
 		rt.append_text("[i]No charted places — the GM's narration is your map for now.[/i]")
 		return
@@ -2119,7 +2153,7 @@ func _open_atlas() -> void:
 		if not (l is Dictionary):
 			continue
 		var nm := str(l.get("name", ""))
-		rt.append_text("\n%s [b]%s[/b]%s — %s\n" % [KIND_ICO.get(str(l.get("kind", "")), "📍"), _bb(nm),
+		rt.append_text("\n%s [b]%s[/b]%s — %s\n" % [Ui.ico(KIND_ICO.get(str(l.get("kind", "")), "pin"), 18), _bb(nm),
 			"  [color=%s]● you are here[/color]" % gold if nm == here else "", _bb(str(l.get("lore", "")).left(90))])
 		if nm != here:
 			rt.append_text("[url=travel:%s]set off →[/url]\n" % nm.uri_encode())
@@ -2139,7 +2173,7 @@ func _open_world_map() -> void:
 		return
 	var dlg := AcceptDialog.new()
 	MythEnvironment.mount(dlg, "env-maptable", "dust", [Vector2(0.93, 0.9)])
-	dlg.title = "🗺 %s" % str(GameState.character.get("name", "the world")).split(":")[0]
+	dlg.title = str(GameState.character.get("name", "the world")).split(":")[0]
 	dlg.ok_button_text = "Close the map"
 	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
 	var map := preload("res://scenes/ui/world_map.gd").new()
@@ -2170,7 +2204,7 @@ func _travel_to(place: String) -> void:
 	world["seen"] = seen
 	GameState.save_kind("world", world)
 	GameState.advance_time(1)
-	_say_system("🧭 You set off for %s." % place)
+	_say_system("You set off for %s." % place, "compass")
 	_repaint_scene(place)
 	_last_player_msg = "I travel to %s." % place
 	# The road is never guaranteed: 1-in-5 journeys meet something.
@@ -2204,10 +2238,10 @@ func _render_chips() -> void:
 	var c: Dictionary = GameState.clock()
 	var bits: Array[String] = []
 	var wx := str(c.get("wx", {}).get("ico", "")) if c.get("wx") is Dictionary else ""
-	bits.append("🕰 %s · Day %d %s" % [GameState.TIMES[clampi(int(c.get("ti", 0)), 0, GameState.TIMES.size() - 1)], int(c.get("day", 1)), wx])
+	bits.append("%s %s · Day %d %s" % [Ui.ico("hourglass", 15), GameState.TIMES[clampi(int(c.get("ti", 0)), 0, GameState.TIMES.size() - 1)], int(c.get("day", 1)), wx])
 	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
 	if here != "":
-		bits.append("🧭 " + here)
+		bits.append("%s %s" % [Ui.ico("compass", 15), here])
 	var quests = GameState.state.get("quests", [])
 	if quests is Array:
 		for q in quests:
@@ -2215,13 +2249,16 @@ func _render_chips() -> void:
 				bits.append("◈ " + str(q["title"]).left(36))
 				break
 	if bool(GameState.sheet().get("inspiration", false)):
-		bits.append("✨ Inspiration")
+		bits.append("%s Inspiration" % Ui.ico("star", 15))
 	for cmp in GameState.sheet().get("companions", []):
 		if cmp is Dictionary:
 			var chp := int(cmp.get("hp", 0))
 			var cmax := maxi(1, int(cmp.get("hpMax", 1)))
-			bits.append("%s⚔ %s %d/%d" % ["🩸 " if chp * 3 < cmax else "", str(cmp.get("name", "")), chp, cmax])
-	$Margin/Split/ChatBox/Chips.text = "    ".join(bits)
+			var wound := (Ui.ico("blood", 15) + " ") if chp * 3 < cmax else ""
+			bits.append("%s%s %s %d/%d" % [wound, Ui.ico("sword", 15), str(cmp.get("name", "")), chp, cmax])
+	var chips: RichTextLabel = $Margin/Split/ChatBox/Chips
+	chips.add_theme_color_override("default_color", Ui.c("ink_dim"))
+	chips.text = "[center]%s[/center]" % "     ".join(bits)
 
 
 ## Keyboard: Ctrl+S sheet · Ctrl+L codex · Ctrl+R retell · Space next turn
@@ -2296,7 +2333,7 @@ func _open_character_screen() -> void:
 func _open_journal() -> void:
 	var dlg := AcceptDialog.new()
 	MythEnvironment.mount(dlg, "env-journal", "dust", [Vector2(0.08, 0.1)])
-	dlg.title = "📖 The Journal"
+	dlg.title = "The Journal"
 	dlg.ok_button_text = "Close the journal"
 	dlg.min_size = Vector2i(700, 580)
 	var root := VBoxContainer.new()

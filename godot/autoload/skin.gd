@@ -559,19 +559,11 @@ func ico(glyph: String, px := 20, role := "gold_soft") -> String:
 		px, px, c(role).to_html(true), MythIcon.resolve(glyph)]
 
 
-## Baked icon as a tinted Texture2D for real controls (Button.icon, menus).
-func ico_tex(glyph: String, tint := Color.WHITE) -> Texture2D:
-	var base := load("res://ui/icons/glyph/%s.png" % MythIcon.resolve(glyph)) as Texture2D
-	if base == null or tint == Color.WHITE:
-		return base
-	var img := base.get_image()
-	img.adjust_bcs(1.0, 1.0, 1.0)  # keep as-is; tint applied below per-pixel
-	var out := Image.create(img.get_width(), img.get_height(), false, img.get_format())
-	for y in img.get_height():
-		for x in img.get_width():
-			var p := img.get_pixel(x, y)
-			out.set_pixel(x, y, Color(tint.r, tint.g, tint.b, p.a))
-	return ImageTexture.create_from_image(out)
+## Baked white icon master for real controls (Button.icon, PopupMenu items).
+## Tint it via the control: btn.add_theme_color_override("icon_normal_color", ...)
+## or pop.set_item_icon_modulate(i, ...) — no per-pixel work.
+func ico_tex(glyph: String) -> Texture2D:
+	return load("res://ui/icons/glyph/%s.png" % MythIcon.resolve(glyph)) as Texture2D
 
 
 func _flat(bg: Color, border: Color, radius := 9, border_w := 1, margin := 10) -> StyleBoxFlat:

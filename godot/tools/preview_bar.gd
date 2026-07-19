@@ -2,7 +2,7 @@ extends Node
 ## Renders the real action-bar BBCode (Ui.ico inline art) to a PNG so the inline
 ## [img] rendering can be eyeballed. Windowed run; writes to user://icon_preview.png.
 const W := 900
-const H := 220
+const H := 340
 
 
 func _ready() -> void:
@@ -27,6 +27,12 @@ func _ready() -> void:
 		bar.call("scroll", "chronicle"), bar.call("compass", "atlas"),
 		bar.call("star", "destiny"), bar.call("shield", "record")]))
 	rt.append_text("\n\n")
+	# representative real in-game lines, exactly as game.gd now builds them
+	var gold := Ui.c("gold_soft").to_html(false)
+	rt.append_text("%s [color=%s][b]COMBAT — Round 2[/b][/color]    End turn ›\n" % [Ui.ico("sword", 18), gold])
+	rt.append_text("%s [b]The Rusty Flagon[/b] — a tavern of low ceilings\n" % Ui.ico("mug", 18))
+	rt.append_text("%s Dawnhold  ·  Day 3     %s Inspiration     %s Ser Aldric 6/11\n" % [Ui.ico("hourglass", 15), Ui.ico("star", 15), Ui.ico("sword", 15)])
+	rt.append_text("%s [color=%s][b]The Chronicle[/b][/color]\n\n" % [Ui.ico("scroll", 18), gold])
 	# every baked glyph, so the whole set can be judged at a glance
 	var strip := ""
 	for nm in MythIcon.NAMES:
