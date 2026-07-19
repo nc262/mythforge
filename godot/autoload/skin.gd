@@ -551,6 +551,29 @@ func c(name: String) -> Color:
 	return pal[name]
 
 
+## Inline hand-drawn icon for RichText — a baked white master (ui/icons/glyph)
+## tinted to a palette role. Takes an icon name OR a legacy emoji; both resolve
+## to real art, so a AAA UI never renders a raw glyph. Pair with a trailing space.
+func ico(glyph: String, px := 20, role := "gold_soft") -> String:
+	return "[img width=%d height=%d color=#%s]res://ui/icons/glyph/%s.png[/img]" % [
+		px, px, c(role).to_html(true), MythIcon.resolve(glyph)]
+
+
+## Baked icon as a tinted Texture2D for real controls (Button.icon, menus).
+func ico_tex(glyph: String, tint := Color.WHITE) -> Texture2D:
+	var base := load("res://ui/icons/glyph/%s.png" % MythIcon.resolve(glyph)) as Texture2D
+	if base == null or tint == Color.WHITE:
+		return base
+	var img := base.get_image()
+	img.adjust_bcs(1.0, 1.0, 1.0)  # keep as-is; tint applied below per-pixel
+	var out := Image.create(img.get_width(), img.get_height(), false, img.get_format())
+	for y in img.get_height():
+		for x in img.get_width():
+			var p := img.get_pixel(x, y)
+			out.set_pixel(x, y, Color(tint.r, tint.g, tint.b, p.a))
+	return ImageTexture.create_from_image(out)
+
+
 func _flat(bg: Color, border: Color, radius := 9, border_w := 1, margin := 10) -> StyleBoxFlat:
 	var sb := StyleBoxFlat.new()
 	sb.bg_color = bg

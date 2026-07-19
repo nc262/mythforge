@@ -1715,7 +1715,12 @@ func _render_sheet() -> void:
 		Art.ensure_hero_portrait(GameState.cid(), s)
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
-	lines.append("[url=tune]🎛 tune the GM[/url]  [url=snap]💾 save chapter[/url]  [url=chron]📜 chronicle[/url]  [url=atlas]🧭 atlas[/url]  [url=dest]✨ destiny[/url]  [url=record]🛡 record[/url]")
+	var bar := func(act: String, glyph: String, label: String) -> String:
+		return "[url=%s]%s %s[/url]" % [act, Ui.ico(glyph, 18), label]
+	lines.append("  ".join([
+		bar.call("tune", "tune", "tune the GM"), bar.call("snap", "save", "save chapter"),
+		bar.call("chron", "scroll", "chronicle"), bar.call("atlas", "compass", "atlas"),
+		bar.call("dest", "star", "destiny"), bar.call("record", "shield", "record")]))
 	lines.append("")
 	var dim := Ui.c("ink_dim").to_html(false)
 	lines.append("[center][font_size=22][color=%s][b]%s[/b][/color][/font_size]" % [gold, _bb(str(s.get("name", "?")))])

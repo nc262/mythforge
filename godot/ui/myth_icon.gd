@@ -12,7 +12,8 @@ var tint_role := "gold"
 const NAMES := ["banner", "anvil", "wartable", "compass", "book", "runewheel",
 	"door", "cups", "quill", "hammer", "pack", "scroll", "die", "easel", "coins",
 	"moon", "tent", "retell", "sword", "shield", "star", "flame", "skull",
-	"crown", "mountain", "ship", "globe", "sigil"]
+	"crown", "mountain", "ship", "globe", "tune", "save", "bolt", "boot",
+	"blood", "hourglass", "medal", "swirl", "mug", "pillar", "tree", "house", "pin", "sigil"]
 
 ## Legacy emoji → the icon that carries the same meaning. Lets old card
 ## payloads keep their glyph string while rendering as real art (no emoji).
@@ -26,6 +27,10 @@ const FROM_EMOJI := {
 	"🛒": "coins", "💰": "coins", "🪙": "coins",
 	"⚙": "runewheel", "🧬": "sigil", "🧪": "sigil", "🔇": "sigil", "🎬": "sigil",
 	"🕊": "sigil", "🌑": "moon", "🌙": "moon", "⛺": "tent",
+	"🎛": "tune", "💾": "save", "⚡": "bolt", "🥾": "boot", "🩸": "blood",
+	"⏳": "hourglass", "🕰": "hourglass", "🎖": "medal", "🌀": "swirl",
+	"🍺": "mug", "🏛": "pillar", "🌲": "tree", "🏠": "house", "📍": "pin",
+	"🗺": "wartable", "🖼": "easel", "🤝": "cups", "🎉": "star", "🏁": "banner",
 }
 
 
@@ -44,7 +49,8 @@ func _init(name_ := "compass", size_px := 30, role := "gold") -> void:
 
 
 func _draw() -> void:
-	var g: Color = Ui.c(tint_role)
+	# "bake" renders a pure-white master so one PNG tints to any world palette.
+	var g: Color = Color(1, 1, 1, 1) if tint_role == "bake" else Ui.c(tint_role)
 	var soft := Color(g, 0.35)
 	var s := minf(size.x, size.y)
 	var u := s / 24.0  # design grid: 24×24
@@ -229,6 +235,92 @@ func _draw() -> void:
 				draw_arc(o + Vector2(12, ry) * u, maxf(0.5, rr / u) * u, 0, TAU, 24, Color(g, 0.35), w * 0.4)
 			draw_arc(o + Vector2(12, 12) * u, 3.6 * u, -PI, 0, 16, Color(g, 0.55), w * 0.5)
 			draw_arc(o + Vector2(12, 12) * u, 3.6 * u, 0, PI, 16, Color(g, 0.55), w * 0.5)
+		"tune":  # the GM's tone — a mixer of sliders
+			var knobs := [15.0, 9.0, 17.0]
+			for i in 3:
+				var yy: float = 7.0 + i * 5.0
+				draw_line(o + Vector2(4, yy) * u, o + Vector2(20, yy) * u, Color(g, 0.5), w * 0.6)
+				draw_circle(o + Vector2(knobs[i], yy) * u, 1.9 * u, soft)
+				draw_arc(o + Vector2(knobs[i], yy) * u, 1.9 * u, 0, TAU, 16, g, w * 0.6)
+		"save":  # mark this chapter — a bookmark ribbon
+			var bm := PackedVector2Array([o + Vector2(7, 3.5) * u, o + Vector2(17, 3.5) * u,
+				o + Vector2(17, 20.5) * u, o + Vector2(12, 16) * u, o + Vector2(7, 20.5) * u])
+			draw_colored_polygon(bm, soft)
+			draw_polyline(bm + PackedVector2Array([bm[0]]), g, w * 0.8, true)
+		"bolt":  # a reaction — the lightning stroke
+			var bz := PackedVector2Array([o + Vector2(13, 3) * u, o + Vector2(7, 13) * u,
+				o + Vector2(11, 13) * u, o + Vector2(10, 21) * u, o + Vector2(17, 10) * u, o + Vector2(13, 10) * u])
+			draw_colored_polygon(bz, soft)
+			draw_polyline(bz + PackedVector2Array([bz[0]]), g, w * 0.7, true)
+		"boot":  # movement on the board — a marching boot
+			var bt := PackedVector2Array([o + Vector2(7, 3) * u, o + Vector2(11, 3) * u,
+				o + Vector2(11.5, 13) * u, o + Vector2(19, 15) * u, o + Vector2(19, 19) * u,
+				o + Vector2(7, 19) * u])
+			draw_colored_polygon(bt, soft)
+			draw_polyline(bt + PackedVector2Array([bt[0]]), g, w * 0.7, true)
+			draw_line(o + Vector2(7, 19) * u, o + Vector2(19, 19) * u, g, w * 0.9)
+		"blood":  # a wound — the falling drop
+			var dp := PackedVector2Array([o + Vector2(12, 3.5) * u, o + Vector2(18, 14) * u,
+				o + Vector2(12, 20.5) * u, o + Vector2(6, 14) * u])
+			draw_colored_polygon(dp, soft)
+			draw_polyline(dp + PackedVector2Array([dp[0]]), g, w * 0.75, true)
+			draw_arc(o + Vector2(10, 14) * u, 2.2 * u, PI * 0.4, PI * 0.9, 10, Color(g, 0.6), w * 0.5)
+		"hourglass":  # time passing — the glass runs
+			draw_line(o + Vector2(5, 4) * u, o + Vector2(19, 4) * u, g, w * 0.9)
+			draw_line(o + Vector2(5, 20) * u, o + Vector2(19, 20) * u, g, w * 0.9)
+			var top := PackedVector2Array([o + Vector2(6, 4) * u, o + Vector2(18, 4) * u, o + Vector2(12, 12) * u])
+			var bot := PackedVector2Array([o + Vector2(12, 12) * u, o + Vector2(18, 20) * u, o + Vector2(6, 20) * u])
+			draw_polyline(top + PackedVector2Array([top[0]]), g, w * 0.7, true)
+			draw_polyline(bot + PackedVector2Array([bot[0]]), g, w * 0.7, true)
+			draw_colored_polygon(PackedVector2Array([o + Vector2(9, 20) * u, o + Vector2(15, 20) * u, o + Vector2(12, 15) * u]), soft)
+		"medal":  # a parry mastered — the ribboned medal
+			draw_line(o + Vector2(9, 3.5) * u, o + Vector2(11.5, 11) * u, soft, w * 1.1)
+			draw_line(o + Vector2(15, 3.5) * u, o + Vector2(12.5, 11) * u, soft, w * 1.1)
+			draw_circle(o + Vector2(12, 15) * u, 5.2 * u, soft)
+			draw_arc(o + Vector2(12, 15) * u, 5.2 * u, 0, TAU, 24, g, w * 0.75)
+			draw_circle(o + Vector2(12, 15) * u, 1.4 * u, g)
+		"swirl":  # uncanny dodge — a spiral of motion
+			var sp := PackedVector2Array()
+			for k in 22:
+				var t: float = k / 21.0
+				var ang: float = t * TAU * 1.4
+				var rad: float = (1.5 + t * 8.0) * u
+				sp.append(o + Vector2(12, 12) * u + Vector2(cos(ang), sin(ang)) * rad)
+			draw_polyline(sp, g, w * 0.7)
+		"mug":  # a tavern — the frothing tankard
+			var mg := Rect2(o + Vector2(6, 7) * u, Vector2(9, 12) * u)
+			draw_rect(mg, soft)
+			draw_rect(mg, g, false, w * 0.75)
+			draw_arc(o + Vector2(15, 12) * u, 3 * u, -PI * 0.5, PI * 0.5, 14, g, w * 0.75)  # handle
+			draw_arc(o + Vector2(8, 7) * u, 1.6 * u, PI, TAU, 10, g, w * 0.6)  # foam
+			draw_arc(o + Vector2(11.5, 7) * u, 1.6 * u, PI, TAU, 10, g, w * 0.6)
+		"pillar":  # a landmark — the standing column
+			draw_rect(Rect2(o + Vector2(6, 4) * u, Vector2(12, 2.5) * u), soft)  # capital
+			draw_rect(Rect2(o + Vector2(6, 18) * u, Vector2(12, 2.5) * u), soft)  # base
+			for cx2 in [8.5, 12.0, 15.5]:
+				draw_line(o + Vector2(cx2, 6.5) * u, o + Vector2(cx2, 18) * u, g, w * 0.8)
+			draw_rect(Rect2(o + Vector2(6, 4) * u, Vector2(12, 2.5) * u), g, false, w * 0.6)
+			draw_rect(Rect2(o + Vector2(6, 18) * u, Vector2(12, 2.5) * u), g, false, w * 0.6)
+		"tree":  # the wilds — a broadleaf tree
+			draw_line(o + Vector2(12, 12) * u, o + Vector2(12, 20) * u, g, w * 0.9)
+			var crown2 := PackedVector2Array([o + Vector2(12, 3) * u, o + Vector2(19, 10) * u,
+				o + Vector2(15, 10) * u, o + Vector2(18, 15) * u, o + Vector2(6, 15) * u,
+				o + Vector2(9, 10) * u, o + Vector2(5, 10) * u])
+			draw_colored_polygon(crown2, soft)
+			draw_polyline(crown2 + PackedVector2Array([crown2[0]]), g, w * 0.7, true)
+		"house":  # home — the hearth and roof
+			var roof := PackedVector2Array([o + Vector2(4, 11) * u, o + Vector2(12, 4) * u, o + Vector2(20, 11) * u])
+			draw_colored_polygon(roof, soft)
+			draw_polyline(roof + PackedVector2Array([roof[0]]), g, w * 0.75, true)
+			draw_rect(Rect2(o + Vector2(7, 11) * u, Vector2(10, 9) * u), g, false, w * 0.7)
+			draw_rect(Rect2(o + Vector2(10.5, 14.5) * u, Vector2(3, 5.5) * u), soft)  # door
+		"pin":  # a place on the map — the dropped marker
+			var pn := PackedVector2Array([o + Vector2(12, 20.5) * u, o + Vector2(6, 10) * u,
+				o + Vector2(12, 3.5) * u, o + Vector2(18, 10) * u])
+			draw_colored_polygon(pn, soft)
+			draw_polyline(pn + PackedVector2Array([pn[0]]), g, w * 0.75, true)
+			draw_circle(o + Vector2(12, 9.5) * u, 2.1 * u, Color(g, 0.0))
+			draw_arc(o + Vector2(12, 9.5) * u, 2.1 * u, 0, TAU, 16, g, w * 0.6)
 		"sigil":  # the framed rune — a meaningful placeholder, never an emoji
 			var dia := PackedVector2Array([o + Vector2(12, 4) * u, o + Vector2(20, 12) * u, o + Vector2(12, 20) * u, o + Vector2(4, 12) * u])
 			draw_polyline(dia + PackedVector2Array([dia[0]]), g, w * 0.8, true)
