@@ -19,7 +19,7 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 | Language integrity guard | (not tracked) | ✅ M-A: pin + drift detect + silent retry |
 | Per-world theming beyond 3 built-ins | "per-world theming ✅" (only 3) | ✅ M-B World Skin: 8 families, palette/currency/art/music/materials |
 | MythButton engraving contrast | "steel-plate engraving contrast pass 🔲" | ✅ M-E: raised outlined lettering |
-| Emoji-free sweep (controls) | "full in-game emoji-free sweep 🔲" | ✅ toolbar + all forge/adventure cards + menu labels (🟡 narration bbcode marks remain) |
+| Emoji-free sweep (controls) | "full in-game emoji-free sweep 🔲" | ✅ **COMPLETE (2026-07-18)** — bake pipeline (`Ui.ico`/`[img]` inline + `.icon` on controls); every displayed emoji across game.gd, all 4 forges, windows, autoloads gone. Functional icons → drawn art; garnish → clean text (BG3 rule). Zero glyphs render. |
 | Illustrated Lore Book | (not tracked) | ✅ M-C: aggregated encyclopedia + `[[lore]]` growth |
 | Chronicles as cover gallery + Continue fold | "Continue → save picker ✅" (plain) | ✅ M-E: illustrated covers, open-book-from-Hall |
 | World-adaptive skill tree | "constellation ✅" (single motif) | ✅ M-D: circuit/gears/chart/constellation motifs |
@@ -103,8 +103,9 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 | Item | State | Unlock |
 |---|---|---|
 | **M-F Stage C — true 3D character** | Paused by Director | An asset-sourcing decision (commissioned vs. generated-3D vs. bought pack). See CharacterRender.md. |
-| Narration bbcode emoji (💰🎒📖 in `_say_system`) | Left as inline flavour marks | A pass replacing them with small drawn marks if we want zero glyphs anywhere. |
+| Narration bbcode emoji (💰🎒📖 in `_say_system`) | ✅ **DONE (2026-07-18)** — `_say_system(text, glyph)` leads with a live MythIcon; RichText uses `Ui.ico`. Zero glyphs. | — |
 | World Skin palette from the LLM | Deterministic families only | Worldsmith emits palette hexes → merge → contrast-clamp (the guard is already in place). |
+| **Material textures on surfaces (stone / leather / parchment / glass)** — *user request 2026-07-18* | Panels/cards/dialogs use flat skin fills; `WorldSkin.material_sb` already has glass/neon/copper/carbon generators | **P2 / M.** Apply real per-world material textures (stone for norse/fantasy, leather for pirate, parchment for the book, brushed glass for cyber/space) to panel/card/dialog backgrounds. Extend `material_sb` + wire into the shared panel styleboxes. |
 
 ## 6. FutureIdeas parking lot (uncommitted)
 

@@ -590,12 +590,18 @@ func _on_done(_ok: bool) -> void:
 	_apply_world_tags(parsed["tags"])          # state — the deterministic domain
 	_apply_presentation_tags(parsed["tags"])   # presentation only — never state
 	Chronicle.record(_last_player_msg, str(parsed["clean"]))
-	if RegEx.create_from_string("\bTHE END\b").search(str(parsed["clean"])):
+	# NOTE: "\b" in a GDScript literal is a backspace char, not a regex word
+	# boundary — the pattern must be "\\bTHE END\\b" or completion never fires.
+	if RegEx.create_from_string("\\bTHE END\\b").search(str(parsed["clean"])) and not GameState.clock().get("done", false):
 		Sfx.play("chime")
 		Sfx.play("sting")
 		var fin_rt := _bubble("gm")
 		fin_rt.append_text("%s [color=%s][b]THE TALE IS COMPLETE[/b][/color]
 [i]This campaign has reached its end — the world remembers. Free roam continues if you keep talking, or return to the menu for a new tale.[/i]" % [Ui.ico("banner", 20), Ui.c("gold_soft").to_html(false)])
+		var clk := GameState.clock()
+		clk["done"] = true  # flags the Chronicles cover with a "complete" badge
+		GameState.save_kind("clock", clk)
+		_save_snapshot()  # auto-chronicle the finale so the ending is always kept
 	var check: Dictionary = Tags.check_from_tags(parsed["tags"])
 	if check.is_empty():
 		check = Tags.detect_check(str(parsed["clean"]))

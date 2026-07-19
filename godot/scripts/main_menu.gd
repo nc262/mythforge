@@ -772,16 +772,16 @@ func _show_saves(saved: Array) -> void:
 	grid.add_theme_constant_override("h_separation", 16)
 	grid.add_theme_constant_override("v_separation", 16)
 	_content.add_child(grid)
+	# Build every card synchronously and fire its state fetch WITHOUT awaiting, so
+	# all fetches run concurrently (was serial: N round-trips back-to-back). Each
+	# card fills its own caption when its fetch lands. (B1)
 	for t in saved:
-		grid.add_child(await _chronicle_card(t, last_id))
+		grid.add_child(_chronicle_card(t, last_id))
 
 
 func _chronicle_card(t: Dictionary, last_id: String) -> Control:
 	var cid := str(t.get("id"))
 	var wid := str(t.get("world_id", ""))
-	var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid.uri_encode())
-	var sheet: Dictionary = st.get("state", {}).get("sheet", {}) if st.get("state") is Dictionary and st["state"].get("sheet") is Dictionary else {}
-	var clock: Dictionary = st.get("state", {}).get("clock", {}) if st.get("state") is Dictionary and st["state"].get("clock") is Dictionary else {}
 	var is_last := cid == last_id
 	var panel := PanelContainer.new()
 	panel.custom_minimum_size = Vector2(440, 172)
@@ -817,9 +817,9 @@ func _chronicle_card(t: Dictionary, last_id: String) -> Control:
 	box.add_child(nm)
 	var cap := Label.new()
 	cap.theme_type_variation = "HintLabel"
-	cap.text = "%s · Level %d · Day %d%s" % [str(sheet.get("name", "a new hero")), int(sheet.get("level", 1)),
-		int(clock.get("day", 1)), "   ·   latest" if is_last else ""]
+	cap.text = "opening the chronicle…" + ("   ·   latest" if is_last else "")
 	box.add_child(cap)
+	_fill_card_caption(cap, cid, is_last)  # concurrent fetch; fills when it lands
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(spacer)
@@ -837,6 +837,20 @@ func _chronicle_card(t: Dictionary, last_id: String) -> Control:
 	actions.add_child(chron)
 	box.add_child(actions)
 	return panel
+
+
+## Fetch one chronicle's state and fill its caption. Called fire-and-forget so
+## every card's fetch is in flight at once rather than serialized. (B1)
+func _fill_card_caption(cap: Label, cid: String, is_last: bool) -> void:
+	var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid.uri_encode())
+	if not is_instance_valid(cap):
+		return  # the Chronicles view was closed before the fetch landed
+	var state = st.get("state") if st is Dictionary else null
+	var sheet: Dictionary = state.get("sheet", {}) if state is Dictionary and state.get("sheet") is Dictionary else {}
+	var clock: Dictionary = state.get("clock", {}) if state is Dictionary and state.get("clock") is Dictionary else {}
+	var tail := "   ·   ✦ complete" if clock.get("done", false) else ("   ·   latest" if is_last else "")
+	cap.text = "%s · Level %d · Day %d%s" % [str(sheet.get("name", "a new hero")), int(sheet.get("level", 1)),
+		int(clock.get("day", 1)), tail]
 
 
 ## Open a campaign's Lore Book from the Hall: load its state read-only, theme
