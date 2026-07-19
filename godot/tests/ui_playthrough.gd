@@ -168,6 +168,11 @@ func _check_save_spells() -> void:
 	assert(Rules.foe_save_mod("boss") >= Rules.foe_save_mod("elite"), "save: a boss should save at least as well as an elite")
 	assert(Rules.foe_save_mod("elite") > Rules.foe_save_mod("tough"), "save: an elite should save better than a tough foe")
 	print("  save spells: foe save mods scale with tier (minor→boss)")
+	# a companion's kit is inferred from role, not always Fighter
+	assert(str(GameState.infer_companion_kit("temple healer")["cls"]) == "Cleric", "companion: 'healer' should infer Cleric")
+	assert(str(GameState.infer_companion_kit("court wizard")["cls"]) == "Wizard", "companion: 'wizard' should infer Wizard")
+	assert(str(GameState.infer_companion_kit("sellsword")["cls"]) == "Fighter", "companion: unknown role falls back to Fighter")
+	print("  companions: kit inferred from role (healer→Cleric, mage→Wizard)")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

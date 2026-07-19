@@ -485,6 +485,25 @@ func cast_summary() -> String:
 	return "The cast you know (their goals, fears, feelings, and secrets are CANON — keep them consistent): %s." % "; ".join(parts)
 
 
+## Infer a companion's class/AC/durability from the GM-supplied role, so a
+## "temple healer" isn't statted as a plate-clad Fighter. Keyword → kit.
+func infer_companion_kit(role: String) -> Dictionary:
+	var r := role.to_lower()
+	for kit in [
+		["heal|cleric|priest|medic|acolyte", "Cleric", 15, 2],
+		["mage|wizard|sorc|arcane|warlock|witch", "Wizard", 12, 1],
+		["rogue|thief|scout|assassin|spy|burglar", "Rogue", 14, 1],
+		["rang|arch|hunt|bowman|marksman", "Ranger", 14, 2],
+		["bard|song|minstrel|skald", "Bard", 13, 2],
+		["paladin|knight|guard|templar|sentinel", "Paladin", 16, 3],
+		["barb|berserk|raider|reaver", "Barbarian", 13, 3],
+		["monk|martial", "Monk", 14, 2],
+		["druid|shaman|warden", "Druid", 13, 2]]:
+		if RegEx.create_from_string("(?i)%s" % kit[0]).search(r) != null:
+			return {"cls": kit[1], "ac": int(kit[2]), "hpb": int(kit[3])}
+	return {"cls": "Fighter", "ac": 14, "hpb": 2}
+
+
 ## An NPC joins the party (port of _toggleCompanion's recruit half).
 func add_companion(nm: String, role := "") -> String:
 	var s := sheet()
@@ -493,12 +512,13 @@ func add_companion(nm: String, role := "") -> String:
 		if str(c.get("name", "")).nocasecmp_to(nm) == 0:
 			return ""
 	var level := int(s.get("level", 1))
-	var hp_max := 10 + 2 * level
-	comps.append({"name": nm, "role": role, "cls": "Fighter", "level": level,
-		"ac": 13, "hpMax": hp_max, "hp": hp_max})
+	var kit := infer_companion_kit(role)
+	var hp_max := 8 + int(kit["hpb"]) * level
+	comps.append({"name": nm, "role": role, "cls": str(kit["cls"]), "level": level,
+		"ac": int(kit["ac"]), "hpMax": hp_max, "hp": hp_max})
 	s["companions"] = comps
 	set_sheet(s)
-	return "*%s joins your party — a level %d companion!*" % [nm, level]
+	return "*%s joins your party — a level %d %s!*" % [nm, level, str(kit["cls"]).to_lower()]
 
 
 # ── Class feature actions (port of FEATURE_ACTIONS) ─────────────────────────
