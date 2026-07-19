@@ -223,7 +223,7 @@ func _stage_welcome() -> void:
 	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line.text = "A blank map. A quill. Every legendary campaign began exactly here."
 	_stage_box.add_child(line)
-	_nav(-1, "⚒ Take your seat ›", func(): _enter_stage(1))
+	_nav(-1, "Take your seat ›", func(): _enter_stage(1))
 
 
 # ── Stage 1: the name ────────────────────────────────────────────────────────
@@ -385,9 +385,9 @@ func _stage_rules() -> void:
 	_stage_box.add_child(row)
 	var toggles := VBoxContainer.new()
 	toggles.add_theme_constant_override("separation", Ui.SPACE["xs"])
-	var toggle_defs := [["permadeath", "☠ Permadeath — death archives the save; the tale truly ends", false],
-		["companions", "🛡 Companions — allies may join the party", true],
-		["fog", "☁ Fog of War — the map hides what you haven't walked", true]]
+	var toggle_defs := [["permadeath", "Permadeath — death archives the save; the tale truly ends", false],
+		["companions", "Companions — allies may join the party", true],
+		["fog", "Fog of War — the map hides what you haven't walked", true]]
 	var checks := {}
 	for td in toggle_defs:
 		var cb := CheckButton.new()
@@ -399,13 +399,13 @@ func _stage_rules() -> void:
 	tc.add_child(toggles)
 	_stage_box.add_child(tc)
 	var house := LineEdit.new()
-	house.placeholder_text = "🖋 House rules, in your words — e.g. no resurrection, critical fumbles hurt…"
+	house.placeholder_text = "House rules, in your words — e.g. no resurrection, critical fumbles hurt…"
 	house.text = str(draft["rules"].get("house", ""))
 	house.custom_minimum_size = Vector2(520, 0)
 	var hc := CenterContainer.new()
 	hc.add_child(house)
 	_stage_box.add_child(hc)
-	_nav(4, "⚒ To the forging ›", func():
+	_nav(4, "To the forging ›", func():
 		if not draft["rules"].has("difficulty"):
 			draft["rules"]["difficulty"] = 1.0
 		for key in checks:
@@ -434,7 +434,7 @@ func _strike(refine: String) -> void:
 	var wait := Label.new()
 	wait.theme_type_variation = "HintLabel"
 	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	wait.text = "⚒ The smith works — the world takes shape (about a minute)…"
+	wait.text = "The smith works — the world takes shape (about a minute)…"
 	_stage_box.add_child(wait)
 	var t: Dictionary = draft["theme"]
 	var idea := str(draft["idea"])
@@ -484,7 +484,7 @@ func _show_take() -> void:
 	bc.add_child(bs)
 	_stage_box.add_child(bc)
 	var refine := LineEdit.new()
-	refine.placeholder_text = "✎ What should change? darker tone, a pirate faction, rename it…"
+	refine.placeholder_text = "What should change? darker tone, a pirate faction, rename it…"
 	refine.custom_minimum_size = Vector2(520, 0)
 	var rc := CenterContainer.new()
 	rc.add_child(refine)
@@ -504,7 +504,7 @@ func _show_take() -> void:
 	row.add_child(again)
 	var seal := Button.new()
 	seal.theme_type_variation = "AccentButton"
-	seal.text = "🕯 Seal this world ›"
+	seal.text = "Seal this world ›"
 	seal.pressed.connect(_seal)
 	row.add_child(seal)
 	var back := Button.new()
@@ -521,7 +521,7 @@ func _seal() -> void:
 	if _busy:
 		return
 	_busy = true
-	_status.text = "🕯 Pressing the seal — binding the world…"
+	_status.text = "Pressing the seal — binding the world…"
 	var w := _forged
 	var wid := "cw-%s-%04x" % [str(w["name"]).to_lower().replace(" ", "-").left(20), randi() % 65536]
 	var world := {"id": wid, "custom": true}
@@ -605,7 +605,7 @@ func _run_sequence() -> void:
 	_busy = false
 	var onward := Button.new()
 	onward.theme_type_variation = "AccentButton"
-	onward.text = "📜 To the Dossier ›"
+	onward.text = "To the Dossier ›"
 	onward.pressed.connect(func(): _enter_stage(7))
 	var oc := CenterContainer.new()
 	oc.add_child(onward)
@@ -668,7 +668,7 @@ func _stage_dossier() -> void:
 	row.add_child(reroll)
 	var begin := Button.new()
 	begin.theme_type_variation = "AccentButton"
-	begin.text = "⚔ BEGIN THE CAMPAIGN"
+	begin.text = "BEGIN THE CAMPAIGN"
 	begin.pressed.connect(_begin_campaign)
 	row.add_child(begin)
 	var leave := Button.new()
@@ -684,7 +684,7 @@ func _begin_campaign() -> void:
 	if _busy:
 		return
 	_busy = true
-	_status.text = "⚔ Opening the campaign…"
+	_status.text = "Opening the campaign…"
 	var world := _sealed_world
 	var wid := str(world.get("id", ""))
 	var story := _story

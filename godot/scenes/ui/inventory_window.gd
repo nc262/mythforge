@@ -49,7 +49,7 @@ class PackCard extends MythCard:
 
 
 func _init() -> void:
-	title = "🎒 Your Pack"
+	title = "Your Pack"
 	ok_button_text = "Put the pack away"
 	min_size = Vector2i(840, 560)
 	var root := HBoxContainer.new()

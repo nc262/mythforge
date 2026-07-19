@@ -121,7 +121,7 @@ func enter(enemy: String) -> String:
 	combatants.append({"id": "e1_" + enemy.replace(" ", ""), "name": enemy, "hp": hp0, "hpMax": hp0,
 		"ac": null, "init": randi_range(1, 20), "side": "enemy", "conditions": []})
 	save({"active": true, "round": 1, "turn": 0, "combatants": combatants})
-	return "⚔️ *Combat — %s!*" % enemy
+	return "*Combat — %s!*" % enemy
 
 
 func add_foe(enemy: String) -> void:
@@ -160,7 +160,7 @@ func player_attack(target_id: String) -> Dictionary:
 		return {"msg": "", "fell": false, "won": false, "spent": true}
 	var b := _budget(c)
 	if int(b.get("attacksLeft", 0)) <= 0:
-		return {"msg": "⚔ *Your action is spent — end your turn.*", "fell": false, "won": false, "spent": false}
+		return {"msg": "*Your action is spent — end your turn.*", "fell": false, "won": false, "spent": false}
 	b["attacksLeft"] = int(b["attacksLeft"]) - 1
 	var s := GameState.sheet()
 	var inv := GameState.inv()
@@ -189,7 +189,7 @@ func player_attack(target_id: String) -> Dictionary:
 		vs_ac += " (+2 cover)"
 	if not crit and (fumble or total < target_ac):
 		save(c)
-		var miss := {"msg": "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → a miss.*" % [
+		var miss := {"msg": "*You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → a miss.*" % [
 			foe["name"], wname, roll, mod, total, vs_ac, dv_tag, " — a FUMBLE" if fumble else ""],
 			"fell": false, "won": false, "spent": true}
 		var off_miss := offhand_followup(target_id, b)
@@ -220,7 +220,7 @@ func player_attack(target_id: String) -> Dictionary:
 	var enemies: Array = c["combatants"].filter(func(x): return x.get("side") == "enemy")
 	var won: bool = fell and not enemies.is_empty() and enemies.all(func(e): return int(e.get("hp", 0)) <= 0)
 	save(c)
-	var msg := "⚔ *You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → **%d damage**%s%s.*" % [
+	var msg := "*You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → **%d damage**%s%s.*" % [
 		foe["name"], wname, roll, mod, total, vs_ac, dv_tag,
 		" — **CRITICAL HIT%s!**" % (" (Champion)" if roll == 19 else "") if crit else "",
 		dmg, res_tag,
@@ -270,7 +270,7 @@ func offhand_followup(target_id: String, budget: Dictionary) -> Dictionary:
 	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
 	var crit := roll == 20
 	if not crit and (roll == 1 or total < target_ac):
-		out["msg"] = "🗡 *Off-hand %s — d20 %d %+d = %d → misses.*" % [str(off.get("name", "")), roll, mod, total]
+		out["msg"] = "*Off-hand %s — d20 %d %+d = %d → misses.*" % [str(off.get("name", "")), roll, mod, total]
 		return out
 	var de := _dice_expr(str(off.get("dmg", off_props["die"])))
 	var dmg: int = int(de["mod"]) + mini(0, abil_mod)
@@ -282,7 +282,7 @@ func offhand_followup(target_id: String, budget: Dictionary) -> Dictionary:
 	var enemies: Array = c["combatants"].filter(func(x): return x.get("side") == "enemy")
 	var won: bool = fell and enemies.all(func(e): return int(e.get("hp", 0)) <= 0)
 	save(c)
-	out["msg"] = "🗡 *Off-hand %s%s → **%d damage**%s.*" % [str(off.get("name", "")),
+	out["msg"] = "*Off-hand %s%s → **%d damage**%s.*" % [str(off.get("name", "")),
 		" — **CRIT!**" if crit else "", dmg,
 		(" — the %s falls!" % foe["name"]) if fell else " (%d/%d left)" % [int(foe["hp"]), int(foe["hpMax"])]]
 	out["fell"] = fell
@@ -328,7 +328,7 @@ func player_spell(target_id: String, nm: String) -> Dictionary:
 	var desc := str(Rules.spell_named(nm).get("desc", ""))
 	var cast := GameState.cast_spell(nm)
 	if cast == "" or cast.begins_with("✋"):
-		return {"msg": cast, "fell": false, "won": false, "spent": false}
+		return {"msg": cast.trim_prefix("✋ "), "fell": false, "won": false, "spent": false}
 	b["attacksLeft"] = 0  # casting is your whole action
 	var atk := Rules.spell_attack(s)
 	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
@@ -396,7 +396,7 @@ func available_reactions(total: int, ac: int) -> Array:
 ## nothing is applied until resolve_enemy_hit. Otherwise → {msg, gm, down}.
 func enemy_turn(enemy: Dictionary) -> Dictionary:
 	if enemy.get("conditions", []).any(func(cd): return _incap_re.search(str(cd.get("name", cd) if cd is Dictionary else cd)) != null):
-		return {"msg": "😵 *The %s can't act.*" % enemy["name"], "gm": "", "down": false}
+		return {"msg": "*The %s can't act.*" % enemy["name"], "gm": "", "down": false}
 	var s := GameState.sheet()
 	var ac := Rules.eff_ac(s, GameState.inv())
 	var atk_bonus := mini(9, 3 + int(enemy.get("hpMax", 10)) / 15)
@@ -404,7 +404,7 @@ func enemy_turn(enemy: Dictionary) -> Dictionary:
 	var total := roll + atk_bonus
 	var crit := roll == 20
 	if not crit and (roll == 1 or total < ac):
-		return {"msg": "🗡 *The %s strikes at you — d20 %d +%d = %d vs AC %d → misses.*" % [enemy["name"], roll, atk_bonus, total, ac],
+		return {"msg": "*The %s strikes at you — d20 %d +%d = %d vs AC %d → misses.*" % [enemy["name"], roll, atk_bonus, total, ac],
 			"gm": "[The %s attacked me and missed (%d vs my AC %d). Narrate the near-miss briefly.]" % [enemy["name"], total, ac], "down": false}
 	var dmg := int(enemy.get("hpMax", 10)) / 18
 	for i in (2 if crit else 1):
@@ -421,7 +421,7 @@ func enemy_turn(enemy: Dictionary) -> Dictionary:
 func resolve_enemy_hit(enemy: Dictionary, dmg: int, crit: bool, note: String) -> Dictionary:
 	dmg = maxi(0, dmg)
 	if dmg <= 0:
-		return {"msg": "🛡 *%s — no damage gets through.*" % (note if note != "" else "You turn the blow aside"),
+		return {"msg": "*%s — no damage gets through.*" % (note if note != "" else "You turn the blow aside"),
 			"gm": "[The %s's blow was turned aside — no damage. Narrate it briefly.]" % enemy["name"], "down": false}
 	var after := GameState.apply_hp(-dmg)
 	var down := int(after["hp"]) <= 0
@@ -430,7 +430,7 @@ func resolve_enemy_hit(enemy: Dictionary, dmg: int, crit: bool, note: String) ->
 		if str(x.get("id", "")) == "pc":
 			x["hp"] = int(after["hp"])
 	save(c)
-	return {"msg": "🗡 *The %s hits you%s%s for **%d damage** (%d/%d left).%s*" % [enemy["name"],
+	return {"msg": "*The %s hits you%s%s for **%d damage** (%d/%d left).%s*" % [enemy["name"],
 			" — **CRIT!**" if crit else "", (" — " + note) if note != "" else "", dmg,
 			int(after["hp"]), int(after["hpMax"]),
 			" — **you go down!**" if down else ""],
@@ -451,11 +451,11 @@ func companion_turn(ally: Dictionary) -> Dictionary:
 	var total := roll + atk
 	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
 	if roll != 20 and (roll == 1 or total < target_ac):
-		return {"msg": "🛡 *%s strikes at the %s — %d → a miss.*" % [ally["name"], foe["name"], total]}
+		return {"msg": "*%s strikes at the %s — %d → a miss.*" % [ally["name"], foe["name"], total]}
 	var dmg := maxi(1, randi_range(1, 6) + int(ally.get("hpMax", 10)) / 15)
 	foe["hp"] = maxi(0, int(foe["hp"]) - dmg)
 	save(c)
-	return {"msg": "🛡 *%s hits the %s for **%d** (%d/%d left)%s.*" % [ally["name"], foe["name"], dmg,
+	return {"msg": "*%s hits the %s for **%d** (%d/%d left)%s.*" % [ally["name"], foe["name"], dmg,
 		int(foe["hp"]), int(foe["hpMax"]), " — it falls!" if int(foe["hp"]) <= 0 else ""]}
 
 
@@ -482,16 +482,16 @@ func death_save() -> Dictionary:
 		pc["hp"] = 1
 		pc["ds"] = {"s": 0, "f": 0}
 		GameState.apply_hp(1)
-		msg = "🎲 *death save → natural 20! You gasp back to life at 1 HP.*"
+		msg = "*death save → natural 20! You gasp back to life at 1 HP.*"
 	elif roll == 1:
 		ds["f"] = int(ds["f"]) + 2
-		msg = "🎲 *death save → natural 1 — two failures (%d/3).*" % mini(3, int(ds["f"]))
+		msg = "*death save → natural 1 — two failures (%d/3).*" % mini(3, int(ds["f"]))
 	elif roll >= 10:
 		ds["s"] = int(ds["s"]) + 1
-		msg = "🎲 *death save → %d, a success (%d/3).*" % [roll, mini(3, int(ds["s"]))]
+		msg = "*death save → %d, a success (%d/3).*" % [roll, mini(3, int(ds["s"]))]
 	else:
 		ds["f"] = int(ds["f"]) + 1
-		msg = "🎲 *death save → %d, a failure (%d/3).*" % [roll, mini(3, int(ds["f"]))]
+		msg = "*death save → %d, a failure (%d/3).*" % [roll, mini(3, int(ds["f"]))]
 	if int(ds.get("s", 0)) >= 3:
 		ds["stable"] = true
 		msg += " **You stabilize**, clinging to life."

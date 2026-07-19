@@ -331,7 +331,7 @@ func cast_spell(nm: String) -> String:
 			int(slots[found]["max"]) - int(slots[found]["used"]), int(slots[found]["max"])]
 	var dc := Rules.spell_save_dc(s)
 	var stat := (" Spell save DC %d, spell attack %+d." % [dc, Rules.spell_attack(s)]) if dc > 0 else ""
-	return "✨ *You cast **%s**%s.%s*" % [known.get("name", nm), cast_note, stat]
+	return "*You cast **%s**%s.%s*" % [known.get("name", nm), cast_note, stat]
 
 
 ## Port of _awardXp: average hit-die HP per level, full heal, auto-features.
@@ -343,7 +343,7 @@ func award_xp(amount: int, reason := "") -> Dictionary:
 	var before := int(s.get("level", 1))
 	s["xp"] = int(s.get("xp", 0)) + amount
 	var after := Rules.level_for_xp(int(s["xp"]))
-	var note := "✨ *Gained %d XP%s.*" % [amount, (" — " + reason) if reason != "" else ""]
+	var note := "*Gained %d XP%s.*" % [amount, (" — " + reason) if reason != "" else ""]
 	if after > before:
 		var con := Rules.ability_mod(int(s["abilities"].get("CON", 10)))
 		var die_avg := int(s.get("hitDie", 8)) / 2 + 1
@@ -365,7 +365,7 @@ func award_xp(amount: int, reason := "") -> Dictionary:
 		var preset: Dictionary = Rules.tables.get("class_presets", {}).get(str(s.get("cls", "")), {})
 		if preset.get("caster", false):
 			s["slots"] = Rules.full_caster_slots(after)
-		note += "\n🎉 *LEVEL UP — you are now level %d! HP restored to %d.%s*" % [after, int(s["hpMax"]),
+		note += "\n*LEVEL UP — you are now level %d! HP restored to %d.%s*" % [after, int(s["hpMax"]),
 			(" New: " + ", ".join(gained)) if not gained.is_empty() else ""]
 	set_sheet(s)
 	if after > before:
@@ -498,7 +498,7 @@ func add_companion(nm: String, role := "") -> String:
 		"ac": 13, "hpMax": hp_max, "hp": hp_max})
 	s["companions"] = comps
 	set_sheet(s)
-	return "⚔ *%s joins your party — a level %d companion!*" % [nm, level]
+	return "*%s joins your party — a level %d companion!*" % [nm, level]
 
 
 # ── Class feature actions (port of FEATURE_ACTIONS) ─────────────────────────
@@ -541,24 +541,24 @@ func use_feature(key: String) -> String:
 		"Second Wind":
 			var heal := randi_range(1, 10) + int(s.get("level", 1))
 			s["hp"] = mini(int(s["hpMax"]), int(s.get("hp", 0)) + heal)
-			note = "💨 *Second Wind — you steady yourself and recover **%d HP** (now %d/%d).*" % [heal, int(s["hp"]), int(s["hpMax"])]
+			note = "*Second Wind — you steady yourself and recover **%d HP** (now %d/%d).*" % [heal, int(s["hp"]), int(s["hpMax"])]
 		"Rage":
 			s["conditions"] = s.get("conditions", []) + [{"name": "raging (+2 melee damage, resist physical)", "rounds": 10}]
-			note = "😤 *You RAGE — advantage on Strength, resistance to physical damage, +2 melee damage while it lasts.*"
+			note = "*You RAGE — advantage on Strength, resistance to physical damage, +2 melee damage while it lasts.*"
 		"Action Surge":
 			var c: Dictionary = Combat.data()
 			if bool(c.get("active", false)) and c.get("_pcb") is Dictionary:
 				c["_pcb"]["attacksLeft"] = int(c["_pcb"].get("attacksLeft", 0)) + int(c["_pcb"].get("attacksMax", 1))
 				Combat.save(c)
-			note = "⚡ *Action Surge — you push past your limits and act again this turn.*"
+			note = "*Action Surge — you push past your limits and act again this turn.*"
 		"Combat Maneuver":
-			note = "🎖 *Superiority die spent — trip, disarm, riposte, or feint for **+%d** to the effect. Tell the GM which maneuver.*" % randi_range(1, 8)
+			note = "*Superiority die spent — trip, disarm, riposte, or feint for **+%d** to the effect. Tell the GM which maneuver.*" % randi_range(1, 8)
 		"Arcane Ward":
 			var ward := 2 * int(s.get("level", 1)) + maxi(0, Rules.ability_mod(int(s["abilities"].get("INT", 10))))
 			s["conditions"] = s.get("conditions", []) + [{"name": "arcane ward (absorbs %d damage)" % ward, "rounds": 99}]
-			note = "🛡 *A woven ward of abjuration surrounds you — it absorbs the next **%d** damage before your HP does.*" % ward
+			note = "*A woven ward of abjuration surrounds you — it absorbs the next **%d** damage before your HP does.*" % ward
 		"Cutting Words":
-			note = "🎻 *Cutting Words — your mockery lands where armor doesn't: **−%d** from an enemy's attack, check, or damage roll.*" % randi_range(1, 8)
+			note = "*Cutting Words — your mockery lands where armor doesn't: **−%d** from an enemy's attack, check, or damage roll.*" % randi_range(1, 8)
 	set_sheet(s)
 	return note
 
@@ -628,10 +628,10 @@ func short_rest() -> Dictionary:
 		heal = maxi(1, randi_range(1, die) + con)
 		s["hp"] = mini(int(s["hpMax"]), int(s.get("hp", 0)) + heal)
 		s["hitDiceUsed"] = used + 1
-		note = "🌙 *You take a short rest — spend a Hit Die (d%d%+d CON) and recover **%d HP**, now %d/%d. Hit Dice left: %d/%d.*" % [
+		note = "*You take a short rest — spend a Hit Die (d%d%+d CON) and recover **%d HP**, now %d/%d. Hit Dice left: %d/%d.*" % [
 			die, con, heal, int(s["hp"]), int(s["hpMax"]), pool - int(s["hitDiceUsed"]), pool]
 	else:
-		note = "🌙 *You rest an hour, but you're out of Hit Dice (%d/%d spent) — a long rest is what you need to heal.*" % [pool, pool]
+		note = "*You rest an hour, but you're out of Hit Dice (%d/%d spent) — a long rest is what you need to heal.*" % [pool, pool]
 	set_sheet(s)
 	_recharge_features("short")
 	advance_time(1)
@@ -663,8 +663,8 @@ func long_rest() -> Dictionary:
 	var c := clock()
 	var steps := TIMES.size() if int(c.get("ti", 0)) == 0 else TIMES.size() - int(c.get("ti", 0))
 	advance_time(steps)
-	var note := ("⛺ *You make camp — but something finds you in the night. You wake half-rested at %d/%d HP.*" % [int(s["hp"]), int(s["hpMax"])]) if interrupted \
-		else ("⛺ *You make camp and sleep. You wake at dawn, fully restored — %d/%d HP.*" % [int(s["hpMax"]), int(s["hpMax"])])
+	var note := ("*You make camp — but something finds you in the night. You wake half-rested at %d/%d HP.*" % [int(s["hp"]), int(s["hpMax"])]) if interrupted \
+		else ("*You make camp and sleep. You wake at dawn, fully restored — %d/%d HP.*" % [int(s["hpMax"]), int(s["hpMax"])])
 	var gm := ("[My rest is interrupted in the night — run a short encounter fitting where I'm camped. I woke at %d/%d HP, only half-rested. Open on the moment I startle awake.]" % [int(s["hp"]), int(s["hpMax"])]) if interrupted \
 		else "[I take a long rest through the night and wake at dawn, fully healed. Narrate the new morning and what's changed, then continue.]"
 	return {"note": note, "gm": gm}

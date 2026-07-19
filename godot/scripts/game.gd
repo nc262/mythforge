@@ -1207,7 +1207,8 @@ func _on_sheet_action(meta) -> void:
 		_last_player_msg = note
 		_stream(Composer.envelope(note))
 	else:
-		_say_system(note.replace("*", ""))
+		# ✋ is the internal "action failed — don't tell the GM" sentinel; never shown.
+		_say_system(note.trim_prefix("✋ ").replace("*", ""))
 
 
 # ── Combat actions ───────────────────────────────────────────────────────────
@@ -2237,7 +2238,7 @@ func _render_chips() -> void:
 	_apply_time_tint()
 	var c: Dictionary = GameState.clock()
 	var bits: Array[String] = []
-	var wx := str(c.get("wx", {}).get("ico", "")) if c.get("wx") is Dictionary else ""
+	var wx := str(c.get("wx", {}).get("name", "")) if c.get("wx") is Dictionary else ""
 	bits.append("%s %s · Day %d %s" % [Ui.ico("hourglass", 15), GameState.TIMES[clampi(int(c.get("ti", 0)), 0, GameState.TIMES.size() - 1)], int(c.get("day", 1)), wx])
 	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
 	if here != "":

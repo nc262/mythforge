@@ -27,6 +27,7 @@ const FROM_EMOJI := {
 	"🛒": "coins", "💰": "coins", "🪙": "coins",
 	"⚙": "runewheel", "🧬": "sigil", "🧪": "sigil", "🔇": "sigil", "🎬": "sigil",
 	"🕊": "sigil", "🌑": "moon", "🌙": "moon", "⛺": "tent",
+	"🥋": "shield", "⛨": "shield", "🏰": "pillar",
 	"🎛": "tune", "💾": "save", "⚡": "bolt", "🥾": "boot", "🩸": "blood",
 	"⏳": "hourglass", "🕰": "hourglass", "🎖": "medal", "🌀": "swirl",
 	"🍺": "mug", "🏛": "pillar", "🌲": "tree", "🏠": "house", "📍": "pin",
