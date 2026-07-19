@@ -200,6 +200,17 @@ func spell_save_dc(s: Dictionary) -> int:
 	return 8 + prof_bonus(s) + ability_mod(int(s["abilities"].get(ab, 10)))
 
 
+## Foes carry no ability scores — their saving-throw bonus is derived from tier,
+## the same way AC/HP are. Used when a spell forces a save (Fireball, Hold, …).
+func foe_save_mod(tier: String) -> int:
+	match tier.to_lower():
+		"minor": return 1
+		"tough": return 4
+		"elite": return 5
+		"boss", "legendary": return 7
+	return 2  # standard/unknown
+
+
 func spell_attack(s: Dictionary) -> int:
 	var ab := cast_ability(s)
 	if ab == "":

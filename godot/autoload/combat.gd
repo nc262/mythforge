@@ -330,6 +330,48 @@ func player_spell(target_id: String, nm: String) -> Dictionary:
 	if cast == "" or cast.begins_with("✋"):
 		return {"msg": cast.trim_prefix("✋ "), "fell": false, "won": false, "spent": false}
 	b["attacksLeft"] = 0  # casting is your whole action
+	# — Save-DC spells (Fireball, Lightning Bolt, Hold Person…): the foe rolls a
+	# save vs your spell DC instead of you rolling to hit. Save ability + "for half"
+	# are read from the spell's own prose, the same way damage dice/type already are.
+	var save_rx := RegEx.create_from_string("(?i)(STR|DEX|CON|INT|WIS|CHA)\\s+save").search(desc)
+	if save_rx != null:
+		var save_ab := save_rx.get_string(1).to_upper()
+		var dc := Rules.spell_save_dc(s)
+		var e2 := bestiary_for(str(foe["name"]))
+		var fmod := Rules.foe_save_mod(str(e2.get("tier", "standard")))
+		var sroll := randi_range(1, 20)
+		var stotal := sroll + fmod
+		var saved := dc > 0 and stotal >= dc
+		var half := RegEx.create_from_string("(?i)for half|half as much|takes half").search(desc) != null
+		var has_dice := RegEx.create_from_string("\\d+d\\d+").search(desc) != null
+		var msg2 := ""
+		if has_dice:
+			var de2 := _dice_expr(desc)
+			var dmg2 := int(de2["mod"])
+			for i in int(de2["n"]):
+				dmg2 += randi_range(1, int(de2["sides"]))
+			dmg2 = maxi(1, dmg2)
+			var dt2 := RegEx.create_from_string("(?i)fire|cold|lightning|thunder|acid|poison|necrotic|radiant|force|psychic").search(desc)
+			var dtype2 := dt2.get_string(0).to_lower() if dt2 else "force"
+			if e2.get("vuln", []).has(dtype2):
+				dmg2 *= 2
+			elif e2.get("resist", []).has(dtype2):
+				dmg2 = ceili(dmg2 / 2.0)
+			if saved:
+				dmg2 = int(dmg2 / 2) if half else 0  # a save halves (Fireball) or negates
+			foe["hp"] = maxi(0, int(foe["hp"]) - dmg2)
+			msg2 = "✦ *You cast **%s** — the %s's %s save: d20 %d %+d = **%d** vs DC %d → %s, **%d %s damage**.*" % [
+				nm, foe["name"], save_ab, sroll, fmod, stotal, dc, ("saves" if saved else "fails"), dmg2, dtype2]
+		else:
+			msg2 = "✦ *You cast **%s** — the %s's %s save: d20 %d %+d = **%d** vs DC %d → %s.*" % [
+				nm, foe["name"], save_ab, sroll, fmod, stotal, dc, ("resists" if saved else "is caught in it")]
+		var fell2 := int(foe["hp"]) <= 0
+		var enemies2: Array = c["combatants"].filter(func(x): return x.get("side") == "enemy")
+		var won2: bool = fell2 and enemies2.all(func(x): return int(x.get("hp", 0)) <= 0)
+		if fell2:
+			msg2 += " — the %s falls!" % foe["name"]
+		save(c)
+		return {"msg": msg2, "fell": fell2, "won": won2, "spent": true}
 	var atk := Rules.spell_attack(s)
 	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
 	var cover_tag := ""

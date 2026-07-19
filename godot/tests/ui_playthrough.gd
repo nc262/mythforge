@@ -28,6 +28,7 @@ func _ready() -> void:
 		await get_tree().process_frame
 	await _turn_levelup()  # last: the ceremony correctly blocks further sends
 	_check_persistence()
+	_check_save_spells()
 	await _build_windows()
 	if is_instance_valid(_game):
 		_game.queue_free()
@@ -158,6 +159,15 @@ func _check_persistence() -> void:
 	GameState.unbank_hero(name)  # keep the run hermetic — don't leave a test hero in the roster
 	assert(found, "persistence: banked hero did not survive a fresh roster read (bug #8)")
 	print("  persistence: forged hero survives a disk round-trip")
+
+
+## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no
+## ability scores). Guard the monotonicity the resolution relies on.
+func _check_save_spells() -> void:
+	assert(Rules.foe_save_mod("minor") < Rules.foe_save_mod("standard"), "save: a minor foe should save worse than a standard one")
+	assert(Rules.foe_save_mod("boss") >= Rules.foe_save_mod("elite"), "save: a boss should save at least as well as an elite")
+	assert(Rules.foe_save_mod("elite") > Rules.foe_save_mod("tough"), "save: an elite should save better than a tough foe")
+	print("  save spells: foe save mods scale with tier (minor→boss)")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).
