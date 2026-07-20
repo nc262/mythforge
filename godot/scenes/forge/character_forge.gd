@@ -1,4 +1,4 @@
-extends Control
+extends ForgeFlow
 ## ⚒ The Character Forge — a permanent pillar (docs/forges/CharacterForge.md).
 ## Not character creation: the ancient forge where a legend is struck.
 ## Embers rise, runes light along the rail, every stage is a hammer blow,
@@ -8,7 +8,6 @@ extends Control
 ## hero_forged), or from the main menu as a draft (banked to user://).
 
 signal hero_forged(draft: Dictionary)
-signal closed
 
 const STAGES := ["The Anvil", "Origin", "Ruleset", "Heritage", "Class", "Background", "Nature", "Appearance", "The Voice", "Equipment", "Quenching"]
 const PREBUILT := [
@@ -26,7 +25,6 @@ const STYLES := ["painted", "ink & wash", "dark oil", "neon noir", "storybook"]
 const ARRAY_VALUES := [15, 14, 13, 12, 10, 8]
 
 const Card := preload("res://ui/myth_choice_card.gd")
-const Rail := preload("res://ui/myth_stage_rail.gd")
 const Fold := preload("res://ui/myth_fold.gd")
 
 var draft := {"name": "", "race": "", "cls": "", "bg": "", "rolled": [], "assign": {},
@@ -34,56 +32,39 @@ var draft := {"name": "", "race": "", "cls": "", "bg": "", "rolled": [], "assign
 	"cls_story": "", "bg_story": "", "portrait_key": ""}
 var menu_mode := false        # true = forging a draft from the main menu
 var start_at_quench := false  # a banked draft resumes at the reveal
-var _rail: MythStageRail
-var _stage_box: VBoxContainer
-var _status: Label
-var _phase := 0.0
 var _embers: Array = []
 var _story_edit: TextEdit = null   # the current stage's optional free-text story
 
 
 func _ready() -> void:
-	theme = Ui.theme
-	set_process(not Ui.reduce_motion)
-	# EAS: the player stands inside the ancient forge; its embers are the air.
-	MythEnvironment.mount(self, "env-forge", "embers", [Vector2(0.5, 0.88)])
 	for i in 26:
 		_embers.append([randf(), randf(), 0.35 + randf() * 0.9])
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for m in ["margin_left", "margin_right"]:
-		margin.add_theme_constant_override(m, Ui.SPACE["xl"] * 2)
-	margin.add_theme_constant_override("margin_top", Ui.SPACE["l"])
-	margin.add_theme_constant_override("margin_bottom", Ui.SPACE["l"])
-	add_child(margin)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", Ui.SPACE["m"])
-	margin.add_child(col)
-	_rail = Rail.new(STAGES)
-	_rail.stage_clicked.connect(_enter_stage)
-	col.add_child(_rail)
-	_stage_box = VBoxContainer.new()
-	_stage_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_stage_box.add_theme_constant_override("separation", Ui.SPACE["m"])
-	col.add_child(_stage_box)
-	_status = Label.new()
-	_status.theme_type_variation = "HintLabel"
-	_status.add_theme_color_override("font_color", Ui.c("gold_soft"))
-	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(_status)
+	super._ready()
+
+
+func _stages() -> Array:
+	return STAGES
+
+
+## EAS: the player stands inside the ancient forge; its embers are the air.
+func _env() -> Array:
+	return ["env-forge", "embers", [Vector2(0.5, 0.88)]]
+
+
+func _leave_label() -> String:
+	return "bank the fire"
+
+
+func _initial_stage() -> int:
 	var shot_stage := OS.get_environment("MF_FORGE_STAGE")
 	if shot_stage != "":
-		_enter_stage(int(shot_stage))
-	elif start_at_quench:
-		_enter_stage(10)
-	else:
-		_enter_stage(0)
+		return int(shot_stage)
+	return 10 if start_at_quench else 0
 
 
-func _process(delta: float) -> void:
-	_phase += delta
-	queue_redraw()
+func _on_stage_entered(_i: int) -> void:
+	_status.text = ""
+	_story_edit = null
 
 
 ## The procedural forge — the FALLBACK while the painted interior is still
@@ -116,62 +97,6 @@ func _draw() -> void:
 			draw_circle(Vector2(ex, ey), 1.6, Color(Ui.c("ember"), (1.0 - t) * 0.6))
 
 
-func _clear_stage() -> void:
-	for ch in _stage_box.get_children():
-		ch.queue_free()
-
-
-func _title_label(text: String) -> void:
-	var t := Label.new()
-	t.theme_type_variation = "TitleLabel"
-	t.text = text
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stage_box.add_child(t)
-
-
-func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", Ui.SPACE["l"])
-	if back_to >= 0:
-		var back := Button.new()
-		back.theme_type_variation = "GhostButton"
-		back.text = "‹ back"
-		back.pressed.connect(func(): _enter_stage(back_to))
-		row.add_child(back)
-	var go := Button.new()
-	go.theme_type_variation = "AccentButton"
-	go.text = fwd_text
-	go.pressed.connect(fwd)
-	row.add_child(go)
-	var leave := Button.new()
-	leave.theme_type_variation = "GhostButton"
-	leave.text = "bank the fire"
-	leave.pressed.connect(func(): closed.emit())
-	row.add_child(leave)
-	_stage_box.add_child(row)
-
-
-func _card_grid(entries: Array, cols: int, selected_title: String, on_pick: Callable) -> void:
-	var cards: Array = []
-	var grid := GridContainer.new()
-	grid.columns = cols
-	grid.add_theme_constant_override("h_separation", Ui.SPACE["s"])
-	grid.add_theme_constant_override("v_separation", Ui.SPACE["s"])
-	for e in entries:
-		var card := Card.new(e)
-		card.set_selected(str(e.get("title", "")) == selected_title)
-		card.pressed.connect(func():
-			for c in cards:
-				c.set_selected(c == card)
-			on_pick.call(e))
-		cards.append(card)
-		grid.add_child(card)
-	var gc := CenterContainer.new()
-	gc.add_child(grid)
-	_stage_box.add_child(gc)
-
-
 ## A collapsible free-text panel: the player's own story for a class or
 ## background. The GM adapts whatever's written to the world they land in.
 func _story_fold(title: String, hint: String, draft_key: String) -> Control:
@@ -194,11 +119,7 @@ func _story_fold(title: String, hint: String, draft_key: String) -> Control:
 	return cc
 
 
-func _enter_stage(i: int) -> void:
-	_rail.set_stage(i)
-	_clear_stage()
-	_status.text = ""
-	_story_edit = null
+func _build_stage(i: int) -> void:
 	match i:
 		0:
 			_stage_anvil()
@@ -222,8 +143,6 @@ func _enter_stage(i: int) -> void:
 			_stage_equipment()
 		10:
 			_stage_quenching()
-	Ui.polish(_stage_box)
-	Ui.reveal_children(_stage_box, 0.05)
 
 
 func _stage_anvil() -> void:

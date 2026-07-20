@@ -1,4 +1,4 @@
-extends Control
+extends ForgeFlow
 ## ⚒ The Campaign Forge — a permanent pillar (docs/forges/CampaignForge.md).
 ## The DM's war table: candlelight, a blank map, a quill. C1 milestone:
 ## the shell + rail + Welcome/Name/Ruleset/Theme stages + the Forging
@@ -9,7 +9,6 @@ extends Control
 ## This node IS the CampaignForgeManager: stage FSM + draft + generation.
 
 signal campaign_begun(adv: Dictionary)
-signal closed
 
 const STAGES := ["The Table", "The Name", "Ruleset", "Theme", "The Voice", "Table Rules", "The Forging", "Dossier"]
 ## Theme cards → worldsmith pillar presets (SMITH_GUIDE field names) + an
@@ -34,8 +33,6 @@ const THEMES := [
 ]
 
 const Card := preload("res://ui/myth_choice_card.gd")
-const Rail := preload("res://ui/myth_stage_rail.gd")
-const Header := preload("res://ui/myth_header.gd")
 const Fold := preload("res://ui/myth_fold.gd")
 
 ## The GM's Voice presets → Session-Zero knob bundles (humor/spice/grit/
@@ -55,12 +52,7 @@ const DIFFICULTIES := [
 ]
 
 var draft := {"name": "", "theme": {}, "fields": {}, "idea": "", "gm": {}, "rules": {}}
-var _rail: MythStageRail
-var _stage_box: VBoxContainer
 var _table_note: Label
-var _status: Label
-var _phase := 0.0
-var _busy := false
 var _forged: Dictionary = {}        # the smith's latest take, pre-seal
 var _sealed_world: Dictionary = {}  # the world after the wax came down
 var _story: Dictionary = {}         # the forged opening campaign
@@ -68,47 +60,26 @@ var _settlement := ""               # where the tale begins
 
 
 func _ready() -> void:
-	theme = Ui.theme
-	set_process(not Ui.reduce_motion)
-	# EAS: the player sits at the war room's table; candles live at its edges.
-	MythEnvironment.mount(self, "env-wartable", "dust", [Vector2(0.08, 0.34), Vector2(0.92, 0.34)])
-	var col := VBoxContainer.new()
-	col.set_anchors_preset(Control.PRESET_FULL_RECT)
-	col.add_theme_constant_override("separation", Ui.SPACE["m"])
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for m in ["margin_left", "margin_right"]:
-		margin.add_theme_constant_override(m, Ui.SPACE["xl"] * 2)
-	margin.add_theme_constant_override("margin_top", Ui.SPACE["l"])
-	margin.add_theme_constant_override("margin_bottom", Ui.SPACE["l"])
-	margin.add_child(col)
-	add_child(margin)
-	_rail = Rail.new(STAGES)
-	_rail.stage_clicked.connect(_enter_stage)
-	col.add_child(_rail)
-	_stage_box = VBoxContainer.new()
-	_stage_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_stage_box.add_theme_constant_override("separation", Ui.SPACE["m"])
-	col.add_child(_stage_box)
-	# The table's ledger: what has been set down so far, plus status.
+	# The table's ledger — built BEFORE the scaffold because entering stage 0
+	# (inside super._ready) already writes it via _ledger().
 	_table_note = Label.new()
 	_table_note.theme_type_variation = "HintLabel"
 	_table_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(_table_note)
-	_status = Label.new()
-	_status.theme_type_variation = "HintLabel"
-	_status.add_theme_color_override("font_color", Ui.c("gold_soft"))
-	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(_status)
-	# Harness hook: land on a given stage for visual regression shots.
-	var shot_stage := OS.get_environment("MF_FORGE_STAGE")
-	_enter_stage(int(shot_stage) if shot_stage != "" else 0)
+	super._ready()
+	_col.add_child(_table_note)
+	_col.move_child(_table_note, _col.get_child_count() - 2)  # between stage box and status
 
 
-func _process(delta: float) -> void:
-	_phase += delta
-	queue_redraw()
+func _stages() -> Array:
+	return STAGES
+
+
+func _leave_label() -> String:
+	return "snuff the candles"
+
+
+func _on_stage_entered(_i: int) -> void:
+	_ledger()  # NOTE: _status is deliberately NOT reset — _strike's error status survives re-enter
 
 
 ## The procedural war table — the FALLBACK while the painted room is still
@@ -143,11 +114,6 @@ func _draw() -> void:
 			draw_circle(cp, 3.0, Color(1.0, 0.9, 0.6, 0.9))
 
 
-func _clear_stage() -> void:
-	for ch in _stage_box.get_children():
-		ch.queue_free()
-
-
 func _ledger() -> void:
 	var bits: Array[String] = []
 	if str(draft["name"]) != "":
@@ -157,12 +123,7 @@ func _ledger() -> void:
 	_table_note.text = ("On the table:   " + "   ·   ".join(bits)) if not bits.is_empty() else ""
 
 
-func _enter_stage(i: int) -> void:
-	if _busy:
-		return
-	_rail.set_stage(i)
-	_clear_stage()
-	_ledger()
+func _build_stage(i: int) -> void:
 	match i:
 		0:
 			_stage_welcome()
@@ -180,39 +141,6 @@ func _enter_stage(i: int) -> void:
 			_stage_forging()
 		7:
 			_stage_dossier()
-	Ui.polish(_stage_box)
-	Ui.reveal_children(_stage_box, 0.05)
-
-
-func _title_label(text: String) -> void:
-	var t := Label.new()
-	t.theme_type_variation = "TitleLabel"
-	t.text = text
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stage_box.add_child(t)
-
-
-func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", Ui.SPACE["l"])
-	if back_to >= 0:
-		var back := Button.new()
-		back.theme_type_variation = "GhostButton"
-		back.text = "‹ back"
-		back.pressed.connect(func(): _enter_stage(back_to))
-		row.add_child(back)
-	var go := Button.new()
-	go.theme_type_variation = "AccentButton"
-	go.text = fwd_text
-	go.pressed.connect(fwd)
-	row.add_child(go)
-	var leave := Button.new()
-	leave.theme_type_variation = "GhostButton"
-	leave.text = "snuff the candles"
-	leave.pressed.connect(func(): closed.emit())
-	row.add_child(leave)
-	_stage_box.add_child(row)
 
 
 # ── Stage 0: the war table ───────────────────────────────────────────────────

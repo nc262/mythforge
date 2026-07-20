@@ -1,12 +1,12 @@
-extends Control
+extends ForgeFlow
 ## The World Forge — a permanent pillar, equal to the Character and Campaign
 ## forges. Not a dialog: a full-screen staged ritual at the smith's table
 ## where a WORLD is struck from an idea, revealed in vivid detail, and sealed
 ## into the gallery. Spark → Pillars → Forging (smith strike + refine) →
 ## the Atlas (a full world reveal). This node IS the WorldForgeManager.
+## Scaffold (rail/stage box/nav/status) lives in ForgeFlow; this is stages only.
 
 signal world_created(world: Dictionary)
-signal closed
 
 const STAGES := ["The Spark", "The Pillars", "The Forging", "The Atlas"]
 ## Theme cards → worldsmith pillar presets + an idea seasoning line.
@@ -30,53 +30,15 @@ const THEMES := [
 ]
 
 const Card := preload("res://ui/myth_choice_card.gd")
-const Rail := preload("res://ui/myth_stage_rail.gd")
 const Fold := preload("res://ui/myth_fold.gd")
 
 var draft := {"name": "", "idea": "", "theme": {}, "fields": {}}
-var _rail: MythStageRail
-var _stage_box: VBoxContainer
-var _status: Label
-var _phase := 0.0
-var _busy := false
 var _forged: Dictionary = {}   # the smith's latest take, pre-seal
 var _sealed: Dictionary = {}   # the world after the wax came down
 
 
-func _ready() -> void:
-	theme = Ui.theme
-	set_process(not Ui.reduce_motion)
-	MythEnvironment.mount(self, "env-wartable", "dust", [Vector2(0.08, 0.34), Vector2(0.92, 0.34)])
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for m in ["margin_left", "margin_right"]:
-		margin.add_theme_constant_override(m, Ui.SPACE["xl"] * 2)
-	margin.add_theme_constant_override("margin_top", Ui.SPACE["l"])
-	margin.add_theme_constant_override("margin_bottom", Ui.SPACE["l"])
-	add_child(margin)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", Ui.SPACE["m"])
-	margin.add_child(col)
-	_rail = Rail.new(STAGES)
-	_rail.stage_clicked.connect(_enter_stage)
-	col.add_child(_rail)
-	_stage_box = VBoxContainer.new()
-	_stage_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_stage_box.add_theme_constant_override("separation", Ui.SPACE["m"])
-	col.add_child(_stage_box)
-	_status = Label.new()
-	_status.theme_type_variation = "HintLabel"
-	_status.add_theme_color_override("font_color", Ui.c("gold_soft"))
-	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(_status)
-	var shot_stage := OS.get_environment("MF_FORGE_STAGE")
-	_enter_stage(int(shot_stage) if shot_stage != "" else 0)
-
-
-func _process(delta: float) -> void:
-	_phase += delta
-	queue_redraw()
+func _stages() -> Array:
+	return STAGES
 
 
 ## Fallback atmosphere while the painted war room is still on the easel.
@@ -90,47 +52,7 @@ func _draw() -> void:
 		draw_circle(Vector2(h1 * size.x, h2 * size.y * 0.4), 0.9, Color(Ui.c("ink_soft"), 0.2))
 
 
-func _clear_stage() -> void:
-	for ch in _stage_box.get_children():
-		ch.queue_free()
-
-
-func _title_label(text: String) -> void:
-	var t := Label.new()
-	t.theme_type_variation = "TitleLabel"
-	t.text = text
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stage_box.add_child(t)
-
-
-func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", Ui.SPACE["l"])
-	if back_to >= 0:
-		var back := Button.new()
-		back.theme_type_variation = "GhostButton"
-		back.text = "‹ back"
-		back.pressed.connect(func(): _enter_stage(back_to))
-		row.add_child(back)
-	var go := Button.new()
-	go.theme_type_variation = "AccentButton"
-	go.text = fwd_text
-	go.pressed.connect(fwd)
-	row.add_child(go)
-	var leave := Button.new()
-	leave.theme_type_variation = "GhostButton"
-	leave.text = "leave the table"
-	leave.pressed.connect(func(): closed.emit())
-	row.add_child(leave)
-	_stage_box.add_child(row)
-
-
-func _enter_stage(i: int) -> void:
-	if _busy:
-		return
-	_rail.set_stage(i)
-	_clear_stage()
+func _build_stage(i: int) -> void:
 	match i:
 		0:
 			_stage_spark()
@@ -140,8 +62,6 @@ func _enter_stage(i: int) -> void:
 			_stage_forging()
 		3:
 			_stage_atlas()
-	Ui.polish(_stage_box)
-	Ui.reveal_children(_stage_box, 0.05)
 
 
 # ── Stage 0: the spark ───────────────────────────────────────────────────────

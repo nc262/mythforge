@@ -232,8 +232,13 @@ func _build_windows() -> void:
 	for path in ["res://scenes/forge/character_forge.tscn", "res://scenes/forge/campaign_forge.tscn",
 			"res://scenes/forge/world_forge.tscn", "res://scenes/forge/adventure_forge.tscn"]:
 		var f: Node = load(path).instantiate()
+		# A failed script load still instantiates a bare Control — instantiate()
+		# "succeeding" proves nothing. Assert the script is really attached AND
+		# the scaffold actually built (the rail exists), or this is a dead screen.
+		assert(f.get_script() != null, "forge %s: script failed to load (parse error?)" % path)
 		get_tree().root.add_child(f)
 		for i in 6:
 			await get_tree().process_frame
+		assert(f.get("_rail") != null, "forge %s: scaffold never built (_rail is null)" % path)
 		f.queue_free()
 	print("  forges: character, campaign, world, adventure all built")

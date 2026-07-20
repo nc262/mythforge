@@ -1,11 +1,11 @@
-extends Control
+extends ForgeFlow
 ## 🧭 Begin a New Adventure — not "New Game": the sitting-down-at-the-table
 ## ritual that orchestrates both Forges. Choose or forge the hero, choose or
 ## forge the campaign, set the party and the table, preview, begin — like a
 ## tabletop night before the first dice are rolled.
+## Scaffold lives in ForgeFlow; this keeps its own MythButton _nav override.
 
 signal adventure_ready(adv: Dictionary)
-signal closed
 
 const STAGES := ["The Table", "The Hero", "The Campaign", "The Party", "Difficulty", "House Rules", "The Preview"]
 const DIFFICULTIES := [
@@ -16,45 +16,28 @@ const DIFFICULTIES := [
 ]
 
 const Card := preload("res://ui/myth_choice_card.gd")
-const Rail := preload("res://ui/myth_stage_rail.gd")
 const BtnM := preload("res://ui/myth_button.gd")
 
 var draft := {"hero": "", "adv": {}, "companions": true, "difficulty": 1.0, "house": ""}
-var _rail: MythStageRail
-var _stage_box: VBoxContainer
-var _status: Label
 var _worlds: Array = []
 var _child_forge: Control = null
 
 
 func _ready() -> void:
-	theme = Ui.theme
-	MythEnvironment.mount(self, "env-fireside", "dust", [Vector2(0.12, 0.3)])
-	var margin := MarginContainer.new()
-	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-	for m in ["margin_left", "margin_right"]:
-		margin.add_theme_constant_override(m, Ui.SPACE["xl"] * 2)
-	margin.add_theme_constant_override("margin_top", Ui.SPACE["l"])
-	margin.add_theme_constant_override("margin_bottom", Ui.SPACE["l"])
-	add_child(margin)
-	var col := VBoxContainer.new()
-	col.add_theme_constant_override("separation", Ui.SPACE["m"])
-	margin.add_child(col)
-	_rail = Rail.new(STAGES)
-	_rail.stage_clicked.connect(_enter_stage)
-	col.add_child(_rail)
-	_stage_box = VBoxContainer.new()
-	_stage_box.alignment = BoxContainer.ALIGNMENT_CENTER
-	_stage_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_stage_box.add_theme_constant_override("separation", Ui.SPACE["m"])
-	col.add_child(_stage_box)
-	_status = Label.new()
-	_status.theme_type_variation = "HintLabel"
-	_status.add_theme_color_override("font_color", Ui.c("gold_soft"))
-	_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	col.add_child(_status)
-	_load_worlds()
-	_enter_stage(0)
+	_load_worlds()  # fire-and-forget, same as before — stage 0 doesn't need it yet
+	super._ready()
+
+
+func _stages() -> Array:
+	return STAGES
+
+
+func _env() -> Array:
+	return ["env-fireside", "dust", [Vector2(0.12, 0.3)]]
+
+
+func _on_stage_entered(_i: int) -> void:
+	_status.text = ""
 
 
 func _load_worlds() -> void:
@@ -63,19 +46,7 @@ func _load_worlds() -> void:
 	_worlds = Rules.builtin_worlds() + cw
 
 
-func _clear_stage() -> void:
-	for ch in _stage_box.get_children():
-		ch.queue_free()
-
-
-func _title_label(text: String) -> void:
-	var t := Label.new()
-	t.theme_type_variation = "TitleLabel"
-	t.text = text
-	t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_stage_box.add_child(t)
-
-
+## Overrides the base nav: this table uses the big MythButtons.
 func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -96,10 +67,7 @@ func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
 	_stage_box.add_child(row)
 
 
-func _enter_stage(i: int) -> void:
-	_rail.set_stage(i)
-	_clear_stage()
-	_status.text = ""
+func _build_stage(i: int) -> void:
 	match i:
 		0:
 			_stage_welcome()
@@ -115,8 +83,6 @@ func _enter_stage(i: int) -> void:
 			_stage_house()
 		6:
 			_stage_preview()
-	Ui.polish(_stage_box)
-	Ui.reveal_children(_stage_box, 0.05)
 
 
 func _stage_welcome() -> void:
