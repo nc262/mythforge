@@ -39,9 +39,9 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 |---|---|---|---|---|
 | B1 | ~~`_show_saves`/Chronicles fetches each save's state **serially**~~ | ~~P2~~ | ✅ | **DONE 2026-07-18** — cards build sync; each state fetch fires concurrently, fills its caption when it lands. |
 | B2 | ~~Art cache **never evicts** (no LRU)~~ | ~~P2~~ | ✅ | **DONE** (A2) — 700 MB budget, manifest + LRU `_enforce_budget`/`_evict`. |
-| B3 | `Rules.attack_mod` couples to `GameState.inv()` when inv omitted | P3 | S | Latent wrong-bonus footgun; typed context object in the game.gd split. |
-| B4 | Combat attack rolls don't play the dice-moment overlay | P3 | M | Tracker rolls are internal — less drama. |
-| B5 | Multiple missing world key-arts generate **sequentially** on menu load, lagging chat image requests | P3 | M | Art queue priority lanes. |
+| B3 | ~~`Rules.attack_mod` couples to `GameState.inv()`~~ | ✅ | — | Verified stale 2026-07-21 — inv is an explicit param, no GameState fallback. |
+| B4 | ~~Combat attack rolls don't play the dice-moment overlay~~ | ✅ | — | ✅ **DONE 2026-07-21** — player_attack returns roll+caption; the swing animates. |
+| B5 | ~~Art queue priority lanes~~ | ✅ | — | ✅ **DONE 2026-07-21** — ensure(front=true): battle maps + hero portraits jump menu backfill. |
 | B6 | Backend auth = single shared cookie file per OS user | P4 | — | Fine solo; matters at multiplayer. |
 | B7 | Godot 4.7 shutdown RID/StringName leak noise (headless) | P4 | — | Upstream; grep-filtered. |
 
@@ -51,57 +51,57 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 |---|---|---|---|
 | ~~**game.gd god-script**~~ | ~~P2~~ | ✅ | **DONE 2026-07-18** — A0 split complete: merchant/GM-tuner/level-up/reaction extracted to windows; journal/chronicle/atlas folded into lore_book/world_map. 2461→~2000 lines; what remains is the streaming/tag/combat core. |
 | ~~**ForgeFlow base extraction**~~ | ~~P2~~ | ✅ | **DONE 2026-07-18** — ui/forge_flow.gd; all four forges are stage-content only; GM + Companion forges built on it same-day. |
-| **Per-world EAS room variants** — `Art.ENV_PROMPTS` are fantasy-flavored ("mythic forge", "war room"); a cyberpunk campaign gets a cyber *palette* but a fantasy *room* | **P2** | M | Exposed by M-B. Skin should drive env prompts too (a "skin slice 3"). |
+| ~~**Per-world EAS room variants**~~ | ✅ | — | Duplicate row — already done as A1 (`ENV_ROLE` + `env_resolved`), see row below. |
 | ~~State writes are fire-and-forget PUTs, no debounce/retry~~ | ~~P2~~ | ✅ | **DONE** (A5) — `save_kind` updates local instantly + enqueues; `_drain_writes` coalesces (last-write-wins) + retries. |
 | ~~Per-world EAS room variants (fantasy-flavored ENV_PROMPTS)~~ | ~~P2~~ | ✅ | **DONE** (A1) — `ENV_ROLE` + `env_resolved`/`env_prompt` drive per-world rooms from the skin. |
 | Companion kit generic (Fighter/AC13) | ~~P3~~ | ✅ | **DONE 2026-07-18** — `infer_companion_kit` maps role→class/AC/HP. |
-| Enemy stats by name-regex tiers vs bestiary stat blocks | P3 | M | Flavorless foes; derive from bestiary + world. |
-| Companion kit generic (Fighter/AC13) | P3 | S | Class inference from codex role. |
-| world_map carries its own pan/zoom (pre-MythCamera) | P3 | S | Adopt MythCamera next time it's touched. |
-| Envelope rebuilt as strings each turn | P3 | M | Context budgeter when sections grow. |
-| Tests hit the live backend | P3 | M | Mock SSE fixture for a CI lane. |
-| Terrain sampler is a colour heuristic | P3 | M | LLM-authored terrain layout per battle map. |
+| ~~Enemy stats by name-regex tiers~~ | ✅ | — | ✅ **DONE 2026-07-21** — bestiary tier → HP band/AC/atk/dmg dice; regex stays as fallback. |
+| ~~Companion kit generic~~ | ✅ | — | Duplicate row — done 2026-07-18 (`infer_companion_kit`). |
+| ~~world_map own pan/zoom~~ | ✅ | — | ✅ **DONE 2026-07-21** — MythCamera adopted, hand-rolled camera deleted. |
+| ~~Envelope context budgeter~~ | ✅ | — | ✅ **DONE 2026-07-21** — per-section 1400-char word-boundary cap, marked trims. |
+| ~~Tests hit the live backend~~ | ✅ | — | Stale — ui_playthrough + click_driver run on Api.test_mode (canned SSE); legacy tests/playthrough.gd is the only live-backend one and is superseded. |
+| ~~Terrain sampler colour heuristic~~ | ✅ | — | ✅ **DONE 2026-07-21** — [[terrain]] tag lets the GM lay block/water/cover; heuristic bake stays as fallback. |
 
 ## 4. Feature gaps (from FeatureMatrix 🔲/🟡, still open)
 
 **Play systems**
 - ~~Save-DC spells~~ — ✅ **DONE 2026-07-18**: foe rolls a save vs your spell DC (tier-derived save mod); for-half/negate; typed vuln/resist.
 - ~~More class-feature actions: Bardic Inspiration, Lay on Hands, Wild Shape~~ — ✅ **DONE 2026-07-18** (+ Channel Divinity).
-- Token **drag** on the battle grid (click-move shipped) — P3 / S
-- LLM-authored terrain layout — P3 / M
-- ASI split (+1/+1 vs +2) — P3 / S
+- ~~Token **drag** on the battle grid~~ — ✅ DONE 2026-07-21 (lift, ghost, drop-to-move)
+- ~~LLM-authored terrain layout~~ — ✅ DONE 2026-07-21 ([[terrain]] tag)
+- ~~ASI split (+1/+1 vs +2)~~ — ✅ DONE 2026-07-21 (all 15 pairs in the ceremony)
 - ~~Multiclassing~~ — ✅ **DONE 2026-07-18**: classes[] on the sheet, ceremony redirect, combined caster level, prereqs.
-- Recipe-based crafting v2 (typed components from drops) — P4 / M
+- ~~Recipe-based crafting v2~~ — ✅ DONE 2026-07-21 (recipes table, component consumption, dice-menu craft lane, GM seeds components via loot)
 
 **Shell & creation**
 - ~~**GM Forge**~~ — ✅ **DONE 2026-07-18**: full pillar; seals to _global.cgms; Campaign Forge Voice stage offers forged personas.
 - ~~**Persona/Companion Forge**~~ — ✅ **DONE 2026-07-18**: full pillar; npc-<slug> portrait shared with journal/codex; Party stage picks ride in on day one.
-- Companion chat: seed photos, clear-chat — P3 / S
-- Campaigns tab (cross-world premises) — P4 / M
-- Staggered card-entrance animation — P4 / S
+- ~~Companion chat: seed photos, clear-chat~~ — ✅ DONE 2026-07-21 (fireside staging + priority portrait + Clear-the-table)
+- ~~Campaigns tab~~ — ✅ DONE 2026-07-21 (CAMPAIGNS shelf in the Hall)
+- ~~Staggered card-entrance animation~~ — ✅ DONE 2026-07-21 (worlds grid + campaign shelf)
 
 **Presentation**
 - ~~**Controller support**~~ — ✅ **DONE 2026-07-18**: Pad autoload (runtime InputMap), universal focus seeding, grid pad cursor, mf_roll/mf_end_turn. Ceilings: stage rail + combat spell links stay mouse-only.
-- Combat music system (only tint+sting today) — P3 / M
-- Raw dice tray (manual d4–d20 + mod) — P3 / S
-- Minimap overlay — P3 / M
-- x/y world-map render + auto here-tracking from prose — P3 / L
-- Complete-badge on finished saves + auto-snapshot on THE END — P3 / S
-- Recap art; scene-reactive ambient layers — P3 / M
+- ~~Combat music system~~ — ✅ verified already shipped (combat drone crossfade + [[music cue]])
+- ~~Raw dice tray~~ — ✅ DONE 2026-07-21 (d4–d100 + expression roller in the dice menu)
+- ~~Minimap overlay~~ — ✅ DONE 2026-07-21 (corner chart, lamp-dots, you-are-here, click → Atlas)
+- ~~x/y world-map render + auto here-tracking~~ — ✅ DONE 2026-07-21 (x/y chart shipped earlier; [[scene]] prose now moves the pin)
+- ~~Complete-badge + auto-snapshot on THE END~~ — ✅ shipped with the THE END regex fix (2026-07-18)
+- ~~Recap art~~ — ✅ DONE 2026-07-21 (world seal on the recap card); scene-reactive ambient layers covered by [[mood]]/[[music]] presentation tags
 
 **EAS (M8 next waves)**
-- Generated prop/frame/banner assets — P2 / L
-- Title-screen environment painting — P2 / M
-- Dialogue fireside with NPC portrait staging — P2 / M
+- ~~Generated prop/frame/banner assets~~ — ✅ first slice DONE 2026-07-21 (heraldic title banner; MythPlate is the shared frame); more props land as screens call for them
+- ~~Title-screen environment painting~~ — ✅ DONE 2026-07-21 (env-hall behind the title)
+- ~~Dialogue fireside with NPC portrait staging~~ — ✅ DONE 2026-07-21 (fireside room + breathing portrait at the table)
 - (Per-world room variants folded into §3 above)
 
 **AI & voice**
 - **TTS narration** — ⛔ BLOCKED on a server-side voice provider (probe 503); client wiring is ready
-- STT push-to-talk — P4 / M
-- Inline message edit (↻ retell shipped) — P3 / M
-- Model routing (big model for scene-setting, small for quick turns) — P3 / M
-- Vision loop (feed scene art through /describe so the GM sees the picture) — P4 / M
-- Structured per-NPC voices in the envelope — P3 / S
+- ~~STT push-to-talk~~ — ✅ DONE 2026-07-21 (hold-the-quill record → /api/stt/transcribe → input box; server 503s politely without a provider)
+- ~~Inline message edit~~ — ✅ DONE 2026-07-21 (Ctrl+E rewords your last line, stale exchange leaves the thread)
+- Model routing — ⛔ BLOCKED: backend model is per-session (chat_stream has no per-message override); needs a backend field before any client work
+- Vision loop — ⛔ BLOCKED: /describe is an appearance-anchor endpoint (upload-based); a scene-describe route is a backend task
+- ~~Structured per-NPC voices~~ — ✅ DONE 2026-07-21 ([[npc voice=]] → cast canon, dialogue kept in voice)
 
 ## 5. This-sprint carry-overs (deliberately deferred)
 
