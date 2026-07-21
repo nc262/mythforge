@@ -10,6 +10,7 @@ var _lang_drifted := false  # opening was non-target language — retry on done
 var _lang_retry := 0        # at most one silent retry per player turn
 var _gm_started := false    # the waiting state has given way to real content
 var _thinking: MythThinking = null   # the composed "GM is thinking" wait
+var _empty_retry := 0       # a silent reply gets one quiet second attempt
 const _GATE_MIN := 40       # visible chars to see before judging the language
 var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
@@ -693,6 +694,24 @@ func _edit_last() -> void:
 	_say_system("Reword it and send — the table forgets the old line.", "quill")
 
 
+## MIL §6 — a dead end is never acceptable. When the storyteller truly can't
+## answer, the player gets a way forward in the world's own voice.
+func _offer_retry() -> void:
+	var again := Button.new()
+	again.theme_type_variation = "AccentButton"
+	again.text = "Ask the storyteller again"
+	again.pressed.connect(func():
+		again.queue_free()
+		if _last_framed != "":
+			_stream(_last_framed))
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_child(again)
+	_thread.add_child(row)
+	Ui.reveal(row)
+	_scroll_bottom()
+
+
 ## Fade the waiting state out, whatever ended it (words, failure, or leaving).
 func _dismiss_thinking() -> void:
 	if _thinking == null or not is_instance_valid(_thinking):
@@ -746,6 +765,19 @@ func _on_done(_ok: bool) -> void:
 		_stream("[SYSTEM: your previous reply was in the wrong language. Respond ONLY in %s, from the first word.]\n%s" % [GameState.language(), orig])
 		_last_framed = orig  # a later Retell uses the clean framing, not the anchor
 		return
+	# An EMPTY reply used to end here in a dead bubble — the opening scene of an
+	# adventure could simply fail (playtest #14). Only language drift had a
+	# retry. Now silence gets one quiet second attempt, and if it fails again
+	# the player is handed a way forward instead of a full stop.
+	if _acc.strip_edges() == "" and _empty_retry < 1:
+		_empty_retry += 1
+		var row0 := _gm_rt.get_parent().get_parent() if _gm_rt != null else null
+		if row0 != null and row0.get_parent() == _thread:
+			row0.queue_free()
+		_gm_rt = null
+		_stream(_last_framed)
+		return
+	_empty_retry = 0
 	_streaming = false
 	Mode.busy = false
 	_send_btn.disabled = false
@@ -756,7 +788,9 @@ func _on_done(_ok: bool) -> void:
 			_gm_rt.append_text(_bb(tail["clean"]))
 		if _acc.strip_edges() == "":
 			_gm_rt.clear()
-			_gm_rt.append_text("[color=%s][i]The GM falls silent — try again or rephrase.[/i][/color]" % Ui.c("ink_dim").to_html(false))
+			_gm_rt.append_text("[color=%s][i]The storyteller loses the thread — the local mind may be busy.[/i][/color]"
+				% Ui.c("ink_dim").to_html(false))
+			_offer_retry()
 	if not GameState.is_dm():
 		_scroll_bottom()  # pure conversation: no tags, no rolls, no chronicling
 		return
@@ -1783,52 +1817,47 @@ func _worldtick() -> void:
 
 
 # ── Images ───────────────────────────────────────────────────────────────────
-## Paint a generated image into the tale AND behind it (the living backdrop).
-func _show_image(url: String) -> void:
-	var path := url.trim_prefix(Api.BASE)
-	var bytes := await Api.fetch_bytes(path)
-	if bytes.is_empty():
+## Paint a cached painting into the tale AND behind it (the living backdrop).
+## Takes an Art KEY now, not a URL — the Art Director owns every fetch, so an
+## image can no longer arrive from a request this screen didn't make.
+func _show_image(key: String) -> void:
+	var tex := Art.texture_for(key)
+	if tex == null or not is_inside_tree():
 		return
-	var img := Image.new()
-	var err := img.load_png_from_buffer(bytes)
-	if err != OK:
-		err = img.load_jpg_from_buffer(bytes)
-	if err != OK or img.is_empty():
-		return
-	# Backdrop first: the full image, faded in low behind the parchment.
-	_scene_art.texture = ImageTexture.create_from_image(img)
-	var tw := create_tween()
-	tw.tween_property(_scene_art, "modulate:a", 0.45, 1.4)
-	_ken_burns()
+	_show_backdrop(key)
 	# Then inline, sized to the thread.
-	var inline := img.duplicate()
+	var img := tex.get_image()
 	var w := 520
-	if inline.get_width() > w:
-		inline.resize(w, inline.get_height() * w / inline.get_width(), Image.INTERPOLATE_LANCZOS)
+	if img.get_width() > w:
+		img.resize(w, img.get_height() * w / img.get_width(), Image.INTERPOLATE_LANCZOS)
 	var rt := _bubble("gm")
-	rt.add_image(ImageTexture.create_from_image(inline))
+	rt.add_image(ImageTexture.create_from_image(img))
 	_scroll_bottom()
 
 
 ## The GM moved us somewhere new — quietly repaint the backdrop (no inline).
+## Through the Art Director like everything else: this used to POST straight to
+## /generate and could collide with a queued portrait on the one GPU, which is
+## how a stranger's photograph landed in the scene slot (playtest #1). Keyed by
+## place, so returning somewhere reuses its painting instead of repainting it.
 func _repaint_scene(place: String) -> void:
-	_conjuring = true
+	var key := "scene-%s-%s" % [GameState.world_id().validate_filename(),
+		place.to_lower().replace(" ", "-").validate_filename().left(48)]
 	var prompt := "%s, in the world of %s. Atmospheric %s establishing scene, cinematic lighting, no people, no text." % [
-		place, str(GameState.character.get("name", "")).split(":")[0], Art.world_flavor()]
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
-	_conjuring = false
-	if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":
+		place, WorldSkin.world_name(GameState.world_id()), Art.world_flavor()]
+	Art.request(key, prompt, {"lane": Art.Lane.NOW, "owner": self,
+		"on_ready": func(k: String): _show_backdrop(k)})
+
+
+## Fade a cached painting in as the room behind the words.
+func _show_backdrop(key: String) -> void:
+	var tex := Art.texture_for(key)
+	if tex == null or not is_inside_tree():
 		return
-	var bytes := await Api.fetch_bytes(str(r["image_url"]).trim_prefix(Api.BASE))
-	if bytes.is_empty():
-		return
-	var img := Image.new()
-	if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
-		return
-	_scene_art.texture = ImageTexture.create_from_image(img)
-	var tw := create_tween()
+	_scene_art.texture = tex
 	_scene_art.modulate.a = 0.0
-	tw.tween_property(_scene_art, "modulate:a", 0.45, 1.8)
+	create_tween().tween_property(_scene_art, "modulate:a", 0.45, Ui.TIME["slow"] * 4.0)
+	_ken_burns()
 
 
 ## The slow breath of the backdrop — Ken Burns, reduced-motion aware.
@@ -1856,13 +1885,23 @@ func _conjure_scene() -> void:
 		return
 	_conjuring = true
 	_say_system("The scene paints itself…", "easel")
+	# Keyed by the moment it depicts, and queued like everything else — the
+	# GPU serves one master. A repeat of the same beat reuses its painting.
+	var key := "scene-%s-%d" % [GameState.world_id().validate_filename(), abs(last_gm.left(400).hash())]
 	var prompt := "The current scene: %s. Cinematic %s illustration, dramatic lighting, no text." % [
-		last_gm.left(400), {"neonspire": "cyberpunk sci-fi", "everyday": "warm slice-of-life"}.get(GameState.world_id(), "high fantasy")]
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate", {"prompt": prompt})
-	_conjuring = false
-	if r.get("_status", 0) == 200 and str(r.get("image_url", "")) != "":
-		await _show_image(str(r["image_url"]))
-	else:
+		last_gm.left(400), Art.world_flavor()]
+	Art.request(key, prompt, {"lane": Art.Lane.NOW, "owner": self,
+		"on_ready": func(k: String):
+			_conjuring = false
+			_show_image(k)})
+	# The Director reports honestly: a failure says so instead of hanging.
+	if not Art.art_progress.is_connected(_on_art_progress):
+		Art.art_progress.connect(_on_art_progress)
+
+
+func _on_art_progress(key: String, state: String) -> void:
+	if state == "failed" and key.begins_with("scene-"):
+		_conjuring = false
 		_say_system("The art forge sputters — no image this time.")
 
 

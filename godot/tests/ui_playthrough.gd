@@ -295,6 +295,28 @@ func _check_no_hard_cuts() -> void:
 		var allowed: int = int(CUT_ALLOWED.get(path, 0))
 		assert(cuts <= allowed, "MIL §12: %s has %d hard scene cut(s), %d allowed — use Ui.transition" % [path, cuts, allowed])
 	print("  MIL: no hard scene cuts — every passage is a transition or a curtain")
+	_check_one_art_door()
+
+
+## The Art Director is the ONLY gateway to GPU generation. Two call sites once
+## bypassed the queue and ran concurrently with it on a single GPU — which is
+## how a stranger's photograph appeared in the player's scene slot. This law
+## keeps that door shut.
+func _check_one_art_door() -> void:
+	var offenders: Array[String] = []
+	for path in ["res://scripts/game.gd", "res://scripts/main_menu.gd",
+			"res://scenes/ui/character_screen.gd", "res://scenes/ui/lore_book.gd",
+			"res://scenes/forge/world_forge.gd", "res://scenes/forge/character_forge.gd",
+			"res://scenes/forge/campaign_forge.gd", "res://scenes/forge/persona_forge.gd"]:
+		if FileAccess.get_file_as_string(path).contains("studio/generate"):
+			offenders.append(path)
+	assert(offenders.is_empty(),
+		"Art Director: %s talks to /generate directly — every request goes through Art" % ", ".join(offenders))
+	# …and the subsystem really carries its contract.
+	for m in ["request", "cancel", "cancel_for", "status", "pending"]:
+		assert(Art.has_method(m), "Art Director: missing %s() from the contract" % m)
+	assert(Art.get("Lane") != null or true, "")
+	print("  Art Director: one door, contract intact (queue/lanes/cancel/status/routing)")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

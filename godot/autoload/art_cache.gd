@@ -193,51 +193,178 @@ func round_tex(key: String, size := 128) -> ImageTexture:
 	return tex
 
 
-## Generate + cache if missing. Queued — one image in flight, ever; the GPU
-## also serves the storyteller. Emits art_ready(key) when a painting lands.
-## front=true is the priority lane (B5): art the PLAYER is waiting on right
-## now (the scene they just entered, the battle map, their own face) jumps
-## ahead of menu-load backfill like world key-art.
-func ensure(key: String, prompt := "", size := "1024x1024", front := false) -> void:
-	if key == "" or has_art(key) or _generating.get(key, false):
+# ═══ THE ART DIRECTOR ═══════════════════════════════════════════════════════
+# The ONLY gateway to GPU generation (Director's ruling, playtest #1). No screen
+# and no gameplay system may POST to /generate — enforced by a harness law.
+#
+# RCA that made this an engine subsystem rather than a helper: three call sites
+# posted to /generate, two of them bypassing this queue, so a scene repaint ran
+# CONCURRENTLY with a queued portrait on one GPU. Concurrent jobs on a single
+# backend are how the wrong picture lands in the wrong frame — the player saw a
+# stranger's photograph in their scene slot. One door, always.
+#
+# Responsibilities: queueing · prioritization · cancellation · progress
+# reporting · caching · callback routing.
+
+## What the player is waiting on, in the order they feel it.
+enum Lane {
+	NOW = 0,    # they are looking at the empty frame right now
+	SOON = 1,   # they will look at it in a moment (next scene, worn gear)
+	IDLE = 2,   # backfill — menu key-art, warming the cache
+}
+
+signal art_progress(key: String, state: String)  # queued · painting · ready · failed · cancelled
+
+var _cancelled := {}     # key → true, honoured before dispatch AND after the paint
+var _callbacks := {}     # key → Array[Callable], routed to the requester only
+var _owners := {}        # key → Node; if it dies before the paint lands, the job is moot
+var _painting := ""      # the key currently on the GPU
+
+
+## THE entry point. opts: {size, lane, owner (Node), on_ready (Callable)}.
+## Re-requesting a key already queued upgrades its lane and adds the callback
+## rather than queueing it twice.
+func request(key: String, prompt := "", opts := {}) -> void:
+	if key == "":
+		return
+	var cb = opts.get("on_ready")
+	if has_art(key):
+		if cb is Callable and cb.is_valid():
+			cb.call(key)     # already painted — answer immediately, still routed
 		return
 	if prompt == "":
 		prompt = WORLD_PROMPTS.get(key, "")
 	if prompt == "":
 		return
+	if cb is Callable and cb.is_valid():
+		var list: Array = _callbacks.get(key, [])
+		list.append(cb)
+		_callbacks[key] = list
+	if opts.get("owner") is Node:
+		_owners[key] = opts["owner"]
+	_cancelled.erase(key)
+	var lane: int = int(opts.get("lane", Lane.SOON))
+	if _generating.get(key, false):
+		_upgrade_lane(key, lane)   # someone now wants it sooner
+		return
 	_generating[key] = true
-	var job := {"key": key, "prompt": prompt, "size": size}
-	if front:
-		_queue.push_front(job)
-	else:
-		_queue.append(job)
+	_queue.append({"key": key, "prompt": prompt, "size": str(opts.get("size", "1024x1024")), "lane": lane})
+	_sort_queue()
+	art_progress.emit(key, "queued")
 	if not _pumping:
 		_pump()
+
+
+## Legacy/simple form kept deliberately — most callers just want a key painted.
+func ensure(key: String, prompt := "", size := "1024x1024", front := false) -> void:
+	request(key, prompt, {"size": size, "lane": Lane.NOW if front else Lane.IDLE})
+
+
+func _sort_queue() -> void:
+	_queue.sort_custom(func(a, b): return int(a.get("lane", Lane.SOON)) < int(b.get("lane", Lane.SOON)))
+
+
+func _upgrade_lane(key: String, lane: int) -> void:
+	for job in _queue:
+		if str(job.get("key", "")) == key and lane < int(job.get("lane", Lane.SOON)):
+			job["lane"] = lane
+			_sort_queue()
+			return
+
+
+## Drop a pending job. The GPU can't be interrupted mid-paint, so a cancelled
+## in-flight job still finishes and still CACHES (the work is paid for either
+## way) — it just never calls back or announces itself.
+func cancel(key: String) -> void:
+	if key == "" or has_art(key):
+		return
+	_cancelled[key] = true
+	_callbacks.erase(key)
+	_owners.erase(key)
+	for i in range(_queue.size() - 1, -1, -1):
+		if str(_queue[i].get("key", "")) == key:
+			_queue.remove_at(i)
+			_generating[key] = false
+			art_progress.emit(key, "cancelled")
+
+
+## Everything a departing screen asked for. Nothing paints into a dead frame.
+func cancel_for(owner: Node) -> void:
+	for key in _owners.keys():
+		if _owners[key] == owner:
+			cancel(str(key))
+
+
+## Honest state for anything that wants to show it: "" · queued · painting · ready
+func status(key: String) -> String:
+	if has_art(key):
+		return "ready"
+	if _painting == key:
+		return "painting"
+	return "queued" if _generating.get(key, false) else ""
+
+
+## How much work is outstanding — for progress copy ("2 paintings ahead of you").
+func pending() -> int:
+	return _queue.size() + (1 if _painting != "" else 0)
 
 
 func _pump() -> void:
 	_pumping = true
 	while not _queue.is_empty():
 		var job: Dictionary = _queue.pop_front()
+		var key := str(job["key"])
+		if _cancelled.get(key, false):
+			_generating[key] = false
+			continue
+		_painting = key
+		art_progress.emit(key, "painting")
 		var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate",
 			{"prompt": str(job["prompt"]), "size": str(job["size"])})
-		_generating[job["key"]] = false
+		_painting = ""
+		_generating[key] = false
 		if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":
+			_finish(key, false)
 			continue
 		var bytes := await Api.fetch_bytes(str(r["image_url"]).trim_prefix(Api.BASE))
 		if bytes.is_empty():
+			_finish(key, false)
 			continue
 		var img := Image.new()
 		if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
+			_finish(key, false)
 			continue
 		DirAccess.make_dir_recursive_absolute("user://art")
-		img.save_png(path_for(str(job["key"])))
-		_write_sidecar(str(job["key"]), job, r)  # A2: how it was made, for regeneration
-		_note_asset(str(job["key"]))              # A2: manifest + LRU budget
-		_tex_cache.erase(str(job["key"]))
-		_round_cache.erase(str(job["key"]))
-		art_ready.emit(str(job["key"]))
+		img.save_png(path_for(key))
+		_write_sidecar(key, job, r)  # A2: how it was made, for regeneration
+		_note_asset(key)             # A2: manifest + LRU budget
+		_tex_cache.erase(key)
+		_round_cache.erase(key)
+		_finish(key, true)
 	_pumping = false
+
+
+## Route the result: to the requester's callback first, then the world at large.
+## A cancelled or orphaned job stays silent — its picture is cached for later,
+## but nothing repaints for a screen that has already gone.
+func _finish(key: String, ok: bool) -> void:
+	var cbs: Array = _callbacks.get(key, [])
+	_callbacks.erase(key)
+	var owner = _owners.get(key)
+	_owners.erase(key)
+	if _cancelled.get(key, false):
+		_cancelled.erase(key)
+		art_progress.emit(key, "cancelled")
+		return
+	art_progress.emit(key, "ready" if ok else "failed")
+	if not ok:
+		return
+	if owner != null and not is_instance_valid(owner):
+		return                      # the frame it was for is gone
+	for cb in cbs:
+		if cb is Callable and cb.is_valid():
+			cb.call(key)
+	art_ready.emit(key)
 
 
 # ── Prompt builders: one voice for each art family ──────────────────────────

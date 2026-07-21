@@ -115,6 +115,9 @@ func _ready() -> void:
 		if _active == "Gear" and str(k).begins_with("item-") and not _gear_repaint:
 			_gear_repaint = true
 			call_deferred("_gear_repaint_now"))
+	# Nothing paints into a frame that has gone: leaving cancels what we asked
+	# the Art Director for (the doll render, item icons we'll never show).
+	tree_exiting.connect(func(): Art.cancel_for(self))
 	confirmed.connect(queue_free)
 
 
