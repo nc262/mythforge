@@ -58,14 +58,20 @@ armor spelling, click verbs.
 
 ## Execution order (each its own commit, harness-gated)
 
-1. **Data/copy bugs** (cheap, high-trust): HP double-print, XP string,
+1. ✅ **Data/copy bugs** (cheap, high-trust): HP double-print, XP string,
    proficiency dedup, header world id, currency unification, Armour/tap.
-2. **Gear-tab consolidation** (the keystone): pack grid into Gear, retire
-   flat-lay, sidebar readout, one worn/ghost treatment, slot arc + no overlap.
-3. **Render treatment**: frame/grade + identity-true prompt inputs.
-4. **Lore Book**: content-height entries, kind chips, tab scrim, scroll fade.
-5. **Play screen**: empty state, composed recap, drawn HP bar, action row.
+2. ✅ **Gear-tab consolidation** (the keystone, `70d2a5c`): pack cards merged
+   into the Gear tab, flat-lay window deleted, sidebar → compact HUD
+   (vitals + castable/usable only), HUD repaints when the menu closes.
+3. ✅ **Render treatment** (`ec6b716`): forge-bordered plate, backdrop faded
+   into the panel, palette grade, identity-true prompt (world fashion always).
+4. ✅ **Lore Book** (`ec6b716`): world-skinned kind chips (place_kind vocab +
+   drawn icons), tab-rail scrim, bottom scroll fade.
+5. ✅ **Play screen** (`ec6b716`): bright empty-state scene, composed recap
+   ("Previously, in <tale>…", sentence-boundary cuts), drawn HP bar image.
 6. **Global**: contrast pass, art grading/framing utility for all AI images.
+   (Partially covered — render + backdrop grading exist; a shared utility for
+   ALL AI images is still open.)
 
 ## Round 3 — merchant window + atlas/map modals
 
@@ -90,5 +96,12 @@ with painted item art + price chips; serif section headers · Buy/Sell primary
 under lists, Haggle a ghost one-liner with die icon + DC, disabled after use ·
 selected-item detail strip (art, buy price, sell value) so 40/3 reads as a
 fence's lowball not a bug · portrait rail → real drawn-icon MythButtons.
+
+Round 3 status: currency pipe ✅ (all price strings run through currency()) ·
+chart prompt world-true ✅ · pins labeled w/ you-are-here + hover roads ✅
+(atlas fold) · shop item art ✅ · Buy accent-primary / Haggle ghost+die ✅ ·
+map in the menu (Atlas tab) ✅. **Still open:** world-skinned vendor STOCK
+(real per-family goods tables with stats — content design, in Backlog.md) ·
+selected-item detail strip in the shop · in-panel map header.
 
 Rounds 4+ append below as screenshots arrive.
