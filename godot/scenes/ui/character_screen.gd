@@ -67,11 +67,14 @@ func _ready() -> void:
 		b.text = name
 		# Tabs SHARE the rail's width — nine fixed 126px tabs ran the rail to
 		# 1166px and pushed Chronicle/The Table past the window edge, mouse-
-		# unreachable (caught by tests/click_driver).
+		# unreachable (caught by tests/click_driver). But clip_text then ATE
+		# the labels ("Chronic", "The Tab") — playtest #1. Smaller type and
+		# tighter padding fit all nine honestly; truncation is never the answer.
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.custom_minimum_size = Vector2(0, 46)
-		b.clip_text = true
-		b.add_theme_font_size_override("font_size", 16)
+		b.clip_text = false
+		b.autowrap_mode = TextServer.AUTOWRAP_OFF
+		b.add_theme_font_size_override("font_size", 14)
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.pressed.connect(_show_page.bind(name))
 		_tabs[name] = b
@@ -147,7 +150,7 @@ func _show_page(name: String) -> void:
 
 func _style_tab(btn: Button, active: bool) -> void:
 	var sb := StyleBoxFlat.new()
-	sb.set_content_margin_all(Ui.SPACE["s"])
+	sb.set_content_margin_all(Ui.SPACE["xs"])  # nine labels must fit without clipping
 	sb.corner_radius_top_left = Ui.RADIUS["m"]
 	sb.corner_radius_top_right = Ui.RADIUS["m"]
 	if active:
@@ -185,7 +188,7 @@ func _hero_panel() -> Control:
 	nm.text = str(s.get("name", "the hero"))
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(nm)
-	var world_nm := str(GameState.character.get("world_id", "")).capitalize()
+	var world_nm := WorldSkin.world_name(str(GameState.character.get("world_id", "")))
 	var ep := Label.new()
 	ep.theme_type_variation = "HintLabel"
 	ep.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

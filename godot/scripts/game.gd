@@ -164,17 +164,27 @@ func _ready() -> void:
 	await GameState.hydrate()
 	_seed_forged_party()  # companions chosen at the adventure table ride in on day one
 	# The minimap: a corner whisper of the chart; click (or Ctrl+M) → Atlas.
+	# Playtest #1: it was pinned at the top-left over the layout and covered the
+	# adventure title ("Free Roam" read as "ree Roam"). It belongs where nothing
+	# else lives — bottom-left, above the input row, anchored to the corner it
+	# actually occupies.
 	var mini := preload("res://scenes/ui/mini_map.gd").new()
 	mini.open_atlas.connect(func(): _open_character_screen("Atlas"))
+	mini.anchor_top = 1.0
+	mini.anchor_bottom = 1.0
 	mini.offset_left = 14
-	mini.offset_top = 12
+	mini.offset_top = -196
 	mini.offset_right = 204
-	mini.offset_bottom = 136
+	mini.offset_bottom = -72
 	add_child(mini)
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
 	MythLoading.mark(0.9, "Setting the table…")
+	# The Hall must be able to find this tale again — stamp the index the moment
+	# it truly opens (playtest #1: Continue had no index to read).
+	await GameState.load_index()
+	GameState.remember_adventure()
 	if str(GameState.sheet().get("name", "")) == "":
 		Mode.enter("CharacterForge")
 		_open_character_forge()  # a fresh adventure begins with a legend
@@ -304,6 +314,7 @@ func _leave_to_hall() -> void:
 	if _streaming:
 		_say_system("The GM is mid-breath — let the reply finish, then leave.")
 		return
+	GameState.remember_adventure()   # the Hall remembers where you stopped
 	Mode.enter("MainMenu")
 	Ui.transition("res://scenes/main_menu.tscn", get_tree())
 
@@ -990,6 +1001,7 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		_render_sheet()
 		if not gains.is_empty():
 			_say_system("Level %d: you gain %s." % [lvl, ", ".join(gains)], "star")
+		GameState.remember_adventure()   # a level is worth resuming from
 		# MIL §13 — the world stops for this. State is already committed, so a
 		# skipped ceremony can never desync; when it ends the Destiny page
 		# opens with the new star flaring.
@@ -2074,6 +2086,7 @@ func _save_snapshot() -> void:
 		var snap: Dictionary = r.get("snapshot", r)
 		Sfx.ui("save")   # MIL §5 — saving is visible AND audible, or it isn't trusted
 		_say_system("Chapter saved: %s" % str(snap.get("title", "untitled")), "save")
+		GameState.remember_adventure()
 	else:
 		# MIL §6 — the world faltering, never a status code.
 		Sfx.ui("ui_deny")

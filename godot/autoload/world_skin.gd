@@ -98,6 +98,38 @@ func remember(world: Dictionary) -> void:
 	var id := str(world.get("id", ""))
 	if id != "":
 		_by_id[id] = family_of(world)
+	remember_world(world)   # …and its real name, for anything that displays it
+
+
+## The world's DISPLAYABLE name. Playtest #1: the hero panel rendered
+## `world_id.capitalize()`, so the custom id `cw-elyrien-or-6v` reached the
+## player as "Cw Elyrien Or 6v" — an engineering string in the UI (MIL §6).
+## `remember_world` caches the real name as each world is seen.
+var _names := {}
+
+
+func remember_world(world: Dictionary) -> void:
+	var id := str(world.get("id", ""))
+	if id != "" and str(world.get("name", "")) != "":
+		_names[id] = str(world["name"])
+
+
+func world_name(world_id: String) -> String:
+	if _names.has(world_id):
+		return str(_names[world_id])
+	for w in Rules.builtin_worlds():
+		if w is Dictionary and str(w.get("id", "")) == world_id:
+			_names[world_id] = str(w.get("name", ""))
+			return str(_names[world_id])
+	# A forged id looks like "cw-<slug>-<hex>" — recover the slug, never show
+	# the prefix or the disambiguating hex.
+	var parts := world_id.split("-", false)
+	if parts.size() >= 2 and str(parts[0]) == "cw":
+		parts.remove_at(0)
+		if parts.size() > 1 and str(parts[-1]).length() <= 4:
+			parts.remove_at(parts.size() - 1)
+		return " ".join(parts).capitalize()
+	return world_id.capitalize()
 
 
 func family_for_id(world_id: String) -> String:

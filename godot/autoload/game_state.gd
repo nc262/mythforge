@@ -105,6 +105,64 @@ func hydrate() -> void:
 		state = r["state"]
 
 
+# ── The Adventure Index (_global.adventures) ────────────────────────────────
+## Playtest #1 RCA: "Continue" matched the last-played id against
+## Api.list_characters() — which returns PRESET TEMPLATES, not the player's
+## adventures. Any tale forged on a custom world could never match, so Continue
+## went dead even though every byte of state was safe on the server. The save
+## was never lost; the INDEX never existed.
+##
+## This is that index: one record per adventure the player has actually opened,
+## newest first, so the Hall can offer Continue AND a real list of tales.
+## Records are small and self-describing — no second fetch to caption them.
+const ADVENTURES := "adventures"
+
+var _index_cache: Array = []
+
+
+func adventures() -> Array:
+	return _index_cache
+
+
+## Read the index (once per Hall visit). Newest first.
+func load_index() -> Array:
+	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+	var arr = g.get("state", {}).get(ADVENTURES, []) if g.get("state") is Dictionary else []
+	_index_cache = arr if arr is Array else []
+	_index_cache.sort_custom(func(a, b): return int(a.get("updated_at", 0)) > int(b.get("updated_at", 0)))
+	return _index_cache
+
+
+## Upsert this adventure's record and stamp it. Called when a tale opens and at
+## every milestone worth resuming from — so "the latest valid autosave" is a
+## thing the Hall can actually name.
+func remember_adventure(extra := {}) -> void:
+	if cid() == "" or not is_dm():
+		return
+	var s := sheet()
+	var c := clock()
+	var rec := {
+		"id": cid(),
+		"name": str(character.get("name", "")),
+		"world_id": world_id(),
+		"hero": str(s.get("name", "")),
+		"level": int(s.get("level", 1)),
+		"day": int(c.get("day", 1)),
+		"done": bool(c.get("done", false)),
+		"updated_at": int(Time.get_unix_time_from_system()),
+	}
+	for k in extra:
+		rec[k] = extra[k]
+	var out: Array = []
+	for a in _index_cache:
+		if a is Dictionary and str(a.get("id", "")) != cid():
+			out.append(a)
+	out.push_front(rec)
+	_index_cache = out
+	await Api.call_json(HTTPClient.METHOD_PUT,
+		"/api/characters/studio/state/_global/%s" % ADVENTURES, {"value": _index_cache})
+
+
 ## Local state updates INSTANTLY (never blocks gameplay); persistence rides a
 ## coalesced, retrying background queue so a transient network blip can't
 ## silently lose a mutation (A5 — pays down the fire-and-forget-PUT debt).

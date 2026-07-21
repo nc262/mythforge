@@ -139,15 +139,16 @@ func _open_adventure_forge() -> void:
 	Ui.polish(_adv_forge)
 
 
+## Every tale the player has actually played, newest first. This used to
+## intersect local session ids with the PRESET TEMPLATE list — the same bug
+## that killed Continue — so custom-world tales were invisible here too.
 func _open_chronicles() -> void:
-	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
 	var saved: Array = []
-	if cfg.has_section("sessions"):
-		for cid in cfg.get_section_keys("sessions"):
-			for t in _templates:
-				if str(t.get("id")) == cid and str(cid).begins_with("dm-"):
-					saved.append(t)
+	for a in await GameState.load_index():
+		if a is Dictionary and str(a.get("id", "")).begins_with("dm-"):
+			saved.append({"id": a.get("id"), "name": a.get("name"),
+				"world_id": a.get("world_id", ""), "hero": a.get("hero", ""),
+				"level": a.get("level", 1), "day": a.get("day", 1), "done": a.get("done", false)})
 	_show_saves(saved)
 
 
@@ -176,23 +177,20 @@ func _refresh() -> void:
 		WorldSkin.remember(w)
 	$Title/Box/Status.text = ""
 	_refresh_hero_count()
-	# Continue: the last adventure, with its save-file caption.
-	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
-	var last = JSON.parse_string(str(cfg.get_value("last", "adventure", "")))
-	if last is Dictionary and _templates.any(func(c): return str(c.get("id")) == str(last.get("id"))):
-		var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + str(last["id"]).uri_encode())
-		var sheet: Dictionary = st.get("state", {}).get("sheet", {}) if st.get("state") is Dictionary else {}
-		var clock: Dictionary = st.get("state", {}).get("clock", {}) if st.get("state") is Dictionary else {}
-		if not (sheet is Dictionary):
-			sheet = {}
-		if not (clock is Dictionary):
-			clock = {}
+	# Continue: the newest record in the ADVENTURE INDEX. It used to match the
+	# last-played id against the preset-template list, which never contains a
+	# custom-world tale — so Continue died while the save sat safe on the
+	# server (playtest #1 RCA). The index is now the source of truth, and it
+	# also carries its own caption, so no second fetch is needed.
+	var index := await GameState.load_index()
+	var last: Dictionary = index[0] if not index.is_empty() and index[0] is Dictionary else {}
+	if not last.is_empty():
 		_btn_continue.set_engraving("CONTINUE — %s" % str(last.get("name", "?")).to_upper().left(24))
-		_btn_continue.set_subtitle("%s · Level %d · Day %d" % [str(sheet.get("name", "a new hero")),
-			int(sheet.get("level", 1)), int(clock.get("day", 1))])
+		_btn_continue.set_subtitle("%s · Level %d · Day %d" % [str(last.get("hero", "a new hero")),
+			int(last.get("level", 1)), int(last.get("day", 1))])
 		_btn_continue.visible = true
-		_btn_continue.set_meta("char", last)
+		_btn_continue.set_meta("char", {"id": last.get("id"), "name": last.get("name"),
+			"world_id": last.get("world_id", "")})
 		var tex := Art.texture_for(str(last.get("world_id", "")))
 		if tex != null:
 			$KeyArt.texture = tex

@@ -141,22 +141,53 @@ rail — never silent truncation.
 
 ---
 
-## 2. Scope check — three of these are features, not polish
+## 2. Scope — settled by the Director (2026-07-21)
 
-The standing instruction is that VS-1 must not become a feature sprint. These
-items are genuinely new systems and are **proposed for VS-2**, not this sprint:
+I proposed deferring four items as features. **Two were overruled, and rightly:**
 
-| Item | Why it's a feature |
+> "I no longer consider these new features. They are core navigation and player
+> orientation. A player should never wonder: *where did the thing I just
+> created go?*"
+
+**In VS-1:**
+
+- **World Library** — worlds become first-class citizens of the application.
+- **Forge completion flow** — every forge ends with the same five beats:
+  **Forge → Celebration → Reveal → Overview → Ready to Use.** The player is
+  never left sitting in the forge wondering what happened to their creation.
+
+That ritual maps exactly onto the MIL ceremony grammar (Hush · Gather · Strike ·
+Bestow · Return), so it is one shared implementation, not four bespoke ones —
+`MythCeremony` supplies Celebration, and each forge supplies its Overview.
+
+**Still VS-2** (with design docs first): main-menu IA regrouping (#6), the
+appearance editor (#8), Campaign Forge depth (#9), and the Sheet/Journal
+reorganisation inside #15.
+
+## 2b. The Art Director — a permanent engine subsystem
+
+Also settled by the Director, and elevated above a bug fix:
+
+> "No screen or gameplay system should communicate directly with `/generate`.
+> All image generation flows through a single Art Director / Scheduler
+> responsible for queueing, prioritization, cancellation, progress reporting,
+> caching, and callback routing. That becomes the only gateway to GPU
+> generation."
+
+This makes `art_cache.gd` a real subsystem rather than a helper, with a defined
+contract:
+
+| Responsibility | Meaning |
 |---|---|
-| #5 World Library | a new browsable screen with stats, links, campaign counts |
-| #9 Campaign Forge depth (18 new inputs) | a redesigned multi-stage flow + prompt architecture |
-| #8 Appearance editor | a structured character-builder UI replacing free text |
-| #6 Main-menu IA regrouping | navigation redesign touching every entry point |
+| **Queueing** | one door; single-flight against the GPU, always |
+| **Prioritization** | lanes — what the player is waiting on now beats backfill |
+| **Cancellation** | leaving a screen cancels its pending work; nothing paints into a dead frame |
+| **Progress reporting** | callers can show honest state ("painting…", position in queue) |
+| **Caching** | LRU + manifest + sidecars (already built) |
+| **Callback routing** | results reach the *requester*, keyed — never the wrong frame |
 
-They are all correct calls, and they're recorded in [VerticalSlice.md]. Doing
-them *inside* VS-1 would double the sprint and delay the bug fixes that are
-currently making the build feel unfinished. **Recommendation: VS-1b (below)
-ships the fixes; VS-2 takes the four features with proper design docs.**
+Enforced by a harness law: `/generate` may appear in exactly one file. Documented
+in [Architecture.md] as an engine layer alongside Mode, GameState and Rules.
 
 ---
 
@@ -220,38 +251,54 @@ investigations second, content pipelines third, features last.
 - **Depends on:** Batch 5 (portraits), Batch 3 (art pipeline).
 - **Effort:** M. *This is the single biggest perceived-quality gain remaining.*
 
-### Batch 8 — Forge flow completion
-**Issues 4, 10, 12.**
-- World Forge: a real forging sequence (world-aware, occasionally funny), then
-  **open the new world's overview**, never return to the forge.
-- Same "show me what I made" rule for Campaign and GM.
-- From Begin New Adventure, return with the new item selected.
-- Tales decoupled from a single world.
-- **Depends on:** Batch 1 (the index), and #5's overview page is its landing
-  target — so a *minimal* overview ships here and the full Library is VS-2.
-- **Effort:** M–L.
+### Batch 8 — Forge completion ritual
+**Issues 4, 10, 12.** Every forge ends the same way:
+**Forge → Celebration → Reveal → Overview → Ready to Use.**
+- World Forge: a real forging sequence — world-aware, occasionally funny
+  ("Raising mountains…", "Arguing with gravity…", "Convincing dragons to
+  cooperate…") — replacing one static "Forging…".
+- Celebration is `MythCeremony` (already built); Reveal is the key art landing;
+  Overview is the new asset's page; Ready to Use means the next action is right
+  there.
+- Same ritual for Campaign and GM. From Begin New Adventure, return to the
+  adventure flow with the new item **already selected**.
+- Tales decoupled from a single world (world chosen independently).
+- **Depends on:** Batch 1 (index), Batch 9 (the overview page it lands on).
+- **Effort:** L.
+
+### Batch 9 — The World Library
+**Issue 5.** Worlds as first-class citizens: browse every world with artwork,
+summary, created date, theme, campaign count, linked campaigns and tales, its
+lore book, and statistics. The world Overview page doubles as Batch 8's landing
+target.
+- **Depends on:** Batch 1 (the index knows what exists).
+- **Effort:** L.
 
 ### VS-2 (separate sprint, design docs first)
-Issues **5, 6, 8, 9** — World Library, menu IA, appearance editor, Campaign
-Forge depth. Plus #15's Sheet/Journal reorganisation, which is IA work of the
-same kind.
+Issues **6, 8, 9** — menu IA regrouping, appearance editor, Campaign Forge
+depth — plus #15's Sheet/Journal reorganisation.
 
 ---
 
-## 4. Proposed order
+## 4. Approved order
 
 ```
 1 Trust (save index + Continue)        ← nothing depends on it; restores faith
 2 My regressions (minimap/tabs/name)   ← S, certain, immediately visible
-3 One art door                         ← unblocks the wrong-image mystery
+3 THE ART DIRECTOR (engine subsystem)  ← the only gateway to the GPU
 4 Opening never dies                   ← needs 3
-5 Handcrafted defaults                 ← needs 3; largest asset pass
+5 Handcrafted defaults + appearance    ← needs 3; largest asset pass
 6 Flicker, instrumented                ← needs 2; measure, then fix
 7 Dialogue identity                    ← needs 5; biggest quality gain
-8 Forge flow completion                ← needs 1
+9 World Library                        ← needs 1; worlds become first-class
+8 Forge completion ritual              ← needs 1 + 9 (it lands on the overview)
 --- ship, playtest #2 ---
-VS-2: World Library · menu IA · appearance editor · Campaign Forge depth
+VS-2: menu IA · appearance editor · Campaign Forge depth · Sheet/Journal IA
 ```
+
+Note the swap: **9 before 8**, because the forge ritual's final beat is the
+overview page the Library provides. Building the ritual first would mean
+building a throwaway landing screen.
 
 **Why this order:** batches 1–2 are certain-cause and cheap, and they repair the
 two things that most undermine trust (lost progress, a broken-looking screen).
