@@ -178,7 +178,7 @@ func sheet_summary(s: Dictionary) -> String:
 			story_line = " The player wrote their own story — honor it and weave it into THIS world's setting, renaming places/factions to fit: %s" % " ".join(bits)
 	var dc := Rules.spell_save_dc(s)
 	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s%s%s" % [
-		str(s.get("name", "the hero")), int(s.get("level", 1)), str(s.get("cls", "Adventurer")),
+		str(s.get("name", "the hero")), int(s.get("level", 1)), Rules.class_label(s),
 		int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv()),
 		Rules.passive_perception(s), int(s.get("gold", 0)),
 		", ".join(ab_parts),

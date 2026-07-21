@@ -1587,7 +1587,7 @@ func _render_sheet() -> void:
 	lines.append("")
 	var dim := Ui.c("ink_dim").to_html(false)
 	lines.append("[center][font_size=22][color=%s][b]%s[/b][/color][/font_size]" % [gold, _bb(str(s.get("name", "?")))])
-	lines.append("[color=%s]%s %s  ·  Level %d[/color][/center]" % [dim, _bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))), int(s.get("level", 1))])
+	lines.append("[color=%s]%s %s  ·  Level %d[/color][/center]" % [dim, _bb(str(s.get("race", ""))), _bb(Rules.class_label(s)), int(s.get("level", 1))])
 	lines.append("")
 	var hp := int(s.get("hp", 10))
 	var hp_max := maxi(1, int(s.get("hpMax", 10)))

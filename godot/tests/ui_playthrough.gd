@@ -29,6 +29,7 @@ func _ready() -> void:
 	await _turn_levelup()  # last: the ceremony correctly blocks further sends
 	_check_persistence()
 	_check_save_spells()
+	_check_multiclass()
 	await _build_windows()
 	if is_instance_valid(_game):
 		_game.queue_free()
@@ -179,6 +180,30 @@ func _check_save_spells() -> void:
 	assert(GameState.use_feature("Lay on Hands") != "", "feature: Lay on Hands should apply")
 	assert(GameState.feature_uses_left("Lay on Hands") == loh0 - 1, "feature: a use should be spent")
 	print("  class features: Bardic Inspiration / Lay on Hands / Wild Shape wired")
+
+
+## Multiclass: redirect the level the Fighter just gained into Wizard and
+## assert every derived number follows — classes, label, slots, casting stat.
+func _check_multiclass() -> void:
+	var s := GameState.sheet()
+	assert(Rules.sheet_classes(s).size() == 1 and int(Rules.sheet_classes(s)[0]["level"]) == int(s.get("level", 1)),
+		"multiclass: legacy sheet should derive one class entry at total level")
+	assert(not Rules.can_multiclass_into(s, "Wizard"), "multiclass: INT 10 must not qualify for Wizard")
+	assert(GameState.redirect_level("Wizard") == "", "multiclass: redirect must refuse unmet prereqs")
+	s["abilities"]["INT"] = 13
+	GameState.set_sheet(s)
+	assert(GameState.redirect_level("Wizard") != "", "multiclass: redirect refused despite INT 13")
+	var cl := Rules.sheet_classes(GameState.sheet())
+	assert(cl.size() == 2 and int(cl[0]["level"]) == 2 and str(cl[1]["cls"]) == "Wizard" and int(cl[1]["level"]) == 1,
+		"multiclass: expected Fighter 2 / Wizard 1, got %s" % Rules.class_label(GameState.sheet()))
+	assert(Rules.class_label(GameState.sheet()) == "Fighter 2 / Wizard 1", "multiclass: label wrong")
+	assert(int(GameState.sheet().get("level", 0)) == 3, "multiclass: total level must stay 3")
+	assert(Rules.caster_level(GameState.sheet()) == 1, "multiclass: one wizard level = caster level 1")
+	assert(int(GameState.sheet().get("slots", {}).get("1", {}).get("max", 0)) > 0,
+		"multiclass: the first wizard level should open L1 slots")
+	assert(Rules.cast_ability(GameState.sheet()) == "INT", "multiclass: casting should lean on the wizard's INT")
+	assert(not Rules.learnable_spells(GameState.sheet()).is_empty(), "multiclass: wizard spells should be learnable now")
+	print("  multiclass: Fighter 2 / Wizard 1 — slots, INT casting, prereqs, label all hold")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

@@ -172,10 +172,11 @@ func eff_ac(s: Dictionary, inv: Dictionary) -> int:
 			dex = mini(dex, 2)
 	var ac := 10 + dex
 	if body == null:
-		var cls := str(s.get("cls", ""))
-		if cls == "Barbarian":
+		# Unarmored defense follows ANY class on the sheet (multiclass-aware).
+		var names: Array = sheet_classes(s).map(func(c): return str(c.get("cls", "")))
+		if "Barbarian" in names:
 			ac += maxi(0, ability_mod(int(s["abilities"].get("CON", 10))))
-		elif cls == "Monk":
+		elif "Monk" in names:
 			ac += maxi(0, ability_mod(int(s["abilities"].get("WIS", 10))))
 	for key in equipped:
 		var it = find.call(equipped[key])
@@ -189,8 +190,67 @@ const CAST_ABIL := {"Wizard": "INT", "Cleric": "WIS", "Druid": "WIS", "Bard": "C
 	"Sorcerer": "CHA", "Warlock": "CHA", "Paladin": "CHA", "Ranger": "WIS", "Artificer": "INT"}
 
 
+# ── Multiclass ───────────────────────────────────────────────────────────────
+## A sheet's classes as [{cls, level, subclass}]. Legacy single-class sheets
+## derive one entry from cls/level/subclass — no migration pass ever needed.
+## classes[0] is the PRIMARY (drives portraits, prose, the hit-die pool).
+func sheet_classes(s: Dictionary) -> Array:
+	var cl = s.get("classes")
+	if cl is Array and not cl.is_empty():
+		return cl
+	return [{"cls": str(s.get("cls", "Adventurer")), "level": int(s.get("level", 1)),
+		"subclass": str(s.get("subclass", ""))}]
+
+
+## "Fighter 3" or "Fighter 2 / Wizard 1" — the sheet line and the GM envelope.
+func class_label(s: Dictionary) -> String:
+	var bits: Array[String] = []
+	for c in sheet_classes(s):
+		bits.append("%s %d" % [str(c.get("cls", "?")), int(c.get("level", 1))])
+	return " / ".join(bits)
+
+
+func class_hit_die(cls: String) -> int:
+	return int(tables.get("class_presets", {}).get(cls, {}).get("hitDie", 8))
+
+
+## Combined caster level across classes: full casters count whole,
+## the half-casters (Ranger/Paladin) count half, floored.
+func caster_level(s: Dictionary) -> int:
+	var full := 0
+	var half := 0
+	for c in sheet_classes(s):
+		var cls := str(c.get("cls", ""))
+		var lv := int(c.get("level", 0))
+		if bool(tables.get("class_presets", {}).get(cls, {}).get("caster", false)):
+			full += lv
+		elif cls in ["Ranger", "Paladin"]:
+			half += lv
+	@warning_ignore("integer_division")
+	return full + half / 2
+
+
+## The ability a class leans on — the multiclass prerequisite (13+ to cross).
+func class_prime(cls: String) -> String:
+	if CAST_ABIL.has(cls):
+		return str(CAST_ABIL[cls])
+	return str({"Barbarian": "STR", "Fighter": "STR", "Monk": "DEX", "Rogue": "DEX"}.get(cls, "STR"))
+
+
+func can_multiclass_into(s: Dictionary, cls: String) -> bool:
+	return int(s.get("abilities", {}).get(class_prime(cls), 10)) >= 13
+
+
+## The best casting class on the sheet decides the casting ability.
 func cast_ability(s: Dictionary) -> String:
-	return CAST_ABIL.get(str(s.get("cls", "")), "")
+	var best := ""
+	var best_lv := -1
+	for c in sheet_classes(s):
+		var cls := str(c.get("cls", ""))
+		if CAST_ABIL.has(cls) and int(c.get("level", 0)) > best_lv:
+			best = str(CAST_ABIL[cls])
+			best_lv = int(c.get("level", 0))
+	return best
 
 
 func spell_save_dc(s: Dictionary) -> int:
@@ -242,20 +302,25 @@ func max_circle(cls: String, level: int) -> int:
 	return 0
 
 
-## Spells this hero could learn right now (class list, reachable circle, unknown).
+## Spells this hero could learn right now — every casting class on the sheet
+## contributes, each at its OWN class level's reachable circle.
 func learnable_spells(s: Dictionary) -> Array:
-	var cls := str(s.get("cls", ""))
-	var circle := max_circle(cls, int(s.get("level", 1)))
-	if circle == 0:
-		return []
 	var known := {}
 	for sp in s.get("spells", []):
 		known[str(sp.get("name", "")).to_lower()] = true
 	var out: Array = []
-	for sp in spells:
-		if sp.get("classes", []).has(cls) and int(sp.get("level", 9)) <= circle \
-				and not known.has(str(sp.get("name", "")).to_lower()):
-			out.append(sp)
+	var seen := {}
+	for c in sheet_classes(s):
+		var cls := str(c.get("cls", ""))
+		var circle := max_circle(cls, int(c.get("level", 1)))
+		if circle == 0:
+			continue
+		for sp in spells:
+			var nm := str(sp.get("name", "")).to_lower()
+			if sp.get("classes", []).has(cls) and int(sp.get("level", 9)) <= circle \
+					and not known.has(nm) and not seen.has(nm):
+				seen[nm] = true
+				out.append(sp)
 	return out
 
 

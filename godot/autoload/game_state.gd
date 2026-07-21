@@ -345,26 +345,35 @@ func award_xp(amount: int, reason := "") -> Dictionary:
 	var after := Rules.level_for_xp(int(s["xp"]))
 	var note := "*Gained %d XP%s.*" % [amount, (" — " + reason) if reason != "" else ""]
 	if after > before:
+		# New levels land on the PRIMARY class by default; the level-up ceremony
+		# may redirect them into another class (redirect_level) afterwards.
+		var classes: Array = Rules.sheet_classes(s).duplicate(true)
+		var primary: Dictionary = classes[0]
 		var con := Rules.ability_mod(int(s["abilities"].get("CON", 10)))
-		var die_avg := int(s.get("hitDie", 8)) / 2 + 1
+		@warning_ignore("integer_division")
+		var die_avg := Rules.class_hit_die(str(primary.get("cls", ""))) / 2 + 1
 		for l in range(before, after):
 			s["hpMax"] = int(s["hpMax"]) + maxi(1, die_avg + con)
 		s["level"] = after
+		primary["level"] = int(primary.get("level", 1)) + (after - before)
+		s["classes"] = classes
 		s["hp"] = s["hpMax"]
-		# Auto-grant class features for the new levels (choice UI comes later).
+		# Auto-grant the primary's class features at its OWN class levels.
 		var gained: Array[String] = []
-		var feats_map: Dictionary = Rules.tables.get("class_features", {}).get(str(s.get("cls", "")), {})
-		for l in range(before + 1, after + 1):
+		var feats_map: Dictionary = Rules.tables.get("class_features", {}).get(str(primary.get("cls", "")), {})
+		var cl_after := int(primary["level"])
+		for l in range(cl_after - (after - before) + 1, cl_after + 1):
 			for f in feats_map.get(str(l), []):
 				gained.append(str(f))
 		if not gained.is_empty():
 			var have: Array = s.get("features", [])
 			have.append_array(gained)
 			s["features"] = have
-		# Casters climb the slot table with their level.
-		var preset: Dictionary = Rules.tables.get("class_presets", {}).get(str(s.get("cls", "")), {})
-		if preset.get("caster", false):
-			s["slots"] = Rules.full_caster_slots(after)
+		# Casters climb the slot table with their COMBINED caster level
+		# (half-casters count half — a Paladin's slots now actually exist).
+		var clv := Rules.caster_level(s)
+		if clv > 0:
+			s["slots"] = Rules.full_caster_slots(clv)
 		note += "\n*LEVEL UP — you are now level %d! HP restored to %d.%s*" % [after, int(s["hpMax"]),
 			(" New: " + ", ".join(gained)) if not gained.is_empty() else ""]
 	set_sheet(s)
@@ -502,6 +511,50 @@ func infer_companion_kit(role: String) -> Dictionary:
 		if RegEx.create_from_string("(?i)%s" % kit[0]).search(r) != null:
 			return {"cls": kit[1], "ac": int(kit[2]), "hpb": int(kit[3])}
 	return {"cls": "Fighter", "ac": 14, "hpb": 2}
+
+
+## The multiclass turn: move the level just gained from the primary class into
+## another class. Called by the level-up ceremony after award_xp applied the
+## default — deterministic engine math; the ceremony only asks. Returns a note
+## for the chat, or "" if the prerequisites refuse it.
+func redirect_level(to_cls: String) -> String:
+	var s := sheet()
+	if not Rules.can_multiclass_into(s, to_cls):
+		return ""
+	var classes: Array = Rules.sheet_classes(s).duplicate(true)
+	var primary: Dictionary = classes[0]
+	if int(primary.get("level", 1)) <= 1 or str(primary.get("cls", "")) == to_cls:
+		return ""
+	var from_cls := str(primary.get("cls", ""))
+	# Strip the features the default grant just added at the primary's top level.
+	var lost_lv := int(primary["level"])
+	var have: Array = s.get("features", [])
+	for f in Rules.tables.get("class_features", {}).get(from_cls, {}).get(str(lost_lv), []):
+		have.erase(str(f))
+	primary["level"] = lost_lv - 1
+	# Find or begin the new class, and grant its features at ITS new level.
+	var entry: Dictionary = {}
+	for c in classes:
+		if str(c.get("cls", "")) == to_cls:
+			entry = c
+	if entry.is_empty():
+		entry = {"cls": to_cls, "level": 0, "subclass": ""}
+		classes.append(entry)
+	entry["level"] = int(entry.get("level", 0)) + 1
+	for f in Rules.tables.get("class_features", {}).get(to_cls, {}).get(str(int(entry["level"])), []):
+		have.append(str(f))
+	s["features"] = have
+	s["classes"] = classes
+	# HP: swap the die averages between the class that lost and the one that gained.
+	@warning_ignore("integer_division")
+	var delta := (Rules.class_hit_die(to_cls) / 2 + 1) - (Rules.class_hit_die(from_cls) / 2 + 1)
+	s["hpMax"] = maxi(1, int(s["hpMax"]) + delta)
+	s["hp"] = s["hpMax"]  # the level-up full heal still stands
+	var clv := Rules.caster_level(s)
+	if clv > 0:
+		s["slots"] = Rules.full_caster_slots(clv)
+	set_sheet(s)
+	return "*The road forks — you take a level of %s (%s).*" % [to_cls, Rules.class_label(s)]
 
 
 ## An NPC joins the party (port of _toggleCompanion's recruit half).

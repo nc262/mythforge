@@ -52,6 +52,27 @@ func _ready() -> void:
 		sheet_changed.emit())
 	box.add_child(hp_l)
 	box.add_child(hp_btn)
+	# Multiclass: where does this growth go? One level at a time; the engine
+	# applied it to the primary — choosing another class redirects it there.
+	var mc_in: OptionButton = null
+	var mc_options: Array[String] = [""]
+	if to_level - from_level == 1 and to_level >= 2:
+		var primary := str(Rules.sheet_classes(s)[0].get("cls", ""))
+		var mc_l := Label.new()
+		mc_l.theme_type_variation = "HintLabel"
+		mc_l.text = "Where does this growth go?"
+		mc_in = OptionButton.new()
+		mc_in.add_item("Deeper into the %s's road" % primary)
+		var all_cls: Array = Rules.tables.get("class_presets", {}).keys()
+		all_cls.sort()
+		for other in all_cls:
+			if str(other) == primary:
+				continue
+			mc_in.add_item("A level of %s (needs %s 13+)" % [other, Rules.class_prime(str(other))])
+			mc_in.set_item_disabled(mc_in.item_count - 1, not Rules.can_multiclass_into(s, str(other)))
+			mc_options.append(str(other))
+		box.add_child(mc_l)
+		box.add_child(mc_in)
 	# Subclass at 3.
 	var sub_in: OptionButton = null
 	var subs: Array = Rules.tables.get("subclasses", {}).get(cls, [])
@@ -99,12 +120,19 @@ func _ready() -> void:
 		box.add_child(spell_in)
 	add_child(box)
 	confirmed.connect(func():
-		var sh := GameState.sheet()
 		var gains: Array[String] = []
+		# Redirect FIRST — it writes the sheet, and everything below must read fresh.
+		if mc_in != null and mc_in.selected > 0:
+			if GameState.redirect_level(mc_options[mc_in.selected]) != "":
+				gains.append("a level of %s" % mc_options[mc_in.selected])
+		var sh := GameState.sheet()
 		if sub_in != null:
 			var chosen: Dictionary = subs[sub_in.selected]
 			sh["subclass"] = str(chosen.get("name", ""))
-			var grants: Array = Rules.tables.get("subclass_grants", {}).get(sh["subclass"], [])
+			# subclass_grants values are a String OR an Array — Battle Master's
+			# bare "Combat Maneuver" would append per-CHARACTER via Array + String.
+			var raw = Rules.tables.get("subclass_grants", {}).get(sh["subclass"], [])
+			var grants: Array = [raw] if raw is String else (raw if raw is Array else [])
 			sh["features"] = sh.get("features", []) + grants
 			gains.append("the path of the %s" % sh["subclass"])
 		if feat_in != null:
