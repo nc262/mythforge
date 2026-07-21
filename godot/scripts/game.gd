@@ -1173,10 +1173,10 @@ func _on_sheet_action(meta) -> void:
 			_save_snapshot()
 			return
 		"chron":
-			_open_chronicle()
+			_open_lore_book("Chronicle")  # the book's Chronicle tab replaced the chat-bubble list
 			return
 		"atlas":
-			_open_atlas()
+			_open_world_map()  # the painted map replaced the text atlas bubble
 			return
 		"map":
 			_open_world_map()
@@ -2005,27 +2005,6 @@ func _save_snapshot() -> void:
 		_say_system("The chronicler's ink ran dry (%s)." % str(r.get("_status", 0)))
 
 
-## 📜 Chronicle: every saved chapter of this adventure.
-func _open_chronicle() -> void:
-	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
-	var snaps: Array = r.get("snapshots", r.get("data", [])) if r.get("_status", 0) == 200 else []
-	var rt := _bubble("gm")
-	if snaps.is_empty():
-		rt.append_text("[i]The chronicle is blank — %s save a chapter when a moment deserves remembering.[/i]" % Ui.ico("save", 16))
-		return
-	var gold := Ui.c("gold_soft").to_html(false)
-	rt.append_text("%s [color=%s][b]The Chronicle[/b][/color]\n" % [Ui.ico("scroll", 18), gold])
-	for sn in snaps:
-		if not (sn is Dictionary):
-			continue
-		rt.append_text("\n[b]%s[/b]\n%s\n" % [_bb(str(sn.get("title", "untitled"))), _bb(str(sn.get("story_so_far", "")))])
-		var wc := str(sn.get("world_changes", ""))
-		if wc != "":
-			rt.append_text("[color=%s]%s[/color]\n" % [Ui.c("ink_dim").to_html(false), _bb(wc.left(220))])
-		rt.append_text("[url=snaprecall:%s]▶ resume from this chapter[/url]\n" % str(sn.get("id", "")).uri_encode())
-	rt.meta_clicked.connect(_on_sheet_action)
-
-
 ## Resume from a chapter: its summary re-anchors the GM's context.
 func _recall_snapshot(id: String) -> void:
 	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
@@ -2037,36 +2016,8 @@ func _recall_snapshot(id: String) -> void:
 			return
 
 
-const KIND_ICO := {"tavern": "mug", "shop": "coins", "landmark": "pillar", "wilds": "tree", "home": "house"}
-
-
-## 🧭 The atlas: the world's places; travel repaints the world (and risks it).
-func _open_atlas() -> void:
-	var locs: Array = Rules.world_locations(GameState.world_id())
-	if locs.is_empty():
-		var g2 := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-		for w in g2.get("state", {}).get("cworlds", []):
-			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
-				locs = w.get("locations") if w.get("locations") is Array else []
-	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
-	var rt := _bubble("gm")
-	var gold := Ui.c("gold_soft").to_html(false)
-	rt.append_text("%s [color=%s][b]The Atlas[/b][/color]   [url=map]%s open the map[/url]\n" % [Ui.ico("compass", 18), gold, Ui.ico("wartable", 16)])
-	if locs.is_empty():
-		rt.append_text("[i]No charted places — the GM's narration is your map for now.[/i]")
-		return
-	for l in locs:
-		if not (l is Dictionary):
-			continue
-		var nm := str(l.get("name", ""))
-		rt.append_text("\n%s [b]%s[/b]%s — %s\n" % [Ui.ico(KIND_ICO.get(str(l.get("kind", "")), "pin"), 18), _bb(nm),
-			"  [color=%s]● you are here[/color]" % gold if nm == here else "", _bb(str(l.get("lore", "")).left(90))])
-		if nm != here:
-			rt.append_text("[url=travel:%s]set off →[/url]\n" % nm.uri_encode())
-	rt.meta_clicked.connect(_on_sheet_action)
-
-
 ## 🗺 The painted map: the world's key art with its places marked.
+## (The old text atlas bubble folded into this — the map IS the atlas.)
 func _open_world_map() -> void:
 	var locs: Array = Rules.world_locations(GameState.world_id())
 	if locs.is_empty():
@@ -2185,7 +2136,9 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.ctrl_pressed and event.keycode == KEY_M:
 		_open_world_map()
 	elif event.ctrl_pressed and event.keycode == KEY_J:
-		_open_journal()
+		# The Journal folded into the Lore Book (A0 split) — Quests, The Cast,
+		# and Chronicle tabs cover everything the inline manuscript showed.
+		_open_lore_book()
 	elif event.ctrl_pressed and event.keycode == KEY_I:
 		_open_inventory()
 	elif event.ctrl_pressed and event.keycode == KEY_K:
@@ -2214,10 +2167,15 @@ func _open_skill_tree(pulse_level := -1) -> void:
 ## 🛡 The Hero's Record (docs/rituals/CharacterScreen.md): identity before
 ## statistics — a reading surface; actions live in the Pack and side sheet.
 ## The Lore Book (M-C): the world's illustrated encyclopedia, grown from play.
-func _open_lore_book() -> void:
+func _open_lore_book(at := "") -> void:
 	if _streaming:
 		return
 	var book := preload("res://scenes/ui/lore_book.tscn").instantiate()
+	if at != "":
+		book._active = at  # open on a specific tab (e.g. Chronicle)
+	book.resume_requested.connect(func(sid: String):
+		book.queue_free()
+		_recall_snapshot(sid))
 	add_child(book)
 	Ui.reveal(book)
 
@@ -2231,116 +2189,6 @@ func _open_character_screen() -> void:
 	add_child(rec)
 	rec.popup_centered()
 	Ui.ritual_open(rec)
-
-
-## 📖 The Journal — a handwritten manuscript (docs/rituals/Journal.md):
-## quests sworn in wax, the people you've met beside their painted faces,
-## chapters closed with fleurons. Tabs filter; search cuts across the pages.
-func _open_journal() -> void:
-	var dlg := AcceptDialog.new()
-	MythEnvironment.mount(dlg, "env-journal", "dust", [Vector2(0.08, 0.1)])
-	dlg.title = "The Journal"
-	dlg.ok_button_text = "Close the journal"
-	dlg.min_size = Vector2i(700, 580)
-	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", Ui.SPACE["s"])
-	var top := HBoxContainer.new()
-	top.add_theme_constant_override("separation", Ui.SPACE["s"])
-	var group := ButtonGroup.new()
-	var current: Array = ["All"]
-	var search := LineEdit.new()
-	var body := RichTextLabel.new()
-	body.bbcode_enabled = true
-	body.selection_enabled = true
-	body.custom_minimum_size = Vector2(660, 460)
-	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var gold := Ui.c("gold").to_html(false)
-	var dim := Ui.c("ink_dim").to_html(false)
-	var soft := Ui.c("ink_soft").to_html(false)
-	var render := func():
-		var q := search.text.to_lower()
-		var tab: String = current[0]
-		body.clear()
-		var hits := 0
-		if tab == "All" or tab == "Quests":
-			body.append_text("[center][color=%s]────  ✦  QUESTS  ✦  ────[/color][/center]\n" % gold)
-			for qq in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
-				if not (qq is Dictionary):
-					continue
-				var title := str(qq.get("title", ""))
-				var desc := str(qq.get("desc", ""))
-				if title == "" or (q != "" and not (title + " " + desc).to_lower().contains(q)):
-					continue
-				var done := str(qq.get("status", "")) == "done"
-				# The wax: unbroken red for the sworn, gray and struck for the kept.
-				body.append_text("[color=%s]◉[/color]  [font_size=17]%s[b]%s[/b]%s[/font_size]\n" % [
-					dim if done else Ui.c("danger").to_html(false),
-					("[s][color=%s]" % dim) if done else "[color=%s]" % Ui.c("ink").to_html(false),
-					_bb(title), "[/color][/s]" if done else "[/color]"])
-				if desc != "":
-					body.append_text("        [color=%s][i]%s[/i][/color]\n" % [soft, _bb(desc)])
-				hits += 1
-			body.append_text("\n")
-		if tab == "All" or tab == "People":
-			body.append_text("[center][color=%s]────  ✦  PEOPLE  ✦  ────[/color][/center]\n" % gold)
-			for n in (GameState.state.get("codex", []) if GameState.state.get("codex") is Array else []):
-				if not (n is Dictionary):
-					continue
-				var nm := str(n.get("name", ""))
-				var role := str(n.get("role", ""))
-				var note := str(n.get("note", ""))
-				if nm == "" or (q != "" and not (nm + " " + role + " " + note).to_lower().contains(q)):
-					continue
-				var face := Art.round_tex("npc-" + nm.to_lower().replace(" ", "-"))
-				if face != null:
-					body.add_image(face, 36, 36)
-					body.append_text("  ")
-				body.append_text("[font_size=16][b]%s[/b][/font_size][color=%s]  ·  %s[/color]\n" % [_bb(nm), dim, _bb(role)])
-				if note != "":
-					body.append_text("        [color=%s][i]%s[/i][/color]\n" % [soft, _bb(note)])
-				hits += 1
-			body.append_text("\n")
-		if tab == "All" or tab == "Chapters":
-			body.append_text("[center][color=%s]────  ✦  CHAPTERS  ✦  ────[/color][/center]\n" % gold)
-			var snaps := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
-			for sn in snaps.get("snapshots", snaps.get("data", [])):
-				if not (sn is Dictionary):
-					continue
-				var title2 := str(sn.get("title", ""))
-				var story := str(sn.get("story_so_far", ""))
-				if q != "" and not (title2 + " " + story).to_lower().contains(q):
-					continue
-				body.append_text("[color=%s]❦[/color]  [font_size=16][b]%s[/b][/font_size]\n" % [gold, _bb(title2)])
-				if story != "":
-					body.append_text("        [color=%s][i]%s…[/i][/color]\n" % [soft, _bb(story.left(200))])
-				hits += 1
-		if hits == 0:
-			body.append_text("\n[center][color=%s][i]Nothing here yet — the story hasn't written that page.[/i][/color][/center]" % dim)
-	for tname in ["All", "Quests", "People", "Chapters"]:
-		var tb := Button.new()
-		tb.text = tname
-		tb.theme_type_variation = "GhostButton"
-		tb.toggle_mode = true
-		tb.button_group = group
-		tb.button_pressed = tname == "All"
-		tb.toggled.connect(func(on):
-			if on:
-				current[0] = tname
-				render.call())
-		top.add_child(tb)
-	search.placeholder_text = "Search the pages…"
-	search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	search.text_changed.connect(func(_t): render.call())
-	top.add_child(search)
-	root.add_child(top)
-	root.add_child(body)
-	dlg.add_child(root)
-	add_child(dlg)
-	dlg.popup_centered()
-	Ui.ritual_open(dlg)
-	search.grab_focus()
-	render.call()
-	dlg.confirmed.connect(func(): dlg.queue_free())
 
 
 # ── Text helpers ─────────────────────────────────────────────────────────────

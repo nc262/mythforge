@@ -7,6 +7,9 @@ extends Control
 ## from the Hall's Chronicles as a campaign's history.
 
 signal closed
+## A chapter's "resume from here" — the play screen owns the actual recall
+## (it re-streams the tale), so the book only asks.
+signal resume_requested(snapshot_id: String)
 
 const CATS := ["Places", "The Cast", "Bestiary", "Campaigns", "Discoveries", "Quests", "Chronicle"]
 
@@ -216,7 +219,15 @@ func _chronicle() -> void:
 	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
 	for sn in r.get("snapshots", r.get("data", [])):
 		if sn is Dictionary:
-			_host.add_child(_entry(str(sn.get("title", "A chapter")), str(sn.get("summary", sn.get("text", ""))), "", ""))
+			var e := _entry(str(sn.get("title", "A chapter")), str(sn.get("summary", sn.get("text", ""))), "", "")
+			var sid := str(sn.get("id", ""))
+			if sid != "":
+				var resume := Button.new()
+				resume.theme_type_variation = "GhostButton"
+				resume.text = "▶ Resume from this chapter"
+				resume.pressed.connect(func(): resume_requested.emit(sid))
+				e.get_child(0).add_child(resume)  # the entry's row
+			_host.add_child(e)
 
 
 # ── One illustrated entry ────────────────────────────────────────────────────
