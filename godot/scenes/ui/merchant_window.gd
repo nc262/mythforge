@@ -19,6 +19,19 @@ var _pack_meta: Array = []
 var _detail: HBoxContainer
 var _detail_art: MythPlate
 var _detail_txt: Label
+var _icons_repaint := false
+
+
+func _icons_repaint_now() -> void:
+	_icons_repaint = false
+	# Refresh keeps the shopper's place: reselect what was selected.
+	var ws := _wares.get_selected_items()
+	var ps := _pack.get_selected_items()
+	_refresh()
+	if not ws.is_empty() and ws[0] < _wares.item_count:
+		_wares.select(ws[0])
+	if not ps.is_empty() and ps[0] < _pack.item_count:
+		_pack.select(ps[0])
 
 
 func _init() -> void:
@@ -119,7 +132,12 @@ func _ready() -> void:
 	root.add_child(haggle)
 	add_child(root)
 	_refresh()
-	Art.art_ready.connect(func(_k): _refresh())  # painted icons land async; auto-disconnects on free
+	# Painted icons land async — repaint for ITEM icons only, coalesced to one
+	# refresh per frame; a busy art queue must never strobe the counter.
+	Art.art_ready.connect(func(k):
+		if str(k).begins_with("item-") and not _icons_repaint:
+			_icons_repaint = true
+			call_deferred("_icons_repaint_now"))
 	confirmed.connect(func():
 		counter_left.emit(_deals)
 		queue_free())

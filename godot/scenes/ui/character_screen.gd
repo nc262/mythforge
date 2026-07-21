@@ -27,6 +27,7 @@ var _host: Control     # the page container
 var _gear_host: VBoxContainer  # the paper-doll page, rebuilt whenever gear changes
 var _active := "Record"
 var _filled := {}     # lazy pages already built
+var _gear_repaint := false  # coalesces art_ready storms into one repaint
 var pulse_level := -1  # a freshly earned level flares on the Destiny page
 
 
@@ -89,11 +90,20 @@ func _ready() -> void:
 		_pages[name].size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_host.add_child(_pages[name])
 	_show_page(_active)
-	# Item art lands async; repaint the pack when it does (auto-disconnects on free).
-	Art.art_ready.connect(func(_k):
-		if _active == "Gear":
-			_refill_gear())
+	# Item art lands async; repaint the pack when it does (auto-disconnects on
+	# free). ONLY item icons, and coalesced to one repaint per frame — a busy
+	# art queue (portraits, rooms) must never strobe the page. (Flicker RCA #2)
+	Art.art_ready.connect(func(k):
+		if _active == "Gear" and str(k).begins_with("item-") and not _gear_repaint:
+			_gear_repaint = true
+			call_deferred("_gear_repaint_now"))
 	confirmed.connect(queue_free)
+
+
+func _gear_repaint_now() -> void:
+	_gear_repaint = false
+	if _active == "Gear" and is_instance_valid(_gear_host):
+		_refill_gear()
 
 
 func _show_page(name: String) -> void:
@@ -441,6 +451,7 @@ func _refill_gear() -> void:
 	if _gear_host == null:
 		return
 	for c in _gear_host.get_children():
+		_gear_host.remove_child(c)  # off-tree NOW — queue_free alone leaves both generations visible for a frame (flicker)
 		c.queue_free()
 	var s := GameState.sheet()
 	var inv := GameState.inv()

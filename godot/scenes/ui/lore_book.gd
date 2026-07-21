@@ -122,6 +122,7 @@ func _show_cat(cat: String) -> void:
 	for k in _tabs:
 		_style_tab(_tabs[k], k == cat)
 	for ch in _host.get_children():
+		_host.remove_child(ch)  # off-tree now; queue_free alone double-draws one frame
 		ch.queue_free()
 	match cat:
 		"Places":
