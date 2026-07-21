@@ -49,8 +49,8 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 
 | Debt | Pri | Effort | Note |
 |---|---|---|---|
-| **game.gd god-script** (~1.4k+ lines; grew again with the language guard, lore, paper-doll wiring) | **P2** | L | Split chat_view / panels / dialogs as child scenes under the FSM. The single biggest structural risk. |
-| **ForgeFlow base extraction** — now **four** forges (character/campaign/world/adventure) duplicate the ~60-line rail/title/nav scaffold | **P2** | M | The "extract when a 3rd appears" trigger is well past; a shared base would cut real duplication. |
+| ~~**game.gd god-script**~~ | ~~P2~~ | ✅ | **DONE 2026-07-18** — A0 split complete: merchant/GM-tuner/level-up/reaction extracted to windows; journal/chronicle/atlas folded into lore_book/world_map. 2461→~2000 lines; what remains is the streaming/tag/combat core. |
+| ~~**ForgeFlow base extraction**~~ | ~~P2~~ | ✅ | **DONE 2026-07-18** — ui/forge_flow.gd; all four forges are stage-content only; GM + Companion forges built on it same-day. |
 | **Per-world EAS room variants** — `Art.ENV_PROMPTS` are fantasy-flavored ("mythic forge", "war room"); a cyberpunk campaign gets a cyber *palette* but a fantasy *room* | **P2** | M | Exposed by M-B. Skin should drive env prompts too (a "skin slice 3"). |
 | ~~State writes are fire-and-forget PUTs, no debounce/retry~~ | ~~P2~~ | ✅ | **DONE** (A5) — `save_kind` updates local instantly + enqueues; `_drain_writes` coalesces (last-write-wins) + retries. |
 | ~~Per-world EAS room variants (fantasy-flavored ENV_PROMPTS)~~ | ~~P2~~ | ✅ | **DONE** (A1) — `ENV_ROLE` + `env_resolved`/`env_prompt` drive per-world rooms from the skin. |
@@ -70,18 +70,18 @@ Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
 - Token **drag** on the battle grid (click-move shipped) — P3 / S
 - LLM-authored terrain layout — P3 / M
 - ASI split (+1/+1 vs +2) — P3 / S
-- Multiclassing — P4 / L
+- ~~Multiclassing~~ — ✅ **DONE 2026-07-18**: classes[] on the sheet, ceremony redirect, combined caster level, prereqs.
 - Recipe-based crafting v2 (typed components from drops) — P4 / M
 
 **Shell & creation**
-- **GM Forge** (custom GM personas) — P3 / M
-- **Persona/Companion Forge** (create-your-own companions: portrait/suggest/describe) — P3 / L
+- ~~**GM Forge**~~ — ✅ **DONE 2026-07-18**: full pillar; seals to _global.cgms; Campaign Forge Voice stage offers forged personas.
+- ~~**Persona/Companion Forge**~~ — ✅ **DONE 2026-07-18**: full pillar; npc-<slug> portrait shared with journal/codex; Party stage picks ride in on day one.
 - Companion chat: seed photos, clear-chat — P3 / S
 - Campaigns tab (cross-world premises) — P4 / M
 - Staggered card-entrance animation — P4 / S
 
 **Presentation**
-- **Controller support** — **P2 / L** (flagged in the matrix as a *target-game requirement*; needs the FSM input-map-per-state pass)
+- ~~**Controller support**~~ — ✅ **DONE 2026-07-18**: Pad autoload (runtime InputMap), universal focus seeding, grid pad cursor, mf_roll/mf_end_turn. Ceilings: stage rail + combat spell links stay mouse-only.
 - Combat music system (only tint+sting today) — P3 / M
 - Raw dice tray (manual d4–d20 + mod) — P3 / S
 - Minimap overlay — P3 / M
