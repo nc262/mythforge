@@ -87,19 +87,27 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## MIL §8 — a stage is a page of the ritual. The old page leaves the tree
+## immediately (no double-drawn frame) and the new one arrives staggered, so
+## the forge never blinks between steps. Kept synchronous on purpose: an await
+## here would let a fast double-advance interleave two stage builds.
 func _enter_stage(i: int) -> void:
 	if _busy:
 		return
+	var moving := _stage_box.get_child_count() > 0
 	_rail.set_stage(i)
 	_clear_stage()
 	_on_stage_entered(i)
 	_build_stage(i)
+	if moving:
+		Sfx.ui("page")
 	Ui.polish(_stage_box)
-	Ui.reveal_children(_stage_box, 0.05)
+	Ui.reveal_children(_stage_box, Ui.MOTION["stagger"])
 
 
 func _clear_stage() -> void:
 	for ch in _stage_box.get_children():
+		_stage_box.remove_child(ch)  # off-tree NOW — queue_free alone double-draws a frame
 		ch.queue_free()
 
 

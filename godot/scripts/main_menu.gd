@@ -599,7 +599,7 @@ func _show_settings() -> void:
 		await Api.call_json(HTTPClient.METHOD_POST, "/api/auth/logout")
 		Api.cookie = ""
 		Api._save_cookie()
-		get_tree().change_scene_to_file("res://scenes/login.tscn"))
+		Ui.transition("res://scenes/login.tscn", get_tree()))
 	_content.add_child(out)
 	var ver := await Api.call_json(HTTPClient.METHOD_GET, "/api/version")
 	_content.add_child(_section("Mythforge desktop · backend %s" % str(ver.get("version", ver.get("data", "?")))))
@@ -978,20 +978,30 @@ func _play(c: Dictionary) -> void:
 		return
 	_busy = true
 	Mode.enter("Loading")
-	var status := _sub_status if _sub.visible else $Title/Box/Status
-	status.text = "Opening %s…" % str(c.get("name", ""))
 	GameState.character = c
 	Ui.apply(str(c.get("world_id", "")))
+	# MIL §7 — the curtain goes up BEFORE the work, and survives the scene
+	# change beneath it: one continuous composed frame, never a hard cut into
+	# a half-built play screen.
+	var curtain := MythLoading.begin(get_tree(), str(c.get("world_id", "")),
+		str(c.get("name", "")).split(":")[0])
+	Sfx.music(WorldSkin.music_for_id(str(c.get("world_id", ""))))  # sound arrives before picture
+	curtain.step(0.15, "Opening the way…")
 	GameState.session_id = await Api.ensure_session(str(c.get("id", "")), str(c.get("name", "")))
 	if GameState.session_id == "":
-		status.text = "Could not create a session (is a chat model endpoint configured?)."
+		# The realm faltered — say so in the world's voice, and go back gently.
+		curtain.step(1.0, "The way will not open — no storyteller answered.")
+		MythLoading.lift()
+		var status := _sub_status if _sub.visible else $Title/Box/Status
+		status.text = "No storyteller answered. Check that a chat model endpoint is configured, then try again."
 		Ui.apply("")
 		Mode.enter("MainMenu")
 		_busy = false
 		return
+	curtain.step(0.4, "Waking the world…")
 	if str(c.get("id", "")).begins_with("dm-"):
 		var cfg := ConfigFile.new()
 		cfg.load(Api.COOKIE_FILE)
 		cfg.set_value("last", "adventure", JSON.stringify({"id": c.get("id"), "name": c.get("name"), "world_id": c.get("world_id", "")}))
 		cfg.save(Api.COOKIE_FILE)
-	get_tree().change_scene_to_file(GAME_SCENE)
+	get_tree().change_scene_to_file(GAME_SCENE)  # under the curtain — game.gd lifts it

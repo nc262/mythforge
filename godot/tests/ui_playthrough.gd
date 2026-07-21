@@ -259,6 +259,7 @@ func _check_mil() -> void:
 	var deltas := host.get_children().filter(func(n): return n is Label and str(n.text) == "+2 AC")
 	assert(not deltas.is_empty(), "MIL §16: rise_text dropped the delta (information lost)")
 	Ui.fly_to(host, Ui.glow_tex(), Rect2(0, 0, 32, 32), Rect2(100, 100, 32, 32))
+	_check_no_hard_cuts()
 	var cer: Node = preload("res://ui/myth_ceremony.gd").play(host,
 		{"title": "Level 3", "line": "+7 HP", "weight": "light"})
 	for i in 4:
@@ -269,6 +270,28 @@ func _check_mil() -> void:
 	await get_tree().process_frame
 	host.queue_free()
 	print("  MIL: tokens, 16 sounds, polish/shake/count_to/rise_text/fly_to/ceremony all live")
+
+
+## MIL §12 law, enforced on the SOURCE: the world never cuts. Every scene
+## change goes through Ui.transition (the wipe) or happens under a MythLoading
+## curtain. A bare change_scene_to_file anywhere else is a regression.
+const CUT_ALLOWED := {
+	"res://scripts/main_menu.gd": 1,   # under the loading curtain — the curtain IS the transition
+	"res://autoload/skin.gd": 1,       # Ui.transition itself
+}
+
+
+func _check_no_hard_cuts() -> void:
+	for path in ["res://scripts/main_menu.gd", "res://scripts/game.gd", "res://scripts/login.gd",
+			"res://autoload/skin.gd"]:
+		var src := FileAccess.get_file_as_string(path)
+		var cuts := 0
+		for line in src.split("\n"):
+			if str(line).contains("change_scene_to_file") and not str(line).strip_edges().begins_with("#"):
+				cuts += 1
+		var allowed: int = int(CUT_ALLOWED.get(path, 0))
+		assert(cuts <= allowed, "MIL §12: %s has %d hard scene cut(s), %d allowed — use Ui.transition" % [path, cuts, allowed])
+	print("  MIL: no hard scene cuts — every passage is a transition or a curtain")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

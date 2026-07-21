@@ -159,6 +159,7 @@ func _ready() -> void:
 		add_child(clear_b)
 		_say_system("You sit down with %s." % comp_name)
 		return
+	MythLoading.mark(0.6, "Recalling the tale…")
 	await GameState.hydrate()
 	_seed_forged_party()  # companions chosen at the adventure table ride in on day one
 	# The minimap: a corner whisper of the chart; click (or Ctrl+M) → Atlas.
@@ -172,6 +173,7 @@ func _ready() -> void:
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
+	MythLoading.mark(0.9, "Setting the table…")
 	if str(GameState.sheet().get("name", "")) == "":
 		Mode.enter("CharacterForge")
 		_open_character_forge()  # a fresh adventure begins with a legend
@@ -180,6 +182,9 @@ func _ready() -> void:
 		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
 		_recap()
 	_msg.grab_focus()
+	# MIL §7 — the screen is genuinely built now; only now does the curtain lift.
+	await get_tree().process_frame
+	MythLoading.lift()
 
 
 ## Forged companions picked at the adventure table (Party stage → world.rules
@@ -299,7 +304,7 @@ func _leave_to_hall() -> void:
 		_say_system("The GM is mid-breath — let the reply finish, then leave.")
 		return
 	Mode.enter("MainMenu")
-	get_tree().change_scene_to_file("res://scenes/main_menu.tscn")
+	Ui.transition("res://scenes/main_menu.tscn", get_tree())
 
 
 ## "Previously, in <adventure>…" — the campaign memory recalls the thread.
@@ -354,7 +359,7 @@ func _open_character_forge() -> void:
 		_create_hero_forged(d))
 	forge.closed.connect(func():
 		forge.queue_free()
-		get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
+		Ui.transition("res://scenes/main_menu.tscn", get_tree()))
 	add_child(forge)
 
 

@@ -118,6 +118,8 @@ func _load_world() -> void:
 
 
 func _show_cat(cat: String) -> void:
+	if _active != cat:
+		Sfx.ui("page")  # the book turns
 	_active = cat
 	for k in _tabs:
 		_style_tab(_tabs[k], k == cat)

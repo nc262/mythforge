@@ -121,11 +121,14 @@ func _gear_repaint_now() -> void:
 
 
 func _show_page(name: String) -> void:
+	var changed := _active != name
 	_active = name
 	for k in _pages:
 		_pages[k].visible = (k == name)
 	for k in _tabs:
 		_style_tab(_tabs[k], k == name)
+	if changed:
+		Sfx.ui("page")  # MIL §8 — a tab is a page turning, and pages sound
 	if name == "Gear":
 		_refill_gear()  # the paper doll reflects live equipment
 	if name in LAZY and not _filled.get(name, false):
