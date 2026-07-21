@@ -37,6 +37,13 @@ if (Test-Port 8188) {
     # Hidden (not minimized): a visible/minimized console can be closed by the
     # user or a session event, which sends CTRL_CLOSE and aborts ComfyUI
     # (forrtl error 200). Hidden has no window to close. Logs go to the file.
+    #
+    # ZLUDA can't always find a cuDNN convolution engine — the symptom is
+    # "RuntimeError: GET was unable to find an engine to execute this
+    # computation" at VAEDecode, i.e. every image dies at the final step.
+    # comfy/zluda.py honours this env var, and _run-comfy.bat sets it too;
+    # this is belt-and-braces for anyone launching by another route.
+    $env:TORCH_BACKENDS_CUDNN_ENABLED = '0'
     Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', "$comfyDir\_run-comfy.bat" -WindowStyle Hidden
     Write-Host "Waiting for ComfyUI on :8188 (first launch compiles ZLUDA kernels; can take a few minutes)..."
     $deadline = (Get-Date).AddMinutes(8)

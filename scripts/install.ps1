@@ -62,6 +62,29 @@ ollama pull all-minilm      # ~45 MB — embeddings for pinpoint campaign memory
 Ok 'Models ready'
 
 # ── 5. Image generation (per GPU) ────────────────────────────────────────────
+# Custom nodes the art pipeline REQUIRES — not optional extras.
+#   InSPyReNet Rembg (matting). The World Compiler composes item art: material
+#   recolour, rarity treatments, per-region materials. Every one of those needs
+#   a real alpha channel. Measured: asking the model for "a plain black
+#   background" yields a usable cut-out only ~60% of the time; a matting model
+#   is ~100%. Without this, loot can only be regenerated, never varied.
+function Install-MythforgeComfyNodes([string]$comfyDir, [string]$py) {
+  $nodes = Join-Path $comfyDir 'custom_nodes'
+  New-Item -ItemType Directory -Force $nodes | Out-Null
+  $rembg = Join-Path $nodes 'ComfyUI-Inspyrenet-Rembg'
+  if (-not (Test-Path $rembg)) {
+    Step 'Installing the matting node (InSPyReNet — clean cut-outs for item art)'
+    git clone --depth 1 https://github.com/john-mnz/ComfyUI-Inspyrenet-Rembg $rembg
+  }
+  if (Test-Path $py) {
+    & $py -m pip install "transparent-background>=1.2.4" -q
+    Ok 'Matting node ready — item art can be recoloured and re-treated'
+  } else {
+    Warn "ComfyUI python not found at $py"
+    Warn "  finish with: `"$py`" -m pip install transparent-background"
+  }
+}
+
 switch ($imagePath) {
   'comfyui-cuda' {
     Step 'NVIDIA path: installing ComfyUI + CUDA'
@@ -72,6 +95,7 @@ switch ($imagePath) {
     & "$comfy\venv\Scripts\python.exe" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 -q
     & "$comfy\venv\Scripts\python.exe" -m pip install -r "$comfy\requirements.txt" -q
     Ok 'ComfyUI (CUDA) installed'
+    Install-MythforgeComfyNodes $comfy "$comfy\venv\Scripts\python.exe"
     $ckptDir = Join-Path $comfy 'models\checkpoints'
     New-Item -ItemType Directory -Force $ckptDir | Out-Null
     $ckpt = Join-Path $ckptDir 'DreamShaperXL_Turbo_v2_1.safetensors'
@@ -91,6 +115,15 @@ switch ($imagePath) {
     Write-Host "    2. Run $comfy\install.bat, then (as admin) this repo's scripts\fix-zluda-elevated.ps1"
     Write-Host '    First image generation compiles kernels — expect ~10 quiet minutes.'
     Write-Host '    Then drop an SDXL checkpoint (e.g. DreamShaperXL_Turbo_v2_1.safetensors) into models\checkpoints.'
+    # The venv only exists after install.bat, so add the node if it's there and
+    # leave a clear instruction if it isn't yet.
+    $zpy = Join-Path $comfy 'venv\Scripts\python.exe'
+    if (Test-Path $zpy) {
+      Install-MythforgeComfyNodes $comfy $zpy
+    } else {
+      Warn '    3. After install.bat, re-run this installer (or scripts\install-comfy-nodes.ps1)'
+      Write-Host '       to add the matting node the item-art pipeline needs.'
+    }
   }
   default {
     Step 'No capable GPU — configuring text-only'

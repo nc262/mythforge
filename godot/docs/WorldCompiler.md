@@ -38,6 +38,39 @@ resolution is **11× faster** than the current path, and quality at 512² is
 genuinely good for an icon shown at 64–128 px (side-by-side verified). The
 budget is therefore **~1,200 images in 30 minutes**, not ~180.
 
+### Quality ladder (2026-07-21) — Director: *"make the end result much higher quality"*
+
+Same subject, same seed, all matted. `scripts/quality_ladder.py`,
+evidence in `docs/spikes/quality_ladder.png`.
+
+| Tier | Setting | Time | Verdict |
+|---|---|---|---|
+| A | turbo 512 / 6 steps | 5.9 s | **Reject for items.** Flat, muddy, soft — this is what "fine, not premium" looks like |
+| B | turbo 1024 / 10 steps | 17.4 s | **Good.** Crisp metal, readable ornament — the value pick |
+| **C** | **Juggernaut 1024 / 30 steps** | **28.2 s** | **Best. The quality target** — engraved detail, real material read |
+| D | RealVis 1024 / 30 steps | 29.5 s | Equal to C; keep as a style alternative |
+| E | two-stage 768→1280 refine | 100.0 s | **Not worth it.** 3.5× the cost of C for no visible gain — *hires-fix is rejected* |
+
+**Adopted policy:** items are generated at **1024 minimum**. 512 is retired for
+anything the player inspects. The showcase checkpoint (C) is used for
+legendaries, hero gear, boss drops and key art; B carries the bulk.
+
+*Note on absolute times:* these are ~4× the raw §0 benchmark because they
+include matting **and** run with cuDNN disabled (see the ZLUDA note below).
+The relative ordering — and therefore the policy — is unaffected.
+
+### Budget at the new quality bar
+
+| Profile | Mix | Base items |
+|---|---|---|
+| Quick (~5 min) | all B | ~17 |
+| Standard (~12 min) | 4 × C + rest B | ~40 |
+| **Deep (~30 min)** | **20 × C + 70 × B** | **~90** |
+
+90 *base* items is not 90 items in play: region material mapping and rarity
+treatment (§5) multiply each base by its material sets, so Deep still yields
+**thousands of distinct, world-true items** — now at a quality worth showing.
+
 ### The model policy — spend resolution where it is seen
 
 Nothing is pinned today (`image_model = ''`), so the backend auto-picks from
@@ -339,7 +372,25 @@ so the joins are invisible. No registration problem, because the object was
 always coherent. Verified working, including bands laid along the item's own
 **principal axis**, so diagonal art needs no reorientation.
 
-#### The real bottleneck · **background removal**
+#### Matting · **SOLVED** — `InspyrenetRembg` installed
+Path B is unblocked and proven end-to-end: **8 of 8** items came back as clean
+cut-outs over a checkerboard (`docs/spikes/matte_key.png`), and the full chain
+— generate → matte → per-region material → rarity rim — produces coherent
+variant sets (`docs/spikes/matte_full.png`). Matting runs **inside the same
+ComfyUI graph**, so one call yields a finished RGBA asset.
+
+Installed for a fresh machine by `scripts/install.ps1` (both GPU paths) and
+retrofittable via `scripts/install-comfy-nodes.ps1`.
+
+> **ZLUDA gotcha, learned the hard way.** Restarting ComfyUI via
+> ComfyUI-Manager's *reboot* drops the ZLUDA environment; every generation then
+> dies at `VAEDecode` with *"GET was unable to find an engine to execute this
+> computation"*. Two rules now encoded in the scripts: **restart ZLUDA only via
+> its own launcher**, and set `TORCH_BACKENDS_CUDNN_ENABLED=0` (ZLUDA cannot
+> reliably find a cuDNN convolution engine). Both `_run-comfy.bat` and
+> `start-image-stack.ps1` now set it.
+
+#### The historical bottleneck · background removal *(now retired)*
 Everything above depends on an alpha mask, and that is where it breaks:
 
 | Method | Success rate | Failure mode |
@@ -352,26 +403,22 @@ Everything above depends on an alpha mask, and that is where it breaks:
 **Prompt-controlled backgrounds are not reliable enough for a production
 pipeline.** This is the finding that reshapes the plan.
 
-### The revised recommendation
+### The settled pipeline
 
-The measurement in §0 changes the calculus. **When generation costs 1.5 s,
-composition may not be worth its complexity.**
+Director's ruling: *"do it right the first time — do B."* Both paths ship, as
+one chain, because matting is now reliable:
 
-| Path | What it buys | Risk |
-|---|---|---|
-| **A — Direct generation** *(primary)* | Deep's 450 part-budget becomes **450 unique whole item icons** per world, each world-true, no compositing at all | **None.** Uses only what is proven today |
-| **B — Recolour on top** *(multiplier)* | those same 450 × material sets × rarity = tens of thousands | **Blocked on reliable matting** |
+```
+generate (1024, quality checkpoint)      ← identity, in-graph
+   → InspyrenetRembg                     ← real alpha, in the SAME call
+      → region material map              ← blade / guard / grip, CPU, ~1 ms
+         → treatment + rarity rim        ← CPU
+            → item catalogue entry       ← stable logical id
+```
 
-**Recommendation: build A now, and unblock B with one local matting node.**
-Installing `ComfyUI-RMBG` / `comfyui-inspyrenet-rembg` (a standard, offline,
-one-time install) turns background removal from a ~60 % heuristic into a
-~99 % deterministic step, at which point T1 and T2-B both become production
-techniques rather than experiments.
-
-*If the Director prefers no new dependency:* path A alone still delivers a
-world-true item set of ~450 icons at Deep, which is far beyond today's state —
-and framed presentation (`MythPlate`, already built) sidesteps transparency
-entirely, since a framed painting needs no cut-out.
+One base image becomes a **family**: material sets × treatments × rarity, all
+free after the first 17–28 s. Deep's ~90 bases therefore yield thousands of
+distinct items — every one at the quality bar of tier B or C, none at 512.
 
 ### Naming
 
