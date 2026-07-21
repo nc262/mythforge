@@ -21,25 +21,48 @@ card produced garbage. So compile time is:
 compile_time  ≈  images × seconds_per_image
 ```
 
-At a measured ~1.3 MB per 1024² PNG and an assumed **T = 10 s/image** (SDXL,
-local AMD — to be measured, see §12):
+### T is MEASURED, not assumed (2026-07-21, this box)
 
-| Budget | Images affordable |
-|---|---|
-| 5 minutes | ~30 |
-| 10 minutes | ~60 |
-| 30 minutes | ~180 |
-| 60 minutes | ~360 |
+**Hardware:** AMD RX 7900 GRE via ZLUDA, 17.2 GB VRAM · ComfyUI 0.25.0.
+Method: 3 runs per config, median, warm (model already resident).
 
-**The directive asks for tens of thousands of items. The GPU affords ~180.**
+| Config | Warm median | Images / 30 min |
+|---|---|---|
+| **DreamShaperXL Turbo · 512² · 6 steps** | **1.5 s** | **1,200** |
+| DreamShaperXL Turbo · 768² · 8 steps | 5.6 s | 321 |
+| DreamShaperXL Turbo · 1024² · 6 steps | 8.1 s | 222 |
+| Juggernaut XL · 1024² · 25 steps *(today's path)* | 17.0 s *(33.4 s cold)* | 105 |
 
-That gap is not a problem — it is the entire design. Every stage below exists
-to turn ~180 generated images into tens of thousands of *believable distinct
-things*, via composition, palette, treatment, and reuse. The Borderlands
-insight is correct; this document is how it lands in a 2D game.
+**This is an order-of-magnitude finding.** A Turbo checkpoint at icon
+resolution is **11× faster** than the current path, and quality at 512² is
+genuinely good for an icon shown at 64–128 px (side-by-side verified). The
+budget is therefore **~1,200 images in 30 minutes**, not ~180.
 
-**Corollary:** any stage that cannot justify its image budget gets cut. Image
-budget is the project's scarcest resource and is allocated explicitly in §12.
+### The model policy — spend resolution where it is seen
+
+Nothing is pinned today (`image_model = ''`), so the backend auto-picks from
+six checkpoints — **two of which are photorealistic** (`Juggernaut…Photo`,
+`RealVisXL`). That is the root cause of the stranger's photograph in playtest
+#15, and it must be fixed regardless of this design.
+
+| Content | Model / size / steps | Cost | Why |
+|---|---|---|---|
+| Item parts, icons, small props | Turbo · 512² · 6 | **1.5 s** | seen at 64–128 px; bulk |
+| Creatures, NPC bases, kit plates | Turbo · 768² · 8 | 5.6 s | seen at ~256 px |
+| Biome plates, world chart | Turbo · 1024² · 6 | 8.1 s | full-width backdrops |
+| **Key art · hero portraits · legendaries · boss art** | **SDXL · 1024² · 25** | 17 s | seen large, and *this is where uniqueness creates delight* |
+
+Every prompt gets a **pinned checkpoint** and a negative prompt carrying
+`photo, photorealistic, person` for item work — no auto-pick, ever.
+
+**The directive asks for tens of thousands of items. The GPU now affords
+~1,200 generated images per 30-minute compile** — and composition multiplies
+those into the tens of thousands. The Borderlands insight is correct; this
+document is how it lands in a 2D game.
+
+**Corollary:** image budget is still the scarcest resource and is allocated
+explicitly in §12 — but it is ten times larger than the pre-measurement design
+assumed, which promotes several stages from "aspirational" to "affordable".
 
 ### One honest scope correction
 
@@ -484,23 +507,34 @@ rule and §5's layer model do.
 
 ---
 
-## 12. Estimated compilation times
+## 12. Compilation budgets — from measured T
 
-Image budget per profile (T = 10 s/image; **T must be measured before
-committing** — if the real number is 20 s, halve every count):
+Three profiles (Director-approved). Costs use §0's measured rates: parts at
+1.5 s, mid-tier at 5.6 s, backdrops at 8.1 s, showcase art at 17 s.
 
 | Stage | Quick | Standard | Deep |
 |---|---|---|---|
-| S1–S2 Style + Language (LLM) | 40 s | 40 s | 60 s |
-| S3 Key art + biomes | 3 | 6 | 8 |
-| S4 Parts | 8 | 30 | 60 |
-| S5 Kits | 4 | 12 | 20 |
-| S6 Creatures | 3 | 10 | 16 |
-| S7 NPC bases | 2 | 6 | 12 |
-| S8–S10 (CPU) | ~3 s | ~3 s | ~3 s |
-| **Images** | **20** | **64** | **116** |
-| **≈ Time** | **~4 min** | **~12 min** | **~21 min** |
-| **Items yielded** | ~600 | ~5,000 | >20,000 |
+| S1–S2 Style + Language *(LLM, no GPU)* | 40 s | 50 s | 60 s |
+| S3 Key art *(SDXL)* + biome plates *(turbo 1024)* | 1 + 3 | 1 + 6 | 2 + 10 |
+| S4 Parts *(turbo 512)* | 40 | 150 | **450** |
+| S5 Kit plates *(turbo 768)* | 8 | 22 | 40 |
+| S6 Creature species *(turbo 768)* | 6 | 16 | 30 |
+| S7 NPC bases + wardrobe *(turbo 768)* | 5 | 14 | 26 |
+| S8–S10 assembly *(CPU)* | ~3 s | ~3 s | ~3 s |
+| **Generated images** | **63** | **209** | **558** |
+| **≈ Wall clock** | **≈ 4 min** | **≈ 11 min** | **≈ 27 min** |
+| **Distinct items yielded** | ~2,000 | ~15,000 | **>50,000** |
+
+Notes:
+- Deep spends **75 % of its budget on parts at 1.5 s** — the cheapest images
+  buy the most gameplay. That is the measurement paying for itself.
+- A cold model load costs ~16 s extra, so the compiler should **order stages by
+  checkpoint** (all turbo work together, then the SDXL showcase pass) to pay
+  each load once. Worth ~1–2 minutes on Deep.
+- Storage at Deep: ~558 images, mixed sizes ≈ **250–350 MB/world**. Director
+  has confirmed multi-GB is acceptable, so §6's aggressive compression tactics
+  are **deprioritised** — right-sizing stays (it buys speed, not just space),
+  archive/WebP become optional.
 
 ---
 
@@ -531,13 +565,20 @@ things" — before a single minute of compile time is spent.
 
 ---
 
-## 14. Open questions for the Director
+## 14. Director decisions (2026-07-21)
 
-1. **Measure T first.** One timed batch of 10 images decides whether the
-   budgets above are right or need halving. *Recommend doing this before
-   committing to any stage counts.*
-2. **Quick / Standard / Deep** — accept these three, or a single fixed budget?
-3. **T1-only, or fund the T2 spike now?** T1 is safe; T2 is the difference
-   between hundreds and tens of thousands of icons.
-4. **Does compile block play?** This design says no (§4). Confirm.
-5. **Disk ceiling** — what's an acceptable per-world footprint on your box?
+1. ✅ **T measured** — see §0. Turbo@512 = 1.5 s changed the budget by 10×.
+   *"If ComfyUI isn't the right tool for loot, I'm open to additional tools."*
+   **Finding: ComfyUI is the right tool — the wrong part was the checkpoint.**
+   A Turbo model already installed, pinned per content tier, plus a negative
+   prompt against photorealism, solves both the speed and the quality problem.
+   No new tool needed. *(Revisit only if T2 layering needs ControlNet/IP-Adapter
+   nodes — those are ComfyUI extensions, not another tool.)*
+2. ✅ **Multi-time builds** — Quick / Standard / Deep, budgets in §12.
+3. ✅ **Disk is not a constraint** — "gigs for worlds is perfectly fine".
+   Compression tactics deprioritised; right-sizing retained for speed.
+4. **Still open — T1 only, or fund the T2 layering spike?** With 450 part
+   images affordable at Deep, T1 alone now yields tens of thousands of items,
+   which weakens the case for T2's registration risk. *Recommendation: ship
+   T1, defer T2 until a playtest says items feel same-y.*
+5. **Still open — confirm compile does not block play** (§4 says it must not).
