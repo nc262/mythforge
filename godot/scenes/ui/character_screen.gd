@@ -135,13 +135,14 @@ func _hero_panel() -> Control:
 		("   ·   " + world_nm) if world_nm != "" else ""]
 	col.add_child(ep)
 	var lvl := int(s.get("level", 1))
-	var hp := MythGauge.new("HP  %d / %d" % [int(s.get("hp", 10)), int(s.get("hpMax", 10))], "danger")
+	# MythGauge appends "v / m" itself — a bare caption, or HP prints twice.
+	var hp := MythGauge.new("HP", "danger")
 	hp.custom_minimum_size = Vector2(0, 20)
 	hp.set_value(float(s.get("hp", 10)), float(s.get("hpMax", 10)))
 	col.add_child(hp)
 	var xp_now := int(s.get("xp", 0)) - Rules.xp_for_level(lvl)
 	var xp_need := Rules.xp_for_level(lvl + 1) - Rules.xp_for_level(lvl)
-	var xp := MythGauge.new("XP → level %d" % (lvl + 1), "amethyst")
+	var xp := MythGauge.new("XP to level %d:" % (lvl + 1), "amethyst")
 	xp.custom_minimum_size = Vector2(0, 20)
 	xp.set_value(float(maxi(xp_now, 0)), float(maxi(xp_need, 1)))
 	col.add_child(xp)
@@ -445,7 +446,7 @@ func _refill_gear() -> void:
 	var stat := Label.new()
 	stat.theme_type_variation = "HintLabel"
 	stat.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stat.text = "Armour Class %d   ·   %d pieces worn   ·   tap a slot to change it" % [Rules.eff_ac(s, inv), worn]
+	stat.text = "Armor Class %d   ·   %d pieces worn   ·   click a slot to change it" % [Rules.eff_ac(s, inv), worn]
 	_gear_host.add_child(stat)
 
 

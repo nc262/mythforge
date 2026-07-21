@@ -99,12 +99,11 @@ func _ready() -> void:
 	add_child(_mood_layer)
 	move_child(_mood_layer, $ArtScrim.get_index() + 1)
 	Chronicle.reset()
-	var world := str(GameState.character.get("world_id", ""))
-	$Margin/Split/ChatBox/Header.text = "✦ %s%s" % [str(GameState.character.get("name", "?")),
-		("  ·  " + world) if world != "" else ""]
+	# The campaign name already carries the world — never show the raw world_id.
+	$Margin/Split/ChatBox/Header.text = "✦ %s" % str(GameState.character.get("name", "?"))
 	Sfx.music(WorldSkin.music_for_id(GameState.world_id()))
 	# The world's key art is the room you sit in from the first breath.
-	var world_tex := Art.texture_for(world)
+	var world_tex := Art.texture_for(str(GameState.character.get("world_id", "")))
 	if world_tex != null:
 		_scene_art.texture = world_tex
 		_scene_art.modulate.a = 0.35
@@ -274,7 +273,13 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	s["profSaves"] = preset.get("saves", [])
 	var bgd: Dictionary = Rules.tables.get("backgrounds", {}).get(background, {})
 	s["background"] = background
-	s["profSkills"] = preset.get("skills", []) + heritage.get("skills", []) + bgd.get("skills", [])
+	# Preset + heritage + background can grant the same skill — dedup or the
+	# sheet reads "insight, religion, insight, religion".
+	var skills: Array = []
+	for sk in preset.get("skills", []) + heritage.get("skills", []) + bgd.get("skills", []):
+		if not skills.has(sk):
+			skills.append(sk)
+	s["profSkills"] = skills
 	var traits: Array = heritage.get("traits", [])
 	s["features"] = traits.duplicate()
 	# The player's own class/background story — the GM reinterprets it inside
@@ -1612,7 +1617,8 @@ func _render_sheet() -> void:
 	var hb := clampi(roundi(12.0 * hp / hp_max), 0, 12)
 	var hp_col := gold if hp * 2 >= hp_max else Ui.c("danger").to_html(false)
 	lines.append("HP [b]%d / %d[/b]  [color=%s]%s[/color][color=%s]%s[/color]" % [hp, hp_max, hp_col, "▰".repeat(hb), Ui.c("ink_dim").to_html(false), "▱".repeat(12 - hb)])
-	lines.append("AC [b]%d[/b]    Gold [b]%d[/b]    Perception [b]%d[/b]" % [Rules.eff_ac(s, GameState.inv()), int(s.get("gold", 0)), Rules.passive_perception(s)])
+	lines.append("AC [b]%d[/b]    %s [b]%d[/b]    Perception [b]%d[/b]" % [Rules.eff_ac(s, GameState.inv()),
+		GameState.currency().capitalize(), int(s.get("gold", 0)), Rules.passive_perception(s)])
 	lines.append("")
 	var bcol := Ui.c("gold").darkened(0.25).to_html(false)
 	var cbg := Ui.c("night").lightened(0.04).to_html(false)
@@ -1627,11 +1633,14 @@ func _render_sheet() -> void:
 	lines.append("Hit Dice [b]%d / %d[/b] (d%d)" % [pool - int(s.get("hitDiceUsed", 0)), pool, int(s.get("hitDie", 8))])
 	if int(s.get("exhaustion", 0)) > 0:
 		lines.append("[color=%s]Exhaustion level %d[/color]" % [Ui.c("danger").to_html(false), int(s["exhaustion"])])
-	var prof: Array = s.get("profSkills", [])
+	var prof: Array = []
+	for pk in s.get("profSkills", []):
+		if not prof.has(str(pk)):
+			prof.append(str(pk))  # older saves carry duplicates from creation
 	if not prof.is_empty():
 		lines.append("")
 		lines.append(_hdr("PROFICIENCIES"))
-		lines.append("[center]%s[/center]" % _bb(", ".join(prof.map(func(x): return str(x)))))
+		lines.append("[center]%s[/center]" % _bb(", ".join(prof)))
 	var conds: Array = s.get("conditions", [])
 	if not conds.is_empty():
 		lines.append("")
