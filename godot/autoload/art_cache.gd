@@ -195,7 +195,10 @@ func round_tex(key: String, size := 128) -> ImageTexture:
 
 ## Generate + cache if missing. Queued — one image in flight, ever; the GPU
 ## also serves the storyteller. Emits art_ready(key) when a painting lands.
-func ensure(key: String, prompt := "", size := "1024x1024") -> void:
+## front=true is the priority lane (B5): art the PLAYER is waiting on right
+## now (the scene they just entered, the battle map, their own face) jumps
+## ahead of menu-load backfill like world key-art.
+func ensure(key: String, prompt := "", size := "1024x1024", front := false) -> void:
 	if key == "" or has_art(key) or _generating.get(key, false):
 		return
 	if prompt == "":
@@ -203,7 +206,11 @@ func ensure(key: String, prompt := "", size := "1024x1024") -> void:
 	if prompt == "":
 		return
 	_generating[key] = true
-	_queue.append({"key": key, "prompt": prompt, "size": size})
+	var job := {"key": key, "prompt": prompt, "size": size}
+	if front:
+		_queue.push_front(job)
+	else:
+		_queue.append(job)
 	if not _pumping:
 		_pump()
 
@@ -313,7 +320,7 @@ func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
 	ensure("hero-" + cid.validate_filename(),
 		"character portrait of %s, a %s %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
 			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")),
-			subject_style("char"), (extra + ", ") if extra != "" else "", world_flavor()])
+			subject_style("char"), (extra + ", ") if extra != "" else "", world_flavor()], "1024x1024", true)
 
 
 func ensure_item_icon(nm: String) -> void:
@@ -345,7 +352,7 @@ func combatant_tex(m: Dictionary) -> ImageTexture:
 
 func ensure_battle_map(place: String) -> String:
 	var key := "map-" + place.to_lower().replace(" ", "-").validate_filename()
-	ensure(key, "top-down tabletop RPG battle map of %s, %s style, overhead view, painted terrain, no grid lines, no tokens, no text, muted lighting" % [place, world_flavor()])
+	ensure(key, "top-down tabletop RPG battle map of %s, %s style, overhead view, painted terrain, no grid lines, no tokens, no text, muted lighting" % [place, world_flavor()], "1024x1024", true)
 	return key
 
 

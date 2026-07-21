@@ -37,6 +37,29 @@ func _ready() -> void:
 	_build_primary_controls()
 	$Sub/Margin/Box/Bar/Back.pressed.connect(_show_title)
 	Art.art_ready.connect(func(_w): if _sub.visible and _heading.text == "Choose a world": _show_worlds())
+	# EAS: the Hall ITSELF is a painting — the title never sits on a void.
+	# (Continue's world key-art still takes over once a tale exists.)
+	Art.ensure("env-hall", "the grand hall of an adventurers' guild at night: a long candlelit stone hall, banners hanging from oak rafters, a great hearth glowing at the far end, trophies, maps and mounted arms on the walls, volumetric warm light against deep shadow, ultra detailed fantasy interior illustration, no people, no text", "1344x768")
+	if $KeyArt.texture == null and Art.has_art("env-hall"):
+		$KeyArt.texture = Art.texture_for("env-hall")
+	Art.art_ready.connect(func(k):
+		if str(k) == "env-hall" and $KeyArt.texture == null:
+			$KeyArt.texture = Art.texture_for("env-hall"))
+	# A woven banner crowns the title — a generated prop, framed, never raw.
+	Art.ensure("prop-banner", "a single ornate medieval heraldic banner hanging flat, rich crimson and gold embroidery, a sword-and-star crest, tasseled lower edge, painted fantasy prop on a plain black background, no text", "1024x1024")
+	var banner := TextureRect.new()
+	banner.custom_minimum_size = Vector2(0, 84)
+	banner.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	banner.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	banner.modulate = Color(1, 1, 1, 0.9)
+	banner.texture = Art.texture_for("prop-banner")
+	banner.visible = banner.texture != null
+	$Title/Box.add_child(banner)
+	$Title/Box.move_child(banner, 0)
+	Art.art_ready.connect(func(k):
+		if str(k) == "prop-banner" and is_instance_valid(banner):
+			banner.texture = Art.texture_for("prop-banner")
+			banner.visible = true)
 	_boot_cinematic()
 	_refresh()
 

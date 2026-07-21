@@ -115,7 +115,32 @@ func _ready() -> void:
 		Mode.enter("Dialogue")
 		for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "Bag", "ShortRest", "LongRest", "Scene"]:
 			$Margin/Split/ChatBox/Input.get_node(btn).visible = false
-		_say_system("You sit down with %s." % str(GameState.character.get("name", "?")))
+		# EAS: the fireside room behind the talk, and the companion's painted
+		# face at the table — a conversation, not a bare chat log.
+		var comp_name := str(GameState.character.get("name", "?")).split(":")[0]
+		Art.ensure_environment("env-fireside")
+		var fire := Art.texture_for(Art.env_resolved("env-fireside"))
+		if fire != null:
+			_scene_art.texture = fire
+			_scene_art.modulate.a = 0.5
+			_ken_burns()
+		var slug := "npc-" + comp_name.to_lower().replace(" ", "-")
+		if not Art.has_art(slug):
+			Art.ensure(slug, "character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [comp_name, Art.subject_style("char")], "1024x1024", true)
+		var face := MythPortrait.new(132, "gold", true)
+		face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1))
+		face.anchor_left = 1.0
+		face.anchor_right = 1.0
+		face.offset_left = -164
+		face.offset_top = 18
+		face.offset_right = -32
+		face.offset_bottom = 150
+		add_child(face)
+		Ui.breathe(face)
+		Art.art_ready.connect(func(k):
+			if str(k) == slug and is_instance_valid(face):
+				face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1)))
+		_say_system("You sit down with %s." % comp_name)
 		return
 	await GameState.hydrate()
 	_seed_forged_party()  # companions chosen at the adventure table ride in on day one
@@ -208,6 +233,11 @@ func _recap() -> void:
 	if not lines.is_empty():
 		var rt := _bubble("gm")
 		var title := str(GameState.character.get("name", "")).split(":")[0]
+		# The recap wears the world's face — a small rounded key-art seal.
+		var seal := Art.round_tex(GameState.world_id(), 56)
+		if seal != null:
+			rt.add_image(seal)
+			rt.append_text("  ")
 		rt.append_text("[color=%s][b]Previously, in %s…[/b][/color]\n%s" % [
 			Ui.c("gold_soft").to_html(false), _bb(title if title != "" else "the tale"), _bb("\n".join(lines))])
 
