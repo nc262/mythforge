@@ -15,8 +15,13 @@ func _ready() -> void:
 
 
 ## A saved cookie (or an unauthenticated single-user backend) skips the form.
+## On a shipped build the backend may still be BOOTING (the exe just started it),
+## so wait for the realm to wake — showing honest, world-flavoured progress —
+## before deciding the door is shut.
 func _try_resume() -> void:
 	$Center/Box/Status.text = "Reaching the realm…"
+	Services.boot_progress.connect(func(line): $Center/Box/Status.text = line)
+	await Services.await_backend()
 	if await Api.auth_ok():
 		Ui.transition(SELECT_SCENE, get_tree())
 	else:

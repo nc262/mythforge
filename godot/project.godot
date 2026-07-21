@@ -10,6 +10,7 @@ config/features=PackedStringArray("4.7")
 [autoload]
 
 Mode="*res://autoload/state_manager.gd"
+Services="*res://autoload/services.gd"
 Ui="*res://autoload/skin.gd"
 Api="*res://autoload/api_client.gd"
 GameState="*res://autoload/game_state.gd"
