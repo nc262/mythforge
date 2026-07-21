@@ -368,28 +368,55 @@ theme, each item independently shippable.
 
 ## 3. Recommended next sprint (ONE)
 
-# Sprint VS-1 — "No Seams, No Silence"
+# Sprint VS-1 — "A Living Game, Not a Set of Screens"
+
+*(Director's revision, 2026-07-21: the sprint's remit widened from transitions
+and audio to the whole felt quality of interaction. The standard is
+[InteractionLanguage.md](InteractionLanguage.md) — written before any code.)*
 
 **Thesis:** the fastest, largest gain in perceived production value is not a
-new system — it is removing the two things that constantly announce *this is a
-prototype*: **hard cuts** and **silence**. Every player encounters both within
-fifteen seconds of launching, and encounters them again at every screen change
-for the entire session. Nothing else in this document is felt as often.
+new system — it is that **every interaction gains a beginning, a middle, and an
+end**. Today the game changes data instantly and silently: a click mutates
+state, a screen cuts to another screen, a wait shows nothing. The player is
+never told *something happened*. Every player meets this within fifteen seconds
+of launching and meets it again a hundred times a session. Nothing else in this
+document is felt as often.
 
-**Scope — tasks A1, A2, A3, A6, B1, B2, B3, C5, E1:**
+**The governing law (MIL):** the player must never feel that data changed —
+they must feel that something happened.
 
-1. **Transition system** — one shared `MythTransition` (world-skinned fade/wipe,
-   reduce-motion aware) on all six scene changes, plus tab and forge-stage swaps.
-2. **Loading experience** — the `Loading` FSM state finally renders: world key
-   art, a line of the world's own lore, and honest progress while hydration and
-   the first paintings warm. Play should never cut to a half-built screen again.
-3. **UI + reward audio layer** — hover, click, open, close, back, equip,
-   purchase, loot, level-up, page, travel, save. Synthesized through the
-   existing `make_sfx.py` pipeline; wired through a small `Sfx.ui()` helper so
-   every MythButton gets it for free.
-4. **"The GM is thinking"** — a composed waiting state during the first-token gap.
-5. **Human error copy + backend-down screen** — the first screen a stranger sees
-   must never read `Login failed (0)`.
+**Scope — tasks A1, A2, A3, A4, A6, B1–B4, C1, C2, C5, D1, D5, E1, E2, E4:**
+
+**Phase 0 — the primitives** *(everything else depends on these)*
+`Ui.shake` · `Ui.fly_to` · `Ui.count_to` · `Ui.transition` · `Sfx.ui` +
+16 synthesized sounds through the existing `make_sfx.py`. Screens never
+hand-roll a tween or a sound after this.
+
+**Phase 1 — no seams**
+Scene transitions on all six cuts · tab/page transitions in THE MENU and the
+Lore Book · forge stage transitions · the `Loading` state finally rendering
+(world art, the world's own lore line, honest progress).
+
+**Phase 2 — no silence**
+Hover/click/open/close/back on every control via `Ui.polish` + the ritual, so
+coverage is systemic rather than per-button. Reward audio on equip, purchase,
+loot, level-up, quest, save, travel, turn.
+
+**Phase 3 — every interaction alive**
+The beginning-middle-end law applied to the interactions the first hour
+actually contains: **equip** (fly-to-socket + stat delta), **purchase**
+(coin arc + purse count-up), **loot**, **level-up ceremony**, **roll**,
+**travel departure**, **save**.
+
+**Phase 4 — the waiting is immersive**
+"The GM is thinking": quill stroke, breathing empty bubble, slow candle
+flicker, drifting motes, and **world-specific status lines** drawn from the
+active skin family.
+
+**Phase 5 — nothing raw ever shows**
+Human error copy everywhere · the backend-down "the realm sleeps" screen with
+retry · art placeholders instead of blanks · a tooltip on every actionable
+control · the last 24 rendered glyphs purged.
 
 **Why this and not something else:**
 
@@ -401,16 +428,29 @@ for the entire session. Nothing else in this document is felt as often.
 - Audio is the highest-leverage item in the build: score 30%, effort M, and the
   synthesis pipeline already exists.
 
-**Explicitly NOT in this sprint:** dialogue UI, quest journal, combat ceremony,
-accessibility, controller work, theming sweep. They are queued, not forgotten.
+**Explicitly NOT in this sprint** (scope armour — MIL §16): dialogue UI, quest
+journal, combat rebuild, text scaling, colourblind palettes, world-skinned
+audio timbres, controller expansion, the theming sweep, and any change to what
+the engine *computes*. VS-1 changes how things feel, never what they do.
 
-**Definition of done:** a stranger can launch with the backend down, be told so
-kindly, start it, forge a hero, and reach their first scene — and at no point
-does the screen cut, sit silent on a click, or show an engineering string. Both
-harnesses green; click-driver extended to cover the transition states.
+**Definition of done** *(Director's, 2026-07-21)*:
 
-**Estimated effort:** one full sprint (comparable to the batch work of
-2026-07-21, but weighted toward craft over breadth).
+- [ ] No hard scene cuts
+- [ ] No silent UI
+- [ ] No placeholder feedback
+- [ ] Every major interaction feels alive (beginning → middle → end)
+- [ ] Every window opens and closes with intention
+- [ ] Loading always communicates progress
+- [ ] AI waiting states feel immersive
+- [ ] `InteractionLanguage.md` complete *(✅ written before implementation)*
+- [ ] All changes follow MDL + the World Style Guide
+- [ ] MIL §15 compliance checklist passes on every touched screen
+- [ ] Both harnesses green; click-driver extended over the new states
+
+**Estimated effort:** one full sprint, weighted toward craft over breadth.
+
+**After VS-1:** playtest, and let *that* playtest choose VS-2. No sprint is
+planned in advance from here.
 
 ---
 
