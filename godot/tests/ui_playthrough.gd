@@ -263,6 +263,7 @@ func _check_mil() -> void:
 	assert(not deltas.is_empty(), "MIL §16: rise_text dropped the delta (information lost)")
 	Ui.fly_to(host, Ui.glow_tex(), Rect2(0, 0, 32, 32), Rect2(100, 100, 32, 32))
 	_check_no_hard_cuts()
+	await _check_compiler()   # awaited here — it does real async art requests
 	var cer: Node = preload("res://ui/myth_ceremony.gd").play(host,
 		{"title": "Level 3", "line": "+7 HP", "weight": "light"})
 	for i in 4:
@@ -317,7 +318,6 @@ func _check_one_art_door() -> void:
 		assert(Art.has_method(m), "Art Director: missing %s() from the contract" % m)
 	assert(Art.get("Lane") != null or true, "")
 	print("  Art Director: one door, contract intact (queue/lanes/cancel/status/routing)")
-	await _check_compiler()
 
 
 ## The World Compiler's seed tier (Style Guide + Asset Language) must produce a
@@ -329,7 +329,10 @@ func _check_compiler() -> void:
 		"kind": "grim frontier", "tagline": "the edge of the map", "lore": "A cold place."}
 	var pack: Dictionary = await Compiler.compile_seed(world)
 	assert(not pack.is_empty(), "compiler: seed produced no package")
-	assert(str(pack.get("compile_state", "")) == Compiler.SEEDED, "compiler: never reached SEEDED")
+	# In test_mode art generation returns nothing, so Tier B 'fails' fast and the
+	# world reaches PRESENTABLE without pixels — the compile must never wedge.
+	assert(str(pack.get("compile_state", "")) in [Compiler.SEEDED, Compiler.PRESENTABLE],
+		"compiler: never reached a valid compile_state")
 	assert(pack.get("style") is Dictionary and str(pack["style"].get("prompt_anchor", "")) != "",
 		"compiler: style guide has no prompt_anchor (drift defence missing)")
 	assert(pack.get("assets") is Dictionary and pack["assets"].get("materials") is Array
@@ -339,7 +342,11 @@ func _check_compiler() -> void:
 	GameState.character = {"id": "dm-x", "world_id": "cw-testrealm-abcd"}
 	assert(Art.world_flavor() == Compiler.prompt_anchor("cw-testrealm-abcd"),
 		"compiler: the Style Guide's anchor isn't feeding image prompts")
-	print("  compiler: seed compiles (style+assets), degrades cleanly, anchor feeds art")
+	# Profiles exist and pin a checkpoint (the photograph fix).
+	for p in ["item", "scene", "showcase"]:
+		assert(Art.PROFILES.has(p) and str(Art.PROFILES[p].get("style", "")) != "",
+			"compiler: art profile '%s' missing its checkpoint" % p)
+	print("  compiler: seed→identity compiles, degrades cleanly, anchor feeds art, profiles pinned")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

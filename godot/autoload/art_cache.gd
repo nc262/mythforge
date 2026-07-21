@@ -213,6 +213,20 @@ enum Lane {
 	IDLE = 2,   # backfill — menu key-art, warming the cache
 }
 
+## Generation PROFILES (docs/WorldCompiler.md): each content class gets its own
+## checkpoint, size and (later) matting. Passing a style ALSO ends the
+## stranger's-photograph bug — the backend no longer auto-picks a photoreal
+## checkpoint (playtest #15). "artwork" = DreamShaper Turbo (fast painterly),
+## "semireal" = Juggernaut (the quality showcase from the ladder).
+const PROFILES := {
+	"item":     {"style": "artwork",  "size": "1024x1024", "matte": true},
+	"prop":     {"style": "artwork",  "size": "512x512",   "matte": true},
+	"scene":    {"style": "artwork",  "size": "1024x1024", "matte": false},
+	"portrait": {"style": "artwork",  "size": "1024x1024", "matte": false},
+	"showcase": {"style": "semireal", "size": "1024x1024", "matte": false},
+}
+const DEFAULT_PROFILE := "scene"
+
 signal art_progress(key: String, state: String)  # queued · painting · ready · failed · cancelled
 
 var _cancelled := {}     # key → true, honoured before dispatch AND after the paint
@@ -221,9 +235,10 @@ var _owners := {}        # key → Node; if it dies before the paint lands, the 
 var _painting := ""      # the key currently on the GPU
 
 
-## THE entry point. opts: {size, lane, owner (Node), on_ready (Callable)}.
-## Re-requesting a key already queued upgrades its lane and adds the callback
-## rather than queueing it twice.
+## THE entry point. opts: {profile, size, lane, owner (Node), on_ready}.
+## `profile` (item/prop/scene/portrait/showcase) picks the checkpoint, size and
+## matting; an explicit `size` overrides the profile's. Re-requesting a queued
+## key upgrades its lane and adds the callback rather than queueing twice.
 func request(key: String, prompt := "", opts := {}) -> void:
 	if key == "":
 		return
@@ -247,8 +262,11 @@ func request(key: String, prompt := "", opts := {}) -> void:
 	if _generating.get(key, false):
 		_upgrade_lane(key, lane)   # someone now wants it sooner
 		return
+	var prof: Dictionary = PROFILES.get(str(opts.get("profile", DEFAULT_PROFILE)), PROFILES[DEFAULT_PROFILE])
 	_generating[key] = true
-	_queue.append({"key": key, "prompt": prompt, "size": str(opts.get("size", "1024x1024")), "lane": lane})
+	_queue.append({"key": key, "prompt": prompt, "lane": lane,
+		"size": str(opts.get("size", prof["size"])),
+		"style": str(prof["style"]), "matte": bool(prof["matte"])})
 	_sort_queue()
 	art_progress.emit(key, "queued")
 	if not _pumping:
@@ -319,8 +337,11 @@ func _pump() -> void:
 			continue
 		_painting = key
 		art_progress.emit(key, "painting")
+		# `style` pins the checkpoint (per PROFILES) — no auto-pick, so a
+		# photoreal model can never land in a painted slot again.
 		var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate",
-			{"prompt": str(job["prompt"]), "size": str(job["size"])})
+			{"prompt": str(job["prompt"]), "size": str(job["size"]),
+			"style": str(job.get("style", "artwork")), "matte": bool(job.get("matte", false))})
 		_painting = ""
 		_generating[key] = false
 		if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":

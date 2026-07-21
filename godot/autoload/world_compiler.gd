@@ -104,9 +104,96 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	pack["compile_state"] = SEEDED
 	_write(wid, "world.json", pack)
 	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty()}
-	busy = false
 	compiled.emit(wid, SEEDED)
+
+	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
+	# runs after the seed is safely written; the world is PRESENTABLE the moment
+	# key art lands. Skipped without a real backend (headless tests own no GPU).
+	if not Api.test_mode:
+		await _stage_identity(wid, world, style)
+		pack = read_pack(wid)
+		pack["compile_state"] = PRESENTABLE
+		_write(wid, "world.json", pack)
+		compiled.emit(wid, PRESENTABLE)
+	busy = false
 	return pack
+
+
+## S3 — key art + biome plates. The world you SEE. Every prompt carries the
+## Style Guide's anchor (via Art.world_flavor once the world is active), so the
+## whole set holds one visual identity. Biome plates are the reskin source for
+## backdrops and, later, tactical maps.
+const BIOMES := ["a wilderness", "a settlement", "an interior chamber",
+	"a high place", "a place of water", "a ruin"]
+
+
+func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> void:
+	stage_started.emit("keyart", "Painting the world…")
+	var anchor := str(style.get("prompt_anchor", ""))
+	var name := str(world.get("name", "the world"))
+	# Key art: the establishing shot. `scene` profile — painted, not photoreal,
+	# no matte (a backdrop is never cut out).
+	var key := "world-" + world_id.validate_filename()
+	await _await_art(key,
+		"establishing key art of %s, %s. %s. cinematic wide shot, no people, no text" % [
+			name, str(world.get("kind", "")), anchor],
+		{"profile": "scene", "lane": Art.Lane.NOW})
+	stage_done.emit("keyart", true)
+
+	stage_started.emit("biomes", "Charting its lands…")
+	for i in BIOMES.size():
+		var bkey := "biome-%s-%d" % [world_id.validate_filename(), i]
+		await _await_art(bkey,
+			"%s in %s, %s. atmospheric establishing scene, cinematic lighting, no people, no text" % [
+				BIOMES[i], name, anchor],
+			{"profile": "scene", "lane": Art.Lane.IDLE})
+	stage_done.emit("biomes", true)
+
+
+## Request one image and wait for it to actually land (compile is sequential —
+## one GPU). Copies it into the world package so it is CONTENT, not cache.
+func _await_art(key: String, prompt: String, opts: Dictionary) -> void:
+	var done := [false]
+	var o := opts.duplicate()
+	o["on_ready"] = func(_k): done[0] = true
+	Art.request(key, prompt, o)
+	# Also treat a hard failure as "done" so the compile never wedges.
+	var fail := func(k: String, state: String):
+		if str(k) == key and state in ["failed", "cancelled"]:
+			done[0] = true
+	Art.art_progress.connect(fail)
+	var guard := 0
+	while not done[0] and guard < 400:   # ~200s ceiling per image
+		await get_tree().process_frame
+		await get_tree().create_timer(0.5).timeout
+		guard += 1
+	if Art.art_progress.is_connected(fail):
+		Art.art_progress.disconnect(fail)
+	if Art.has_art(key):
+		_adopt(world_dir_key(key), key)
+
+
+## Copy a painted asset into the world's package directory (content that never
+## gets evicted). world_dir_key derives the package sub-path from the key kind.
+func _adopt(dest_rel: String, key: String) -> void:
+	if dest_rel == "" or current_world == "":
+		return
+	var src := Art.path_for(key)
+	if not FileAccess.file_exists(src):
+		return
+	var dst := "%s/%s" % [world_dir(current_world), dest_rel]
+	DirAccess.make_dir_recursive_absolute(dst.get_base_dir())
+	var img := Image.load_from_file(src)
+	if img != null and not img.is_empty():
+		img.save_png(dst)
+
+
+func world_dir_key(key: String) -> String:
+	if key.begins_with("world-"):
+		return "art/key.png"
+	if key.begins_with("biome-"):
+		return "art/%s.png" % key
+	return "art/%s.png" % key
 
 
 ## S1 — the World Style Guide. The permanent source of truth every subsystem
