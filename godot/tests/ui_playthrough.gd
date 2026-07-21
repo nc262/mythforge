@@ -221,11 +221,20 @@ func _build_windows() -> void:
 	for i in 5:
 		await get_tree().process_frame
 	book.queue_free()
-	# The merchant lives inside game.gd and reads vendor stock + world lore +
-	# haggle markup — drive the real open so a crash there surfaces here, not
-	# when a player walks up to a keeper mid-adventure.
+	# Drive the real merchant open (now scenes/ui/merchant_window.gd) so a crash
+	# there surfaces here, not when a player walks up to a keeper mid-adventure —
+	# and assert the counter is genuinely stocked, not a bare dialog.
+	Mode.enter("Exploration")  # the level-up ceremony left the FSM in LevelUp; a player shops from Exploration
 	_game._open_shop()
 	await get_tree().process_frame
+	var shop: Node = null
+	for ch in _game.get_children():
+		if ch is AcceptDialog and ch.get_script() != null and str(ch.get_script().resource_path).ends_with("merchant_window.gd"):
+			shop = ch
+	assert(shop != null, "shop: merchant window never opened")
+	assert(int(shop._wares.item_count) > 0, "shop: the keeper has no wares (vendor stock empty)")
+	shop.queue_free()
+	Mode.enter("Exploration")  # leave Merchant mode the way confirming would
 	print("  windows: sheet(+Gear), pack, skill tree, lore book, shop all built")
 	# The full-screen forges carry heavy _ready logic — build each so any
 	# instantiation-time error (the kind --editor --quit misses) surfaces here.

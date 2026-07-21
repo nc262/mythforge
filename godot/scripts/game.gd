@@ -1855,130 +1855,29 @@ func _render_sheet() -> void:
 	_sheet_panel.append_text("\n".join(lines))
 
 
-## 🛒 The trading post: wares on the left, your pack on the right, the
-## purse between. Haggling moves every price; the GM hears the visit once.
+## 🛒 The trading post — extracted to scenes/ui/merchant_window.gd (A0 split).
+## The play screen owns only what is its: the Mode transitions, the keeper's
+## remembered mood (_shop_markup), and telling the GM about the visit once.
 func _open_shop() -> void:
 	if not Mode.can("shop"):
 		return
 	Mode.enter("Merchant")
-	var deals: Array[String] = []
-	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
-	var here_shop := ""
-	for l in Rules.world_locations(GameState.world_id()):
-		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
-			here_shop = str(l.get("shop", ""))
-	var dlg := AcceptDialog.new()
-	MythEnvironment.mount(dlg, "env-merchant", "dust", [Vector2(0.12, 0.14), Vector2(0.88, 0.1)])
-	dlg.title = here if here_shop != "" else "The trading post"
-	dlg.ok_button_text = "Leave the counter"
-	dlg.min_size = Vector2i(720, 480)
-	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 8)
-	var purse := Label.new()
-	purse.theme_type_variation = "HintLabel"
-	var cols := HBoxContainer.new()
-	cols.add_theme_constant_override("separation", 14)
-	var wares := ItemList.new()
-	wares.custom_minimum_size = Vector2(330, 320)
-	var pack := ItemList.new()
-	pack.custom_minimum_size = Vector2(330, 320)
-	var wares_meta: Array = []
-	var pack_meta: Array = []
-	var refresh := func():
-		purse.text = "Your purse: %d %s%s" % [int(GameState.sheet().get("gold", 0)), GameState.currency(),
-			"   ·   the keeper likes you (−20%)" if _shop_markup < 1.0 else ("   ·   the keeper is annoyed (+10%)" if _shop_markup > 1.0 else "")]
-		wares.clear()
-		wares_meta.clear()
-		var stock: Dictionary = Rules.tables.get("vendor_stock", {})
-		for cat in ["weapon", "armor", "potion", "general", "food"]:
-			var goods: Array = stock.get(cat, [])
-			if goods.is_empty():
-				continue
-			wares.add_item("— %s —" % cat.to_upper(), null, false)
-			wares_meta.append(null)
-			for gd in goods:
-				if gd is Array and gd.size() >= 2:
-					var price := maxi(1, roundi(int(gd[1]) * _shop_markup))
-					wares.add_item("%s   ·   %d gold" % [str(gd[0]), price])
-					wares_meta.append({"name": str(gd[0]), "price": price})
-		pack.clear()
-		pack_meta.clear()
-		for it in GameState.inv().get("items", []):
-			var q := int(it.get("qty", 1))
-			pack.add_item("%s%s   ·   sells %d" % [str(it.get("name", "")),
-				(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common")))])
-			pack_meta.append(str(it.get("id", "")))
-	var left := VBoxContainer.new()
-	var lt := Label.new()
-	lt.text = "The keeper's wares"
-	var buy := Button.new()
-	buy.text = "Buy ›"
-	buy.pressed.connect(func():
-		var sel := wares.get_selected_items()
-		if sel.is_empty() or wares_meta[sel[0]] == null:
-			return
-		var w: Dictionary = wares_meta[sel[0]]
-		if int(GameState.sheet().get("gold", 0)) < int(w["price"]):
-			purse.text = "Not enough gold for the %s." % w["name"]
-			return
-		GameState.add_gold(-int(w["price"]))
-		GameState.add_item(str(w["name"]))
-		Sfx.play("chime")
-		deals.append("bought a %s (%d gold)" % [w["name"], int(w["price"])])
-		refresh.call())
-	left.add_child(lt)
-	left.add_child(wares)
-	left.add_child(buy)
-	var right := VBoxContainer.new()
-	var rt2 := Label.new()
-	rt2.text = "Your pack"
-	var sell := Button.new()
-	sell.text = "‹ Sell"
-	sell.pressed.connect(func():
-		var sel := pack.get_selected_items()
-		if sel.is_empty():
-			return
-		var note := GameState.sell_item(str(pack_meta[sel[0]]))
-		if note != "":
-			Sfx.play("chime")
-			deals.append(note.trim_prefix("You "))
-		refresh.call())
-	right.add_child(rt2)
-	right.add_child(pack)
-	right.add_child(sell)
-	cols.add_child(left)
-	cols.add_child(right)
-	var haggle := Button.new()
-	haggle.text = "Haggle with the keeper (Persuasion, DC 12)"
-	haggle.pressed.connect(func():
-		if _shop_markup != 1.0:
-			return
-		var hres: Dictionary = Rules.resolve_check({"ability": "CHA", "skill": "Persuasion", "dc": 12}, GameState.sheet(), GameState.inv())
-		_shop_markup = 0.8 if int(hres["total"]) >= 12 else 1.1
-		deals.append("haggled (%s)" % ("won a fifth off" if _shop_markup < 1.0 else "annoyed the keeper"))
-		haggle.disabled = true
-		refresh.call())
-	if here_shop != "":
-		var trades := Label.new()
-		trades.theme_type_variation = "HintLabel"
-		trades.text = "This counter trades in: %s" % here_shop
-		root.add_child(trades)
-	root.add_child(purse)
-	root.add_child(cols)
-	root.add_child(haggle)
-	dlg.add_child(root)
-	add_child(dlg)
-	refresh.call()
-	dlg.popup_centered()
-	dlg.confirmed.connect(func():
-		dlg.queue_free()
-		Mode.enter("Exploration")
-		_render_sheet()
-		if not deals.is_empty():
-			var summary := "*At the trader: %s.*" % "; ".join(deals)
-			_say_me(_md(summary))
-			_last_player_msg = summary
-			_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail.]" % summary.replace("*", ""))))
+	var win := preload("res://scenes/ui/merchant_window.gd").new()
+	win.markup = _shop_markup
+	win.haggled.connect(func(m: float): _shop_markup = m)
+	win.counter_left.connect(_on_counter_left)
+	add_child(win)
+	win.popup_centered()
+
+
+func _on_counter_left(deals: Array) -> void:
+	Mode.enter("Exploration")
+	_render_sheet()
+	if not deals.is_empty():
+		var summary := "*At the trader: %s.*" % "; ".join(deals)
+		_say_me(_md(summary))
+		_last_player_msg = summary
+		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail.]" % summary.replace("*", "")))
 
 
 # ── The codex panel: the cast you've met and the threads you're pulling ─────
