@@ -92,6 +92,7 @@ func _build_primary_controls() -> void:
 		["FORGE  A  CAMPAIGN", "wartable", "oak", _open_campaign_forge_pillar, ""],
 		["FORGE  A  GM", "crown", "steel", _open_gm_forge_pillar, "a voice of your own"],
 		["FORGE  A  COMPANION", "cups", "steel", _open_persona_forge_pillar, "a friend for the road"],
+		["CAMPAIGNS", "scroll", "leather", _show_campaigns, "premises across every world"],
 		["CHRONICLES", "book", "leather", _open_chronicles, "the saved tales"],
 		["SETTINGS", "runewheel", "steel", _show_settings, ""],
 		["EXIT  THE  HALL", "door", "leather", _quit_game, ""],
@@ -243,6 +244,52 @@ func _show_worlds() -> void:
 	imp.pressed.connect(_import_world)
 	grid.add_child(imp)
 	_content.add_child(grid)
+	Ui.reveal_children(grid, 0.05)  # the worlds arrive one by one
+
+
+## The campaign shelf: every authored premise across EVERY world in one
+## place — browse cross-world, then go set the table.
+func _show_campaigns() -> void:
+	_show_sub("The Campaign Shelf", "every authored premise, across every world")
+	var list := VBoxContainer.new()
+	list.add_theme_constant_override("separation", 10)
+	for w in _all_worlds():
+		var wid := str(w.get("id", ""))
+		var stories: Array = w.get("stories") if w.get("stories") is Array else Rules.world_stories(wid)
+		for st in stories:
+			if not (st is Dictionary) or str(st.get("title", "")) == "":
+				continue
+			var card := PanelContainer.new()
+			card.add_theme_stylebox_override("panel", Ui.sb_card())
+			var col := VBoxContainer.new()
+			col.add_theme_constant_override("separation", 4)
+			var t := Label.new()
+			t.theme_type_variation = "HeaderLabel"
+			t.text = "%s   ·   %s" % [str(st["title"]), str(w.get("name", ""))]
+			col.add_child(t)
+			var prem := Label.new()
+			prem.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			prem.add_theme_color_override("font_color", Ui.c("ink_soft"))
+			prem.text = str(st.get("premise", "")).left(240)
+			col.add_child(prem)
+			var go := Button.new()
+			go.theme_type_variation = "GhostButton"
+			go.text = "Set the table with this tale ›"
+			go.pressed.connect(_open_adventure_forge)
+			var gr := HBoxContainer.new()
+			gr.alignment = BoxContainer.ALIGNMENT_END
+			gr.add_child(go)
+			col.add_child(gr)
+			card.add_child(col)
+			list.add_child(card)
+	if list.get_child_count() == 0:
+		var empty := Label.new()
+		empty.theme_type_variation = "HintLabel"
+		empty.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		empty.text = "No campaigns authored yet — the Campaign Forge writes them."
+		list.add_child(empty)
+	_content.add_child(list)
+	Ui.reveal_children(list, 0.04)
 
 
 func _import_world() -> void:

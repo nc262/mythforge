@@ -23,6 +23,10 @@ Sfx="*res://autoload/sfx.gd"
 WorldSkin="*res://autoload/world_skin.gd"
 Pad="*res://autoload/pad.gd"
 
+[audio]
+
+driver/enable_input=true
+
 [display]
 
 window/size/viewport_width=1280

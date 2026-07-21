@@ -90,6 +90,7 @@ func _ready() -> void:
 	# adventure screen wears no atmosphere overlay (rooms/forges still do).
 	_iconify_toolbar()
 	_add_leave_button()
+	_add_mic_button()
 	# A3: a full-screen mood wash the AI can SUGGEST via presentation tags —
 	# above the scene art, below the UI, transparent until a mood lands.
 	_mood_layer = ColorRect.new()
@@ -140,6 +141,22 @@ func _ready() -> void:
 		Art.art_ready.connect(func(k):
 			if str(k) == slug and is_instance_valid(face):
 				face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1)))
+		# Clear-chat: sweep the table and start the talk fresh.
+		var clear_b := Button.new()
+		clear_b.theme_type_variation = "GhostButton"
+		clear_b.text = "Clear the table"
+		clear_b.anchor_left = 1.0
+		clear_b.anchor_right = 1.0
+		clear_b.offset_left = -196
+		clear_b.offset_top = 158
+		clear_b.offset_right = -32
+		clear_b.offset_bottom = 192
+		clear_b.pressed.connect(func():
+			for r in _thread.get_children():
+				r.queue_free()
+			Chronicle.reset()
+			_say_system("The table is cleared — speak fresh."))
+		add_child(clear_b)
 		_say_system("You sit down with %s." % comp_name)
 		return
 	await GameState.hydrate()
@@ -216,6 +233,65 @@ func _add_leave_button() -> void:
 	leave.add_child(ic)
 	leave.pressed.connect(_leave_to_hall)
 	add_child(leave)
+
+
+# ── STT push-to-talk: hold the quill, speak, release — words land in the box.
+## Server side is multi-provider (/api/stt/transcribe) and may 503 without a
+## configured provider; the client degrades to a polite line either way.
+var _mic_player: AudioStreamPlayer
+var _rec: AudioEffectRecord
+
+
+func _add_mic_button() -> void:
+	var mic := Button.new()
+	mic.name = "Mic"
+	mic.tooltip_text = "Hold to speak — release to transcribe"
+	mic.custom_minimum_size = Vector2(42, 34)
+	var ic := MythIcon.new("quill", 24, "gold_soft")
+	ic.set_anchors_preset(Control.PRESET_FULL_RECT)
+	mic.add_child(ic)
+	$Margin/Split/ChatBox/Input.add_child(mic)
+	mic.button_down.connect(_mic_start)
+	mic.button_up.connect(_mic_stop)
+
+
+func _mic_start() -> void:
+	if _rec == null:
+		var idx := AudioServer.get_bus_index("MfRecord")
+		if idx == -1:
+			AudioServer.add_bus()
+			idx = AudioServer.bus_count - 1
+			AudioServer.set_bus_name(idx, "MfRecord")
+			AudioServer.add_bus_effect(idx, AudioEffectRecord.new())
+			AudioServer.set_bus_mute(idx, true)  # never monitor the mic back out
+		_rec = AudioServer.get_bus_effect(idx, 0)
+		_mic_player = AudioStreamPlayer.new()
+		_mic_player.stream = AudioStreamMicrophone.new()
+		_mic_player.bus = "MfRecord"
+		add_child(_mic_player)
+	_mic_player.play()
+	_rec.set_recording_active(true)
+
+
+func _mic_stop() -> void:
+	if _rec == null or not _rec.is_recording_active():
+		return
+	_rec.set_recording_active(false)
+	_mic_player.stop()
+	var wav: AudioStreamWAV = _rec.get_recording()
+	if wav == null:
+		return
+	wav.save_to_wav("user://stt.wav")
+	var r: Dictionary = await Api.post_file("/api/stt/transcribe", "file", FileAccess.get_file_as_bytes("user://stt.wav"))
+	var text := str(r.get("text", "")).strip_edges()
+	if int(r.get("_status", 0)) == 200 and text != "":
+		_msg.text = text
+		_msg.grab_focus()
+		_msg.caret_column = _msg.text.length()
+	elif int(r.get("_status", 0)) == 503:
+		_say_system("No speech provider is configured on the server — typing it is.", "quill")
+	else:
+		_say_system("The words didn't carry — try again.", "quill")
 
 
 func _leave_to_hall() -> void:
@@ -431,6 +507,7 @@ func _bubble(kind: String) -> RichTextLabel:
 		spacer.size_flags_stretch_ratio = 1.0
 		row.add_child(panel)
 		row.add_child(spacer)
+	row.set_meta("kind", kind)  # Ctrl+E finds "your last bubble" by this
 	row.modulate.a = 0.0
 	_thread.add_child(row)
 	create_tween().tween_property(row, "modulate:a", 1.0, 0.35)
@@ -571,6 +648,27 @@ func _regen() -> void:
 	_gm_rt = null
 	_lang_retry = 0
 	_stream(_last_framed)
+
+
+## Inline edit (Ctrl+E): your last line comes back into the box to be reworded;
+## the stale exchange — your bubble and the GM's reply — leaves the thread.
+func _edit_last() -> void:
+	if not Mode.can("send_message") or _last_player_msg == "" or _streaming:
+		return
+	if _gm_rt != null:
+		var row := _gm_rt.get_parent().get_parent()
+		if row != null and row.get_parent() == _thread:
+			row.queue_free()
+		_gm_rt = null
+	for i in range(_thread.get_child_count() - 1, -1, -1):
+		var r := _thread.get_child(i)
+		if str(r.get_meta("kind", "")) == "me":
+			r.queue_free()
+			break
+	_msg.text = _last_player_msg
+	_msg.grab_focus()
+	_msg.caret_column = _msg.text.length()
+	_say_system("Reword it and send — the table forgets the old line.", "quill")
 
 
 ## Silent log of a language-drift incident (Issue 4) — never shown to the player.
@@ -991,6 +1089,12 @@ func _build_dice_menu() -> void:
 	pop.add_icon_item(Ui.ico_tex("book"), "Learn a spell…", 900)
 	pop.add_icon_item(Ui.ico_tex("cups"), "Recruit an ally…", 901)
 	pop.add_icon_item(Ui.ico_tex("hammer"), "Craft something…", 902)
+	# Recipes whose components sit in the pack craft deterministically (v2).
+	var recipes: Array = Rules.tables.get("recipes", [])
+	for ri in recipes.size():
+		if recipes[ri] is Dictionary and GameState.recipe_ready(recipes[ri]):
+			pop.add_icon_item(Ui.ico_tex("hammer"), "Craft: %s  (%s)" % [str(recipes[ri]["name"]),
+				", ".join(recipes[ri]["components"])], 700 + ri)
 	if bool(GameState.sheet().get("inspiration", false)):
 		pop.add_icon_item(Ui.ico_tex("star"), "Spend Inspiration — advantage on your next roll", 903)
 	for mi in range(pop.item_count):
@@ -1011,6 +1115,20 @@ func _free_check(id: int) -> void:
 	if id == 903:
 		_insp_armed = true
 		_say_system("Inspiration armed — your next roll has advantage.", "star")
+		return
+	# Recipe crafting (700-799): the engine consumes components and grants the
+	# result — the GM only narrates the making.
+	if id >= 700 and id < 800:
+		var recipes: Array = Rules.tables.get("recipes", [])
+		if id - 700 < recipes.size():
+			var note := GameState.craft(str(recipes[id - 700].get("name", "")))
+			if note != "":
+				Sfx.play("chime")
+				_say_me(_md(note))
+				_render_sheet()
+				_build_dice_menu()  # the crafted recipe may no longer be ready
+				_last_player_msg = note
+				_stream(Composer.envelope("[%s Narrate the making briefly.]" % note.replace("*", "")))
 		return
 	# Raw dice tray: table candy, resolved and shown — the GM isn't bothered.
 	if id >= 910:
@@ -1051,7 +1169,7 @@ func _free_check(id: int) -> void:
 		return
 	if id == 902:
 		_ask_gm("Craft something", "What do you try to make (and from what)?",
-			func(x): return "[I try to craft: %s. Check my pack in the context — decide honestly if my materials and skills allow it, what it costs (time, gold, a roll), and if I succeed, grant it with [[loot name=\"...\"]] and take costs with [[gold delta=-N]].]" % x)
+			func(x): return "[I try to craft: %s. Check my pack in the context — decide honestly if my materials and skills allow it, what it costs (time, gold, a roll), and if I succeed, grant it with [[loot name=\"...\"]] and take costs with [[gold delta=-N]]. You may also award raw crafting components as loot (Healing Herbs, Glass Vial, Oil Flask, Wood Branch, Rag Wick, Herb Bundle, Meat Cut, Bitterleaf, Ash Powder) — the engine crafts known recipes from them.]" % x)
 		return
 	if id == 901:
 		_ask_gm("Recruit an ally", "Who do you ask to join you?",
@@ -2085,6 +2203,8 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		btn2.button_pressed = not btn2.button_pressed
 	elif event.ctrl_pressed and event.keycode == KEY_R:
 		_regen()
+	elif event.ctrl_pressed and event.keycode == KEY_E:
+		_edit_last()
 	elif event.keycode == KEY_SPACE and Mode.is_state("Combat") and not _msg.has_focus():
 		_on_combat_action("cnext")
 	elif event.ctrl_pressed and event.keycode == KEY_M:

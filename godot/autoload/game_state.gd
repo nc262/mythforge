@@ -221,6 +221,39 @@ func add_item(nm: String, rarity := "common", qty := 1) -> void:
 	save_kind("inv", v)
 
 
+## Crafting v2 — typed components, consumed on craft. Recipes live in
+## tables.json; the GM seeds components through ordinary [[loot]] tags.
+func recipe_ready(r: Dictionary) -> bool:
+	for comp in r.get("components", []):
+		var found := false
+		for it in inv().get("items", []):
+			if str(it.get("name", "")).nocasecmp_to(str(comp)) == 0 and int(it.get("qty", 1)) > 0:
+				found = true
+				break
+		if not found:
+			return false
+	return true
+
+
+func craft(recipe_name: String) -> String:
+	for r in Rules.tables.get("recipes", []):
+		if not (r is Dictionary) or str(r.get("name", "")).nocasecmp_to(recipe_name) != 0:
+			continue
+		if not recipe_ready(r):
+			return ""
+		var v := inv()
+		for comp in r["components"]:
+			for it in v["items"]:
+				if str(it.get("name", "")).nocasecmp_to(str(comp)) == 0:
+					it["qty"] = int(it.get("qty", 1)) - 1
+					break
+		v["items"] = v["items"].filter(func(it): return int(it.get("qty", 1)) > 0)
+		save_kind("inv", v)
+		add_item(str(r["name"]), str(r.get("rarity", "common")))
+		return "*You craft a %s from %s.*" % [str(r["name"]), ", ".join(r["components"])]
+	return ""
+
+
 func item_by_id(id: String) -> Dictionary:
 	for it in inv().get("items", []):
 		if str(it.get("id", "")) == id:

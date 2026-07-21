@@ -105,6 +105,32 @@ func _urlencode(fields: Dictionary) -> String:
 	return "&".join(parts)
 
 
+## Multipart file upload (STT audio). → parsed JSON with "_status".
+func post_file(path: String, field: String, bytes: PackedByteArray, filename := "audio.wav", mime := "audio/wav") -> Dictionary:
+	if test_mode:
+		return _test_response(path)
+	var boundary := "----mythforge%08x" % (randi() & 0x7FFFFFFF)
+	var body := PackedByteArray()
+	body.append_array(("--%s\r\nContent-Disposition: form-data; name=\"%s\"; filename=\"%s\"\r\nContent-Type: %s\r\n\r\n" % [
+		boundary, field, filename, mime]).to_utf8_buffer())
+	body.append_array(bytes)
+	body.append_array(("\r\n--%s--\r\n" % boundary).to_utf8_buffer())
+	var req := HTTPRequest.new()
+	add_child(req)
+	var err := req.request_raw(BASE + path,
+		_headers(["Content-Type: multipart/form-data; boundary=%s" % boundary]),
+		HTTPClient.METHOD_POST, body)
+	if err != OK:
+		req.queue_free()
+		return {"_status": 0}
+	var res: Array = await req.request_completed
+	req.queue_free()
+	var out = JSON.parse_string(res[3].get_string_from_utf8())
+	var d: Dictionary = out if out is Dictionary else {"data": out}
+	d["_status"] = res[1]
+	return d
+
+
 ## Raw bytes (images). Empty array on any failure.
 func fetch_bytes(path: String) -> PackedByteArray:
 	if test_mode:
