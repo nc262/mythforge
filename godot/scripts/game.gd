@@ -40,12 +40,11 @@ func _ready() -> void:
 	Api.sse_done.connect(_on_done)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
-	$Margin/Split/ChatBox/Input/SheetBtn.toggled.connect(func(on):
-		_panel_mode = "sheet"
-		$Margin/Split/ChatBox/Input/CodexBtn.set_pressed_no_signal(false)
-		_sheet_panel.visible = on
-		if on:
-			_render_sheet())
+	# The Sheet button opens THE MENU (the Record and its tabs) — the sidebar
+	# stays as the at-a-glance HUD, toggled with Ctrl+S.
+	var sheet_btn: Button = $Margin/Split/ChatBox/Input/SheetBtn
+	sheet_btn.toggle_mode = false
+	sheet_btn.pressed.connect(func(): _open_character_screen())
 	$Margin/Split/ChatBox/Input/CodexBtn.toggled.connect(func(on):
 		_panel_mode = "codex" if on else "sheet"
 		$Margin/Split/ChatBox/Input/SheetBtn.set_pressed_no_signal(false)
@@ -793,7 +792,7 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		_render_sheet()
 		if not gains.is_empty():
 			_say_system("Level %d: you gain %s." % [lvl, ", ".join(gains)], "star")
-		_open_skill_tree(lvl))  # the reward beat: the new star flares in the sky
+		_open_character_screen("Destiny", lvl))  # the reward beat: the new star flares in the sky
 	add_child(win)
 	win.popup_centered()
 
@@ -1023,7 +1022,7 @@ func _on_sheet_action(meta) -> void:
 	var tell_gm := false
 	match parts[0]:
 		"dest":
-			_open_skill_tree()
+			_open_character_screen("Destiny")
 			return
 		"record":
 			_open_character_screen()
@@ -1042,20 +1041,15 @@ func _on_sheet_action(meta) -> void:
 		"portrait":
 			_conjure_portrait(parts[1].uri_decode())
 			return
-		"tune":
-			_session_zero_retune()
-			return
-		"snap":
-			_save_snapshot()
+		# Every one of these is a tab in the menu now — open it there.
+		"tune", "snap":
+			_open_character_screen("The Table")
 			return
 		"chron":
-			_open_lore_book("Chronicle")  # the book's Chronicle tab replaced the chat-bubble list
+			_open_character_screen("Chronicle")
 			return
-		"atlas":
-			_open_world_map()  # the painted map replaced the text atlas bubble
-			return
-		"map":
-			_open_world_map()
+		"atlas", "map":
+			_open_character_screen("Atlas")
 			return
 		"travel":
 			_travel_to(parts[1].uri_decode())
@@ -1601,13 +1595,8 @@ func _render_sheet() -> void:
 		Art.ensure_hero_portrait(GameState.cid(), s)
 	var gold := Ui.c("gold_soft").to_html(false)
 	var lines: Array[String] = []
-	var bar := func(act: String, glyph: String, label: String) -> String:
-		return "[url=%s]%s %s[/url]" % [act, Ui.ico(glyph, 18), label]
-	lines.append("  ".join([
-		bar.call("tune", "tune", "tune the GM"), bar.call("snap", "save", "save chapter"),
-		bar.call("chron", "scroll", "chronicle"), bar.call("atlas", "compass", "atlas"),
-		bar.call("dest", "star", "destiny"), bar.call("record", "shield", "record")]))
-	lines.append("")
+	# The old text-link rail is gone — those six destinations are tabs in the
+	# menu now (the Sheet button, or Ctrl+H, opens it).
 	var dim := Ui.c("ink_dim").to_html(false)
 	lines.append("[center][font_size=22][color=%s][b]%s[/b][/color][/font_size]" % [gold, _bb(str(s.get("name", "?")))])
 	lines.append("[color=%s]%s %s  ·  Level %d[/color][/center]" % [dim, _bb(str(s.get("race", ""))), _bb(Rules.class_label(s)), int(s.get("level", 1))])
@@ -1971,8 +1960,11 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
 	if event.ctrl_pressed and event.keycode == KEY_S:
-		var btn: Button = $Margin/Split/ChatBox/Input/SheetBtn
-		btn.button_pressed = not btn.button_pressed
+		_panel_mode = "sheet"  # Ctrl+S toggles the sidebar HUD; the button opens the menu
+		$Margin/Split/ChatBox/Input/CodexBtn.set_pressed_no_signal(false)
+		_sheet_panel.visible = not _sheet_panel.visible
+		if _sheet_panel.visible:
+			_render_sheet()
 	elif event.ctrl_pressed and event.keycode == KEY_L:
 		var btn2: Button = $Margin/Split/ChatBox/Input/CodexBtn
 		btn2.button_pressed = not btn2.button_pressed
@@ -1981,7 +1973,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.keycode == KEY_SPACE and Mode.is_state("Combat") and not _msg.has_focus():
 		_on_combat_action("cnext")
 	elif event.ctrl_pressed and event.keycode == KEY_M:
-		_open_world_map()
+		_open_character_screen("Atlas")
 	elif event.ctrl_pressed and event.keycode == KEY_J:
 		# The Journal folded into the Lore Book (A0 split) — Quests, The Cast,
 		# and Chronicle tabs cover everything the inline manuscript showed.
@@ -1989,7 +1981,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 	elif event.ctrl_pressed and event.keycode == KEY_I:
 		_open_inventory()
 	elif event.ctrl_pressed and event.keycode == KEY_K:
-		_open_skill_tree()
+		_open_character_screen("Destiny")
 	elif event.ctrl_pressed and event.keycode == KEY_H:
 		_open_character_screen()
 	elif event.keycode == KEY_ESCAPE:
@@ -2027,12 +2019,22 @@ func _open_lore_book(at := "") -> void:
 	Ui.reveal(book)
 
 
-func _open_character_screen() -> void:
+## THE MENU — one screen, every destination a tab (Record/Gear/Skills/Powers/
+## Story/Destiny/Atlas/Chronicle/The Table). Opens on whichever tab you asked
+## for, so nothing is buried behind a text link any more.
+func _open_character_screen(at := "", pulse := -1) -> void:
 	if not Mode.can("panels"):
 		return
 	var rec := preload("res://scenes/ui/character_screen.gd").new()
 	MythEnvironment.mount(rec, "env-fireside", "dust", [Vector2(0.1, 0.2)])
+	rec.pulse_level = pulse
+	if at != "":
+		rec._active = at
 	rec.open_pack.connect(_open_inventory)
+	rec.travel_requested.connect(_travel_to)
+	rec.resume_requested.connect(_recall_snapshot)
+	rec.save_chapter_requested.connect(_save_snapshot)
+	rec.leave_requested.connect(_leave_to_hall)
 	add_child(rec)
 	rec.popup_centered()
 	Ui.ritual_open(rec)

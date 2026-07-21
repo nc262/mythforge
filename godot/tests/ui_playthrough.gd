@@ -253,11 +253,18 @@ func _check_combat(_quiet := false) -> bool:
 func _build_windows() -> void:
 	if Combat.active():
 		Combat.save({"active": false})  # leave combat so panels build in a calm state
+	# THE MENU: every tab must build — Destiny/Atlas/Chronicle fill lazily, so
+	# visiting them is the only way their pages are ever exercised.
 	var sheet := preload("res://scenes/ui/character_screen.gd").new()
 	get_tree().root.add_child(sheet)
 	await get_tree().process_frame
-	sheet.call("_show_page", "Gear")  # exercise the paper-doll build
-	await get_tree().process_frame
+	for tab in sheet.TABS:
+		sheet.call("_show_page", tab)
+		for i in 3:
+			await get_tree().process_frame
+		assert(sheet._pages.has(tab) and is_instance_valid(sheet._pages[tab]),
+			"menu: tab '%s' has no page" % tab)
+	assert(sheet._pages["Destiny"].get_child_count() > 0, "menu: Destiny never filled the skill tree")
 	sheet.queue_free()
 	for path in ["res://scenes/ui/inventory_window.gd", "res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd"]:
 		var w: Node = load(path).new()  # inventory = AcceptDialog, skill tree = Control

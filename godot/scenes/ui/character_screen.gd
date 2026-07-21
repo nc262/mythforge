@@ -1,14 +1,23 @@
 extends AcceptDialog
-## The Hero's Record (docs/rituals/CharacterScreen.md) — an AAA character
-## sheet. A persistent hero panel on the left (face, name, vitals, equipped),
-## and a real TAB RAIL on the right that swaps full pages: Record · Skills ·
-## Powers · Story. No more text-link "buttons": these are pages. Skin-ready —
-## every colour resolves through Ui.c(), so the World Skin will retint it.
+## THE MENU (docs/rituals/CharacterScreen.md) — one real game menu, the way
+## BG3 and Diablo do it: a persistent hero panel on the left, a tab rail on
+## the right, and EVERY destination is a tab. No feature is three menus deep
+## behind a tiny text link; the skill tree, the map, the chronicle and the
+## table's own settings are pages in here. Skin-ready — every colour resolves
+## through Ui.c(), so the World Skin retints the whole menu.
 
 signal open_pack
+## Things the play screen owns (they stream or leave the screen) — the menu
+## only asks, then closes.
+signal travel_requested(place: String)
+signal resume_requested(snapshot_id: String)
+signal save_chapter_requested
+signal leave_requested
 
 const DOLL_SLOTS := [["weapon", "Main hand"], ["armor", "Armor"], ["offhand", "Off hand"], ["shield", "Shield"]]
-const TABS := ["Record", "Gear", "Skills", "Powers", "Story"]
+const TABS := ["Record", "Gear", "Skills", "Powers", "Story", "Destiny", "Atlas", "Chronicle", "The Table"]
+## Pages that cost real work (art, HTTP, big canvases) build on first visit.
+const LAZY := ["Destiny", "Atlas", "Chronicle"]
 const GEAR_LEFT := ["head", "neck", "cloak", "armor", "hands"]
 const GEAR_RIGHT := ["waist", "legs", "feet", "ring1", "ring2"]
 const GEAR_BOTTOM := ["weapon", "offhand", "shield"]
@@ -18,13 +27,15 @@ var _tabs := {}       # tab name → Button
 var _host: Control     # the page container
 var _gear_host: VBoxContainer  # the paper-doll page, rebuilt whenever gear changes
 var _active := "Record"
+var _filled := {}     # lazy pages already built
+var pulse_level := -1  # a freshly earned level flares on the Destiny page
 
 
 func _init() -> void:
 	var s := GameState.sheet()
 	title = "The Record of %s" % str(s.get("name", "the hero"))
 	ok_button_text = "Return to the tale"
-	min_size = Vector2i(1060, 720)
+	min_size = Vector2i(1280, 820)
 
 
 func _ready() -> void:
@@ -45,7 +56,7 @@ func _ready() -> void:
 	for name in TABS:
 		var b := Button.new()
 		b.text = name
-		b.custom_minimum_size = Vector2(132, 44)
+		b.custom_minimum_size = Vector2(126, 46)
 		b.add_theme_font_size_override("font_size", 17)
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.pressed.connect(_show_page.bind(name))
@@ -71,8 +82,12 @@ func _ready() -> void:
 	_pages["Skills"] = _page_skills()
 	_pages["Powers"] = _page_powers()
 	_pages["Story"] = _page_story()
+	_pages["The Table"] = _page_table()
+	for lz in LAZY:  # heavy pages: an empty host now, filled on first visit
+		_pages[lz] = _page()
 	for name in TABS:
 		_pages[name].size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_pages[name].size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_host.add_child(_pages[name])
 	_show_page(_active)
 	confirmed.connect(queue_free)
@@ -86,6 +101,15 @@ func _show_page(name: String) -> void:
 		_style_tab(_tabs[k], k == name)
 	if name == "Gear":
 		_refill_gear()  # the paper doll reflects live equipment
+	if name in LAZY and not _filled.get(name, false):
+		_filled[name] = true
+		match name:
+			"Destiny":
+				_fill_destiny()
+			"Atlas":
+				_fill_atlas()
+			"Chronicle":
+				_fill_chronicle()
 	if _pages.has(name):
 		Ui.reveal(_pages[name])
 
@@ -562,3 +586,146 @@ func _has_ci(arr: Array, needle: String) -> bool:
 		if str(x).nocasecmp_to(needle) == 0:
 			return true
 	return false
+
+
+# ── Page: Destiny — the constellation, in the menu instead of its own dialog ──
+func _fill_destiny() -> void:
+	var tree := preload("res://scenes/ui/skill_tree.gd").new()
+	tree.pulse_level = pulse_level
+	tree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tree.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	tree.custom_minimum_size = Vector2(0, 560)
+	_pages["Destiny"].add_child(tree)
+
+
+# ── Page: Atlas — the painted chart, a tab now, not two clicks deep ──────────
+func _fill_atlas() -> void:
+	var host: VBoxContainer = _pages["Atlas"]
+	var locs: Array = Rules.world_locations(GameState.world_id())
+	if locs.is_empty():
+		var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+		for w in g.get("state", {}).get("cworlds", []):
+			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
+				locs = w.get("locations") if w.get("locations") is Array else []
+	if not is_instance_valid(host):
+		return
+	if locs.is_empty():
+		host.add_child(_body("No charted places yet — the GM's narration is your map for now.", "ink_dim"))
+		return
+	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
+	var map := preload("res://scenes/ui/world_map.gd").new()
+	map.locations = locs
+	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	map.here = str(wd.get("here", ""))
+	map.seen = wd.get("seen") if wd.get("seen") is Array else []
+	map.fog = bool(GameState.rule("fog", true))
+	map.quest_text = Chronicle.quests_text()
+	map.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	map.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	map.custom_minimum_size = Vector2(0, 560)
+	map.travel_requested.connect(func(place: String):
+		travel_requested.emit(place)
+		queue_free())
+	host.add_child(map)
+
+
+# ── Page: Chronicle — the closed chapters, and the way back into one ─────────
+func _fill_chronicle() -> void:
+	var host: VBoxContainer = _pages["Chronicle"]
+	var r := await Api.call_json(HTTPClient.METHOD_GET,
+		"/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
+	if not is_instance_valid(host):
+		return
+	var snaps: Array = r.get("snapshots", r.get("data", [])) if r.get("_status", 0) == 200 else []
+	host.add_child(MythHeader.new("The Chronicle"))
+	if snaps.is_empty():
+		host.add_child(_body("No chapters yet — close one from The Table when a moment deserves remembering.", "ink_dim"))
+		return
+	for sn in snaps:
+		if not (sn is Dictionary):
+			continue
+		var panel := PanelContainer.new()
+		panel.add_theme_stylebox_override("panel", Ui.sb_card())
+		var box := VBoxContainer.new()
+		box.add_theme_constant_override("separation", Ui.SPACE["xs"])
+		var t := Label.new()
+		t.theme_type_variation = "HeaderLabel"
+		t.text = str(sn.get("title", "A chapter"))
+		box.add_child(t)
+		var story := str(sn.get("story_so_far", sn.get("summary", "")))
+		if story != "":
+			box.add_child(_body(story.left(320), "ink_soft"))
+		var sid := str(sn.get("id", ""))
+		if sid != "":
+			var resume := Button.new()
+			resume.theme_type_variation = "GhostButton"
+			resume.text = "Resume from this chapter ›"
+			resume.pressed.connect(func():
+				resume_requested.emit(sid)
+				queue_free())
+			var rc := HBoxContainer.new()
+			rc.alignment = BoxContainer.ALIGNMENT_END
+			rc.add_child(resume)
+			box.add_child(rc)
+		panel.add_child(box)
+		host.add_child(panel)
+
+
+# ── Page: The Table — the tone knobs and the table's own actions ─────────────
+func _page_table() -> Control:
+	var v := _page()
+	v.add_child(MythHeader.new("The GM's Voice"))
+	var knobs: Dictionary = GameState.state.get("gm", {}) if GameState.state.get("gm") is Dictionary else {}
+	var sliders := {}
+	var grid := VBoxContainer.new()
+	grid.add_theme_constant_override("separation", Ui.SPACE["xs"])
+	for k in preload("res://scenes/ui/gm_tuner.gd").KNOBS:
+		var lbl := Label.new()
+		lbl.theme_type_variation = "HintLabel"
+		lbl.text = "%s   %s ↔ %s" % [k[1], k[2], k[3]]
+		grid.add_child(lbl)
+		var sl := HSlider.new()
+		sl.min_value = 0
+		sl.max_value = 100
+		sl.step = 5
+		sl.value = int(knobs.get(k[0], k[4]))
+		sl.custom_minimum_size = Vector2(460, 0)
+		grid.add_child(sl)
+		sliders[k[0]] = sl
+	var gc := CenterContainer.new()
+	gc.add_child(grid)
+	v.add_child(gc)
+	var save_tone := Button.new()
+	save_tone.theme_type_variation = "AccentButton"
+	save_tone.text = "Set the tone"
+	save_tone.pressed.connect(func():
+		var out := {}
+		for key in sliders:
+			out[key] = int(sliders[key].value)
+		GameState.save_kind("gm", out)
+		save_tone.text = "The table's tone shifts")
+	var sc := CenterContainer.new()
+	sc.add_child(save_tone)
+	v.add_child(sc)
+	v.add_child(MythHeader.new("This Session"))
+	var acts := VBoxContainer.new()
+	acts.add_theme_constant_override("separation", Ui.SPACE["s"])
+	var chapter := Button.new()
+	chapter.text = "Close a chapter — the chronicler writes it down"
+	chapter.custom_minimum_size = Vector2(420, 44)
+	chapter.pressed.connect(func():
+		save_chapter_requested.emit()
+		queue_free())
+	acts.add_child(chapter)
+	var leave := Button.new()
+	leave.theme_type_variation = "GhostButton"
+	leave.text = "Return to the Hall"
+	leave.custom_minimum_size = Vector2(420, 44)
+	leave.pressed.connect(func():
+		leave_requested.emit()
+		queue_free())
+	acts.add_child(leave)
+	var ac := CenterContainer.new()
+	ac.add_child(acts)
+	v.add_child(ac)
+	return v
