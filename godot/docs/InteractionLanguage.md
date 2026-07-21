@@ -2,8 +2,9 @@
 
 **The standard for every interaction in the game.** MDL
 ([DesignSystem.md](DesignSystem.md)) governs how things *look*; MIL governs how
-things *behave when touched*. The World Style Guide
-([WorldSkin.md](WorldSkin.md)) supplies the vocabulary both draw from.
+things *behave when touched*, and — first — **how they should make the player
+feel**. The World Style Guide ([WorldSkin.md](WorldSkin.md)) supplies the
+vocabulary both draw from.
 
 If an interaction is not described here, it is not finished — either implement
 the matching pattern, or extend this document first and then implement it.
@@ -21,139 +22,209 @@ is a bug, not a shortcut.
 
 | Act | Purpose | Typical carrier |
 |---|---|---|
-| **Beginning** — *anticipation* | "this is touchable, and I am touching it" | hover lift + glow + hover sound; press depress |
-| **Middle** — *transformation* | the world visibly changes | the animation of the thing itself (a piece slots into a socket, a card flips, a bar fills) |
-| **End** — *consequence + rest* | what it cost, what it gained, and a return to calm | stat delta rises, confirmation sound, control settles to idle |
+| **Beginning** — *anticipation* | "this is touchable, and I am touching it" | hover lift + rim warm + hover sound; press depress |
+| **Middle** — *transformation* | the world visibly changes | the animation of the thing itself (a piece slots into a socket, a coin arcs to the purse, a bar fills) |
+| **End** — *consequence + rest* | what it cost, what it gained, a return to calm | stat delta, confirmation sound, control settles to idle |
 
 **Worked reference — equipping a longsword:**
 
 ```
-hover socket        → lift 1.045, gold rim warms, ui_hover        (beginning)
-press               → depress 0.96, ui_click                      (beginning)
-release             → item art flies card → socket (180ms)        (middle)
-                    → socket flares gold, ring pulses             (middle)
-                    → doll render tints/updates                   (middle)
-                    → "+2 AC" rises off the stat line             (end)
-                    → equip sound                                 (end)
-                    → everything settles to idle within 500ms     (end)
+hover socket   → scale SCALE.lift, gold rim at ALPHA.rim, Sfx.ui("ui_hover")   (beginning)
+press          → scale SCALE.press, Sfx.ui("ui_click")                          (beginning)
+release        → Ui.fly_to(card → socket) over TIME.base                        (middle)
+               → socket flares, Ui.pulse                                        (middle)
+               → doll render updates                                            (middle)
+               → Ui.rise_text("+2 AC")                                          (end)
+               → Sfx.ui("equip")                                                (end)
+               → all idle within TIME.slow                                      (end)
 ```
 
-Total budget: **≤ 600 ms**. Longer than that and the player is waiting, not
-being rewarded. Nothing in MIL may block input — every act is skippable by
-acting again.
+Total budget: **`INTERACT.budget`**. Longer and the player is waiting, not being
+rewarded. Nothing in MIL may block input — every act is interruptible by acting
+again.
 
 ---
 
-## 1. Timing and easing
+## 1. Emotional intent — design this first
 
-The only timing numbers allowed are `Ui.TIME`. New values require an edit here
-and in `skin.gd` together.
+**Design the player's emotional experience first, then design the motion, audio
+and visuals that serve it.** A pattern whose emotion is undefined has no way to
+be judged right or wrong, and drifts into decoration.
 
-| Token | Value | Used for |
+Every pattern in this document declares its intent. The full table:
+
+| Pattern | Purpose | Desired emotion | Why it exists |
+|---|---|---|---|
+| **Hover** | mark the boundary between world and interface | *curiosity, invitation* | The player must know what is alive before committing. Uncertainty about what is clickable is the cheapest form of anxiety, and the easiest to remove. |
+| **Click** | confirm the machine received the intent | *agency, certainty* | Input without acknowledgement makes a player press twice. Two presses is a broken contract. |
+| **Success** | make the consequence legible and deserved | *satisfaction, competence* | Numbers changing off-screen teach the player their choices are bookkeeping. A visible consequence teaches that their choices matter. |
+| **Error / refusal** | say no without punishing | *clarity, never shame* | A refusal the player doesn't understand reads as a bug. A refusal that explains itself reads as a rule — and rules are part of the fiction. |
+| **Loading** | keep the world present while the machine works | *trust, anticipation* | A frozen screen breaks the fiction and invites the thought "is it broken?" A composed wait keeps the player inside the story. |
+| **GM thinking** | make the pause feel like authorship | *anticipation, company* | The local model is genuinely slow. Unmasked, that reads as failure; dressed as a Game Master composing, the same seconds read as care. |
+| **Reveal** | let content arrive rather than appear | *discovery, order* | Instant population overwhelms and hides hierarchy. Staggered arrival tells the eye where to begin reading. |
+| **Reward** | mark what was earned | *pride, appetite* | If loot and levels land as silently as a menu click, progression stops feeling like progress. |
+| **Notification** | inform without interrupting | *calm awareness* | Interruption is a tax on immersion. State should be visible where the state lives. |
+| **Tooltip** | answer the question before it's asked | *confidence, mastery* | A player who must experiment to learn what a button does is being tested, not taught. |
+| **Window ritual** | mark passage between contexts | *deliberateness, weight* | A window that blinks into existence is a dialog box. A window that opens is a place you went. |
+| **Scene transition** | preserve continuity of world | *immersion, flow* | A hard cut resets the fiction. A transition carries the player somewhere; nothing feels more "prototype" than a cut. |
+| **Ceremony** | stop time for what mattered | *awe, pride, memory* | Ordinary feedback is calibrated to be forgettable. Some moments must be *remembered*, and memory requires disproportion. |
+
+**Rule:** when a pattern's motion, audio and visuals disagree about the
+emotion, the emotion wins and the craft is redone.
+
+---
+
+## 2. Tokens — the only numbers allowed
+
+**No literal timing, scale, alpha, offset, or decibel value may appear in an
+interaction.** Everything below lives in `autoload/skin.gd` so the whole game
+can be re-tuned from one place during playtesting — that is the point: these
+values *will* change once we play it, and no code should have to change with
+them.
+
+```gdscript
+Ui.TIME     = {instant, fast, base, slow, beat, ceremony, breath}
+Ui.SCALE    = {press, exit, enter, lift, pulse, bloom}
+Ui.ALPHA    = {ghost, glow, scrim, rim, dim}
+Ui.MOTION   = {shake_px, shake_cycles, rise_px, stagger, stagger_max, drift_px}
+Ui.DELAY    = {hover_gate, tooltip, load_min, status_cycle, ceremony_hold}
+Ui.MIX      = {ui, reward, ceremony}
+Ui.INTERACT = {budget}
+```
+
+| Group | Token | Meaning |
 |---|---|---|
-| `fast` | 0.12 s | hover, press, tooltip fade, micro-feedback |
-| `base` | 0.22 s | reveals, tab swaps, stat deltas, window ritual |
-| `slow` | 0.45 s | scene transitions, ceremony beats, art crossfade |
-| `breath` | 3.2 s | idle breathing loops (portraits, candles, waiting states) |
+| **TIME** | `instant` | sub-perceptual state flips |
+| | `fast` | hover, press, tooltip fade, micro-feedback |
+| | `base` | reveals, tab swaps, deltas, window ritual |
+| | `slow` | scene transitions, art crossfade, settle |
+| | `beat` | a held pause inside a ceremony |
+| | `ceremony` | the full length of a ceremony peak |
+| | `breath` | idle life loops (portraits, candles, waiting) |
+| **SCALE** | `press` | depressed control |
+| | `exit` | element leaving |
+| | `enter` | element arriving from |
+| | `lift` | hovered control |
+| | `pulse` | one-shot attention flare peak |
+| | `bloom` | ceremony burst peak |
+| **ALPHA** | `ghost` | empty-slot art, disabled imagery |
+| | `glow` | success/attention glow |
+| | `scrim` | modal dim behind a window |
+| | `rim` | hovered border warmth |
+| | `dim` | ceremony world-dim |
+| **MOTION** | `shake_px` / `shake_cycles` | refusal shake |
+| | `rise_px` | floating stat delta travel |
+| | `stagger` / `stagger_max` | collection reveal cadence and cap |
+| | `drift_px` | Ken Burns / parallax travel |
+| **DELAY** | `hover_gate` | minimum spacing between hover sounds |
+| | `tooltip` | hover dwell before a tooltip |
+| | `load_min` | minimum time a loading frame stays up |
+| | `status_cycle` | waiting-line rotation |
+| | `ceremony_hold` | the pause at a ceremony's peak |
+| **MIX** | `ui` / `reward` / `ceremony` | the three loudness tiers, in dB |
+| **INTERACT** | `budget` | maximum length of an *ordinary* interaction |
 
 **Easing law:** ease **out** on arrival, ease **in-out** on round trips.
 Exponential family only — `TRANS_QUAD`, `TRANS_CUBIC`, `TRANS_QUART`,
-`TRANS_EXPO`, `TRANS_SINE` (idle loops).
+`TRANS_EXPO`, `TRANS_SINE` (idle loops). **Banned:** `TRANS_BOUNCE`,
+`TRANS_ELASTIC`, any overshoot on UI chrome. Mythforge is candlelit and heavy —
+nothing springs.
 
-**Banned:** `TRANS_BOUNCE`, `TRANS_ELASTIC`, and any overshoot on UI chrome.
-Mythforge is candlelit and heavy — nothing springs.
+**Tuning protocol:** during playtest, change the token, never the caller. If a
+single screen needs a different value, that is a signal the token set is wrong,
+not a licence to hardcode.
 
 ---
 
-## 2. Hover
+## 3. Hover
+
+> **Intent:** curiosity, invitation. *The player must know what is alive before committing.*
 
 Applies to every `Button`, card, socket, tab, map pin, and list row.
 
 | Layer | Behaviour |
 |---|---|
-| Motion | scale → **1.045**, `fast`, ease-out quad (`Ui.polish` already does this) |
-| Light | border/rim colour → `gold` at 0.55α; material plates raise their top highlight |
+| Motion | scale → `SCALE.lift` over `TIME.fast`, ease-out quad (`Ui.polish`) |
+| Light | border/rim → `gold` at `ALPHA.rim`; material plates raise their top highlight |
 | Cursor | `CURSOR_POINTING_HAND` on anything clickable — **no exceptions** |
-| Audio | `ui_hover` — quiet, ≤ 60 ms, at most one per 80 ms (rate-limited globally) |
-| Tooltip | arms a 450 ms timer (see §10) |
+| Audio | `ui_hover` at `MIX.ui`, gated to one per `DELAY.hover_gate` |
+| Tooltip | arms the `DELAY.tooltip` timer (§10) |
 
-**Rules**
-- Hover state must be *visible without motion* (the rim), so reduce-motion users still perceive it.
-- Disabled controls do **not** hover, do **not** sound, and carry a tooltip explaining *why* they're disabled.
-- Nothing may change layout on hover. Lift is scale-only; no reflow.
+- Hover must be visible **without motion** (the rim), so reduce-motion still perceives it.
+- Disabled controls do not hover, do not sound, and carry a tooltip saying *why*.
+- Nothing may change layout on hover — scale only, never reflow.
 
-## 3. Click / press
+## 4. Click / press
+
+> **Intent:** agency, certainty. *Input without acknowledgement makes a player press twice.*
 
 | Phase | Behaviour |
 |---|---|
-| Press down | scale → **0.96**, `fast`; `ui_click` fires **on press, not release** (perceived latency) |
+| Press down | scale → `SCALE.press` over `TIME.fast`; `ui_click` fires **on press, not release** |
 | Held | hold the depressed state; no repeat sound |
-| Release inside | return to hover scale 1.045, `fast`; the action's *middle* act begins |
-| Release outside | return to 1.0, `fast`, **no** action, **no** sound |
+| Release inside | → `SCALE.lift` over `TIME.fast`; the action's *middle* act begins |
+| Release outside | → 1.0, no action, no sound |
 
-**Rules**
-- A click that does nothing must still respond — if the action is refused, run the **error** pattern (§5), never silence.
-- Destructive or irreversible controls (delete a save, leave to the Hall mid-scene) require confirmation, and the confirm button uses `AccentButton` + `ui_open` ritual.
-- Double-click is never the *only* way to do something.
+- A click that does nothing must still respond — refusal (§6), never silence.
+- Irreversible controls confirm first; the confirm uses `AccentButton` + the full window ritual.
+- Double-click is never the only path to an action.
 
-## 4. Success feedback
+## 5. Success
 
-Fires when the engine has actually committed the change.
+> **Intent:** satisfaction, competence. *A visible consequence teaches that choices matter.*
 
-1. **The thing moves** — item flies to its socket, star lights on the tree, coin leaves the purse. `base`, ease-out.
-2. **Shimmer** — a brief `Ui.pulse` on the changed element (scale 1.0→1.06→1.0, `fast`), plus a gold glow at 0.35α fading over `base`.
-3. **Floating delta** — `Ui.rise_text` for every numeric change the player cares about: `+2 AC`, `−40 gold`, `+150 XP`, `−7 HP`. Gold for gain, `danger` for loss, rising 34 px over `slow`.
+1. **The thing moves** — `Ui.fly_to` for objects, fill for bars, over `TIME.base`, ease-out.
+2. **Shimmer** — `Ui.pulse` to `SCALE.pulse`, plus a gold glow at `ALPHA.glow` fading over `TIME.base`.
+3. **Delta** — `Ui.rise_text` for every number the player cares about (`+2 AC`, `−40 gold`, `+150 XP`), travelling `MOTION.rise_px`, gold for gain / `danger` for loss.
 4. **Audio** — the specific reward sound (§12), never a generic click.
-5. **Rest** — everything settles; no lingering glow after 600 ms.
+5. **Rest** — settled within `INTERACT.budget`; no glow outlives it.
 
 **Rule:** if a number on screen changed and no delta rose, the interaction is incomplete.
 
-## 5. Error / refusal feedback
+## 6. Error / refusal
 
-Never a silent no-op. Never a raw engineering string.
+> **Intent:** clarity, never shame. *A refusal that explains itself reads as a rule, not a bug.*
 
 | Layer | Behaviour |
 |---|---|
-| Motion | horizontal shake — 3 oscillations, ±5 px, decaying, 260 ms total |
-| Colour | border pulses `danger` at 0.7α → 0, over `base` |
-| Audio | `ui_deny` — muted, low, short; deliberately unsatisfying |
+| Motion | `Ui.shake` — `MOTION.shake_cycles` oscillations at ±`MOTION.shake_px`, decaying, over `TIME.base` |
+| Colour | border pulses `danger` → 0 over `TIME.base` |
+| Audio | `ui_deny` at `MIX.ui` — muted, low, deliberately unsatisfying |
 | Words | one sentence, in the world's voice, saying *what* and *why*: "Not enough gold for the lantern — you carry 12, it asks 15." |
 
-**Rules**
-- Never show HTTP status codes, exception text, node paths, or the word "null" to a player.
-- Errors that are the *system's* fault (backend down, art forge stalled) are phrased as the world faltering, plus a retry affordance — never blame the player.
-- Refusals that are *rules* ("not your turn") are stated as rules, and point at the fix ("press Next › to advance").
+- Never show HTTP codes, exception text, node paths, or "null" to a player.
+- System faults (backend down, art forge stalled) are phrased as the world faltering, with a retry — never blame the player.
+- Rule refusals state the rule and point at the fix ("not your turn — press Next › to advance").
 
-## 6. Loading and waiting
+## 7. Loading and waiting
 
-**The screen may never be frozen, blank, or unexplained.** Three tiers:
+> **Intent:** trust, anticipation. *A frozen screen invites "is it broken?"*
 
-### Tier 1 — Micro (< 400 ms)
-No spinner. The control stays depressed until resolution. Nothing else.
+### Tier 1 — Micro (< `TIME.slow`)
+No spinner. The control holds its pressed state until resolution.
 
-### Tier 2 — Scene load (scene change, hydration, first art)
+### Tier 2 — Scene load
 The `Loading` FSM state renders a composed frame, never a bare colour:
-- the destination world's key art, dimmed and slowly drifting (Ken Burns, `breath`)
+- destination world's key art, dimmed, drifting `MOTION.drift_px` over `TIME.breath`
 - the world's name in display type
-- **one line of that world's own lore**, drawn from its descriptor — not "Loading…"
-- a slim gold progress rule that reflects *real* work (hydrate → sheet → first paint), never a fake timer
-- ambient bed already crossfaded in, so audio arrives before the visuals
+- **one line of that world's own lore** — never the word "Loading"
+- a slim gold rule reflecting *real* work (hydrate → sheet → first paint), never a fake timer
+- ambient bed crossfaded in first, so sound arrives before picture
 
-Minimum on-screen time **700 ms** even if work finishes sooner — a flash is worse than a beat.
+Held a minimum of `DELAY.load_min` even if work finishes sooner — a flash is worse than a beat.
 
-### Tier 3 — The GM is thinking (LLM first-token wait)
+### Tier 3 — The GM is thinking
 
-The most-seen wait in the game. It must feel like a person composing, not a
-machine hanging.
+> **Intent:** anticipation, company. *The same seconds read as care instead of failure.*
 
-**Composition** (bottom of the thread, where the reply will appear):
-- a **quill** icon writing — a 3-dot ink stroke cycling, `breath`-paced
-- the GM's bubble already present but empty, breathing at 0.9→1.0 α
-- **candle flicker** on the scene art: ±0.02 α at ~2 Hz (slow — see the flicker RCA; fast flicker reads as a broken screen)
-- 2–4 drifting motes rising through the bubble
-- a status line in the **world's own voice**, rotating every 2.4 s
+At the foot of the thread, where the reply will appear:
+- a **quill** writing — ink-stroke cycle paced to `TIME.breath`
+- the GM's bubble present but empty, breathing between `ALPHA.dim` and 1.0
+- **slow** candle flicker on the scene art (fast flicker reads as a broken screen — see the flicker RCA)
+- a few motes drifting up through the bubble
+- a status line in the world's own voice, rotating every `DELAY.status_cycle`
 
-**World-specific waiting copy** (from `WorldSkin.FAMILIES[...].flavor`):
+**World-specific waiting copy**, keyed to the active `WorldSkin` family:
 
 | Family | Lines |
 |---|---|
@@ -166,175 +237,205 @@ machine hanging.
 | horror | "Something considers you…" · "The dark deliberates…" |
 | norse | "The threads are spun…" · "The saga gathers…" |
 
-When the first token lands the waiting state **crossfades** into the streaming
-text over `fast` — it never pops.
+First token → crossfade into streaming text over `TIME.fast`; it never pops.
+Past a long wait, add reassurance and a cancel affordance; never fail silently.
 
-**Rule:** if a wait exceeds 20 s, the state adds a reassurance line ("the
-GM is deep in thought — the local mind is slow tonight") and a cancel
-affordance. It never silently gives up.
+## 8. Reveal
 
-## 7. Reveal animations
+> **Intent:** discovery, order. *Staggered arrival tells the eye where to begin.*
 
-For content appearing on screen (lists, cards, pages, tabs).
+- Single element: `Ui.reveal` — α 0→1, scale `SCALE.enter`→1.0 over `TIME.base`, ease-out.
+- Collections: `Ui.reveal_children` at `MOTION.stagger`, capped at `MOTION.stagger_max` (beyond that reveal the container once — a 40-item stagger is a loading screen).
+- Order: reading order. Never random, never centre-out.
+- Tabs/pages: outgoing fades over `TIME.fast`, incoming reveals over `TIME.base`, never a gap of empty screen.
 
-- Single element: `Ui.reveal` — α 0→1 + scale 0.985→1.0 over `base`, ease-out.
-- Collections: `Ui.reveal_children` with **0.04 s stagger**, capped at 12 items (beyond that, reveal the container once — a 40-item stagger is a loading screen).
-- Order: reading order, always. Never random, never centre-out.
-- Tabs/pages: outgoing fades over `fast`, incoming reveals over `base`, no gap of empty screen.
+**Rule:** content must never be *gated* on the tween — if it's skipped, the page still reads.
 
-**Rule:** a reveal enhances an already-valid layout. Content must never be *gated* on the animation firing — if the tween is skipped, the page still reads.
+## 9. Reward
 
-## 8. Reward animations
-
-Reserved for things the player *earned*. Overuse destroys them.
+> **Intent:** pride, appetite. *Silent progression stops feeling like progress.*
 
 | Reward | Presentation |
 |---|---|
-| Loot | item art scales 0.8→1.0 with a rarity-tinted glow, name rises, `loot` sound |
-| Gold | coin glyph arcs to the purse, purse number counts up over `base`, `purchase` sound |
-| XP | bar fills over `slow` with a travelling highlight; if it crosses a level, the fill *holds* one beat before the ceremony |
-| Level up | full ceremony: screen dims 0.35, portrait breathes brighter, gold burst behind the hero, `levelup` fanfare, the menu opens on Destiny with the new star flaring |
-| Quest complete | the quest line strikes through in gold, `quest` chord, entry slides to a "done" group |
-| Chapter / THE END | the chronicler beat: page-turn, cover art assembles, `save` sound |
+| Loot | art scales `SCALE.enter`→1.0 with a rarity-tinted glow, name rises, `loot` |
+| Gold | coin arcs to the purse (`Ui.fly_to`), purse counts up (`Ui.count_to`), `purchase` |
+| XP | bar fills over `TIME.slow` with a travelling highlight; crossing a level *holds* one `TIME.beat` before the ceremony |
+| Quest complete | line strikes through in gold, `quest`, entry slides to a done group |
 
-**Rule:** ceremony scales with rarity. A common dagger gets a shimmer; a level-up stops the world for 1.2 s.
-
-## 9. Notifications
-
-Mythforge has **no toast popups**. The world tells you things.
-
-- **In-thread system lines** (`_say_system`) are the default channel: a drawn icon + one sentence, revealed like any other bubble.
-- **Ambient state** (autosave, art landed) is shown *where the state lives* — the save mark near the header, the art fading into its frame — never a floating card.
-- **Interruptions** (a reaction prompt in combat) take a modal with the full window ritual (§11) because they demand a decision.
-
-**Rule:** if the player doesn't need to act, it does not steal focus.
+Ordinary rewards live here. Anything that should be *remembered* is a Ceremony (§13).
 
 ## 10. Tooltips
 
-Every actionable control carries one. This is not optional; it is the single
-largest legibility gap in the current build.
+> **Intent:** confidence, mastery. *A player who must experiment to learn is being tested, not taught.*
 
 | Property | Value |
 |---|---|
-| Delay | 450 ms hover, 0 ms if another tooltip is already open (chaining) |
-| Fade | `fast` in, `fast` out |
-| Anchor | above the control, flipping below near the screen edge; never covering the control |
-| Content | **name** (title case) · **what it does** in one line · **shortcut** if any · **why disabled** when disabled |
-| Rich tooltips | items, spells and skills use `MythTooltip` — framed panel, rarity rim, stat rows, ▲/▼ comparison against what's worn |
+| Delay | `DELAY.tooltip`; 0 if another tooltip is already open (chaining) |
+| Fade | `TIME.fast` in and out |
+| Anchor | above the control, flipping near screen edges; never covering it |
+| Content | **name** · **what it does**, one line · **shortcut** · **why disabled** |
+| Rich | items/spells/skills use `MythTooltip` — framed, rarity rim, stat rows, ▲/▼ vs worn |
 
-**Rules**
-- Never restate the button's own label and stop there ("Shop — shop"). Say what happens.
-- Numbers in tooltips must match the engine exactly — a tooltip is a promise.
-- Keyboard/controller focus shows the tooltip too, at the same delay.
+- Never restate the label and stop ("Shop — shop"). Say what happens.
+- Numbers must match the engine exactly — a tooltip is a promise.
+- Keyboard and pad focus show tooltips too, at the same delay.
 
-## 11. Window open / close rituals
+## 11. Notifications
 
-Every dialog, menu, forge and book. `Ui.ritual_open` already carries the scrim;
-MIL completes the ritual.
+> **Intent:** calm awareness. *Interruption is a tax on immersion.*
+
+- **In-thread system lines** are the default channel: drawn icon + one sentence, revealed like any bubble.
+- **Ambient state** (autosave, art landed) is shown *where the state lives* — never a floating card.
+- **Interruptions** (a combat reaction prompt) take a modal with the full ritual, because they demand a decision.
+
+**Rule:** if the player needn't act, it does not steal focus. Mythforge has no toast popups.
+
+## 12. Window open / close rituals
+
+> **Intent:** deliberateness, weight. *A window that opens is a place you went.*
 
 **Open**
-1. Scrim fades in behind → `night` at 0.45α over `base`.
-2. Window reveals: α 0→1, scale 0.985→1.0, over `base`, ease-out.
-3. `ui_open` sound (rising) — one per open, never per child.
-4. Focus lands on the primary control (keyboard/pad ready immediately).
-5. Content inside staggers per §7.
+1. Scrim fades in → `night` at `ALPHA.scrim` over `TIME.base`.
+2. Window: α 0→1, scale `SCALE.enter`→1.0 over `TIME.base`, ease-out.
+3. `ui_open` — one per window, never per child.
+4. Focus lands on the primary control.
+5. Content staggers per §8.
 
-**Close**
-1. `ui_close` (falling, quieter than open).
-2. Window α→0 + scale →0.99 over `fast`.
-3. Scrim fades out over `base`.
-4. Focus returns to the control that opened it.
+**Close** — `ui_close` (quieter than open) · α→0, scale→`SCALE.exit` over `TIME.fast` · scrim out over `TIME.base` · focus returns to the opener.
 
-**Rules**
-- ESC always closes the topmost window and only that one.
+- ESC closes the topmost window, and only that one.
 - A window never opens over another without dimming the one beneath.
-- Windows never resize after they're visible — measure before showing (this caused the off-screen OK button caught by the click-driver).
+- Windows never resize after becoming visible — measure before showing (this caused the off-screen OK button the click-driver caught).
 
-## 12. Audio vocabulary
+## 13. Ceremonies
 
-All synthesized through `scripts/make_sfx.py` — pure math, no licences, no
-downloads. **Every sound below is mandatory for VS-1.**
+> **Intent:** awe, pride, memory. *Ordinary feedback is calibrated to be forgotten. Some moments must be remembered — and memory requires disproportion.*
 
-| Name | Character | Synthesis sketch |
-|---|---|---|
-| `ui_hover` | a breath of felt | 1.8 kHz sine, 45 ms, exp decay, −26 dB |
-| `ui_click` | wood on leather | 120 Hz sine thump + 8 ms noise, 90 ms |
-| `ui_open` | a drawer sliding | rising 220→330 Hz sine, 260 ms, soft attack |
-| `ui_close` | it settles | falling 330→220 Hz, 200 ms, quieter than open |
-| `ui_back` | one step back | short falling fifth, 140 ms |
-| `ui_deny` | a muted refusal | 90 Hz square-ish, heavily damped, 160 ms |
-| `equip` | metal into leather | noise burst + 1.2 kHz metallic ring, 240 ms |
-| `purchase` | coins | 3 short metallic pings, randomized, 300 ms |
-| `loot` | a small wonder | rising bell arpeggio (major 3rd), 420 ms |
-| `levelup` | earned | major triad swell + shimmer tail, 1.4 s |
-| `quest` | resolution | warm perfect fifth, 700 ms |
-| `page` | paper turns | filtered noise sweep, 280 ms |
-| `travel` | departure | low whoosh, 600 ms |
-| `save` | the quill sets down | brief scratch + soft chime, 350 ms |
-| `crit` | it *lands* | existing `hit` + bright overtone, 320 ms |
-| `turn` | your move | soft double tap, 180 ms |
+Ceremonies are the deliberate exception to `INTERACT.budget`. They stop time.
+Because they are expensive, they are **rationed**: a ceremony that fires often
+is no longer a ceremony, it is an interruption.
 
-Plus the existing `dice`, `hit`, `sting`, `chime` and five ambient beds.
+### The five-beat grammar
 
-**Mix law**
-- UI feedback sits **−18 to −26 dB** — felt, never announced.
-- Rewards sit **−12 dB**; ceremony (`levelup`) at **−8 dB** is the loudest thing in the game.
-- One hover sound per 80 ms globally. Two identical sounds never stack — retrigger cuts the first.
-- Every sound respects the Settings SFX toggle; ambient respects its own toggle and slider.
-- **Silence is never the answer to a click.** If a control is intentionally quiet, it still gets `ui_click`.
+Every ceremony uses the same shape, scaled by weight:
 
-*World-skinned timbre (a cyber `ui_click` that ticks rather than thumps) is
-explicitly **out of scope** for VS-1 — one neutral set ships first.*
+| Beat | What happens |
+|---|---|
+| **1. Hush** | the world quiets — scene dims to `ALPHA.dim`, ambient ducks, motion stills over `TIME.base` |
+| **2. Gather** | the elements converge — art assembles, light draws inward, portrait brightens |
+| **3. Strike** | the peak — bloom to `SCALE.bloom`, the fanfare at `MIX.ceremony`, held `DELAY.ceremony_hold` |
+| **4. Bestow** | what you gained, stated plainly and legibly — the name, the number, the new power |
+| **5. Return** | the world comes back over `TIME.slow`, focus lands somewhere useful (usually *at* the new thing) |
 
-## 13. Motion vocabulary
+### The ceremonies
+
+| Moment | Weight | Beats | The feeling it must produce |
+|---|---|---|---|
+| **Character created** | Major | full 5 | *"This is mine."* The portrait, name, class and world assemble into one composed frame — the first time the hero exists as a person rather than a form. |
+| **Campaign created** | Major | full 5 | *"A world now exists that didn't."* Key art resolves, the premise is read like a title card. |
+| **Adventure start** | Major | full 5 | *"It begins."* The hush before the first scene: world art, party assembled, then the GM's first words arrive into stillness. |
+| **Level up** | Major | full 5 | *"I grew."* Dim, portrait brightens, gold burst, the gains listed, then the menu opens on Destiny with the new star flaring. |
+| **Legendary / epic loot** | Major | full 5 | *"I will remember finding this."* Rarity-coloured light, the item held large before it goes to the pack. |
+| **Boss victory** | Major | full 5 | *"We survived that."* Battle music resolves rather than stops, the fallen foe's art dims, spoils presented as a group. |
+| **Companion recruited** | Medium | 1,2,3,5 | *"I'm not alone."* Their portrait paints in and takes its place beside the hero. |
+| **Chapter closed / THE END** | Major | full 5 | *"That was a story."* Page-turn, the cover assembles, the chronicle accepts it. |
+| **First arrival in a new place** | Light | 2,3,5 | *"Somewhere new."* Scene art crossfades under the place's name; no dim, no focus theft. |
+| **Uncommon / rare loot** | Light | 3,4 | *"Nice."* Glow and lift proportional to rarity — not a full stop. |
+
+### Ceremony law
+
+- **Always skippable.** Any input completes the ceremony immediately and lands on its end state. Never trap the player.
+- **Never blocking truth.** State is committed *before* the ceremony plays; the ceremony narrates a change that already happened, so an interrupted ceremony can never desync.
+- **Rationed by weight.** Major ceremonies must be rare enough to stay special — if playtest shows one firing every few minutes, it demotes to Medium.
+- **Diegetic where possible.** Prefer the world reacting (candles flare, the chronicle writes) over UI effects layered on top.
+- **Reduce-motion:** the beats remain, expressed as crossfade + hold instead of movement — a ceremony must never simply vanish for accessibility. Duration may shorten; the *moment* may not be removed.
+- **Audio is the spine.** If everything visual were removed, the ceremony's audio alone should still read as "something significant just happened."
+
+## 14. Motion vocabulary
 
 The complete public API. **Screens may not hand-roll tweens** — extend `Ui`
-instead, so reduce-motion stays a single switch.
+instead, so reduce-motion and token tuning stay single switches.
 
-| Function | Does | Existing |
+| Function | Does | State |
 |---|---|---|
-| `Ui.polish(root)` | wires hover lift + press dip to every Button under a node | ✅ |
+| `Ui.polish(root)` | hover lift + press dip on every Button under a node | ✅ |
 | `Ui.reveal(ctrl, delay)` | fade + settle entrance | ✅ |
 | `Ui.reveal_children(c, stagger)` | staggered collection entrance | ✅ |
-| `Ui.breathe(ctrl)` | idle life loop at `breath` | ✅ |
+| `Ui.breathe(ctrl)` | idle life loop | ✅ |
 | `Ui.pulse(ctrl)` | one-shot attention flare | ✅ |
 | `Ui.ritual_open(dlg)` | scrim + window ceremony | ✅ |
 | `Ui.rise_text(parent, text, colour, at)` | floating stat delta | ✅ |
-| `Ui.shake(ctrl)` | error refusal | **VS-1** |
-| `Ui.fly_to(from, to, tex)` | item/coin travelling between two rects | **VS-1** |
-| `Ui.count_to(label, from, to)` | numbers roll rather than snap | **VS-1** |
-| `Ui.transition(to_scene)` | world-skinned scene wipe | **VS-1** |
-| `Sfx.ui(name)` | rate-limited UI sound | **VS-1** |
+| `Ui.shake(ctrl)` | refusal | **VS-1** |
+| `Ui.fly_to(from, to, tex)` | object travelling between two rects | **VS-1** |
+| `Ui.count_to(label, from, to, fmt)` | numbers roll rather than snap | **VS-1** |
+| `Ui.transition(scene_path)` | world-skinned scene wipe | **VS-1** |
+| `Ui.ceremony(host, spec)` | the five-beat grammar | **VS-1** |
+| `Sfx.ui(name)` | rate-limited, tier-mixed UI sound | **VS-1** |
 
-## 14. Accessibility variants
+## 15. Audio vocabulary
 
-Every pattern above must degrade, never disappear. `Ui.reduce_motion` is
-already honoured in 17 files; MIL extends the contract.
+All synthesized through `scripts/make_sfx.py` — pure math, no licences, no
+downloads. Every sound below is mandatory for VS-1.
 
-| Pattern | Reduced motion | Notes |
+| Name | Character | Synthesis sketch |
 |---|---|---|
-| Hover | rim/colour change only, no scale | state stays perceivable |
-| Click | instant state change, sound unchanged | audio carries the beat |
-| Success | delta text **appears and holds 1.2 s** instead of rising | information preserved |
-| Error | colour pulse + sound, **no shake** | never induce motion discomfort |
-| Loading | static composed frame, no drift, no motes | progress rule still moves (it is information, not decoration) |
-| Reveal | instant visibility | never gate content on a tween |
-| Reward | single flash + sound, no burst | ceremony shortens, never vanishes |
-| Window ritual | instant, scrim still dims | dimming is hierarchy, not motion |
-| Waiting state | text rotation only, no quill animation | the words do the work |
+| `ui_hover` | a breath of felt | high sine, very short, exp decay |
+| `ui_click` | wood on leather | low sine thump + brief noise |
+| `ui_open` | a drawer sliding | rising sine, soft attack |
+| `ui_close` | it settles | falling sine, quieter than open |
+| `ui_back` | one step back | short falling fifth |
+| `ui_deny` | a muted refusal | low damped square-ish, no sparkle |
+| `equip` | metal into leather | noise burst + metallic ring |
+| `purchase` | coins | three randomized metallic pings |
+| `loot` | a small wonder | rising bell arpeggio |
+| `levelup` | earned | major triad swell + shimmer tail |
+| `quest` | resolution | warm perfect fifth |
+| `page` | paper turns | filtered noise sweep |
+| `travel` | departure | low whoosh |
+| `save` | the quill sets down | brief scratch + soft chime |
+| `crit` | it *lands* | impact + bright overtone |
+| `turn` | your move | soft double tap |
+
+Plus existing `dice`, `hit`, `sting`, `chime` and five ambient beds.
+
+**Mix law**
+- UI feedback at `MIX.ui` — felt, never announced.
+- Rewards at `MIX.reward`. Ceremony at `MIX.ceremony` — the loudest thing in the game.
+- One hover sound per `DELAY.hover_gate`; identical sounds never stack (retrigger cuts the first).
+- Every sound respects the Settings toggles.
+- **Silence is never the answer to a click.**
+
+*World-skinned timbre is explicitly out of scope for VS-1 — one neutral set ships first.*
+
+## 16. Accessibility variants
+
+Every pattern degrades; none disappears. `Ui.reduce_motion` is already honoured
+in 17 files — MIL extends the contract.
+
+| Pattern | Reduced motion |
+|---|---|
+| Hover | rim/colour only, no scale |
+| Click | instant state flip, sound unchanged |
+| Success | delta **appears and holds** instead of rising |
+| Error | colour pulse + sound, **no shake** |
+| Loading | static frame, no drift or motes — but the progress rule still moves (information, not decoration) |
+| Reveal | instant visibility |
+| Reward | single flash + sound, no burst |
+| Window ritual | instant, scrim still dims (dimming is hierarchy) |
+| GM thinking | text rotation only, no quill animation |
+| **Ceremony** | crossfade + hold replaces movement; shortened, **never removed** |
 
 **Additional requirements**
-- Every state is carried by **at least two channels** (colour + motion, or colour + sound, or motion + text) — never colour alone.
-- Body text contrast ≥ **4.5:1**, large text ≥ **3:1**, measured per palette, not assumed.
-- Sound is never the *only* signal of anything.
-- Focus is always visible — the 2 px amethyst ring, on every focusable control, keyboard and pad alike.
+- Every state carried by **at least two channels** — never colour alone.
+- Body text ≥ **4.5:1**, large text ≥ **3:1**, measured per palette.
+- Sound is never the only signal of anything.
+- Focus always visible — the amethyst ring, keyboard and pad alike.
 
-*Text scaling and colourblind palettes are queued (VerticalSlice §G) and out of
-VS-1 scope; the two-channel rule above is what VS-1 must satisfy.*
+*Text scaling and colourblind palettes are queued (VerticalSlice §G), out of VS-1 scope.*
 
 ---
 
-## 15. Compliance checklist
+## 17. Compliance checklist
 
 Applied to **every screen** before it may be called done:
 
@@ -345,14 +446,16 @@ Applied to **every screen** before it may be called done:
 - [ ] Every refusal shakes, pulses, sounds, and explains in the world's voice
 - [ ] Every wait is composed — nothing frozen, nothing blank
 - [ ] Every window opens and closes with the full ritual
-- [ ] Every animation has a reduce-motion variant that preserves the information
+- [ ] Every milestone that should be remembered has a ceremony; every ceremony is skippable
+- [ ] Every animation has a reduce-motion variant preserving the information
+- [ ] **No literal timing/scale/alpha/dB values** — tokens only
 - [ ] No raw glyphs/emoji — drawn icons only (MDL law)
 - [ ] No engineering strings visible to a player
 - [ ] Both harnesses green (`ui_playthrough`, `click_driver`)
 
-## 16. What this document does not permit
+## 18. What this document does not permit
 
-Scope armour for VS-1. These are **not** interaction-language work:
+Scope armour for VS-1:
 
 - New game systems, new screens, new mechanics
 - Redesigning layouts that already read correctly

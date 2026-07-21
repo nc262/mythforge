@@ -27,6 +27,7 @@ func _ready() -> void:
 		Combat.save({"active": false})  # leave the fight before the level-up ceremony blocks play
 		await get_tree().process_frame
 	await _turn_levelup()  # last: the ceremony correctly blocks further sends
+	await _check_mil()
 	_check_persistence()
 	_check_save_spells()
 	_check_multiclass()
@@ -227,6 +228,47 @@ func _check_controller() -> void:
 	_game._battle_grid.cell_clicked.disconnect(catcher)
 	assert(not got.is_empty(), "pad: the grid cursor did not emit cell_clicked")
 	print("  controller: mf_* actions live, ui_* pad-bound, grid cursor clicks cells")
+
+
+## MIL Phase 0 — the interaction primitives every screen will lean on. Each
+## must (a) exist, (b) run without crashing, and (c) honour reduce_motion by
+## PRESERVING the information rather than dropping it (the rise_text bug:
+## deltas used to vanish entirely for reduce-motion players).
+func _check_mil() -> void:
+	for group in ["TIME", "SCALE", "ALPHA", "MOTION", "DELAY", "MIX", "INTERACT"]:
+		assert(Ui.get(group) is Dictionary and not (Ui.get(group) as Dictionary).is_empty(),
+			"MIL: token group %s missing" % group)
+	for snd in Sfx.UI_SOUNDS + Sfx.REWARD_SOUNDS + Sfx.CEREMONY_SOUNDS:
+		assert(ResourceLoader.exists("res://assets/sfx/%s.wav" % snd), "MIL: sound '%s' never synthesized" % snd)
+	Sfx.ui("ui_click")  # must not crash headless
+	var host := Control.new()
+	host.size = Vector2(400, 300)
+	get_tree().root.add_child(host)
+	var probe := Button.new()
+	probe.text = "probe"
+	host.add_child(probe)
+	Ui.polish(host)
+	assert(probe.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND,
+		"MIL §3: polish() must give every control the pointing-hand cursor")
+	Ui.shake(probe)
+	var purse := Label.new()
+	host.add_child(purse)
+	Ui.count_to(purse, 20, 45)
+	Ui.rise_text(host, "+2 AC", Ui.c("gold"), Vector2(10, 10))
+	# The delta must still be on-screen after the frame — reduce_motion holds it.
+	var deltas := host.get_children().filter(func(n): return n is Label and str(n.text) == "+2 AC")
+	assert(not deltas.is_empty(), "MIL §16: rise_text dropped the delta (information lost)")
+	Ui.fly_to(host, Ui.glow_tex(), Rect2(0, 0, 32, 32), Rect2(100, 100, 32, 32))
+	var cer: Node = preload("res://ui/myth_ceremony.gd").play(host,
+		{"title": "Level 3", "line": "+7 HP", "weight": "light"})
+	for i in 4:
+		await get_tree().process_frame
+	assert(cer.get_script() != null, "MIL §13: ceremony script failed to load")
+	assert(is_instance_valid(cer), "MIL §13: ceremony vanished before its beats ran")
+	cer.call("_finish")  # skip law: any input completes it
+	await get_tree().process_frame
+	host.queue_free()
+	print("  MIL: tokens, 16 sounds, polish/shake/count_to/rise_text/fly_to/ceremony all live")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

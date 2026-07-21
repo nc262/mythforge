@@ -83,10 +83,30 @@ const PALETTES := {
 
 # ── Design-language tokens (docs/DesignSystem.md) — the ONLY numbers allowed
 const SPACE := {"xs": 4, "s": 8, "m": 14, "l": 22, "xl": 34}
-const TIME := {"fast": 0.12, "base": 0.22, "slow": 0.45, "breath": 3.2}
 const RADIUS := {"s": 4, "m": 9, "l": 18}
 const RARITY := {"common": "border", "uncommon": "gold_soft", "rare": "amethyst",
 	"epic": "ember", "legendary": "gold"}
+
+# ── Interaction tokens (docs/InteractionLanguage.md §2) ─────────────────────
+# MIL law: no literal timing, scale, alpha, offset or dB may appear in an
+# interaction. Tune the game HERE during playtest — never at the call site.
+const TIME := {
+	"instant": 0.06,   # sub-perceptual state flips
+	"fast": 0.12,      # hover, press, tooltip, micro-feedback
+	"base": 0.22,      # reveals, tab swaps, deltas, window ritual
+	"slow": 0.45,      # scene transitions, art crossfade, settle
+	"beat": 0.80,      # a held pause inside a ceremony
+	"ceremony": 1.40,  # the full length of a ceremony peak
+	"breath": 3.20,    # idle life loops (portraits, candles, waiting)
+}
+const SCALE := {"press": 0.96, "exit": 0.99, "enter": 0.985, "lift": 1.045, "pulse": 1.06, "bloom": 1.18}
+const ALPHA := {"ghost": 0.22, "glow": 0.35, "scrim": 0.45, "rim": 0.55, "dim": 0.62}
+const MOTION := {"shake_px": 5.0, "shake_cycles": 3, "rise_px": 34.0,
+	"stagger": 0.04, "stagger_max": 12, "drift_px": 14.0}
+const DELAY := {"hover_gate": 0.08, "tooltip": 0.45, "load_min": 0.70,
+	"status_cycle": 2.40, "ceremony_hold": 0.55}
+const MIX := {"ui": -22.0, "reward": -12.0, "ceremony": -8.0}
+const INTERACT := {"budget": 0.60}  # max length of an ORDINARY interaction
 
 var world_id := ""
 var reduce_motion := false
@@ -472,12 +492,12 @@ func material_sb(role: String, lit := 0.0) -> StyleBoxTexture:
 			return _nine(forged_tex(c("surface2").lightened(lit), c("border")), 6, 12)
 
 
-# ── Motion vocabulary (docs/DesignSystem.md §3) — all honor reduce_motion ───
-## Hover-lift + press-dip for every Button under root. One call per screen;
-## call again after building dynamic dialogs. Audio hook mounts here later.
+# ── Motion vocabulary (docs/InteractionLanguage.md §14) — reduce_motion aware ─
+## MIL §3+§4: hover and press for every Button under root — lift, rim, cursor,
+## and the sounds. Sound and cursor apply even under reduce_motion (the state
+## must stay perceivable without movement); only the scaling drops out.
+## One call per screen; call again after building dynamic dialogs.
 func polish(root: Node) -> void:
-	if reduce_motion:
-		return
 	var targets: Array = root.find_children("*", "Button", true, false)
 	if root is Button:
 		targets.append(root)
@@ -485,14 +505,21 @@ func polish(root: Node) -> void:
 		if n.has_meta("_polished"):
 			continue
 		n.set_meta("_polished", true)
-		n.mouse_entered.connect(_lift.bind(n, 1.045))
+		n.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		# Beginning: anticipation. Hover speaks (quietly), press confirms.
+		n.mouse_entered.connect(func():
+			if not n.disabled:
+				Sfx.ui("ui_hover")
+				_lift(n, SCALE["lift"]))
 		n.mouse_exited.connect(_lift.bind(n, 1.0))
-		n.button_down.connect(_lift.bind(n, 0.96))
-		n.button_up.connect(_lift.bind(n, 1.045))
+		n.button_down.connect(func():
+			Sfx.ui("ui_click")  # on PRESS, not release — perceived latency
+			_lift(n, SCALE["press"]))
+		n.button_up.connect(_lift.bind(n, SCALE["lift"]))
 
 
 func _lift(n: Control, to: float) -> void:
-	if not is_instance_valid(n) or not n.is_inside_tree():
+	if reduce_motion or not is_instance_valid(n) or not n.is_inside_tree():
 		return
 	n.pivot_offset = n.size / 2.0
 	var tw := n.create_tween()
@@ -505,7 +532,7 @@ func reveal(ctrl: Control, delay := 0.0) -> void:
 		return
 	ctrl.modulate.a = 0.0
 	ctrl.pivot_offset = ctrl.size / 2.0
-	ctrl.scale = Vector2.ONE * 0.985
+	ctrl.scale = Vector2.ONE * SCALE["enter"]
 	var tw := ctrl.create_tween().set_parallel(true)
 	tw.tween_property(ctrl, "modulate:a", 1.0, TIME["base"]).set_delay(delay)
 	tw.tween_property(ctrl, "scale", Vector2.ONE, TIME["slow"]).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
@@ -541,18 +568,29 @@ func pulse(ctrl: Control) -> void:
 ## The window ritual every screen shares (docs/DesignSystem.md — Rituals):
 ## anticipation (the world dims), reveal (contents settle in, staggered),
 ## graceful exit (the scrim lifts as the window goes). Call after add_child.
+## MIL §12. The dim is HIERARCHY, not decoration — it survives reduce_motion
+## (instantly, rather than faded). Open and close each speak once.
 func ritual_open(dlg: Window) -> void:
 	polish(dlg)
+	Sfx.ui("ui_open")
 	var host := dlg.get_parent()
-	if host is Control and not reduce_motion:
+	if host is Control:
 		var scrim := ColorRect.new()
-		scrim.color = Color(c("night"), 0.0)
+		scrim.color = Color(c("night"), ALPHA["scrim"] if reduce_motion else 0.0)
 		scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
 		scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		host.add_child(scrim)
-		scrim.create_tween().tween_property(scrim, "color:a", 0.45, TIME["base"])
+		if not reduce_motion:
+			scrim.create_tween().tween_property(scrim, "color:a", ALPHA["scrim"], TIME["base"])
+		var closed := [false]  # the close sound fires once, however the window dies
 		var lift := func():
 			if not is_instance_valid(scrim):
+				return
+			if not closed[0]:
+				closed[0] = true
+				Sfx.ui("ui_close")
+			if reduce_motion:
+				scrim.queue_free()
 				return
 			var tw := scrim.create_tween()
 			tw.tween_property(scrim, "color:a", 0.0, TIME["base"])
@@ -576,12 +614,123 @@ func rise_text(parent: Node, text: String, color: Color, at: Vector2) -> void:
 	lab.z_index = 100
 	parent.add_child(lab)
 	if reduce_motion:
-		lab.queue_free()
+		# MIL §16: the delta APPEARS AND HOLDS — the information is never lost
+		# to accessibility, only the movement is.
+		var hold := lab.create_tween()
+		hold.tween_interval(TIME["ceremony"])
+		hold.tween_property(lab, "modulate:a", 0.0, TIME["base"])
+		hold.tween_callback(lab.queue_free)
 		return
 	var tw := lab.create_tween().set_parallel(true)
-	tw.tween_property(lab, "position:y", at.y - 46.0, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	tw.tween_property(lab, "modulate:a", 0.0, 0.9).set_delay(0.25)
+	tw.tween_property(lab, "position:y", at.y - MOTION["rise_px"], TIME["ceremony"]).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lab, "modulate:a", 0.0, TIME["ceremony"]).set_delay(TIME["base"])
 	tw.chain().tween_callback(lab.queue_free)
+
+
+# ── MIL primitives (InteractionLanguage.md §14) ─────────────────────────────
+## MIL §6 — refusal. The shake is the only thing reduce_motion removes; the
+## colour pulse and the sound still say no.
+func shake(ctrl: Control) -> void:
+	Sfx.ui("ui_deny")
+	if ctrl == null or not is_instance_valid(ctrl):
+		return
+	_deny_pulse(ctrl)
+	if reduce_motion:
+		return
+	var base_x := ctrl.position.x
+	var tw := ctrl.create_tween()
+	var cycles := int(MOTION["shake_cycles"])
+	for i in cycles:
+		var amp: float = float(MOTION["shake_px"]) * (1.0 - float(i) / float(cycles))
+		tw.tween_property(ctrl, "position:x", base_x + amp, TIME["fast"] / 2.0).set_trans(Tween.TRANS_SINE)
+		tw.tween_property(ctrl, "position:x", base_x - amp, TIME["fast"] / 2.0).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(ctrl, "position:x", base_x, TIME["fast"] / 2.0)
+
+
+## The danger wash that rides every refusal — a second channel, so the message
+## survives without motion and without relying on colour alone (sound is third).
+func _deny_pulse(ctrl: Control) -> void:
+	var wash := ColorRect.new()
+	wash.color = Color(c("danger"), 0.0)
+	wash.set_anchors_preset(Control.PRESET_FULL_RECT)
+	wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ctrl.add_child(wash)
+	var tw := wash.create_tween()
+	tw.tween_property(wash, "color:a", ALPHA["glow"], TIME["fast"])
+	tw.tween_property(wash, "color:a", 0.0, TIME["base"])
+	tw.tween_callback(wash.queue_free)
+
+
+## MIL §5 — the MIDDLE act made visible: a thing travels from where it was to
+## where it now belongs. Rects are in the host's canvas space.
+func fly_to(host: Control, tex: Texture2D, from_rect: Rect2, to_rect: Rect2, done := Callable()) -> void:
+	if host == null or not is_instance_valid(host) or reduce_motion or tex == null:
+		if done.is_valid():
+			done.call()
+		return
+	var fly := TextureRect.new()
+	fly.texture = tex
+	fly.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fly.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	fly.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fly.position = from_rect.position
+	fly.size = from_rect.size
+	fly.z_index = 90
+	host.add_child(fly)
+	var tw := fly.create_tween().set_parallel(true)
+	tw.tween_property(fly, "position", to_rect.position, TIME["base"]).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	tw.tween_property(fly, "size", to_rect.size, TIME["base"]).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	tw.chain().tween_callback(func():
+		fly.queue_free()
+		if done.is_valid():
+			done.call())
+
+
+## MIL §9 — numbers roll rather than snap, so a purse feels spent.
+func count_to(label: Label, from_v: int, to_v: int, fmt := "%d") -> void:
+	if label == null or not is_instance_valid(label):
+		return
+	if reduce_motion or from_v == to_v:
+		label.text = fmt % to_v
+		return
+	var setter := func(v: float):
+		if is_instance_valid(label):
+			label.text = fmt % int(round(v))
+	var tw := label.create_tween()
+	tw.tween_method(setter, float(from_v), float(to_v), TIME["base"]).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+
+
+## MIL §12/§7 — the scene wipe. The world never cuts: it darkens through the
+## skin's own night, swaps, and returns. reduce_motion keeps the beat but not
+## the fade, so the change is still deliberate rather than instant.
+func transition(scene_path: String, tree: SceneTree) -> void:
+	if tree == null:
+		return
+	Sfx.ui("ui_close")
+	var layer := CanvasLayer.new()
+	layer.layer = 128
+	var veil := ColorRect.new()
+	veil.color = Color(c("night"), 0.0)
+	veil.set_anchors_preset(Control.PRESET_FULL_RECT)
+	veil.mouse_filter = Control.MOUSE_FILTER_STOP  # the curtain eats stray clicks
+	layer.add_child(veil)
+	tree.root.add_child(layer)
+	if reduce_motion:
+		veil.color.a = 1.0
+		await tree.create_timer(TIME["fast"]).timeout
+	else:
+		var tw := veil.create_tween()
+		tw.tween_property(veil, "color:a", 1.0, TIME["slow"]).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN_OUT)
+		await tw.finished
+	tree.change_scene_to_file(scene_path)
+	await tree.process_frame
+	await tree.process_frame  # let the new scene build behind the veil
+	if reduce_motion:
+		layer.queue_free()
+		return
+	var out := veil.create_tween()
+	out.tween_property(veil, "color:a", 0.0, TIME["slow"]).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	out.tween_callback(layer.queue_free)
 
 
 func _nine(tex: ImageTexture, margin: int, content: int) -> StyleBoxTexture:
