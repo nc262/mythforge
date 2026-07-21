@@ -69,9 +69,12 @@ armor spelling, click verbs.
    drawn icons), tab-rail scrim, bottom scroll fade.
 5. ✅ **Play screen** (`ec6b716`): bright empty-state scene, composed recap
    ("Previously, in <tale>…", sentence-boundary cuts), drawn HP bar image.
-6. **Global**: contrast pass, art grading/framing utility for all AI images.
-   (Partially covered — render + backdrop grading exist; a shared utility for
-   ALL AI images is still open.)
+6. ✅ **Global**: `MythPlate` (ui/myth_plate.gd) is THE shared frame for AI
+   art — forge border, cover-fit, palette grade, base fade, live art-key
+   binding; used by the doll render, item inspect, shop detail. Contrast
+   pass: `ink_dim` lightened one step in all 8 palettes. Material surfaces:
+   stone/parchment generators + per-family `panel`/`page` roles (menu hero
+   panel + Lore Book pages wear real materials).
 
 ## Round 3 — merchant window + atlas/map modals
 
@@ -97,11 +100,12 @@ under lists, Haggle a ghost one-liner with die icon + DC, disabled after use ·
 selected-item detail strip (art, buy price, sell value) so 40/3 reads as a
 fence's lowball not a bug · portrait rail → real drawn-icon MythButtons.
 
-Round 3 status: currency pipe ✅ (all price strings run through currency()) ·
-chart prompt world-true ✅ · pins labeled w/ you-are-here + hover roads ✅
-(atlas fold) · shop item art ✅ · Buy accent-primary / Haggle ghost+die ✅ ·
-map in the menu (Atlas tab) ✅. **Still open:** world-skinned vendor STOCK
-(real per-family goods tables with stats — content design, in Backlog.md) ·
-selected-item detail strip in the shop · in-panel map header.
+Round 3 status: **ALL CLOSED.** currency pipe ✅ · chart prompt world-true ✅ ·
+pins labeled w/ you-are-here + hover roads ✅ · shop item art ✅ · Buy
+accent-primary / Haggle ghost+die ✅ · map in the menu (Atlas tab) ✅ ·
+world-skinned vendor stock ✅ (`vendor_stock_cyber/everyday/space` tables,
+names carry classifier keywords so mk_item stats them; other families fall
+back to the fantasy base) · selected-item detail strip ✅ · in-panel chart
+header on the Atlas tab ✅.
 
 Rounds 4+ append below as screenshots arrive.

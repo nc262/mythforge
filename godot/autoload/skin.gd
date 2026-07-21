@@ -11,7 +11,7 @@ const PALETTES := {
 		"night": Color("0c0a1c"), "night2": Color("120e26"),
 		"surface": Color("1a1432"), "surface2": Color("221a3e"), "sheet": Color("241d3a"),
 		"border": Color("3a2f5c"), "border_soft": Color("2a2247"),
-		"ink": Color("efeafb"), "ink_soft": Color("c3b9e0"), "ink_dim": Color("9286b8"),
+		"ink": Color("efeafb"), "ink_soft": Color("c3b9e0"), "ink_dim": Color("9f95c1"),
 		"gold": Color("e8c171"), "gold_soft": Color("f0d49a"),
 		"amethyst": Color("b79cf6"), "amethyst_deep": Color("7c5cd6"),
 		"ember": Color("f0a868"), "danger": Color("f0788a"),
@@ -20,7 +20,7 @@ const PALETTES := {
 		"night": Color("05070f"), "night2": Color("0a0f1f"),
 		"surface": Color("0f1830"), "surface2": Color("142244"), "sheet": Color("101a33"),
 		"border": Color("214066"), "border_soft": Color("16294a"),
-		"ink": Color("efeafb"), "ink_soft": Color("c3b9e0"), "ink_dim": Color("9286b8"),
+		"ink": Color("efeafb"), "ink_soft": Color("c3b9e0"), "ink_dim": Color("9f95c1"),
 		"gold": Color("2de2e6"), "gold_soft": Color("7ef0f2"),
 		"amethyst": Color("ff5fd2"), "amethyst_deep": Color("b026ff"),
 		"ember": Color("f0a868"), "danger": Color("f0788a"),
@@ -29,7 +29,7 @@ const PALETTES := {
 		"night": Color("0d0f14"), "night2": Color("15171e"),
 		"surface": Color("1b1e26"), "surface2": Color("232733"), "sheet": Color("1d2129"),
 		"border": Color("353b49"), "border_soft": Color("262b36"),
-		"ink": Color("efeafb"), "ink_soft": Color("c3b9e0"), "ink_dim": Color("9286b8"),
+		"ink": Color("efeafb"), "ink_soft": Color("c3b9e0"), "ink_dim": Color("9f95c1"),
 		"gold": Color("e0a96d"), "gold_soft": Color("f0c79a"),
 		"amethyst": Color("6ea8fe"), "amethyst_deep": Color("4571c4"),
 		"ember": Color("f0a868"), "danger": Color("f0788a"),
@@ -38,7 +38,7 @@ const PALETTES := {
 		"night": Color("03060f"), "night2": Color("070c1a"),
 		"surface": Color("0c1424"), "surface2": Color("111d33"), "sheet": Color("0d1626"),
 		"border": Color("1e3358"), "border_soft": Color("15243f"),
-		"ink": Color("eaf1ff"), "ink_soft": Color("b7c6e6"), "ink_dim": Color("7d8fb8"),
+		"ink": Color("eaf1ff"), "ink_soft": Color("b7c6e6"), "ink_dim": Color("8d9cc1"),
 		"gold": Color("7fb2ff"), "gold_soft": Color("aecdff"),
 		"amethyst": Color("62e0ff"), "amethyst_deep": Color("2b7fd6"),
 		"ember": Color("ffb066"), "danger": Color("ff6b7a"),
@@ -47,7 +47,7 @@ const PALETTES := {
 		"night": Color("120c07"), "night2": Color("1c1109"),
 		"surface": Color("241811"), "surface2": Color("2f2013"), "sheet": Color("241a10"),
 		"border": Color("4a3320"), "border_soft": Color("332416"),
-		"ink": Color("f4ead9"), "ink_soft": Color("d8c3a5"), "ink_dim": Color("a68a68"),
+		"ink": Color("f4ead9"), "ink_soft": Color("d8c3a5"), "ink_dim": Color("b1987a"),
 		"gold": Color("d69a52"), "gold_soft": Color("edc088"),
 		"amethyst": Color("9cc0d0"), "amethyst_deep": Color("5c8496"),
 		"ember": Color("f0a868"), "danger": Color("e0788a"),
@@ -56,7 +56,7 @@ const PALETTES := {
 		"night": Color("06110f"), "night2": Color("0a1a17"),
 		"surface": Color("102420"), "surface2": Color("163029"), "sheet": Color("11211d"),
 		"border": Color("264840"), "border_soft": Color("18302a"),
-		"ink": Color("f1ede0"), "ink_soft": Color("c6cabb"), "ink_dim": Color("8a9587"),
+		"ink": Color("f1ede0"), "ink_soft": Color("c6cabb"), "ink_dim": Color("98a295"),
 		"gold": Color("e0c070"), "gold_soft": Color("f0d79a"),
 		"amethyst": Color("6fb0a8"), "amethyst_deep": Color("3e7a72"),
 		"ember": Color("f0a868"), "danger": Color("e8707e"),
@@ -65,7 +65,7 @@ const PALETTES := {
 		"night": Color("07090a"), "night2": Color("0d1012"),
 		"surface": Color("121517"), "surface2": Color("1a1e20"), "sheet": Color("141719"),
 		"border": Color("2c3330"), "border_soft": Color("1f2422"),
-		"ink": Color("e6e8e0"), "ink_soft": Color("b3b8a8"), "ink_dim": Color("77806d"),
+		"ink": Color("e6e8e0"), "ink_soft": Color("b3b8a8"), "ink_dim": Color("878f7f"),
 		"gold": Color("9fb08a"), "gold_soft": Color("c2cfa8"),
 		"amethyst": Color("8a9c7a"), "amethyst_deep": Color("5a6b4c"),
 		"ember": Color("c98a4a"), "danger": Color("d0455a"),
@@ -74,7 +74,7 @@ const PALETTES := {
 		"night": Color("0a0d12"), "night2": Color("11151c"),
 		"surface": Color("161c24"), "surface2": Color("1e2732"), "sheet": Color("171d26"),
 		"border": Color("303e4c"), "border_soft": Color("212b35"),
-		"ink": Color("eef2f6"), "ink_soft": Color("bcc7d2"), "ink_dim": Color("7e8b98"),
+		"ink": Color("eef2f6"), "ink_soft": Color("bcc7d2"), "ink_dim": Color("8d99a4"),
 		"gold": Color("cbd3dc"), "gold_soft": Color("e6ebf0"),
 		"amethyst": Color("7fa8c0"), "amethyst_deep": Color("4d7288"),
 		"ember": Color("e0a868"), "danger": Color("d97684"),
@@ -391,6 +391,58 @@ func carbon_tex(lit := 0.0) -> ImageTexture:
 	return ImageTexture.create_from_image(img)
 
 
+## Carved stone (fantasy/norse/horror "panel"): cool mottled rock, a chiseled
+## edge — dark seam above, dusty light below. Kept DARK so ink stays readable.
+func stone_tex(lit := 0.0) -> ImageTexture:
+	var s := 48
+	var base: Color = c("night2").lerp(Color(0.32, 0.32, 0.36), 0.35).lightened(lit)
+	var noise := FastNoiseLite.new()
+	noise.seed = 41
+	noise.frequency = 0.22
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		for x in s:
+			var n := noise.get_noise_2d(x, y) * 0.06
+			var crack := noise.get_noise_2d(x * 3.0 + 100, y * 3.0) > 0.42
+			var px := Color(base.r + n, base.g + n, base.b + n * 1.1, 0.97)
+			img.set_pixel(x, y, px.darkened(0.25) if crack else px)
+	var edge := base.darkened(0.6)
+	for i in s:
+		img.set_pixel(i, 0, edge)
+		img.set_pixel(i, s - 1, edge)
+		img.set_pixel(0, i, edge)
+		img.set_pixel(s - 1, i, edge)
+	for i in range(1, s - 1):
+		img.set_pixel(i, 1, Color(0, 0, 0, 0.3))               # chisel shadow
+		img.set_pixel(i, s - 2, Color(0.9, 0.9, 1.0, 0.08))    # dusty light
+	return ImageTexture.create_from_image(img)
+
+
+## Aged page (the book's "page"): deep umber paper — mottled fibre, a deckled
+## darker rim. DARK parchment, not tan: the ink ramp must keep its contrast.
+func parchment_tex(lit := 0.0) -> ImageTexture:
+	var s := 48
+	var base: Color = c("night2").lerp(Color(0.34, 0.27, 0.16), 0.3).lightened(lit)
+	var noise := FastNoiseLite.new()
+	noise.seed = 53
+	noise.frequency = 0.5
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	for y in s:
+		for x in s:
+			var n := noise.get_noise_2d(x * 1.4, y * 1.4) * 0.05
+			var fleck := noise.get_noise_2d(x * 5.0 + 40, y * 5.0) > 0.55
+			var px := Color(base.r + n, base.g + n * 0.9, base.b + n * 0.6, 0.97)
+			img.set_pixel(x, y, px.darkened(0.18) if fleck else px)
+	var rim := base.darkened(0.45)
+	for i in s:
+		for off in [0, 1]:  # deckled double rim
+			img.set_pixel(i, off, rim)
+			img.set_pixel(i, s - 1 - off, rim)
+			img.set_pixel(off, i, rim)
+			img.set_pixel(s - 1 - off, i, rim)
+	return ImageTexture.create_from_image(img)
+
+
 ## A material plate for MythButton. The four callers name SEMANTIC roles
 ## (steel/leather/brass/oak); the active World Skin remaps each role to its own
 ## material vocabulary, each with its own bespoke procedural texture. Every
@@ -408,6 +460,10 @@ func material_sb(role: String, lit := 0.0) -> StyleBoxTexture:
 			return _nine(carbon_tex(lit), 8, 12)
 		"leather":
 			return _nine(leather_tex(), 12, 12)
+		"stone":
+			return _nine(stone_tex(lit), 6, 12)
+		"parchment":
+			return _nine(parchment_tex(lit), 6, 12)
 		"brass":
 			return _nine(brass_tex(lit), 6, 12)
 		"oak":

@@ -128,6 +128,14 @@ func item_type(nm: String) -> String:
 	return "gear"
 
 
+## The keeper's stock for the ACTIVE world's family — a cyber corner sells
+## stim-patches, not daggers. Families without their own table (steam, pirate,
+## norse, horror) fit the fantasy base well enough and fall back to it.
+func vendor_stock() -> Dictionary:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	return tables.get("vendor_stock_" + fam, tables.get("vendor_stock", {}))
+
+
 func item_value(rarity: String) -> int:
 	return {"common": 6, "uncommon": 20, "rare": 65, "epic": 175, "legendary": 500}.get(rarity, 6)
 

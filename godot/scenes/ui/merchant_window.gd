@@ -16,6 +16,9 @@ var _wares: ItemList
 var _pack: ItemList
 var _wares_meta: Array = []
 var _pack_meta: Array = []
+var _detail: HBoxContainer
+var _detail_art: MythPlate
+var _detail_txt: Label
 
 
 func _init() -> void:
@@ -90,6 +93,29 @@ func _ready() -> void:
 		root.add_child(trades)
 	root.add_child(_purse)
 	root.add_child(cols)
+	# The detail strip: pick an item on either side and see the piece itself —
+	# its painted face, the buy price, and why the sell price reads low.
+	_detail = HBoxContainer.new()
+	_detail.add_theme_constant_override("separation", Ui.SPACE["m"])
+	_detail.visible = false
+	_detail_art = MythPlate.new(Vector2(72, 72), 0.0)
+	_detail.add_child(_detail_art)
+	_detail_txt = Label.new()
+	_detail_txt.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_detail_txt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_detail_txt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_detail.add_child(_detail_txt)
+	root.add_child(_detail)
+	_wares.item_selected.connect(func(i):
+		if i < _wares_meta.size() and _wares_meta[i] != null:
+			var w: Dictionary = _wares_meta[i]
+			_show_detail(str(w["name"]), "%s   ·   buy for %d %s" % [str(w["name"]), int(w["price"]), GameState.currency()]))
+	_pack.item_selected.connect(func(i):
+		if i < _pack_meta.size():
+			var it := GameState.item_by_id(str(_pack_meta[i]))
+			if not it.is_empty():
+				_show_detail(str(it.get("name", "")), "%s   ·   sells for %d %s — a keeper's lowball, not the shelf price" % [
+					str(it.get("name", "")), Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()]))
 	root.add_child(haggle)
 	add_child(root)
 	_refresh()
@@ -104,7 +130,7 @@ func _refresh() -> void:
 		"   ·   the keeper likes you (−20%)" if markup < 1.0 else ("   ·   the keeper is annoyed (+10%)" if markup > 1.0 else "")]
 	_wares.clear()
 	_wares_meta.clear()
-	var stock: Dictionary = Rules.tables.get("vendor_stock", {})
+	var stock: Dictionary = Rules.vendor_stock()  # world-skinned goods, not daggers-everywhere
 	for cat in ["weapon", "armor", "potion", "general", "food"]:
 		var goods: Array = stock.get(cat, [])
 		if goods.is_empty():
@@ -126,6 +152,12 @@ func _refresh() -> void:
 			(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()],
 			Art.item_tex(str(it.get("name", ""))))
 		_pack_meta.append(str(it.get("id", "")))
+
+
+func _show_detail(item_name: String, line: String) -> void:
+	_detail.visible = true
+	_detail_art.set_texture(Art.item_tex(item_name))
+	_detail_txt.text = line
 
 
 func _buy() -> void:

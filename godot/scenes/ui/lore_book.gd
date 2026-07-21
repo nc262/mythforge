@@ -265,7 +265,9 @@ func _chronicle() -> void:
 ## `chip` is TRUSTED BBCode (built from our own vocab, never model text).
 func _entry(title: String, body: String, art_key := "", ensure_prompt := "", chip := "") -> Control:
 	var panel := PanelContainer.new()
-	panel.add_theme_stylebox_override("panel", Ui.sb_card())
+	# Entries sit on the book's own material — aged page in fantasy-kin worlds,
+	# lit glass on a cyber datapad (user request: real surfaces, not flat fills).
+	panel.add_theme_stylebox_override("panel", Ui.material_sb("page"))
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", Ui.SPACE["m"])
 	if art_key != "":

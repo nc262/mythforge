@@ -138,6 +138,10 @@ func _style_tab(btn: Button, active: bool) -> void:
 func _hero_panel() -> Control:
 	var s := GameState.sheet()
 	var inv := GameState.inv()
+	# The hero stands on the world's own material — carved stone in Embervale,
+	# lit glass in Neonspire, satchel leather in the Everyday.
+	var bed := PanelContainer.new()
+	bed.add_theme_stylebox_override("panel", Ui.material_sb("panel"))
 	var col := VBoxContainer.new()
 	col.custom_minimum_size = Vector2(310, 0)
 	col.add_theme_constant_override("separation", Ui.SPACE["m"])
@@ -206,7 +210,8 @@ func _hero_panel() -> Control:
 		row.add_child(slot_l)
 		row.add_child(val_l)
 		col.add_child(row)
-	return col
+	bed.add_child(col)
+	return bed
 
 
 # ── Shared page helpers ──────────────────────────────────────────────────────
@@ -578,11 +583,8 @@ func _pack_inspect(p: Dictionary) -> void:
 	dlg.ok_button_text = "Put it away"
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", Ui.SPACE["m"])
-	var art := TextureRect.new()
-	art.texture = Art.item_tex(str(p.get("name", "")))
-	art.custom_minimum_size = Vector2(320, 320)
-	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	var art := MythPlate.new(Vector2(320, 320), 0.5)
+	art.set_texture(Art.item_tex(str(p.get("name", ""))))
 	box.add_child(art)
 	box.add_child(MythTooltip.build(str(p.get("tip_title", "?")), p.get("tip_rows", []), str(p.get("rarity", ""))))
 	dlg.add_child(box)
@@ -634,52 +636,13 @@ func _body_view(s: Dictionary, inv: Dictionary) -> Control:
 	var col := VBoxContainer.new()
 	col.custom_minimum_size = Vector2(238, 0)
 	col.add_theme_constant_override("separation", Ui.SPACE["s"])
-	# The forge frame: the render sits in a bordered plate, its studio backdrop
-	# graded toward the world palette and faded into the panel at the base —
-	# never a raw hard-edged AI image floating over the environment.
-	var frame := PanelContainer.new()
-	var fsb := StyleBoxFlat.new()
-	fsb.bg_color = Color(Ui.c("night"), 0.92)
-	fsb.set_border_width_all(2)
-	fsb.border_color = Color(Ui.c("gold"), 0.35)
-	fsb.set_corner_radius_all(Ui.RADIUS["m"])
-	fsb.set_content_margin_all(3)
-	frame.add_theme_stylebox_override("panel", fsb)
-	var holder := Control.new()
-	holder.custom_minimum_size = Vector2(230, 336)
-	holder.clip_contents = true
-	var body := TextureRect.new()
-	body.set_anchors_preset(Control.PRESET_FULL_RECT)
-	body.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	body.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	body.self_modulate = Ui.c("gold").lerp(Color.WHITE, 0.8)  # palette grade toward the skin's accent
+	# MythPlate: the shared forge frame every AI image ships in (phase 6).
 	var key := "herobody-" + GameState.cid().validate_filename()
-	if Art.has_art(key):
-		body.texture = Art.texture_for(key)
-	else:
-		body.texture = Art.texture_for("hero-" + GameState.cid().validate_filename())  # the portrait stands in until the full figure lands
+	var plate := MythPlate.new(Vector2(230, 336))
+	plate.bind_key(key, Art.texture_for("hero-" + GameState.cid().validate_filename()))
+	if not Art.has_art(key):
 		Art.ensure(key, _body_prompt(s, inv))
-	# ponytail: stale (freed-body) connections are is_instance_valid-guarded; refills are rare
-	Art.art_ready.connect(func(k):
-		if str(k) == key and is_instance_valid(body):
-			body.texture = Art.texture_for(key)
-			Ui.pulse(body))
-	holder.add_child(body)
-	var grad := Gradient.new()
-	grad.colors = PackedColorArray([Color(Ui.c("night"), 0.0), Color(Ui.c("night"), 0.85)])
-	grad.offsets = PackedFloat32Array([0.6, 1.0])
-	var gt := GradientTexture2D.new()
-	gt.gradient = grad
-	gt.fill_from = Vector2(0, 0)
-	gt.fill_to = Vector2(0, 1)
-	var scrim := TextureRect.new()
-	scrim.texture = gt
-	scrim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
-	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.add_child(scrim)
-	frame.add_child(holder)
-	col.add_child(frame)
+	col.add_child(plate)
 	var rerender := Button.new()
 	rerender.text = "Re-render with current gear"
 	rerender.custom_minimum_size = Vector2(0, 38)
@@ -767,6 +730,11 @@ func _fill_atlas() -> void:
 	var map := preload("res://scenes/ui/world_map.gd").new()
 	map.locations = locs
 	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	# In-panel chart header: whose land this is, where you stand, what to do.
+	var map_word := str(WorldSkin.skin_for_id(GameState.world_id()).get("flavor", {}).get("map", "chart")).capitalize()
+	host.add_child(MythHeader.new("The %s of %s" % [map_word, str(GameState.character.get("name", "the world")).split(":")[0]]))
+	if str(wd.get("here", "")) != "":
+		host.add_child(_body("You are at %s — click a lamp-lit place to travel." % str(wd["here"]), "ink_dim"))
 	map.here = str(wd.get("here", ""))
 	map.seen = wd.get("seen") if wd.get("seen") is Array else []
 	map.fog = bool(GameState.rule("fog", true))
