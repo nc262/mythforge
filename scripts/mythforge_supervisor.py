@@ -139,19 +139,28 @@ def comfy_dir():
     return None
 
 
+def backend_python():
+    """The interpreter that can run app.py. mythforge shares deps with the
+    sibling odysseus checkout, so its venv is the fallback when mythforge has
+    none of its own — then anything on PATH."""
+    for c in (REPO / "venv" / "Scripts" / "python.exe",
+              SIB / "odysseus" / "venv" / "Scripts" / "python.exe"):
+        if c.exists():
+            return str(c)
+    return sys.executable
+
+
 def services():
     """Ordered by dependency. Each: name, health url, how to start, timeout.
     `optional` services never block the game (art can warm up behind play)."""
-    venv_py = REPO / "venv" / "Scripts" / "python.exe"
-    py = str(venv_py) if venv_py.exists() else sys.executable
+    py = backend_python()
     ollama = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
     cd = comfy_dir()
+    # mythforge cut ChromaDB (batch 2), so the current backend needs only
+    # Ollama + ComfyUI/bridge + itself. No chroma service.
     svc = [
         {"name": "ollama", "url": "http://127.0.0.1:11434/api/tags", "timeout": 40,
          "cmd": [str(ollama) if ollama.exists() else "ollama", "serve"], "cwd": str(REPO),
-         "optional": False},
-        {"name": "chroma", "url": "http://127.0.0.1:8100/api/v2/heartbeat", "timeout": 60,
-         "cmd": ["chroma", "run", "--host", "0.0.0.0", "--port", "8100"], "cwd": str(REPO),
          "optional": False},
     ]
     if cd:
@@ -165,7 +174,7 @@ def services():
                         "after": "comfyui"})
     svc.append({"name": "backend", "url": "http://127.0.0.1:7000/api/version", "timeout": 90,
                 "cmd": [py, "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"],
-                "cwd": str(REPO), "optional": False, "after": "chroma"})
+                "cwd": str(REPO), "optional": False})
     return svc
 
 

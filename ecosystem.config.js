@@ -19,7 +19,17 @@ module.exports = {
   apps: [
     // chroma removed — Mythforge cut ChromaDB (batch 2) and the rag/memory MCP
     // servers that consumed it (see src/builtin_mcp.py), so nothing needs it.
-    { name: "odysseus-api", script: "run-api.py", interpreter: "python", cwd },
+    //
+    // env: this repo's backend shares the odysseus checkout's DATA_DIR (the
+    // account, model config and saved worlds live there), and ComfyUI/ZLUDA
+    // needs cuDNN off (it can't find a cuDNN conv engine — see WorldCompiler.md).
+    // The shipped exe uses its own data dir via the supervisor; this is the DEV
+    // canonical runtime only.
+    { name: "odysseus-api", script: "run-api.py", interpreter: "python", cwd,
+      env: {
+        ODYSSEUS_DATA_DIR: "C:\\Users\\cptahabb\\Documents\\Code\\odysseus\\data",
+        TORCH_BACKENDS_CUDNN_ENABLED: "0"
+      } },
     { name: "image-stack", script: "scripts/image-stack-watchdog.mjs", cwd, autorestart: true, restart_delay: 5000 }
   ]
 }
