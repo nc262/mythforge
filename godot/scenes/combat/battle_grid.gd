@@ -125,6 +125,29 @@ func _cell_at(p: Vector2) -> Array:
 	return [clampi(int(p.x / cs.x), 0, Combat.MAP_COLS - 1), clampi(int(p.y / cs.y), 0, Combat.MAP_ROWS - 1)]
 
 
+## Pad cursor (controller): the d-pad steers the hover cell; accept clicks it —
+## the same signals a mouse click emits, so the engine can't tell them apart.
+func pad_move(dx: int, dy: int) -> void:
+	if _hover[0] < 0:
+		@warning_ignore("integer_division")
+		_hover = [Combat.MAP_COLS / 2, Combat.MAP_ROWS / 2]
+	else:
+		_hover = [clampi(int(_hover[0]) + dx, 0, Combat.MAP_COLS - 1),
+			clampi(int(_hover[1]) + dy, 0, Combat.MAP_ROWS - 1)]
+	queue_redraw()
+
+
+func pad_activate() -> void:
+	if _hover[0] < 0:
+		return
+	var pos := Combat.positions()
+	for id in pos:
+		if int(pos[id][0]) == int(_hover[0]) and int(pos[id][1]) == int(_hover[1]):
+			token_clicked.emit(str(id))
+			return
+	cell_clicked.emit([int(_hover[0]), int(_hover[1])])
+
+
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var c := _cell_at(event.position)

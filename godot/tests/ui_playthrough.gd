@@ -30,6 +30,7 @@ func _ready() -> void:
 	_check_persistence()
 	_check_save_spells()
 	_check_multiclass()
+	_check_controller()
 	await _build_windows()
 	if is_instance_valid(_game):
 		_game.queue_free()
@@ -204,6 +205,28 @@ func _check_multiclass() -> void:
 	assert(Rules.cast_ability(GameState.sheet()) == "INT", "multiclass: casting should lean on the wizard's INT")
 	assert(not Rules.learnable_spells(GameState.sheet()).is_empty(), "multiclass: wizard spells should be learnable now")
 	print("  multiclass: Fighter 2 / Wizard 1 — slots, INT casting, prereqs, label all hold")
+
+
+## Controller: the Pad autoload must have registered the app actions and given
+## every focus-driving ui_* action a joypad event; the grid pad cursor must
+## emit the SAME signal a mouse click does.
+func _check_controller() -> void:
+	for a in ["mf_roll", "mf_end_turn", "mf_menu"]:
+		assert(InputMap.has_action(a), "pad: missing action %s" % a)
+	for a2 in ["ui_accept", "ui_cancel", "ui_up", "ui_down", "ui_left", "ui_right"]:
+		var has_joy := false
+		for e in InputMap.action_get_events(a2):
+			if e is InputEventJoypadButton or e is InputEventJoypadMotion:
+				has_joy = true
+		assert(has_joy, "pad: %s has no joypad binding" % a2)
+	var got: Array = []
+	var catcher := func(c): got.append(c)
+	_game._battle_grid.cell_clicked.connect(catcher)
+	_game._battle_grid.pad_move(1, 0)
+	_game._battle_grid.pad_activate()
+	_game._battle_grid.cell_clicked.disconnect(catcher)
+	assert(not got.is_empty(), "pad: the grid cursor did not emit cell_clicked")
+	print("  controller: mf_* actions live, ui_* pad-bound, grid cursor clicks cells")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

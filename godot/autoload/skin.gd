@@ -584,7 +584,7 @@ func _build() -> void:
 	theme.set_stylebox("normal", "Button", _nine(forged_tex(c("surface2"), c("border")), 6, 12))
 	theme.set_stylebox("hover", "Button", _nine(forged_tex(c("surface2").lightened(0.07), c("gold"), 0.95), 6, 12))
 	theme.set_stylebox("pressed", "Button", _nine(forged_tex(c("night2"), c("gold")), 6, 12))
-	theme.set_stylebox("focus", "Button", _flat(Color.TRANSPARENT, c("amethyst"), 6, 1, 12))
+	theme.set_stylebox("focus", "Button", _flat(Color.TRANSPARENT, c("amethyst"), 6, 2, 12))  # 2px: readable from the couch (pad focus)
 	theme.set_stylebox("disabled", "Button", _nine(forged_tex(c("surface"), c("border_soft"), 0.4), 6, 12))
 	theme.set_color("font_color", "Button", c("ink_soft"))
 	theme.set_color("font_hover_color", "Button", c("gold_soft"))

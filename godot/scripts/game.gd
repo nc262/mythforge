@@ -1917,6 +1917,29 @@ func _render_chips() -> void:
 
 ## Keyboard: Ctrl+S sheet · Ctrl+L codex · Ctrl+R retell · Space next turn
 ## (combat, when not typing) · Esc back to the message box.
+## Controller: the pad's app actions (Pad autoload registers them) and the
+## combat grid cursor. Focus traversal itself rides the built-in ui_* actions;
+## this only covers the play screen's custom surfaces.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("mf_roll") and _roll_bar.visible:
+		_roll_pending()
+	elif event.is_action_pressed("mf_end_turn") and Mode.is_state("Combat"):
+		_on_combat_action("cnext")
+	elif event.is_action_pressed("mf_menu"):
+		_msg.grab_focus()
+	elif Mode.is_state("Combat") and _battle_grid.visible and not _msg.has_focus():
+		if event.is_action_pressed("ui_left"):
+			_battle_grid.pad_move(-1, 0)
+		elif event.is_action_pressed("ui_right"):
+			_battle_grid.pad_move(1, 0)
+		elif event.is_action_pressed("ui_up"):
+			_battle_grid.pad_move(0, -1)
+		elif event.is_action_pressed("ui_down"):
+			_battle_grid.pad_move(0, 1)
+		elif event.is_action_pressed("ui_accept"):
+			_battle_grid.pad_activate()
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if not (event is InputEventKey) or not event.pressed or event.echo:
 		return
