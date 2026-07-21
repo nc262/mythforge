@@ -938,8 +938,14 @@ func _build_dice_menu() -> void:
 		pop.add_item("%s  %+d" % [a, Rules.ability_mod(int(s["abilities"].get(a, 10)))], idx)
 		pop.set_item_metadata(idx, {"abil": a})
 		idx += 1
-	pop.add_separator("Ask the GM")
+	pop.add_separator("Raw dice")
 	idx += 1
+	for sides in [4, 6, 8, 10, 12, 20, 100]:
+		pop.add_item("d%d" % sides, 910 + sides)
+		idx += 1
+	pop.add_icon_item(Ui.ico_tex("die"), "Roll an expression… (2d6+3)", 909)
+	pop.add_separator("Ask the GM")
+	idx += 2
 	pop.add_icon_item(Ui.ico_tex("book"), "Learn a spell…", 900)
 	pop.add_icon_item(Ui.ico_tex("cups"), "Recruit an ally…", 901)
 	pop.add_icon_item(Ui.ico_tex("hammer"), "Craft something…", 902)
@@ -963,6 +969,43 @@ func _free_check(id: int) -> void:
 	if id == 903:
 		_insp_armed = true
 		_say_system("Inspiration armed — your next roll has advantage.", "star")
+		return
+	# Raw dice tray: table candy, resolved and shown — the GM isn't bothered.
+	if id >= 910:
+		var sides := id - 910
+		var r := randi_range(1, sides)
+		await _animate_die(sides, r, "d%d" % sides)
+		_say_system("You roll a d%d: %d." % [sides, r], "die")
+		return
+	if id == 909:
+		var dlg := ConfirmationDialog.new()
+		dlg.title = "Roll dice"
+		dlg.ok_button_text = "Roll"
+		var expr_in := LineEdit.new()
+		expr_in.placeholder_text = "2d6+3"
+		expr_in.custom_minimum_size = Vector2(220, 0)
+		dlg.add_child(expr_in)
+		add_child(dlg)
+		dlg.popup_centered()
+		expr_in.grab_focus()
+		dlg.confirmed.connect(func():
+			var m := RegEx.create_from_string("(?i)^\\s*(\\d*)d(\\d+)\\s*([+-]\\s*\\d+)?\\s*$").search(expr_in.text)
+			dlg.queue_free()
+			if m == null:
+				_say_system("That's not a dice expression — try 2d6+3.")
+				return
+			var n := maxi(1, int(m.get_string(1)) if m.get_string(1) != "" else 1)
+			var die_sides := clampi(int(m.get_string(2)), 2, 1000)
+			var mod := int(m.get_string(3).replace(" ", "")) if m.get_string(3) != "" else 0
+			var total := mod
+			var rolls: Array[String] = []
+			for i in mini(n, 40):
+				var one := randi_range(1, die_sides)
+				total += one
+				rolls.append(str(one))
+			_say_system("You roll %s: [%s]%s = %d." % [expr_in.text.strip_edges(), ", ".join(rolls),
+				(" %+d" % mod) if mod != 0 else "", total], "die"))
+		dlg.close_requested.connect(dlg.queue_free)
 		return
 	if id == 902:
 		_ask_gm("Craft something", "What do you try to make (and from what)?",
@@ -1142,7 +1185,12 @@ func _on_combat_action(meta) -> void:
 		_cast_in_combat(m.substr(4).uri_decode())
 		return
 	if m.begins_with("atk:"):
-		_deliver_player_hit(Combat.player_attack(m.substr(4)))
+		var res: Dictionary = Combat.player_attack(m.substr(4))
+		# B4: your swing gets the dice moment too — the tracker's math, the
+		# table's drama.
+		if res.has("roll") and str(res.get("msg", "")) != "":
+			await _animate_die(20, int(res["roll"]), str(res.get("caption", "Attack")))
+		_deliver_player_hit(res)
 
 
 ## End Turn: everyone else acts on their own — enemies close and strike

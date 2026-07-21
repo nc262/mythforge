@@ -15,6 +15,9 @@ var _hp_seen := {}     # id -> last hp, for damage/heal feedback
 var _shake := Vector2.ZERO
 var _lunge_id := ""
 var _lunge_off := Vector2.ZERO
+var _drag_pc := false          # your token lifts and rides the cursor
+var _drag_pt := Vector2.ZERO
+var _press_cell: Array = [-1, -1]
 
 
 func _ready() -> void:
@@ -151,17 +154,35 @@ func pad_activate() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseMotion:
 		var c := _cell_at(event.position)
-		if c != _hover:
+		if _drag_pc:
+			_drag_pt = event.position
+		if c != _hover or _drag_pc:
 			_hover = c
 			queue_redraw()
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+	elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		var cell := _cell_at(event.position)
 		var pos := Combat.positions()
-		for id in pos:
-			if int(pos[id][0]) == cell[0] and int(pos[id][1]) == cell[1]:
-				token_clicked.emit(str(id))
+		if event.pressed:
+			_press_cell = cell
+			# Your own token lifts under the press — drop it to move, tap it to
+			# select. Foes and floor keep the immediate click (attack / move).
+			if pos.has("pc") and int(pos["pc"][0]) == cell[0] and int(pos["pc"][1]) == cell[1]:
+				_drag_pc = true
+				_drag_pt = event.position
+				queue_redraw()
 				return
-		cell_clicked.emit(cell)
+			for id in pos:
+				if int(pos[id][0]) == cell[0] and int(pos[id][1]) == cell[1]:
+					token_clicked.emit(str(id))
+					return
+			cell_clicked.emit(cell)
+		elif _drag_pc:
+			_drag_pc = false
+			queue_redraw()
+			if cell != _press_cell:
+				cell_clicked.emit(cell)   # the drop IS the move order
+			else:
+				token_clicked.emit("pc")  # a tap in place selects, as before
 
 
 ## The art a combatant's token wears — one source with the initiative rail.
@@ -266,3 +287,12 @@ func _draw() -> void:
 		var np := center + Vector2(-nsz.x / 2, r + 16)
 		draw_rect(Rect2(np + Vector2(-4, -11), Vector2(nsz.x + 8, 15)), Color(Ui.c("night"), 0.72))
 		draw_string(font, np, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Ui.c("ink") if alive else Ui.c("ink_dim"))
+	# The lifted token rides the cursor as a ghost until it's dropped.
+	if _drag_pc:
+		var gr := minf(cs.x, cs.y) * 0.46
+		var ghost := Art.combatant_tex({"id": "pc"})
+		if ghost != null:
+			draw_texture_rect(ghost, Rect2(_drag_pt - Vector2(gr, gr), Vector2(gr * 2, gr * 2)), false, Color(1, 1, 1, 0.6))
+		else:
+			draw_circle(_drag_pt, gr, Color(Ui.c("gold"), 0.4))
+		draw_arc(_drag_pt, gr, 0, TAU, 40, Color(Ui.c("gold"), 0.8), 2.0)

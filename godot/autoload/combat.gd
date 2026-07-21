@@ -191,7 +191,7 @@ func player_attack(target_id: String) -> Dictionary:
 		save(c)
 		var miss := {"msg": "*You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → a miss.*" % [
 			foe["name"], wname, roll, mod, total, vs_ac, dv_tag, " — a FUMBLE" if fumble else ""],
-			"fell": false, "won": false, "spent": true}
+			"fell": false, "won": false, "spent": true, "roll": roll, "caption": "Attack — %s" % wname}
 		var off_miss := offhand_followup(target_id, b)
 		if str(off_miss.get("msg", "")) != "":
 			miss["msg"] = str(miss["msg"]) + "\n" + str(off_miss["msg"])
@@ -225,7 +225,7 @@ func player_attack(target_id: String) -> Dictionary:
 		" — **CRITICAL HIT%s!**" % (" (Champion)" if roll == 19 else "") if crit else "",
 		dmg, res_tag,
 		(" — the %s falls!" % foe["name"]) if fell else " (%d/%d left)" % [int(foe["hp"]), int(foe["hpMax"])]]
-	var result := {"msg": msg, "fell": fell, "won": won, "spent": true}
+	var result := {"msg": msg, "fell": fell, "won": won, "spent": true, "roll": roll, "caption": "Attack — %s" % wname}
 	if not fell:
 		var off := offhand_followup(target_id, b)
 		if str(off.get("msg", "")) != "":

@@ -91,6 +91,7 @@ func _ready() -> void:
 	for l in range(from_level + 1, to_level + 1):
 		if l in [4, 8]:
 			crossed_asi = true
+	var asi_pairs: Array = []  # +1/+1 split choices; captured by confirmed below
 	if crossed_asi:
 		var feat_l := Label.new()
 		feat_l.theme_type_variation = "HintLabel"
@@ -98,6 +99,10 @@ func _ready() -> void:
 		feat_in = OptionButton.new()
 		for ab in Rules.ABILITIES:
 			feat_in.add_item("+2 %s (ASI)" % ab)
+		for i in Rules.ABILITIES.size():
+			for j in range(i + 1, Rules.ABILITIES.size()):
+				asi_pairs.append([Rules.ABILITIES[i], Rules.ABILITIES[j]])
+				feat_in.add_item("+1 %s / +1 %s (split)" % [Rules.ABILITIES[i], Rules.ABILITIES[j]])
 		var feats: Array = Rules.tables.get("feats", {}).keys()
 		feats.sort()
 		for f in feats:
@@ -141,6 +146,11 @@ func _ready() -> void:
 				var ab: String = Rules.ABILITIES[idx]
 				sh["abilities"][ab] = int(sh["abilities"].get(ab, 10)) + 2
 				gains.append("+2 %s" % ab)
+			elif idx < Rules.ABILITIES.size() + asi_pairs.size():
+				var pr: Array = asi_pairs[idx - Rules.ABILITIES.size()]
+				sh["abilities"][pr[0]] = int(sh["abilities"].get(pr[0], 10)) + 1
+				sh["abilities"][pr[1]] = int(sh["abilities"].get(pr[1], 10)) + 1
+				gains.append("+1 %s and +1 %s" % [pr[0], pr[1]])
 			else:
 				var fname: String = feat_in.get_item_text(idx).trim_prefix("Feat: ").split(" — ")[0]
 				sh["feats"] = sh.get("feats", []) + [fname]

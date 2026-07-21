@@ -444,7 +444,7 @@ func record_npc(fields: Dictionary) -> void:
 		return
 	var c := cast()
 	var e: Dictionary = c.get(nm, {})
-	for k in ["role", "goal", "fear", "faction", "secret", "feeling"]:
+	for k in ["role", "goal", "fear", "faction", "secret", "feeling", "voice"]:
 		if str(fields.get(k, "")).strip_edges() != "":
 			e[k] = str(fields[k]).strip_edges()
 	c[nm] = e
@@ -486,6 +486,8 @@ func cast_summary() -> String:
 			bits.append("fears " + str(e["fear"]))
 		if str(e.get("feeling", "")) != "":
 			bits.append("feels %s toward the player" % str(e["feeling"]))
+		if str(e.get("voice", "")) != "":
+			bits.append("speaks in a %s voice — keep their dialogue in it" % str(e["voice"]))
 		if int(e.get("bond", 0)) != 0:
 			bits.append("relationship %+d" % int(e["bond"]))
 		if str(e.get("secret", "")) != "":
