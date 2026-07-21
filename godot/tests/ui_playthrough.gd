@@ -216,6 +216,18 @@ func _build_windows() -> void:
 		get_tree().root.add_child(w)
 		await get_tree().process_frame
 		w.queue_free()
+	# The A0-split windows: the GM tuner and the reaction prompt build with
+	# real props (the level-up window is already exercised by the ceremony).
+	var tuner: Node = load("res://scenes/ui/gm_tuner.gd").new()
+	get_tree().root.add_child(tuner)
+	await get_tree().process_frame
+	tuner.queue_free()
+	var rx: Node = load("res://scenes/ui/reaction_prompt.gd").new()
+	rx.pend = {"enemy": {"name": "test goblin"}, "total": 15, "ac": 12, "dmg": 5, "crit": false}
+	rx.reactions = ["shield", "dodge", "parry"]
+	get_tree().root.add_child(rx)
+	await get_tree().process_frame
+	rx.queue_free()
 	var book: Node = load("res://scenes/ui/lore_book.tscn").instantiate()
 	get_tree().root.add_child(book)
 	for i in 5:
