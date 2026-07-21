@@ -55,9 +55,41 @@ evidence in `docs/spikes/quality_ladder.png`.
 anything the player inspects. The showcase checkpoint (C) is used for
 legendaries, hero gear, boss drops and key art; B carries the bulk.
 
-*Note on absolute times:* these are ~4× the raw §0 benchmark because they
-include matting **and** run with cuDNN disabled (see the ZLUDA note below).
-The relative ordering — and therefore the policy — is unaffected.
+### Cost isolation — what actually costs what
+
+I initially blamed the cuDNN workaround for a 4× slowdown. **That was wrong**,
+and measuring properly says so:
+
+| Job (cuDNN **off** — the working config) | Time |
+|---|---|
+| 512 / 6 steps, no matte | **1.4 s** *(cuDNN-on benchmark was 1.5 s — no cost)* |
+| 512 / 6 steps, **+ matte** | 5.1 s |
+| 1024 / 6 steps, no matte | **9.6 s** *(cuDNN-on was 8.1 s — ~18 % cost)* |
+| 1024 / 10 steps, + matte | 16.7 s |
+
+**cuDNN-off is nearly free. Matting costs ~3.7 s per image, flat**, regardless
+of resolution — it is the single most expensive step in the pipeline after the
+sampler itself.
+
+That reframes everything: **matte only what needs matting.**
+
+### Pipeline profiles *(Director's suggestion, on the axis the data supports)*
+
+Different generation classes get different pipelines. Not by cuDNN — by
+**checkpoint, resolution, steps, and whether an alpha channel is needed**:
+
+| Profile | Used for | Checkpoint / size / steps | Matte? | Cost |
+|---|---|---|---|---|
+| `showcase` | key art, legendaries, boss art, hero portraits | Juggernaut 1024 / 30 | no | ~28 s |
+| `item` | anything recoloured or composited | turbo 1024 / 10 | **yes** | ~17 s |
+| `prop` | small props, background clutter | turbo 512 / 6 | yes | ~5 s |
+| `scene` | backdrops, biome plates, maps | turbo 1024 / 10 | **no** | ~10 s |
+| `portrait` | NPC / creature faces | turbo 1024 / 10 | no | ~10 s |
+
+Skipping the matte on scenes, portraits and key art — none of which are ever
+cut out — saves ~3.7 s on every one of them. The Art Director takes a
+`profile` alongside its existing `lane`, so callers declare intent once and the
+subsystem owns the settings.
 
 ### Budget at the new quality bar
 
