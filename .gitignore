@@ -98,3 +98,6 @@ New Text Document.txt
 _boot-stack.cmd
 _run-odysseus.bat
 dist/
+
+# Windows export tooling (downloaded, not vendored) — see docs/Build.md
+tools/rcedit-x64.exe
