@@ -67,6 +67,8 @@ func _build_primary_controls() -> void:
 		["FORGE  A  HERO", "anvil", "steel", _open_character_forge_pillar, ""],
 		["FORGE  A  WORLD", "globe", "oak", _open_world_forge_pillar, "a realm of your own"],
 		["FORGE  A  CAMPAIGN", "wartable", "oak", _open_campaign_forge_pillar, ""],
+		["FORGE  A  GM", "crown", "steel", _open_gm_forge_pillar, "a voice of your own"],
+		["FORGE  A  COMPANION", "cups", "steel", _open_persona_forge_pillar, "a friend for the road"],
 		["CHRONICLES", "book", "leather", _open_chronicles, "the saved tales"],
 		["SETTINGS", "runewheel", "steel", _show_settings, ""],
 		["EXIT  THE  HALL", "door", "leather", _quit_game, ""],
@@ -551,6 +553,35 @@ func _load_settings() -> void:
 
 # ── The World Forge (full-screen pillar, docs/forges — a realm of your own) ──
 var _world_forge: Control = null
+var _gm_forge: Control = null
+var _persona_forge: Control = null
+
+
+## The two persona pillars share one launcher shape: full-screen forge, kept
+## hidden between visits so a half-finished draft survives, Hall on close.
+func _open_gm_forge_pillar() -> void:
+	_gm_forge = _open_minor_forge(_gm_forge, "res://scenes/forge/gm_forge.tscn")
+
+
+func _open_persona_forge_pillar() -> void:
+	_persona_forge = _open_minor_forge(_persona_forge, "res://scenes/forge/persona_forge.tscn")
+
+
+func _open_minor_forge(inst: Control, path: String) -> Control:
+	Mode.enter("CampaignForge")
+	_title.visible = false
+	_sub.visible = false
+	if inst == null:
+		inst = load(path).instantiate()
+		inst.closed.connect(func():
+			inst.visible = false
+			Mode.enter("MainMenu")
+			_show_title())
+		add_child(inst)
+	else:
+		inst.visible = true
+	Ui.polish(inst)
+	return inst
 
 
 func _open_world_forge_pillar() -> void:

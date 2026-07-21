@@ -299,7 +299,8 @@ func _build_windows() -> void:
 	# The full-screen forges carry heavy _ready logic — build each so any
 	# instantiation-time error (the kind --editor --quit misses) surfaces here.
 	for path in ["res://scenes/forge/character_forge.tscn", "res://scenes/forge/campaign_forge.tscn",
-			"res://scenes/forge/world_forge.tscn", "res://scenes/forge/adventure_forge.tscn"]:
+			"res://scenes/forge/world_forge.tscn", "res://scenes/forge/adventure_forge.tscn",
+			"res://scenes/forge/gm_forge.tscn", "res://scenes/forge/persona_forge.tscn"]:
 		var f: Node = load(path).instantiate()
 		# A failed script load still instantiates a bare Control — instantiate()
 		# "succeeding" proves nothing. Assert the script is really attached AND
@@ -310,4 +311,4 @@ func _build_windows() -> void:
 			await get_tree().process_frame
 		assert(f.get("_rail") != null, "forge %s: scaffold never built (_rail is null)" % path)
 		f.queue_free()
-	print("  forges: character, campaign, world, adventure all built")
+	print("  forges: character, campaign, world, adventure, gm, persona all built")

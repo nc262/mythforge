@@ -18,14 +18,21 @@ const DIFFICULTIES := [
 const Card := preload("res://ui/myth_choice_card.gd")
 const BtnM := preload("res://ui/myth_button.gd")
 
-var draft := {"hero": "", "adv": {}, "companions": true, "difficulty": 1.0, "house": ""}
+var draft := {"hero": "", "adv": {}, "companions": true, "difficulty": 1.0, "house": "", "party": []}
 var _worlds: Array = []
+var _personas: Array = []   # forged companions from the gallery (Companion Forge)
 var _child_forge: Control = null
 
 
 func _ready() -> void:
 	_load_worlds()  # fire-and-forget, same as before — stage 0 doesn't need it yet
+	_load_personas()
 	super._ready()
+
+
+func _load_personas() -> void:
+	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+	_personas = g.get("state", {}).get("cpersonas", []) if g.get("state") is Dictionary and g["state"].get("cpersonas") is Array else []
 
 
 func _stages() -> Array:
@@ -218,6 +225,31 @@ func _stage_party() -> void:
 	var cc := CenterContainer.new()
 	cc.add_child(cb)
 	_stage_box.add_child(cc)
+	# Forged companions from the gallery — toggle who rides in on day one.
+	if not _personas.is_empty():
+		var pl := Label.new()
+		pl.theme_type_variation = "HintLabel"
+		pl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pl.text = "Forged companions — who sits at your fire from the first night?"
+		_stage_box.add_child(pl)
+		var prow := HBoxContainer.new()
+		prow.alignment = BoxContainer.ALIGNMENT_CENTER
+		prow.add_theme_constant_override("separation", Ui.SPACE["s"])
+		for p in _personas:
+			if not (p is Dictionary) or str(p.get("name", "")) == "":
+				continue
+			var nmp := str(p["name"])
+			var card := Card.new({"glyph": "cups", "title": nmp, "body": str(p.get("role", "a companion"))})
+			card.set_selected(draft["party"].any(func(x): return str(x.get("name", "")) == nmp))
+			card.pressed.connect(func():
+				var without: Array = draft["party"].filter(func(x): return str(x.get("name", "")) != nmp)
+				var joining: bool = without.size() == draft["party"].size()
+				if joining:
+					without.append({"name": nmp, "role": str(p.get("role", ""))})
+				draft["party"] = without
+				card.set_selected(joining))
+			prow.add_child(card)
+		_stage_box.add_child(prow)
 	var dim := Label.new()
 	dim.theme_type_variation = "HintLabel"
 	dim.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -311,6 +343,8 @@ func _begin() -> void:
 	var rules: Dictionary = world_kind.get("rules") if world_kind.get("rules") is Dictionary else {}
 	rules["difficulty"] = float(draft["difficulty"])
 	rules["companions"] = bool(draft["companions"])
+	if not (draft["party"] as Array).is_empty():
+		rules["party"] = draft["party"]  # game.gd seeds them once on first hydrate
 	if str(draft["house"]) != "":
 		rules["house"] = str(draft["house"])
 	world_kind["rules"] = rules

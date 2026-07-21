@@ -59,15 +59,24 @@ var _story: Dictionary = {}         # the forged opening campaign
 var _settlement := ""               # where the tale begins
 
 
+var _cgms: Array = []   # forged GM personas from the gallery (GM Forge)
+
+
 func _ready() -> void:
 	# The table's ledger — built BEFORE the scaffold because entering stage 0
 	# (inside super._ready) already writes it via _ledger().
 	_table_note = Label.new()
 	_table_note.theme_type_variation = "HintLabel"
 	_table_note.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_load_cgms()  # fire-and-forget; the Voice stage comes long after
 	super._ready()
 	_col.add_child(_table_note)
 	_col.move_child(_table_note, _col.get_child_count() - 2)  # between stage box and status
+
+
+func _load_cgms() -> void:
+	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+	_cgms = g.get("state", {}).get("cgms", []) if g.get("state") is Dictionary and g["state"].get("cgms") is Array else []
 
 
 func _stages() -> Array:
@@ -261,6 +270,20 @@ func _stage_voice() -> void:
 				c.set_selected(c == card))
 		cards.append(card)
 		row.add_child(card)
+	# Forged GM personas from the gallery sit beside the archetypes.
+	for v2 in _cgms:
+		if not (v2 is Dictionary) or str(v2.get("title", "")) == "":
+			continue
+		var card2 := Card.new({"glyph": "crown", "title": str(v2["title"]),
+			"body": str(v2.get("body", "a forged voice")), "foot": "forged"})
+		card2.set_selected(str(draft["gm"].get("style", "")) == str(v2["title"]))
+		card2.pressed.connect(func():
+			draft["gm"] = v2.get("knobs", {}).duplicate()
+			draft["gm"]["style"] = str(v2["title"])
+			for c in cards:
+				c.set_selected(c == card2))
+		cards.append(card2)
+		row.add_child(card2)
 	_stage_box.add_child(row)
 	# Tune by hand: the raw Session-Zero knobs, for those who know the table.
 	var adv := Fold.new("Tune the voice by hand", false)

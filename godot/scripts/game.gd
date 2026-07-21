@@ -117,6 +117,7 @@ func _ready() -> void:
 		_say_system("You sit down with %s." % str(GameState.character.get("name", "?")))
 		return
 	await GameState.hydrate()
+	_seed_forged_party()  # companions chosen at the adventure table ride in on day one
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
@@ -128,6 +129,23 @@ func _ready() -> void:
 		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
 		_recap()
 	_msg.grab_focus()
+
+
+## Forged companions picked at the adventure table (Party stage → world.rules
+## .party) join the sheet ONCE — partySeeded marks the deed so dismissing one
+## later doesn't resurrect them on the next boot.
+func _seed_forged_party() -> void:
+	var wk: Dictionary = GameState.state.get("world", {}) if GameState.state.get("world") is Dictionary else {}
+	var party: Array = wk.get("rules", {}).get("party", []) if wk.get("rules") is Dictionary else []
+	if party.is_empty() or bool(GameState.sheet().get("partySeeded", false)) \
+			or str(GameState.sheet().get("name", "")) == "":
+		return
+	for p in party:
+		if p is Dictionary and str(p.get("name", "")) != "":
+			GameState.add_companion(str(p["name"]), str(p.get("role", "")))
+	var s := GameState.sheet()
+	s["partySeeded"] = true
+	GameState.set_sheet(s)
 
 
 ## The action bar wears the hand-drawn Icon Library, never font glyphs or
