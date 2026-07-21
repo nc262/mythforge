@@ -313,49 +313,16 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 
 
 ## Session Zero — Step 3 of 3: set the table's tone before the first scene.
-const GM_KNOBS := [
-	["humor", "Humor", "Serious", "Comedic", 40],
-	["spice", "Romance & spice", "None", "Bold", 0],
-	["grit", "Grit & danger", "Gentle", "Brutal", 50],
-	["pace", "Pace", "Slow", "Fast", 55],
-	["rules", "Rules", "Loose", "Strict 5e", 50],
-]
-
 
 func _session_zero(nm: String, race: String, cls: String, background := "") -> void:
-	var dlg := ConfirmationDialog.new()
-	dlg.title = "Session Zero — set the tone"
-	dlg.ok_button_text = "Begin the adventure ›"
-	dlg.get_cancel_button().visible = false
-	dlg.min_size = Vector2i(460, 300)
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	var sliders := {}
-	for k in GM_KNOBS:
-		var row := Label.new()
-		row.theme_type_variation = "HintLabel"
-		row.text = "%s   %s ↔ %s" % [k[1], k[2], k[3]]
-		box.add_child(row)
-		var sl := HSlider.new()
-		sl.min_value = 0
-		sl.max_value = 100
-		sl.step = 5
-		sl.value = k[4]
-		sl.custom_minimum_size = Vector2(400, 0)
-		box.add_child(sl)
-		sliders[k[0]] = sl
-	dlg.add_child(box)
-	add_child(dlg)
-	dlg.popup_centered()
-	dlg.confirmed.connect(func():
-		var knobs := {}
-		for key in sliders:
-			knobs[key] = int(sliders[key].value)
-		GameState.save_kind("gm", knobs)
-		dlg.queue_free()
+	var tuner := preload("res://scenes/ui/gm_tuner.gd").new()
+	tuner.session_zero = true
+	tuner.tuned.connect(func(_knobs: Dictionary):
 		Mode.enter("Exploration")
 		_last_player_msg = "I arrive."
 		_stream(Composer.envelope("[Session zero: I am %s, a level 1 %s %s%s. Open the adventure — set the very first scene, introduce where I am and why today is different, and end on a choice.]" % [nm, race, cls, (", " + str(Rules.tables.get("backgrounds", {}).get(background, {}).get("line", ""))) if background != "" else ""])))
+	add_child(tuner)
+	tuner.popup_centered()
 
 
 # ── Bubbles ──────────────────────────────────────────────────────────────────
@@ -1957,36 +1924,11 @@ func _conjure_portrait(nm: String) -> void:
 # ── M2: tune / snapshots / atlas ─────────────────────────────────────────────
 ## Re-open the Session Zero knobs mid-campaign; saved live to the gm kind.
 func _session_zero_retune() -> void:
-	var dlg := ConfirmationDialog.new()
-	dlg.title = "Tune the GM"
-	dlg.ok_button_text = "So be it"
-	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
-	var knobs: Dictionary = GameState.state.get("gm", {}) if GameState.state.get("gm") is Dictionary else {}
-	var sliders := {}
-	for k in GM_KNOBS:
-		var row := Label.new()
-		row.theme_type_variation = "HintLabel"
-		row.text = "%s   %s ↔ %s" % [k[1], k[2], k[3]]
-		box.add_child(row)
-		var sl := HSlider.new()
-		sl.min_value = 0
-		sl.max_value = 100
-		sl.step = 5
-		sl.value = int(knobs.get(k[0], k[4]))
-		sl.custom_minimum_size = Vector2(400, 0)
-		box.add_child(sl)
-		sliders[k[0]] = sl
-	dlg.add_child(box)
-	add_child(dlg)
-	dlg.popup_centered()
-	dlg.confirmed.connect(func():
-		var out := {}
-		for key in sliders:
-			out[key] = int(sliders[key].value)
-		GameState.save_kind("gm", out)
-		dlg.queue_free()
-		_say_system("The table's tone shifts.", "tune"))
+	var tuner := preload("res://scenes/ui/gm_tuner.gd").new()
+	tuner.initial = GameState.state.get("gm", {}) if GameState.state.get("gm") is Dictionary else {}
+	tuner.tuned.connect(func(_knobs: Dictionary): _say_system("The table's tone shifts.", "tune"))
+	add_child(tuner)
+	tuner.popup_centered()
 
 
 ## 💾 A chapter marker: the backend distills the recent tale into a snapshot.
