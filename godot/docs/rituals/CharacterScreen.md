@@ -22,7 +22,7 @@ and the side sheet — the record is where you admire what they built.
 | **Anticipation** | 🛡 record link / Ctrl+H; the world dims |
 | **Reveal** | The record settles in; portrait glowing, name in gold |
 | **Focal point** | The face and the name — identity before numbers |
-| **Interaction** | Read; fold open the secondary sections (▸ Deeds, ▸ Companions); hover sockets for the gear's story; "Open the pack ›" jumps to equipment |
+| **Interaction** | Read; fold open the secondary sections (▸ Deeds, ▸ Companions); hover sockets for the gear's story; the Gear tab IS the pack (cards, equip, sell) |
 | **Reward** | The XP strap shows the road to the next level; the vitals say how the tale is treating you |
 | **Graceful exit** | Return to the tale |
 

@@ -36,12 +36,12 @@ GameState/Chronicle/Rules` (fine as read-only service calls), and the big one:
 
 ## 2. The pattern (already proven in this codebase)
 
-Five screens are ALREADY separate scene scripts the play screen just opens:
-`inventory_window.gd`, `character_screen.gd`, `skill_tree.gd`, `lore_book.gd`,
-`world_map.gd`. Each:
+Screens are ALREADY separate scene scripts the play screen just opens:
+`character_screen.gd` (THE MENU — the pack merged into its Gear tab, retiring
+`inventory_window.gd`), `skill_tree.gd`, `lore_book.gd`, `world_map.gd`. Each:
 - builds its own UI, reads `GameState`/`Rules`/`Art` directly,
 - **emits a signal** for the few actions that must re-enter the play screen
-  (e.g. `open_pack`, `world_created`), which `game.gd` wires on open.
+  (e.g. `travel_requested`, `world_created`), which `game.gd` wires on open.
 
 **A0 = keep applying this exact pattern** to the dialog builders still inline in
 `game.gd`. No new architecture — the same seam, more of it.

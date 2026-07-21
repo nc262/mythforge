@@ -265,9 +265,12 @@ func _build_windows() -> void:
 		assert(sheet._pages.has(tab) and is_instance_valid(sheet._pages[tab]),
 			"menu: tab '%s' has no page" % tab)
 	assert(sheet._pages["Destiny"].get_child_count() > 0, "menu: Destiny never filled the skill tree")
+	# Gear is the pack now — the tab must carry more than the doll (sockets +
+	# The Pack header at minimum), or the merge silently shipped an empty page.
+	assert(sheet._gear_host.get_child_count() >= 4, "menu: Gear tab missing the pack section")
 	sheet.queue_free()
-	for path in ["res://scenes/ui/inventory_window.gd", "res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd"]:
-		var w: Node = load(path).new()  # inventory = AcceptDialog, skill tree = Control
+	for path in ["res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd"]:
+		var w: Node = load(path).new()
 		get_tree().root.add_child(w)
 		await get_tree().process_frame
 		w.queue_free()
@@ -302,7 +305,7 @@ func _build_windows() -> void:
 	assert(int(shop._wares.item_count) > 0, "shop: the keeper has no wares (vendor stock empty)")
 	shop.queue_free()
 	Mode.enter("Exploration")  # leave Merchant mode the way confirming would
-	print("  windows: sheet(+Gear), pack, skill tree, lore book, shop all built")
+	print("  windows: menu (9 tabs, Gear=pack), skill tree, lore book, shop all built")
 	# The full-screen forges carry heavy _ready logic — build each so any
 	# instantiation-time error (the kind --editor --quit misses) surfaces here.
 	for path in ["res://scenes/forge/character_forge.tscn", "res://scenes/forge/campaign_forge.tscn",

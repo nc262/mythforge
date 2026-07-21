@@ -6,7 +6,6 @@ extends AcceptDialog
 ## table's own settings are pages in here. Skin-ready — every colour resolves
 ## through Ui.c(), so the World Skin retints the whole menu.
 
-signal open_pack
 ## Things the play screen owns (they stream or leave the screen) — the menu
 ## only asks, then closes.
 signal travel_requested(place: String)
@@ -90,6 +89,10 @@ func _ready() -> void:
 		_pages[name].size_flags_vertical = Control.SIZE_EXPAND_FILL
 		_host.add_child(_pages[name])
 	_show_page(_active)
+	# Item art lands async; repaint the pack when it does (auto-disconnects on free).
+	Art.art_ready.connect(func(_k):
+		if _active == "Gear":
+			_refill_gear())
 	confirmed.connect(queue_free)
 
 
@@ -203,15 +206,6 @@ func _hero_panel() -> Control:
 		row.add_child(slot_l)
 		row.add_child(val_l)
 		col.add_child(row)
-	var pack_btn := Button.new()
-	pack_btn.theme_type_variation = "GhostButton"
-	pack_btn.text = "Open the pack ›"
-	pack_btn.pressed.connect(func():
-		open_pack.emit()
-		queue_free())
-	var pbc := CenterContainer.new()
-	pbc.add_child(pack_btn)
-	col.add_child(pbc)
 	return col
 
 
@@ -472,6 +466,130 @@ func _refill_gear() -> void:
 	stat.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	stat.text = "Armor Class %d   ·   %d pieces worn   ·   click a slot to change it" % [Rules.eff_ac(s, inv), worn]
 	_gear_host.add_child(stat)
+	# ── The Pack — the goods live here now, not in a separate window ──────────
+	_gear_host.add_child(MythHeader.new("The Pack"))
+	var items: Array = inv.get("items", [])
+	if items.is_empty():
+		_gear_host.add_child(_body("The pack hangs empty — the road will fill it.", "ink_dim"))
+		return
+	var flow := HFlowContainer.new()
+	flow.alignment = FlowContainer.ALIGNMENT_CENTER
+	flow.add_theme_constant_override("h_separation", Ui.SPACE["s"])
+	flow.add_theme_constant_override("v_separation", Ui.SPACE["s"])
+	var worn_ids: Array = inv.get("equipped", {}).values()
+	for it in items:
+		Art.ensure_item_icon(str(it.get("name", "")))
+		var card := MythCard.new()
+		card.setup(_pack_payload(it), Art.item_tex(str(it.get("name", ""))))
+		card.activated.connect(func(p): _pack_double(str(p.get("id", ""))))
+		card.context_requested.connect(_pack_menu)
+		if str(it.get("id", "")) in worn_ids:
+			var dot := Label.new()
+			dot.text = "●"
+			dot.add_theme_color_override("font_color", Ui.c("gold"))
+			dot.add_theme_font_size_override("font_size", 11)
+			dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			card.add_child(dot)
+		flow.add_child(card)
+	_gear_host.add_child(flow)
+	var strap := MythGauge.new("Pack", "gold")
+	strap.custom_minimum_size = Vector2(0, 18)
+	strap.set_value(items.size(), int(inv.get("slots", 24)))
+	_gear_host.add_child(strap)
+	var hint := Label.new()
+	hint.theme_type_variation = "HintLabel"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.text = "double-click equips   ·   right-click for more"
+	_gear_host.add_child(hint)
+
+
+## The card payload: the item plus its framed-tooltip story, including the
+## ▲/▼ comparison against whatever is worn in the same slot.
+func _pack_payload(it: Dictionary) -> Dictionary:
+	var p := it.duplicate()
+	p["tip_title"] = str(it.get("name", "?"))
+	var rows: Array = [[str(it.get("rarity", "common")).capitalize() + " " + str(it.get("type", "gear")), "ink_dim"]]
+	if it.get("dmg") != null:
+		rows.append(["%s damage%s" % [it["dmg"], (" · %+d to hit" % int(it.get("atk", 0))) if int(it.get("atk", 0)) != 0 else ""]])
+	if it.get("acBonus") != null:
+		rows.append(["+%d AC" % int(it["acBonus"])])
+	var cmp := _pack_compare(it)
+	if cmp != "":
+		rows.append([cmp, "gold" if cmp.begins_with("▲") else "danger"])
+	rows.append(["sells for %d %s" % [Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()], "ink_dim"])
+	p["tip_rows"] = rows
+	return p
+
+
+## "▲ +1 to hit vs Rusty Dagger" — the decision at a glance.
+func _pack_compare(it: Dictionary) -> String:
+	var slot := str(it.get("type", ""))
+	if slot not in ["weapon", "armor", "shield"]:
+		return ""
+	var worn := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get(slot, "")))
+	if worn.is_empty() or str(worn.get("id", "")) == str(it.get("id", "")):
+		return ""
+	if slot == "weapon":
+		var d := int(it.get("atk", 0)) - int(worn.get("atk", 0))
+		if d != 0:
+			return "%s %+d to hit vs %s" % ["▲" if d > 0 else "▼", d, str(worn.get("name", "equipped"))]
+		return "same to-hit as %s (%s vs %s dmg)" % [str(worn.get("name", "")), str(it.get("dmg", "?")), str(worn.get("dmg", "?"))]
+	var d2 := int(it.get("acBonus", 0)) - int(worn.get("acBonus", 0))
+	if d2 != 0:
+		return "%s %+d AC vs %s" % ["▲" if d2 > 0 else "▼", d2, str(worn.get("name", "equipped"))]
+	return ""
+
+
+func _pack_double(iid: String) -> void:
+	var it := GameState.item_by_id(iid)
+	if str(it.get("type", "gear")) not in ["weapon", "armor", "shield"]:
+		return
+	GameState.toggle_equip(iid)
+	Sfx.play("chime")
+	_refill_gear()
+
+
+func _pack_menu(p: Dictionary) -> void:
+	var iid := str(p.get("id", ""))
+	var worn: bool = iid in GameState.inv().get("equipped", {}).values()
+	var menu := PopupMenu.new()
+	menu.add_item("Unequip" if worn else "Equip", 0)
+	menu.add_item("Inspect", 1)
+	menu.add_item("Sell — %d %s" % [Rules.sell_value(str(p.get("rarity", "common"))), GameState.currency()], 2)
+	if str(p.get("type", "gear")) == "gear":
+		menu.set_item_disabled(0, true)
+	menu.id_pressed.connect(func(id):
+		if id == 0:
+			_pack_double(iid)
+		elif id == 1:
+			_pack_inspect(p)
+		elif id == 2:
+			if GameState.sell_item(iid) != "":
+				Sfx.play("chime")
+			_refill_gear())
+	add_child(menu)
+	menu.popup(Rect2i(DisplayServer.mouse_get_position(), Vector2i.ZERO))
+
+
+## Hold the piece up to the candlelight: big art and its story.
+func _pack_inspect(p: Dictionary) -> void:
+	var dlg := AcceptDialog.new()
+	dlg.title = str(p.get("tip_title", "?"))
+	dlg.ok_button_text = "Put it away"
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", Ui.SPACE["m"])
+	var art := TextureRect.new()
+	art.texture = Art.item_tex(str(p.get("name", "")))
+	art.custom_minimum_size = Vector2(320, 320)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	box.add_child(art)
+	box.add_child(MythTooltip.build(str(p.get("tip_title", "?")), p.get("tip_rows", []), str(p.get("rarity", ""))))
+	dlg.add_child(box)
+	add_child(dlg)
+	dlg.popup_centered()
+	Ui.ritual_open(dlg)
+	dlg.confirmed.connect(dlg.queue_free)
 
 
 func _socket_col(keys: Array) -> Control:

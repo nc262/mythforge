@@ -1000,15 +1000,9 @@ func _ask_gm(title: String, placeholder: String, frame: Callable) -> void:
 		_stream(Composer.envelope(str(frame.call(x)))))
 
 
-## 🎒 The paper-doll inventory window.
+## 🎒 The pack lives in THE MENU's Gear tab now — one place for all of it.
 func _open_inventory() -> void:
-	if not Mode.can("panels"):
-		return
-	var win := preload("res://scenes/ui/inventory_window.gd").new()
-	win.inventory_changed.connect(func(): _render_sheet())
-	add_child(win)
-	win.popup_centered()
-	Ui.ritual_open(win)
+	_open_character_screen("Gear")
 
 
 # ── Sheet actions ────────────────────────────────────────────────────────────
@@ -1608,33 +1602,14 @@ func _render_sheet() -> void:
 	lines.append("HP [b]%d / %d[/b]  [color=%s]%s[/color][color=%s]%s[/color]" % [hp, hp_max, hp_col, "▰".repeat(hb), Ui.c("ink_dim").to_html(false), "▱".repeat(12 - hb)])
 	lines.append("AC [b]%d[/b]    %s [b]%d[/b]    Perception [b]%d[/b]" % [Rules.eff_ac(s, GameState.inv()),
 		GameState.currency().capitalize(), int(s.get("gold", 0)), Rules.passive_perception(s)])
-	lines.append("")
-	var bcol := Ui.c("gold").darkened(0.25).to_html(false)
-	var cbg := Ui.c("night").lightened(0.04).to_html(false)
-	var plaques := "[table=3]"
-	for k in Rules.ABILITIES:
-		var v := int(s.get("abilities", {}).get(k, 10))
-		plaques += "[cell border=#%s bg=#%s padding=10,7,10,7][center][color=%s]%s[/color]  [font_size=19][b]%d[/b][/font_size]  [color=%s]%+d[/color][/center][/cell]" % [
-			bcol, cbg, gold, k, v, dim, Rules.ability_mod(v)]
-	plaques += "[/table]"
-	lines.append(plaques)
-	var pool := int(s.get("level", 1))
-	lines.append("Hit Dice [b]%d / %d[/b] (d%d)" % [pool - int(s.get("hitDiceUsed", 0)), pool, int(s.get("hitDie", 8))])
+	# Compact HUD: vitals + things you can DO mid-scene. Everything you'd only
+	# read (abilities, proficiencies, pack, feats) lives in THE MENU now.
 	if int(s.get("exhaustion", 0)) > 0:
 		lines.append("[color=%s]Exhaustion level %d[/color]" % [Ui.c("danger").to_html(false), int(s["exhaustion"])])
-	var prof: Array = []
-	for pk in s.get("profSkills", []):
-		if not prof.has(str(pk)):
-			prof.append(str(pk))  # older saves carry duplicates from creation
-	if not prof.is_empty():
-		lines.append("")
-		lines.append(_hdr("PROFICIENCIES"))
-		lines.append("[center]%s[/center]" % _bb(", ".join(prof)))
 	var conds: Array = s.get("conditions", [])
 	if not conds.is_empty():
-		lines.append("")
-		lines.append(_hdr("CONDITIONS"))
-		lines.append("[center]%s[/center]" % _bb(", ".join(conds.map(func(c): return str(c.get("name", c)) if c is Dictionary else str(c)))))
+		lines.append("[color=%s]%s[/color]" % [Ui.c("danger").to_html(false),
+			_bb(", ".join(conds.map(func(c): return str(c.get("name", c)) if c is Dictionary else str(c))))])
 	var spells: Array = s.get("spells", [])
 	if not spells.is_empty():
 		lines.append("")
@@ -1652,38 +1627,22 @@ func _render_sheet() -> void:
 				slot_parts.append("L%s %d/%d" % [l, maxi(0, int(slots[l]["max"]) - int(slots[l].get("used", 0))), int(slots[l]["max"])])
 		if not slot_parts.is_empty():
 			lines.append("  Slots: %s" % "  ".join(slot_parts))
-	var inv: Dictionary = GameState.inv()
-	var items: Array = inv.get("items", [])
-	if not items.is_empty():
-		var worn: Array = inv.get("equipped", {}).values()
-		lines.append("")
-		lines.append(_hdr("PACK") + "  [color=%s](%d/%d)[/color]" % [Ui.c("ink_dim").to_html(false), items.size(), int(inv.get("slots", 24))])
-		for it in items:
-			var q := int(it.get("qty", 1))
-			var iid := str(it.get("id", ""))
-			var row := "  %s%s%s" % [_bb(str(it.get("name", ""))), (" ×%d" % q) if q > 1 else "",
-				"  [color=%s]● worn[/color]" % gold if iid in worn else ""]
-			if str(it.get("type", "")) in ["weapon", "armor", "shield"]:
-				row += "  [url=equip:%s]%s[/url]" % [iid, "unequip" if iid in worn else "equip"]
-			row += "  [url=sell:%s]sell %d[/url]" % [iid, Rules.sell_value(str(it.get("rarity", "common")))]
-			lines.append(row)
-	var feats: Array = s.get("feats", [])
-	if not feats.is_empty():
-		lines.append("")
-		lines.append(_hdr("FEATS"))
-		lines.append("[center]%s[/center]" % _bb(", ".join(feats.map(func(x): return str(x)))))
-	var features: Array = s.get("features", [])
-	if not features.is_empty():
-		lines.append("")
-		lines.append(_hdr("CLASS FEATURES"))
-		for f in features:
-			var row := "  %s" % _bb(str(f))
-			var key := GameState.feature_action_key(str(f))
-			if key != "":
-				var left := GameState.feature_uses_left(key)
-				row += "  [url=feat:%s]◆ use (%d/%d)[/url]" % [key.uri_encode(), left, int(GameState.FEATURE_ACTIONS[key]["uses"])] if left > 0 \
-					else "  [color=%s]◇ spent[/color]" % Ui.c("ink_dim").to_html(false)
-			lines.append(row)
+	# Only features with an ACTION earn a HUD row; inert ones read in the menu.
+	var acted := false
+	for f in s.get("features", []):
+		var key := GameState.feature_action_key(str(f))
+		if key == "":
+			continue
+		if not acted:
+			acted = true
+			lines.append("")
+			lines.append(_hdr("ACTIONS"))
+		var left := GameState.feature_uses_left(key)
+		lines.append("  %s  %s" % [_bb(str(f)),
+			"[url=feat:%s]◆ use (%d/%d)[/url]" % [key.uri_encode(), left, int(GameState.FEATURE_ACTIONS[key]["uses"])] if left > 0
+			else "[color=%s]◇ spent[/color]" % Ui.c("ink_dim").to_html(false)])
+	lines.append("")
+	lines.append("[center][url=record]Open the Record ›[/url][/center]")
 	_sheet_panel.clear()
 	var face := Art.round_tex("hero-" + GameState.cid().validate_filename(), 148)
 	if face != null:
@@ -2030,11 +1989,14 @@ func _open_character_screen(at := "", pulse := -1) -> void:
 	rec.pulse_level = pulse
 	if at != "":
 		rec._active = at
-	rec.open_pack.connect(_open_inventory)
 	rec.travel_requested.connect(_travel_to)
 	rec.resume_requested.connect(_recall_snapshot)
 	rec.save_chapter_requested.connect(_save_snapshot)
 	rec.leave_requested.connect(_leave_to_hall)
+	# Gear changes (equip/sell) happen inside the menu now — repaint the HUD after.
+	rec.tree_exited.connect(func():
+		if is_inside_tree():
+			_render_sheet())
 	add_child(rec)
 	rec.popup_centered()
 	Ui.ritual_open(rec)
