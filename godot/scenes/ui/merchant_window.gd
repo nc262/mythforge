@@ -16,6 +16,8 @@ var _wares: ItemList
 var _pack: ItemList
 var _wares_meta: Array = []
 var _pack_meta: Array = []
+var _purse_row: HBoxContainer
+var _purse_amount: Label
 var _detail: HBoxContainer
 var _detail_art: MythPlate
 var _detail_txt: Label
@@ -49,8 +51,22 @@ func _ready() -> void:
 	title = here if here_shop != "" else "The trading post"
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 8)
-	_purse = Label.new()
+	# The purse is a ROW, not a sentence: the number lives alone so it can be
+	# counted down rather than snapped (MIL §9).
+	_purse_row = HBoxContainer.new()
+	_purse_row.add_theme_constant_override("separation", Ui.SPACE["xs"])
+	var purse_pre := Label.new()
+	purse_pre.theme_type_variation = "HintLabel"
+	purse_pre.text = "Your purse:"
+	_purse_amount = Label.new()
+	_purse_amount.add_theme_color_override("font_color", Ui.c("gold"))
+	var purse_cur := Label.new()
+	purse_cur.theme_type_variation = "HintLabel"
+	purse_cur.text = GameState.currency()
+	_purse = Label.new()          # the keeper's mood rides alongside
 	_purse.theme_type_variation = "HintLabel"
+	for n in [purse_pre, _purse_amount, purse_cur, _purse]:
+		_purse_row.add_child(n)
 	var cols := HBoxContainer.new()
 	cols.add_theme_constant_override("separation", 14)
 	_wares = ItemList.new()
@@ -104,7 +120,7 @@ func _ready() -> void:
 		trades.theme_type_variation = "HintLabel"
 		trades.text = "This counter trades in: %s" % here_shop
 		root.add_child(trades)
-	root.add_child(_purse)
+	root.add_child(_purse_row)
 	root.add_child(cols)
 	# The detail strip: pick an item on either side and see the piece itself —
 	# its painted face, the buy price, and why the sell price reads low.
@@ -144,8 +160,9 @@ func _ready() -> void:
 
 
 func _refresh() -> void:
-	_purse.text = "Your purse: %d %s%s" % [int(GameState.sheet().get("gold", 0)), GameState.currency(),
-		"   ·   the keeper likes you (−20%)" if markup < 1.0 else ("   ·   the keeper is annoyed (+10%)" if markup > 1.0 else "")]
+	_purse_amount.text = "%d" % int(GameState.sheet().get("gold", 0))
+	_purse.text = "   ·   the keeper likes you (a fifth off)" if markup < 1.0 \
+		else ("   ·   the keeper is annoyed (prices nudge up)" if markup > 1.0 else "")
 	_wares.clear()
 	_wares_meta.clear()
 	var stock: Dictionary = Rules.vendor_stock()  # world-skinned goods, not daggers-everywhere
@@ -183,22 +200,41 @@ func _buy() -> void:
 	if sel.is_empty() or _wares_meta[sel[0]] == null:
 		return
 	var w: Dictionary = _wares_meta[sel[0]]
-	if int(GameState.sheet().get("gold", 0)) < int(w["price"]):
-		_purse.text = "Not enough %s for the %s." % [GameState.currency(), w["name"]]
+	var purse_before := int(GameState.sheet().get("gold", 0))
+	if purse_before < int(w["price"]):
+		# MIL §6 — the refusal names the gap instead of stating a rule.
+		Ui.shake(_purse)
+		_purse.text = "Not enough %s for the %s — you carry %d, it asks %d." % [
+			GameState.currency(), w["name"], purse_before, int(w["price"])]
 		return
-	GameState.add_gold(-int(w["price"]))
+	GameState.add_gold(-int(w["price"]))   # truth first
 	GameState.add_item(str(w["name"]))
-	Sfx.play("chime")
 	_deals.append("bought a %s (%d %s)" % [w["name"], int(w["price"]), GameState.currency()])
+	# MIL — the middle act: the coin leaves the purse, the piece joins the pack.
+	Sfx.ui("purchase")
+	var ware_rect := Rect2(_wares.get_global_rect().position, Vector2(48, 48))
+	Ui.fly_to(self, Art.item_tex(str(w["name"])), ware_rect,
+		Rect2(_pack.get_global_rect().position, Vector2(48, 48)))
+	Ui.rise_text(self, "−%d %s" % [int(w["price"]), GameState.currency()], Ui.c("danger"),
+		_purse.get_global_rect().position + Vector2(_purse.size.x * 0.5, 0))
 	_refresh()
+	# …and the purse counts down rather than snapping to its new number.
+	Ui.count_to(_purse_amount, purse_before, purse_before - int(w["price"]), "%d")
 
 
 func _sell() -> void:
 	var sel := _pack.get_selected_items()
 	if sel.is_empty():
 		return
+	var purse_before := int(GameState.sheet().get("gold", 0))
 	var note := GameState.sell_item(str(_pack_meta[sel[0]]))
-	if note != "":
-		Sfx.play("chime")
-		_deals.append(note.trim_prefix("You "))
+	if note == "":
+		Ui.shake(_pack)
+		return
+	_deals.append(note.trim_prefix("You "))
+	Sfx.ui("purchase")
+	var gained := int(GameState.sheet().get("gold", 0)) - purse_before
 	_refresh()
+	Ui.rise_text(self, "+%d %s" % [gained, GameState.currency()], Ui.c("gold"),
+		_purse_row.get_global_rect().position + Vector2(_purse_row.size.x * 0.5, 0))
+	Ui.count_to(_purse_amount, purse_before, purse_before + gained)

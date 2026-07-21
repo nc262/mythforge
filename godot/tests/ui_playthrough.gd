@@ -247,9 +247,12 @@ func _check_mil() -> void:
 	var probe := Button.new()
 	probe.text = "probe"
 	host.add_child(probe)
-	Ui.polish(host)
 	assert(probe.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND,
-		"MIL §3: polish() must give every control the pointing-hand cursor")
+		"MIL §3: a Button entering the tree must be auto-wired (cursor missing)")
+	# The systemic guarantee, checked where it matters most: the play screen's
+	# action bar was silent for the whole project until VS-1.
+	for b in _game.find_children("*", "Button", true, false):
+		assert(b.has_meta("_polished"), "MIL §3: '%s' on the play screen never got hover/click" % b.name)
 	Ui.shake(probe)
 	var purse := Label.new()
 	host.add_child(purse)
@@ -320,7 +323,14 @@ func _build_windows() -> void:
 		Combat.save({"active": false})  # leave combat so panels build in a calm state
 	# THE MENU: every tab must build — Destiny/Atlas/Chronicle fill lazily, so
 	# visiting them is the only way their pages are ever exercised.
-	var sheet := preload("res://scenes/ui/character_screen.gd").new()
+	# A parse error makes preload() hand back a broken GDScript whose .new()
+	# errors WITHOUT throwing — the run would sail on and print OK. Load it
+	# explicitly and prove it compiled before trusting anything below.
+	var menu_script = load("res://scenes/ui/character_screen.gd")
+	assert(menu_script is GDScript and menu_script.can_instantiate(),
+		"menu: character_screen.gd failed to compile (parse error?)")
+	var sheet = menu_script.new()
+	assert(sheet != null and sheet.get_script() != null, "menu: character_screen instantiate failed")
 	get_tree().root.add_child(sheet)
 	await get_tree().process_frame
 	for tab in sheet.TABS:
@@ -368,6 +378,7 @@ func _build_windows() -> void:
 			shop = ch
 	assert(shop != null, "shop: merchant window never opened")
 	assert(int(shop._wares.item_count) > 0, "shop: the keeper has no wares (vendor stock empty)")
+	assert(shop.get("_purse_amount") != null, "shop: purse amount label missing (MIL §9 count-down)")
 	shop.queue_free()
 	Mode.enter("Exploration")  # leave Merchant mode the way confirming would
 	print("  windows: menu (9 tabs, Gear=pack), skill tree, lore book, shop all built")

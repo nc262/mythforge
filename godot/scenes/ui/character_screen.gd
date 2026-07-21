@@ -28,6 +28,7 @@ var _gear_host: VBoxContainer  # the paper-doll page, rebuilt whenever gear chan
 var _active := "Record"
 var _filled := {}     # lazy pages already built
 var _gear_repaint := false  # coalesces art_ready storms into one repaint
+var _sockets := {}    # slot key → MythSocket, so an equip knows where to fly
 var pulse_level := -1  # a freshly earned level flares on the Destiny page
 
 
@@ -470,6 +471,7 @@ func _refill_gear() -> void:
 	for c in _gear_host.get_children():
 		_gear_host.remove_child(c)  # off-tree NOW — queue_free alone leaves both generations visible for a frame (flicker)
 		c.queue_free()
+	_sockets.clear()
 	var s := GameState.sheet()
 	var inv := GameState.inv()
 	_gear_host.add_child(MythHeader.new("Equipment"))
@@ -514,7 +516,8 @@ func _refill_gear() -> void:
 		Art.ensure_item_icon(str(it.get("name", "")))
 		var card := MythCard.new()
 		card.setup(_pack_payload(it), Art.item_tex(str(it.get("name", ""))))
-		card.activated.connect(func(p): _pack_double(str(p.get("id", ""))))
+		# The card tells the interaction where the piece is flying FROM.
+		card.activated.connect(func(p): _pack_double(str(p.get("id", "")), card.get_global_rect()))
 		card.context_requested.connect(_pack_menu)
 		if str(it.get("id", "")) in worn_ids:
 			var dot := Label.new()
@@ -573,13 +576,39 @@ func _pack_compare(it: Dictionary) -> String:
 	return ""
 
 
-func _pack_double(iid: String) -> void:
+## MIL — the worked reference interaction. Data changing is the *middle* act,
+## not the whole event: the piece travels to its socket, the socket flares,
+## the stat that moved rises off the page, and the metal settles.
+func _pack_double(iid: String, from_rect := Rect2()) -> void:
 	var it := GameState.item_by_id(iid)
 	if str(it.get("type", "gear")) not in ["weapon", "armor", "shield"]:
+		# MIL §6 — a refusal, never a silent no-op.
+		if _gear_host != null:
+			Ui.shake(_gear_host)
 		return
-	GameState.toggle_equip(iid)
-	Sfx.play("chime")
+	var s := GameState.sheet()
+	var before_ac := Rules.eff_ac(s, GameState.inv())
+	var before_atk := Rules.attack_mod(s, GameState.inv())
+	var slot := str(it.get("type", ""))
+	GameState.toggle_equip(iid)          # truth first — a skipped animation can never desync
 	_refill_gear()
+	Sfx.ui("equip")
+	var after_ac := Rules.eff_ac(s, GameState.inv())
+	var after_atk := Rules.attack_mod(s, GameState.inv())
+	var sock: Control = _sockets.get(slot)
+	if sock != null and is_instance_valid(sock):
+		if from_rect.size.x > 0:
+			Ui.fly_to(self, Art.item_tex(str(it.get("name", ""))), from_rect, sock.get_global_rect())
+		Ui.pulse(sock)
+		var delta := ""
+		if after_ac != before_ac:
+			delta = "%+d AC" % (after_ac - before_ac)
+		elif after_atk != before_atk:
+			delta = "%+d to hit" % (after_atk - before_atk)
+		if delta != "":
+			var gain := delta.begins_with("+")
+			Ui.rise_text(self, delta, Ui.c("gold") if gain else Ui.c("danger"),
+				sock.get_global_rect().position + Vector2(0, -Ui.SPACE["l"]))
 
 
 func _pack_menu(p: Dictionary) -> void:
@@ -634,6 +663,7 @@ func _gear_socket(key: String) -> Control:
 	var wrap := VBoxContainer.new()
 	wrap.add_theme_constant_override("separation", 2)
 	var sock := MythSocket.new(key, "◇", 64)
+	_sockets[key] = sock
 	var it := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get(key, "")))
 	if not it.is_empty():
 		var p := it.duplicate()

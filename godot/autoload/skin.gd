@@ -130,6 +130,12 @@ func _ready() -> void:
 	display.base_font = serif
 	display.spacing_glyph = 2  # letter-spaced smallcaps energy
 	_build()
+	# MIL §3/§4 made SYSTEMIC: every Button that ever enters the tree gets
+	# hover, press, cursor and sound — no screen can forget, and no new screen
+	# can regress. _wire is idempotent (a meta guard) and costs one call.
+	get_tree().node_added.connect(func(n: Node):
+		if n is Button:
+			_wire(n))
 
 
 # ── Procedural surfaces: forged slabs, ornate frames, parchment grain ───────
@@ -497,25 +503,32 @@ func material_sb(role: String, lit := 0.0) -> StyleBoxTexture:
 ## and the sounds. Sound and cursor apply even under reduce_motion (the state
 ## must stay perceivable without movement); only the scaling drops out.
 ## One call per screen; call again after building dynamic dialogs.
+## Explicit sweep — rarely needed now that node_added wires everything, but
+## kept for nodes built before this autoload existed and for tests.
 func polish(root: Node) -> void:
 	var targets: Array = root.find_children("*", "Button", true, false)
 	if root is Button:
 		targets.append(root)
 	for n in targets:
-		if n.has_meta("_polished"):
-			continue
-		n.set_meta("_polished", true)
-		n.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		# Beginning: anticipation. Hover speaks (quietly), press confirms.
-		n.mouse_entered.connect(func():
-			if not n.disabled:
-				Sfx.ui("ui_hover")
-				_lift(n, SCALE["lift"]))
-		n.mouse_exited.connect(_lift.bind(n, 1.0))
-		n.button_down.connect(func():
-			Sfx.ui("ui_click")  # on PRESS, not release — perceived latency
-			_lift(n, SCALE["press"]))
-		n.button_up.connect(_lift.bind(n, SCALE["lift"]))
+		_wire(n)
+
+
+## One button, wired to the interaction language. Idempotent.
+func _wire(n: Button) -> void:
+	if n.has_meta("_polished"):
+		return
+	n.set_meta("_polished", true)
+	n.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	# Beginning: anticipation. Hover speaks (quietly), press confirms.
+	n.mouse_entered.connect(func():
+		if not n.disabled:
+			Sfx.ui("ui_hover")
+			_lift(n, SCALE["lift"]))
+	n.mouse_exited.connect(_lift.bind(n, 1.0))
+	n.button_down.connect(func():
+		Sfx.ui("ui_click")  # on PRESS, not release — perceived latency
+		_lift(n, SCALE["press"]))
+	n.button_up.connect(_lift.bind(n, SCALE["lift"]))
 
 
 func _lift(n: Control, to: float) -> void:
@@ -605,6 +618,7 @@ func ritual_open(dlg: Window) -> void:
 
 
 ## Rising ghost text (damage, gold, XP) at a canvas position.
+## parent may be a Control or a Window — deltas rise inside dialogs too.
 func rise_text(parent: Node, text: String, color: Color, at: Vector2) -> void:
 	var lab := Label.new()
 	lab.text = text
@@ -663,7 +677,8 @@ func _deny_pulse(ctrl: Control) -> void:
 
 ## MIL §5 — the MIDDLE act made visible: a thing travels from where it was to
 ## where it now belongs. Rects are in the host's canvas space.
-func fly_to(host: Control, tex: Texture2D, from_rect: Rect2, to_rect: Rect2, done := Callable()) -> void:
+## host may be any Control OR Window (dialogs are Windows and fly too).
+func fly_to(host: Node, tex: Texture2D, from_rect: Rect2, to_rect: Rect2, done := Callable()) -> void:
 	if host == null or not is_instance_valid(host) or reduce_motion or tex == null:
 		if done.is_valid():
 			done.call()

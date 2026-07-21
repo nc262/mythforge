@@ -8,7 +8,8 @@ var _shown := 0         # chars of _acc already printed (tags are held back)
 var _lang_gate := false     # holding the opening back until its language is judged
 var _lang_drifted := false  # opening was non-target language — retry on done
 var _lang_retry := 0        # at most one silent retry per player turn
-var _gm_started := false    # the typing glyphs have been replaced by real content
+var _gm_started := false    # the waiting state has given way to real content
+var _thinking: MythThinking = null   # the composed "GM is thinking" wait
 const _GATE_MIN := 40       # visible chars to see before judging the language
 var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
@@ -590,7 +591,10 @@ func _stream(framed: String) -> void:
 	_gm_started = false
 	_send_btn.disabled = true
 	_gm_rt = _bubble("gm")
-	_gm_rt.append_text("[color=%s]✦ ✦ ✦[/color]" % Ui.c("ink_dim").to_html(false))
+	# MIL §7 Tier 3 — the wait belongs to the fiction. A drawn quill and the
+	# world's own voice, not three glyphs. Lifted when the first token lands.
+	_thinking = MythThinking.new()
+	_gm_rt.get_parent().add_child(_thinking)
 	await Api.activate(GameState.cid(), str(GameState.character.get("name", "")))
 	Api.stream_chat(framed, GameState.session_id)
 
@@ -624,8 +628,10 @@ func _flush_stream() -> void:
 	if _gm_rt == null:
 		return
 	if not _gm_started:
-		_gm_rt.clear()  # first real content replaces the typing glyphs
+		_gm_rt.clear()
 		_gm_started = true
+		# MIL §7 — the waiting state CROSSFADES into the words; it never pops.
+		_dismiss_thinking()
 	while true:
 		var safe := _acc.substr(_shown)
 		var i := safe.find("[[")
@@ -676,6 +682,22 @@ func _edit_last() -> void:
 	_say_system("Reword it and send — the table forgets the old line.", "quill")
 
 
+## Fade the waiting state out, whatever ended it (words, failure, or leaving).
+func _dismiss_thinking() -> void:
+	if _thinking == null or not is_instance_valid(_thinking):
+		_thinking = null
+		return
+	var t := _thinking
+	_thinking = null
+	t.set_process(false)
+	if Ui.reduce_motion:
+		t.queue_free()
+		return
+	var tw := t.create_tween()
+	tw.tween_property(t, "modulate:a", 0.0, Ui.TIME["fast"])
+	tw.tween_callback(t.queue_free)
+
+
 ## Silent log of a language-drift incident (Issue 4) — never shown to the player.
 func _log_drift(snippet: String) -> void:
 	DirAccess.make_dir_recursive_absolute("user://logs")
@@ -716,6 +738,7 @@ func _on_done(_ok: bool) -> void:
 	_streaming = false
 	Mode.busy = false
 	_send_btn.disabled = false
+	_dismiss_thinking()   # a silent/failed turn must never strand the wait
 	var tail: Dictionary = Tags.parse(_acc.substr(_shown))
 	if _gm_rt != null:
 		if str(tail["clean"]) != "":
@@ -795,10 +818,20 @@ func _apply_world_tags(tags: Array) -> void:
 			"loot":
 				var nm := str(a.get("name", "")).strip_edges()
 				if nm != "":
-					GameState.add_item(nm, str(a.get("rarity", "common")), maxi(1, int(a.get("qty", 1))))
+					var rarity := str(a.get("rarity", "common"))
+					GameState.add_item(nm, rarity, maxi(1, int(a.get("qty", 1))))
 					Art.ensure_item_icon(nm)
-					Sfx.play("chime")
-					_say_system("%s added to your pack" % nm, "pack")
+					# MIL §9/§13 — ceremony scales with rarity: a common dagger
+					# shimmers, a legendary stops the world.
+					if rarity in ["epic", "legendary"]:
+						MythCeremony.play(self, {
+							"title": nm, "line": "A %s find." % rarity,
+							"art": Art.item_tex(nm), "sound": "loot",
+							"weight": "major", "tint": Ui.RARITY.get(rarity, "gold"),
+						})
+					else:
+						Sfx.ui("loot")
+						_say_system("%s added to your pack" % nm, "pack")
 			"spell-learned":
 				var sp := str(a.get("name", "")).strip_edges()
 				if sp != "" and GameState.learn_spell(sp):
@@ -947,7 +980,6 @@ func _end_combat() -> void:
 func _level_up_ceremony(from_level: int, to_level: int) -> void:
 	var prev_mode: StringName = Mode.state
 	Mode.enter("LevelUp")
-	Sfx.play("chime")
 	var win := preload("res://scenes/ui/levelup_window.gd").new()
 	win.from_level = from_level
 	win.to_level = to_level
@@ -958,7 +990,18 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		_render_sheet()
 		if not gains.is_empty():
 			_say_system("Level %d: you gain %s." % [lvl, ", ".join(gains)], "star")
-		_open_character_screen("Destiny", lvl))  # the reward beat: the new star flares in the sky
+		# MIL §13 — the world stops for this. State is already committed, so a
+		# skipped ceremony can never desync; when it ends the Destiny page
+		# opens with the new star flaring.
+		var s := GameState.sheet()
+		var rite := MythCeremony.play(self, {
+			"title": "Level %d" % lvl,
+			"line": ("You gain %s." % ", ".join(gains)) if not gains.is_empty() else "%s grows stronger." % str(s.get("name", "the hero")),
+			"art": Art.round_tex("hero-" + GameState.cid().validate_filename(), 256),
+			"sound": "levelup",
+			"weight": "major",
+		})
+		rite.finished.connect(func(): _open_character_screen("Destiny", lvl)))
 	add_child(win)
 	win.popup_centered()
 
@@ -2029,9 +2072,12 @@ func _save_snapshot() -> void:
 		"world_id": GameState.world_id(), "transcript": Chronicle.transcript})
 	if r.get("_status", 0) == 200:
 		var snap: Dictionary = r.get("snapshot", r)
+		Sfx.ui("save")   # MIL §5 — saving is visible AND audible, or it isn't trusted
 		_say_system("Chapter saved: %s" % str(snap.get("title", "untitled")), "save")
 	else:
-		_say_system("The chronicler's ink ran dry (%s)." % str(r.get("_status", 0)))
+		# MIL §6 — the world faltering, never a status code.
+		Sfx.ui("ui_deny")
+		_say_system("The chronicler's ink ran dry — the chapter didn't set. Try again in a moment.")
 
 
 ## Resume from a chapter: its summary re-anchors the GM's context.
@@ -2112,6 +2158,7 @@ func _travel_to(place: String) -> void:
 	world["seen"] = seen
 	GameState.save_kind("world", world)
 	GameState.advance_time(1)
+	Sfx.ui("travel")   # MIL — departure has a sound; the road opens
 	_say_system("You set off for %s." % place, "compass")
 	_repaint_scene(place)
 	_last_player_msg = "I travel to %s." % place
