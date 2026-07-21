@@ -105,7 +105,9 @@ func _ready() -> void:
 	var world_tex := Art.texture_for(str(GameState.character.get("world_id", "")))
 	if world_tex != null:
 		_scene_art.texture = world_tex
-		_scene_art.modulate.a = 0.35
+		# Empty-state: before any words exist the scene IS the screen — bright.
+		# The first bubble eases it back behind the text (see _bubble).
+		_scene_art.modulate.a = 0.6
 		_ken_burns()
 	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
 	if not GameState.is_dm():
@@ -191,18 +193,34 @@ func _leave_to_hall() -> void:
 
 
 ## "Previously, in <adventure>…" — the campaign memory recalls the thread.
+## Composed, not dumped: markdown stripped, each beat cut at a sentence or
+## word boundary — never a mid-word transcript truncation.
 func _recap() -> void:
 	var beats: Array = await Chronicle.recall("the most important recent events of our story")
 	if beats.is_empty():
 		return
 	var lines: Array[String] = []
 	for b in beats.slice(0, 3):
-		var t := str(b.get("text", "")).replace("\n", " · ").left(160)
+		var t := _recap_line(str(b.get("text", "")))
 		if t != "":
-			lines.append("• " + t)
+			lines.append("◆ " + t)
 	if not lines.is_empty():
 		var rt := _bubble("gm")
-		rt.append_text("[color=%s][b]Previously…[/b][/color]\n%s" % [Ui.c("gold_soft").to_html(false), _bb("\n".join(lines))])
+		var title := str(GameState.character.get("name", "")).split(":")[0]
+		rt.append_text("[color=%s][b]Previously, in %s…[/b][/color]\n%s" % [
+			Ui.c("gold_soft").to_html(false), _bb(title if title != "" else "the tale"), _bb("\n".join(lines))])
+
+
+func _recap_line(raw: String) -> String:
+	var t := raw.replace("*", "").replace("#", "").replace("\n", " ").strip_edges()
+	if t.length() <= 170:
+		return t
+	t = t.left(170)
+	var cut := maxi(t.rfind(". "), maxi(t.rfind("! "), t.rfind("? ")))
+	if cut > 60:
+		return t.left(cut + 1)  # end on the sentence
+	var sp := t.rfind(" ")
+	return (t.left(sp) if sp > 0 else t) + "…"
 
 
 # ── The Character Forge (docs/forges/CharacterForge.md) ─────────────────────
@@ -377,6 +395,8 @@ func _bubble(kind: String) -> RichTextLabel:
 	row.modulate.a = 0.0
 	_thread.add_child(row)
 	create_tween().tween_property(row, "modulate:a", 1.0, 0.35)
+	if _scene_art.modulate.a > 0.4:  # the bright empty-state scene steps back once words arrive
+		create_tween().tween_property(_scene_art, "modulate:a", 0.35, 1.2)
 	_scroll_bottom()
 	return rt
 
@@ -1597,9 +1617,6 @@ func _render_sheet() -> void:
 	lines.append("")
 	var hp := int(s.get("hp", 10))
 	var hp_max := maxi(1, int(s.get("hpMax", 10)))
-	var hb := clampi(roundi(12.0 * hp / hp_max), 0, 12)
-	var hp_col := gold if hp * 2 >= hp_max else Ui.c("danger").to_html(false)
-	lines.append("HP [b]%d / %d[/b]  [color=%s]%s[/color][color=%s]%s[/color]" % [hp, hp_max, hp_col, "▰".repeat(hb), Ui.c("ink_dim").to_html(false), "▱".repeat(12 - hb)])
 	lines.append("AC [b]%d[/b]    %s [b]%d[/b]    Perception [b]%d[/b]" % [Rules.eff_ac(s, GameState.inv()),
 		GameState.currency().capitalize(), int(s.get("gold", 0)), Rules.passive_perception(s)])
 	# Compact HUD: vitals + things you can DO mid-scene. Everything you'd only
@@ -1649,7 +1666,27 @@ func _render_sheet() -> void:
 		_sheet_panel.append_text("[center]")
 		_sheet_panel.add_image(face)
 		_sheet_panel.append_text("[/center]\n")
-	_sheet_panel.append_text("\n".join(lines))
+	# Name + class, then a DRAWN HP bar (an image, not ▰▱ font glyphs).
+	_sheet_panel.append_text(lines[0] + "\n" + lines[1] + "\n\n")
+	_sheet_panel.append_text("HP [b]%d / %d[/b]  " % [hp, hp_max])
+	_sheet_panel.add_image(_hud_bar(float(hp) / float(hp_max)))
+	_sheet_panel.append_text("\n" + "\n".join(lines.slice(2)))
+
+
+## The HUD's health bar, drawn: a night trough with an ink-thin frame, filled
+## gold while healthy, ember-red once past half. Rebuilt per repaint — cheap.
+func _hud_bar(ratio: float) -> ImageTexture:
+	var w := 150
+	var h := 12
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(Ui.c("border"), 0.9))
+	img.fill_rect(Rect2i(1, 1, w - 2, h - 2), Ui.c("night").lightened(0.05))
+	var fill := int(float(w - 4) * clampf(ratio, 0.0, 1.0))
+	if fill > 0:
+		var col := Ui.c("gold") if ratio >= 0.5 else Ui.c("danger")
+		img.fill_rect(Rect2i(2, 2, fill, h - 4), col)
+		img.fill_rect(Rect2i(2, 2, fill, 3), col.lightened(0.25))  # a top light so it reads as a bar, not a stripe
+	return ImageTexture.create_from_image(img)
 
 
 ## 🛒 The trading post — extracted to scenes/ui/merchant_window.gd (A0 split).
@@ -1804,7 +1841,7 @@ func _open_world_map() -> void:
 	MythEnvironment.mount(dlg, "env-maptable", "dust", [Vector2(0.93, 0.9)])
 	dlg.title = str(GameState.character.get("name", "the world")).split(":")[0]
 	dlg.ok_button_text = "Close the map"
-	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
+	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0], locs)
 	var map := preload("res://scenes/ui/world_map.gd").new()
 	map.locations = locs
 	var world_d: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}

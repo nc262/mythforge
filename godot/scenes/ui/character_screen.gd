@@ -634,10 +634,25 @@ func _body_view(s: Dictionary, inv: Dictionary) -> Control:
 	var col := VBoxContainer.new()
 	col.custom_minimum_size = Vector2(238, 0)
 	col.add_theme_constant_override("separation", Ui.SPACE["s"])
+	# The forge frame: the render sits in a bordered plate, its studio backdrop
+	# graded toward the world palette and faded into the panel at the base —
+	# never a raw hard-edged AI image floating over the environment.
+	var frame := PanelContainer.new()
+	var fsb := StyleBoxFlat.new()
+	fsb.bg_color = Color(Ui.c("night"), 0.92)
+	fsb.set_border_width_all(2)
+	fsb.border_color = Color(Ui.c("gold"), 0.35)
+	fsb.set_corner_radius_all(Ui.RADIUS["m"])
+	fsb.set_content_margin_all(3)
+	frame.add_theme_stylebox_override("panel", fsb)
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(230, 336)
+	holder.clip_contents = true
 	var body := TextureRect.new()
-	body.custom_minimum_size = Vector2(230, 336)
+	body.set_anchors_preset(Control.PRESET_FULL_RECT)
 	body.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	body.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	body.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+	body.self_modulate = Ui.c("gold").lerp(Color.WHITE, 0.8)  # palette grade toward the skin's accent
 	var key := "herobody-" + GameState.cid().validate_filename()
 	if Art.has_art(key):
 		body.texture = Art.texture_for(key)
@@ -649,13 +664,29 @@ func _body_view(s: Dictionary, inv: Dictionary) -> Control:
 		if str(k) == key and is_instance_valid(body):
 			body.texture = Art.texture_for(key)
 			Ui.pulse(body))
-	col.add_child(body)
+	holder.add_child(body)
+	var grad := Gradient.new()
+	grad.colors = PackedColorArray([Color(Ui.c("night"), 0.0), Color(Ui.c("night"), 0.85)])
+	grad.offsets = PackedFloat32Array([0.6, 1.0])
+	var gt := GradientTexture2D.new()
+	gt.gradient = grad
+	gt.fill_from = Vector2(0, 0)
+	gt.fill_to = Vector2(0, 1)
+	var scrim := TextureRect.new()
+	scrim.texture = gt
+	scrim.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	scrim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	scrim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.add_child(scrim)
+	frame.add_child(holder)
+	col.add_child(frame)
 	var rerender := Button.new()
-	rerender.theme_type_variation = "GhostButton"
 	rerender.text = "Re-render with current gear"
+	rerender.custom_minimum_size = Vector2(0, 38)
 	rerender.pressed.connect(func():
 		Art.forget(key)
-		Art.ensure(key, _body_prompt(GameState.sheet(), GameState.inv())))
+		Art.ensure(key, _body_prompt(GameState.sheet(), GameState.inv()))
+		rerender.text = "The forge paints…")
 	col.add_child(rerender)
 	return col
 
@@ -666,8 +697,10 @@ func _body_prompt(s: Dictionary, inv: Dictionary) -> String:
 		var it := GameState.item_by_id(str(inv["equipped"][k]))
 		if not it.is_empty():
 			worn.append(str(it.get("name", "")))
-	var gear := (", wearing " + ", ".join(worn)) if not worn.is_empty() else (", " + Art.subject_style("char"))
-	return "full body character illustration of %s, a %s %s%s, standing heroic pose, front view, %s, plain dark background, no text" % [
+	# Identity-true: world fashion ALWAYS (an Everyday cleric is not a plate
+	# knight), the worn pieces named on top of it.
+	var gear := Art.subject_style("char") + ((", wearing " + ", ".join(worn)) if not worn.is_empty() else "")
+	return "full body character illustration of %s, a %s %s, %s, standing heroic pose, front view, %s, plain dark background, no text" % [
 		str(s.get("name", "a hero")), str(s.get("race", "")), str(s.get("cls", "")), gear, Art.world_flavor()]
 
 
@@ -730,7 +763,7 @@ func _fill_atlas() -> void:
 	if locs.is_empty():
 		host.add_child(_body("No charted places yet — the GM's narration is your map for now.", "ink_dim"))
 		return
-	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0])
+	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0], locs)
 	var map := preload("res://scenes/ui/world_map.gd").new()
 	map.locations = locs
 	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}

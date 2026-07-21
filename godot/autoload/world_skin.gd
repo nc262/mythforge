@@ -129,6 +129,29 @@ func style_of(world: Dictionary) -> Dictionary:
 	return STYLE.get(family_of(world), STYLE["fantasy"])
 
 
+## Place-kind display: raw authored kinds ("tavern", "wilds") → a skinned
+## label + drawn-icon name, so the Lore Book never leaks engine taxonomy and
+## an Everyday world says "Café" where Embervale says "Tavern".
+const PLACE_ICON := {"tavern": "mug", "home": "house", "landmark": "pillar", "wilds": "tree",
+	"shop": "coins", "temple": "pillar", "dungeon": "skull", "port": "ship", "market": "coins"}
+const PLACE_LABEL := {
+	"everyday": {"tavern": "Café", "wilds": "Park", "dungeon": "Basement", "temple": "Chapel"},
+	"cyber": {"tavern": "Bar", "wilds": "Undercity", "temple": "Shrine", "dungeon": "Sublevel"},
+	"space": {"tavern": "Cantina", "wilds": "The Void", "dungeon": "Derelict", "home": "Quarters"},
+	"pirate": {"wilds": "Open Water", "dungeon": "Sea Cave", "home": "Berth"},
+	"steam": {"tavern": "Gin Palace", "wilds": "The Moors"},
+}
+
+
+func place_kind(world_id: String, kind: String) -> Dictionary:
+	var k := kind.strip_edges().to_lower()
+	if k == "":
+		return {}
+	var fam := family_for_id(world_id)
+	return {"label": str(PLACE_LABEL.get(fam, {}).get(k, k.capitalize())),
+		"icon": str(PLACE_ICON.get(k, "pin"))}
+
+
 ## The name of a hero's progression road, per family (Issue 6 flavor).
 const TREE := {"cyber": "Augment Web", "steam": "Clockwork", "pirate": "Navigator's Chart"}
 

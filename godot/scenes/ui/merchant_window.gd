@@ -39,12 +39,16 @@ func _ready() -> void:
 	cols.add_theme_constant_override("separation", 14)
 	_wares = ItemList.new()
 	_wares.custom_minimum_size = Vector2(330, 320)
+	_wares.fixed_icon_size = Vector2i(28, 28)
 	_pack = ItemList.new()
 	_pack.custom_minimum_size = Vector2(330, 320)
+	_pack.fixed_icon_size = Vector2i(28, 28)
 	var left := VBoxContainer.new()
 	var lt := Label.new()
+	lt.theme_type_variation = "HeaderLabel"
 	lt.text = "The keeper's wares"
 	var buy := Button.new()
+	buy.theme_type_variation = "AccentButton"  # buying is THE act at a counter
 	buy.text = "Buy ›"
 	buy.pressed.connect(_buy)
 	left.add_child(lt)
@@ -52,6 +56,7 @@ func _ready() -> void:
 	left.add_child(buy)
 	var right := VBoxContainer.new()
 	var rt2 := Label.new()
+	rt2.theme_type_variation = "HeaderLabel"
 	rt2.text = "Your pack"
 	var sell := Button.new()
 	sell.text = "‹ Sell"
@@ -61,7 +66,13 @@ func _ready() -> void:
 	right.add_child(sell)
 	cols.add_child(left)
 	cols.add_child(right)
+	# A skill check dressed as a skill check — a ghost line with the die, not a
+	# third identical bar beside Buy/Sell.
 	var haggle := Button.new()
+	haggle.theme_type_variation = "GhostButton"
+	haggle.icon = Ui.ico_tex("die")
+	haggle.expand_icon = true
+	haggle.add_theme_constant_override("icon_max_width", 20)
 	haggle.text = "Haggle with the keeper (Persuasion, DC 12)"
 	haggle.pressed.connect(func():
 		if markup != 1.0:
@@ -82,6 +93,7 @@ func _ready() -> void:
 	root.add_child(haggle)
 	add_child(root)
 	_refresh()
+	Art.art_ready.connect(func(_k): _refresh())  # painted icons land async; auto-disconnects on free
 	confirmed.connect(func():
 		counter_left.emit(_deals)
 		queue_free())
@@ -103,14 +115,16 @@ func _refresh() -> void:
 		for gd in goods:
 			if gd is Array and gd.size() >= 2:
 				var price := maxi(1, roundi(int(gd[1]) * markup))
-				_wares.add_item("%s   ·   %d %s" % [str(gd[0]), price, cur])
+				Art.ensure_item_icon(str(gd[0]))  # every ware shows its painted face
+				_wares.add_item("%s   ·   %d %s" % [str(gd[0]), price, cur], Art.item_tex(str(gd[0])))
 				_wares_meta.append({"name": str(gd[0]), "price": price})
 	_pack.clear()
 	_pack_meta.clear()
 	for it in GameState.inv().get("items", []):
 		var q := int(it.get("qty", 1))
 		_pack.add_item("%s%s   ·   sell for %d %s" % [str(it.get("name", "")),
-			(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()])
+			(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()],
+			Art.item_tex(str(it.get("name", ""))))
 		_pack_meta.append(str(it.get("id", "")))
 
 

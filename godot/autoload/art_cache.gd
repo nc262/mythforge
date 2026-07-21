@@ -349,7 +349,16 @@ func ensure_battle_map(place: String) -> String:
 	return key
 
 
-func ensure_world_chart(world_id2: String, world_name: String) -> String:
+## World-true chart: named after ITS OWN places and skinned to the family
+## ("map" for Everyday, "holo-map" for cyber…) — never a generic Earth map.
+func ensure_world_chart(world_id2: String, world_name: String, locations: Array = []) -> String:
 	var key := "chart-" + world_id2.validate_filename()
-	ensure(key, "hand-drawn parchment world map of %s, %s style, aged paper, inked coastlines and roads, cartography illustration, no modern text labels" % [world_name, world_flavor()])
+	var nms: Array[String] = []
+	for l in locations:
+		if l is Dictionary and str(l.get("name", "")) != "" and nms.size() < 6:
+			nms.append(str(l["name"]))
+	var places := (", its landmarks: " + ", ".join(nms)) if not nms.is_empty() else ""
+	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
+	ensure(key, "illustrated %s of the local region of %s%s, %s style, landmarks drawn as small painted vignettes, winding routes between them, cartography illustration, no text labels" % [
+		str(flavor.get("map", "chart")), world_name, places, str(flavor.get("world", "high fantasy"))])
 	return key

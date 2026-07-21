@@ -47,7 +47,13 @@ func _ready() -> void:
 	close.pressed.connect(func(): closed.emit(); queue_free())
 	head.add_child(close)
 	col.add_child(head)
-	# The category rail.
+	# The category rail — on a scrim strip so it never fights the lamp art.
+	var rail_bed := PanelContainer.new()
+	var bed_sb := StyleBoxFlat.new()
+	bed_sb.bg_color = Color(Ui.c("night"), 0.62)
+	bed_sb.set_corner_radius_all(Ui.RADIUS["m"])
+	bed_sb.set_content_margin_all(Ui.SPACE["xs"])
+	rail_bed.add_theme_stylebox_override("panel", bed_sb)
 	var rail := HBoxContainer.new()
 	rail.add_theme_constant_override("separation", Ui.SPACE["xs"])
 	for cat in CATS:
@@ -57,7 +63,8 @@ func _ready() -> void:
 		b.pressed.connect(_show_cat.bind(cat))
 		_tabs[cat] = b
 		rail.add_child(b)
-	col.add_child(rail)
+	rail_bed.add_child(rail)
+	col.add_child(rail_bed)
 	var line := ColorRect.new()
 	line.color = Color(Ui.c("border"), 0.6)
 	line.custom_minimum_size = Vector2(0, 1)
@@ -70,7 +77,26 @@ func _ready() -> void:
 	_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_host.add_theme_constant_override("separation", Ui.SPACE["m"])
 	scroll.add_child(_host)
-	col.add_child(scroll)
+	# A fade at the page's foot: the scroll affordance — more waits below.
+	var fade_wrap := Control.new()
+	fade_wrap.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	fade_wrap.add_child(scroll)
+	scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var fgrad := Gradient.new()
+	fgrad.colors = PackedColorArray([Color(Ui.c("night"), 0.0), Color(Ui.c("night"), 0.8)])
+	fgrad.offsets = PackedFloat32Array([0.0, 1.0])
+	var fgt := GradientTexture2D.new()
+	fgt.gradient = fgrad
+	fgt.fill_from = Vector2(0, 0)
+	fgt.fill_to = Vector2(0, 1)
+	var fade := TextureRect.new()
+	fade.texture = fgt
+	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
+	fade.offset_top = -28
+	fade_wrap.add_child(fade)
+	col.add_child(fade_wrap)
 	Art.art_ready.connect(_on_art)
 	await _load_world()
 	_title_l.text = "The Lore of %s" % str(_world.get("name", GameState.character.get("world_id", "the world"))).capitalize()
@@ -140,9 +166,14 @@ func _places() -> void:
 		var nm := str(l.get("name", "?"))
 		var key := "map-" + nm.to_lower().replace(" ", "-").validate_filename()
 		var body := str(l.get("desc", l.get("lore", l.get("blurb", ""))))
-		var kind := str(l.get("kind", ""))
-		_host.add_child(_entry(nm, (("[i]%s[/i]\n" % kind) if kind != "" else "") + body, key,
-			"top-down illustrated map vignette of %s, %s, painted, no text" % [nm, Art.world_flavor()]))
+		# The kind rides as a world-skinned chip (drawn icon + skinned label) —
+		# never the raw lowercase engine taxonomy.
+		var pk := WorldSkin.place_kind(GameState.world_id(), str(l.get("kind", "")))
+		var chip := ""
+		if not pk.is_empty():
+			chip = "%s [color=%s]%s[/color]" % [Ui.ico(str(pk["icon"]), 16), Ui.c("gold_soft").to_html(false), str(pk["label"])]
+		_host.add_child(_entry(nm, body, key,
+			"top-down illustrated map vignette of %s, %s, painted, no text" % [nm, Art.world_flavor()], chip))
 
 
 func _cast() -> void:
@@ -231,7 +262,8 @@ func _chronicle() -> void:
 
 
 # ── One illustrated entry ────────────────────────────────────────────────────
-func _entry(title: String, body: String, art_key := "", ensure_prompt := "") -> Control:
+## `chip` is TRUSTED BBCode (built from our own vocab, never model text).
+func _entry(title: String, body: String, art_key := "", ensure_prompt := "", chip := "") -> Control:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Ui.sb_card())
 	var row := HBoxContainer.new()
@@ -257,6 +289,12 @@ func _entry(title: String, body: String, art_key := "", ensure_prompt := "") -> 
 	t.theme_type_variation = "HeaderLabel"
 	t.text = title
 	text.add_child(t)
+	if chip != "":
+		var ch := RichTextLabel.new()
+		ch.bbcode_enabled = true
+		ch.fit_content = true
+		ch.text = chip
+		text.add_child(ch)
 	if body.strip_edges() != "":
 		var b := RichTextLabel.new()
 		b.bbcode_enabled = true
