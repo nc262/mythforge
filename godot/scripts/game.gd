@@ -857,10 +857,10 @@ func _roll_pending() -> void:
 			var s := GameState.sheet()
 			var c: Dictionary = GameState.clock()
 			var rt := _bubble("gm")
-			rt.append_text("%s [color=%s][b]HERE ENDS THE TALE OF %s[/b][/color]\nLevel %d %s %s · survived to day %d · %d XP · %d gold in the purse\n[i]The dice remember what the living forget.[/i]" % [Ui.ico("skull", 20),
+			rt.append_text("%s [color=%s][b]HERE ENDS THE TALE OF %s[/b][/color]\nLevel %d %s %s · survived to day %d · %d XP · %d %s in the purse\n[i]The dice remember what the living forget.[/i]" % [Ui.ico("skull", 20),
 				Ui.c("danger").to_html(false), _bb(str(s.get("name", "?")).to_upper()),
 				int(s.get("level", 1)), _bb(str(s.get("race", ""))), _bb(str(s.get("cls", ""))),
-				int(c.get("day", 1)), int(s.get("xp", 0)), int(s.get("gold", 0))])
+				int(c.get("day", 1)), int(s.get("xp", 0)), int(s.get("gold", 0)), GameState.currency()])
 			if bool(GameState.rule("permadeath", false)):
 				# The table rule: the tale truly ends. The save is archived.
 				_say_system("Permadeath — this save is being sealed into the archive.", "skull")
@@ -1075,11 +1075,11 @@ func _on_sheet_action(meta) -> void:
 			var bits := parts[1].split("|")
 			var price := int(bits[1]) if bits.size() > 1 else 0
 			if int(GameState.sheet().get("gold", 0)) < price:
-				_say_system("Not enough gold for the %s (%d needed)." % [bits[0].uri_decode(), price])
+				_say_system("Not enough %s for the %s (%d needed)." % [GameState.currency(), bits[0].uri_decode(), price])
 				return
 			GameState.add_gold(-price)
 			GameState.add_item(bits[0].uri_decode())
-			note = "*You buy the %s for %d gold.*" % [bits[0].uri_decode(), price]
+			note = "*You buy the %s for %d %s.*" % [bits[0].uri_decode(), price, GameState.currency()]
 			tell_gm = true
 	if note == "":
 		return

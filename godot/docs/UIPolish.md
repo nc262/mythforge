@@ -67,4 +67,28 @@ armor spelling, click verbs.
 5. **Play screen**: empty state, composed recap, drawn HP bar, action row.
 6. **Global**: contrast pass, art grading/framing utility for all AI images.
 
-Rounds 3+ append below as screenshots arrive.
+## Round 3 — merchant window + atlas/map modals
+
+Wrong: purse "cash" vs prices "gold" vs unitless "sells 3" in ONE window ·
+vendor stock ignores world skin (daggers in the Everyday corner shop) · the
+Everyday world chart is a vintage EARTH map (apartment pinned mid-Atlantic) ·
+AI-gibberish banner text + triple compass roses shipped raw · pins are tiny
+unlabeled "?" dots, no you-are-here, no click affordance · map only reachable
+via a link inside a chat bubble (✅ fixed by the atlas fold in current build) ·
+shop is text-only — zero item art on the items screen · Buy/Sell/Haggle three
+identical bars (a skill check dressed as a primary action) · "Leave the
+counter" floats detached w/ resting focus ring; purse label clipped into the
+title bar · quick-action row under the portrait reads as wrapping footnote
+links, not buttons (Director: "doesn't fit AAA" — promoted to phase 2).
+
+Improve: one currency pipe (every price/sell string via currency()) ·
+world-skinned vendor stock tables · chart prompt = world name + family flavor
++ scale + real locations (never "world map") · real pins (label, you-are-here,
+hover, ring fallback when coords unknown) · in-panel map header replaces the
+floating dialog title · map gets a toolbar slot (wartable icon) · shop rows
+with painted item art + price chips; serif section headers · Buy/Sell primary
+under lists, Haggle a ghost one-liner with die icon + DC, disabled after use ·
+selected-item detail strip (art, buy price, sell value) so 40/3 reads as a
+fence's lowball not a bug · portrait rail → real drawn-icon MythButtons.
+
+Rounds 4+ append below as screenshots arrive.

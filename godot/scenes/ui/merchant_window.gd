@@ -97,19 +97,20 @@ func _refresh() -> void:
 		var goods: Array = stock.get(cat, [])
 		if goods.is_empty():
 			continue
-		_wares.add_item("— %s —" % cat.to_upper(), null, false)
+		_wares.add_item("— %s —" % cat.capitalize(), null, false)
 		_wares_meta.append(null)
+		var cur := GameState.currency()
 		for gd in goods:
 			if gd is Array and gd.size() >= 2:
 				var price := maxi(1, roundi(int(gd[1]) * markup))
-				_wares.add_item("%s   ·   %d gold" % [str(gd[0]), price])
+				_wares.add_item("%s   ·   %d %s" % [str(gd[0]), price, cur])
 				_wares_meta.append({"name": str(gd[0]), "price": price})
 	_pack.clear()
 	_pack_meta.clear()
 	for it in GameState.inv().get("items", []):
 		var q := int(it.get("qty", 1))
-		_pack.add_item("%s%s   ·   sells %d" % [str(it.get("name", "")),
-			(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common")))])
+		_pack.add_item("%s%s   ·   sell for %d %s" % [str(it.get("name", "")),
+			(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()])
 		_pack_meta.append(str(it.get("id", "")))
 
 
@@ -119,12 +120,12 @@ func _buy() -> void:
 		return
 	var w: Dictionary = _wares_meta[sel[0]]
 	if int(GameState.sheet().get("gold", 0)) < int(w["price"]):
-		_purse.text = "Not enough gold for the %s." % w["name"]
+		_purse.text = "Not enough %s for the %s." % [GameState.currency(), w["name"]]
 		return
 	GameState.add_gold(-int(w["price"]))
 	GameState.add_item(str(w["name"]))
 	Sfx.play("chime")
-	_deals.append("bought a %s (%d gold)" % [w["name"], int(w["price"])])
+	_deals.append("bought a %s (%d %s)" % [w["name"], int(w["price"]), GameState.currency()])
 	_refresh()
 
 
