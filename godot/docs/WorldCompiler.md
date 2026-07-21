@@ -315,20 +315,63 @@ base tint (material palette)
 
 All CPU, all ~1 ms, all cacheable.
 
-### Registration — and the fallback that de-risks it
+### Spike results (2026-07-21) — both funded, both run
 
-Layer composition only works if parts share a canvas, scale, and anchor.
-Diffusion models do not naturally honour that. **Two tiers, and Tier 1 ships
-first:**
+`scripts/spike_items.py`. ~35 images, ~90 s of GPU. Verdicts:
 
-| Tier | Method | Robustness |
+#### T1 — palette + treatment · **PROVEN**
+A luminance **gradient map** (duotone remap) produces convincing material
+changes from a single base image: steel, bronze, bone, neon and blood all read
+correctly on the same silhouette. Rarity rim-glows and procedural wear work.
+**One generated image → 10 believable variants.** Ship it.
+
+#### T2 — true part layering · **FALSIFIED**
+Prompting for isolated components does not work. Every one of nine attempts —
+*"a sword blade only, no handle, no crossguard"*, *"a crossguard only, no
+blade"* — returned a **complete sword**. A diffusion model cannot be talked out
+of its prior for a familiar whole object; absence instructions are not
+reliable. **Abandon part-layering as specified.**
+
+#### T2-B — region material mapping · **PROVEN IN PRINCIPLE**
+The failure pointed somewhere better: keep the whole item as the atom and give
+**each region its own material** — blade band, guard band, grip band — blended
+so the joins are invisible. No registration problem, because the object was
+always coherent. Verified working, including bands laid along the item's own
+**principal axis**, so diagonal art needs no reorientation.
+
+#### The real bottleneck · **background removal**
+Everything above depends on an alpha mask, and that is where it breaks:
+
+| Method | Success rate | Failure mode |
 |---|---|---|
-| **T1 — Palette & treatment** *(ship this)* | ~20 whole-item base icons per world; vary by material tint, wear overlay, rarity frame | **High.** No registration needed. ~20 images ⇒ 20 × 6 × 5 = **600 distinct icons** |
-| **T2 — True part layering** *(prototype)* | parts generated on a fixed silhouette template (img2img/ControlNet over a shipped mask) | **Medium.** Needs a spike to prove alignment before it is trusted |
+| Luminance threshold | ~75 % | "black background" is often mid-grey; eats the item's own shadows |
+| Corner flood-fill | ~75 % | fails when the model paints a vignette |
+| **Chroma key** (green screen prompt) | ~50–70 % | the model paints a dark vignette *over* the key colour |
+| Local matting model | — | **not installed.** ComfyUI has only `BriaRemoveImageBackground`, an **API node** (cloud, key, credits) |
 
-T1 alone already ends "a staff renders as a star". T2 multiplies it to five
-figures. **Recommendation: implement T1 in the first pass, spike T2 in
-parallel, promote it only when a side-by-side proves it.**
+**Prompt-controlled backgrounds are not reliable enough for a production
+pipeline.** This is the finding that reshapes the plan.
+
+### The revised recommendation
+
+The measurement in §0 changes the calculus. **When generation costs 1.5 s,
+composition may not be worth its complexity.**
+
+| Path | What it buys | Risk |
+|---|---|---|
+| **A — Direct generation** *(primary)* | Deep's 450 part-budget becomes **450 unique whole item icons** per world, each world-true, no compositing at all | **None.** Uses only what is proven today |
+| **B — Recolour on top** *(multiplier)* | those same 450 × material sets × rarity = tens of thousands | **Blocked on reliable matting** |
+
+**Recommendation: build A now, and unblock B with one local matting node.**
+Installing `ComfyUI-RMBG` / `comfyui-inspyrenet-rembg` (a standard, offline,
+one-time install) turns background removal from a ~60 % heuristic into a
+~99 % deterministic step, at which point T1 and T2-B both become production
+techniques rather than experiments.
+
+*If the Director prefers no new dependency:* path A alone still delivers a
+world-true item set of ~450 icons at Deep, which is far beyond today's state —
+and framed presentation (`MythPlate`, already built) sidesteps transparency
+entirely, since a framed painting needs no cut-out.
 
 ### Naming
 
