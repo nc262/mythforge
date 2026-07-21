@@ -12,7 +12,7 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[loot name="Iron Dagger" rarity=common]] when the player picks up or is given an item (rarity: common/uncommon/rare/epic/legendary).
 [[spell-learned name="Misty Step"]] when the player learns a spell. [[time advance=1]] when notable in-world time passes.
 [[xp delta=50 reason="outwitted the toll-keeper"]] when the player earns experience (25-75 for a scene; combat XP is automatic — never tag xp for kills).
-[[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. [[combat-end]] only when foes flee or surrender (victory ends it automatically).
+[[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. With it you MAY lay the battlefield: [[terrain block="3,4;5,2" water="8,8;9,8" cover="2,7;12,3"]] (a 16x10 grid, x,y pairs; block=walls, water=difficult, cover=+2 AC vs ranged — place a few cells that match the scene you described). [[combat-end]] only when foes flee or surrender (victory ends it automatically).
 [[npc name="Ser Aldric" role="knight" goal="reclaim his keep" fear="his own cowardice" faction="the Grey Watch" feeling="wary" voice="gravelly, clipped old-soldier cadence" secret="he betrayed his lord"]] when you introduce or reveal something lasting about a named character (include only the fields you're establishing; give recurring characters a voice and keep their dialogue in it). [[relate name="Ser Aldric" bond=+1 note="the player spared him"]] when the player's deeds shift how a character feels about them (bond −5..+5).
 [[scene place="the chapel crypt at midnight"]] whenever the player arrives somewhere visually new.
 [[lore cat="Places" title="The Sunken Vault" note="one vivid sentence of what was learned"]] when the player discovers a LASTING fact worth remembering — a place, person, creature, faction, history, or truth (cat: History/Places/People/Bestiary/Magic/Faction). Use sparingly, only for real discoveries.
@@ -36,8 +36,17 @@ func envelope(player_msg: String, beats: Array = []) -> String:
 	for extra in [GameState.inv_text(), GameState.spell_text(),
 			Chronicle.recall_text(beats), Chronicle.codex_text(), GameState.cast_summary(), Chronicle.quests_text(),
 			gm_directive(), house_rules_text()]:
-		if str(extra) != "":
-			parts.append("[%s]" % extra)
+		var t := str(extra)
+		if t == "":
+			continue
+		# Context budgeter: no single section may flood the window — a bloated
+		# codex must never push the protocol (or the player's line) off a small
+		# model's context. Word-boundary trim, loud about it.
+		if t.length() > 1400:
+			t = t.left(1400)
+			var sp := t.rfind(" ")
+			t = (t.left(sp) if sp > 1200 else t) + " …(older entries trimmed for space)"
+		parts.append("[%s]" % t)
 	parts.append(PROTOCOL)
 	# The language pin sits LAST before the player's line — highest recency, so
 	# a long context can't bury it (Issue 4 root cause: language was never set).

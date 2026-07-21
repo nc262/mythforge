@@ -41,6 +41,10 @@ func difficulty() -> float:
 
 
 func enemy_hp_guess(nm: String) -> int:
+	var blk := stat_block(nm)
+	if not blk.is_empty():
+		return maxi(1, roundi(randi_range(int(blk["hp_lo"]), int(blk["hp_hi"])) \
+			* (1.0 + 0.2 * (int(GameState.sheet().get("level", 1)) - 1)) * difficulty()))
 	var n := nm.to_lower()
 	var hp: int
 	if RegEx.create_from_string("(?i)dragon|giant|troll|ogre|golem|demon|wyvern|hydra|behemoth|titan|bear|owlbear|minotaur|elemental").search(n):
@@ -53,6 +57,19 @@ func enemy_hp_guess(nm: String) -> int:
 		hp = 12 + randi() % 8
 	# Foes keep pace with the hero (+20%/level) and honor the table's rule.
 	return maxi(1, roundi(hp * (1.0 + 0.2 * (int(GameState.sheet().get("level", 1)) - 1)) * difficulty()))
+
+
+## Bestiary tiers → real stat blocks: a matched entry stats its foe by tier
+## (minor/standard/dire) instead of the name-regex guess — flavor WITH numbers.
+const TIER_STATS := {
+	"minor": {"hp_lo": 6, "hp_hi": 12, "ac": 12, "atk": 3, "dmg": "1d6+1"},
+	"standard": {"hp_lo": 14, "hp_hi": 25, "ac": 13, "atk": 4, "dmg": "1d8+2"},
+	"dire": {"hp_lo": 30, "hp_hi": 49, "ac": 15, "atk": 6, "dmg": "2d8+3"},
+}
+
+
+func stat_block(nm: String) -> Dictionary:
+	return TIER_STATS.get(str(bestiary_for(nm).get("tier", "")), {})
 
 
 func bestiary_for(nm: String) -> Dictionary:
@@ -119,7 +136,7 @@ func enter(enemy: String) -> String:
 		i += 1
 	var hp0 := enemy_hp_guess(enemy)
 	combatants.append({"id": "e1_" + enemy.replace(" ", ""), "name": enemy, "hp": hp0, "hpMax": hp0,
-		"ac": null, "init": randi_range(1, 20), "side": "enemy", "conditions": []})
+		"ac": stat_block(enemy).get("ac"), "init": randi_range(1, 20), "side": "enemy", "conditions": []})
 	save({"active": true, "round": 1, "turn": 0, "combatants": combatants})
 	return "*Combat — %s!*" % enemy
 
@@ -133,7 +150,7 @@ func add_foe(enemy: String) -> void:
 			return
 	var hp := enemy_hp_guess(enemy)
 	c["combatants"].append({"id": "e%d_%s" % [c["combatants"].size(), enemy.replace(" ", "")],
-		"name": enemy, "hp": hp, "hpMax": hp, "ac": null, "init": randi_range(1, 20),
+		"name": enemy, "hp": hp, "hpMax": hp, "ac": stat_block(enemy).get("ac"), "init": randi_range(1, 20),
 		"side": "enemy", "conditions": []})
 	save(c)
 
@@ -441,16 +458,24 @@ func enemy_turn(enemy: Dictionary) -> Dictionary:
 		return {"msg": "*The %s can't act.*" % enemy["name"], "gm": "", "down": false}
 	var s := GameState.sheet()
 	var ac := Rules.eff_ac(s, GameState.inv())
-	var atk_bonus := mini(9, 3 + int(enemy.get("hpMax", 10)) / 15)
+	var blk := stat_block(str(enemy.get("name", "")))
+	var atk_bonus: int = int(blk["atk"]) if not blk.is_empty() else mini(9, 3 + int(enemy.get("hpMax", 10)) / 15)
 	var roll := randi_range(1, 20)
 	var total := roll + atk_bonus
 	var crit := roll == 20
 	if not crit and (roll == 1 or total < ac):
 		return {"msg": "*The %s strikes at you — d20 %d +%d = %d vs AC %d → misses.*" % [enemy["name"], roll, atk_bonus, total, ac],
 			"gm": "[The %s attacked me and missed (%d vs my AC %d). Narrate the near-miss briefly.]" % [enemy["name"], total, ac], "down": false}
-	var dmg := int(enemy.get("hpMax", 10)) / 18
-	for i in (2 if crit else 1):
-		dmg += randi_range(1, 6)
+	var dmg: int
+	if not blk.is_empty():
+		var bde := _dice_expr(str(blk["dmg"]))
+		dmg = int(bde["mod"])
+		for i in int(bde["n"]) * (2 if crit else 1):
+			dmg += randi_range(1, int(bde["sides"]))
+	else:
+		dmg = int(enemy.get("hpMax", 10)) / 18
+		for i in (2 if crit else 1):
+			dmg += randi_range(1, 6)
 	dmg = maxi(1, roundi(dmg * difficulty()))
 	var reactions := available_reactions(total, ac)
 	if not reactions.is_empty():
@@ -577,6 +602,26 @@ func terrain() -> Dictionary:
 
 func terrain_at(cell: Array) -> String:
 	return str(terrain().get("%d,%d" % [int(cell[0]), int(cell[1])], ""))
+
+
+## LLM-authored terrain: the GM lays the battlefield with [[terrain]] —
+## "block=3,4;5,2 water=8,8;9,8 cover=2,7". Authored cells override the
+## color-heuristic bake (they arrive first and bake_terrain won't re-bake).
+func set_terrain_spec(a: Dictionary) -> void:
+	var c := data()
+	if not bool(c.get("active", false)):
+		return
+	var t: Dictionary = c.get("terrain", {})
+	for kind in ["block", "water", "cover"]:
+		for pair in str(a.get(kind, "")).split(";", false):
+			var xy := pair.strip_edges().split(",")
+			if xy.size() == 2 and str(xy[0]).strip_edges().is_valid_int() and str(xy[1]).strip_edges().is_valid_int():
+				t["%d,%d" % [clampi(int(xy[0]), 0, MAP_COLS - 1), clampi(int(xy[1]), 0, MAP_ROWS - 1)]] = kind
+	# Occupied squares stay passable — the GM can't wall someone in place.
+	for p in positions().values():
+		t.erase("%d,%d" % [int(p[0]), int(p[1])])
+	c["terrain"] = t
+	save(c)
 
 
 ## Sample the battle-map painting into the terrain grid. Bakes once per fight;

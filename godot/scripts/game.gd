@@ -144,6 +144,14 @@ func _ready() -> void:
 		return
 	await GameState.hydrate()
 	_seed_forged_party()  # companions chosen at the adventure table ride in on day one
+	# The minimap: a corner whisper of the chart; click (or Ctrl+M) → Atlas.
+	var mini := preload("res://scenes/ui/mini_map.gd").new()
+	mini.open_atlas.connect(func(): _open_character_screen("Atlas"))
+	mini.offset_left = 14
+	mini.offset_top = 12
+	mini.offset_right = 204
+	mini.offset_bottom = 136
+	add_child(mini)
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
@@ -698,6 +706,8 @@ func _apply_world_tags(tags: Array) -> void:
 					_say_system("The Lore Book records a new entry: %s." % lt)
 			"npc":
 				GameState.record_npc(a)  # a structured Character Resource (A4)
+			"terrain":
+				Combat.set_terrain_spec(a)  # the GM lays the battlefield
 			"relate":
 				GameState.relate(str(a.get("name", "")), int(str(a.get("bond", a.get("delta", "0"))).replace("+", "")), str(a.get("note", "")))
 			"time":
@@ -714,8 +724,10 @@ func _apply_world_tags(tags: Array) -> void:
 				_end_combat()
 			"scene":
 				var place := str(a.get("place", "")).strip_edges()
-				if place != "" and not _conjuring:
-					_repaint_scene(place)
+				if place != "":
+					_track_here(place)  # prose moves the pin on the chart
+					if not _conjuring:
+						_repaint_scene(place)
 			"companion":
 				var cn := str(a.get("name", "")).strip_edges()
 				if not bool(GameState.rule("companions", true)):
@@ -1941,6 +1953,28 @@ func _open_world_map() -> void:
 	add_child(dlg)
 	dlg.popup_centered()
 	Ui.ritual_open(dlg)
+
+
+## Auto here-tracking: the GM's [[scene]] prose moves the pin when the place
+## matches a charted location — the map follows the story without a click.
+func _track_here(place: String) -> void:
+	var pl := place.to_lower()
+	for l in Rules.world_locations(GameState.world_id()):
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		if nm == "" or not (pl.contains(nm.to_lower()) or nm.to_lower().contains(pl)):
+			continue
+		var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+		if str(world.get("here", "")) == nm:
+			return
+		world["here"] = nm
+		var seen: Array = world.get("seen") if world.get("seen") is Array else []
+		if not seen.has(nm):
+			seen.append(nm)
+		world["seen"] = seen
+		GameState.save_kind("world", world)
+		return
 
 
 func _travel_to(place: String) -> void:

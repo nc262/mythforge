@@ -13,10 +13,7 @@ var seen: Array = []          # visited place names (world.seen + here)
 var fog := true               # table rule: false = the whole chart is known
 var quest_text := ""          # active quest prose — matched against names
 var _hover := -1
-var _zoom := 1.0
-var _cam := Vector2.ZERO      # pan offset in screen px (post-zoom)
-var _dragging := false
-var _drag_moved := false
+var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog §3)
 var _phase := 0.0
 
 const KIND_COLOR := {"tavern": "gold", "shop": "gold_soft", "landmark": "amethyst", "wilds": "danger", "home": "ink_soft"}
@@ -42,67 +39,31 @@ func _questward(nm: String) -> bool:
 	return nm != "" and quest_text != "" and quest_text.to_lower().contains(nm.to_lower())
 
 
-## Map-space (0..size) → screen-space under the camera.
-func _to_screen(p: Vector2) -> Vector2:
-	return p * _zoom + _cam
-
-
-func _to_map(p: Vector2) -> Vector2:
-	return (p - _cam) / _zoom
-
-
 func _pos_of(l: Dictionary) -> Vector2:
 	return Vector2(float(l.get("x", 50)) / 100.0 * size.x, float(l.get("y", 50)) / 100.0 * size.y)
 
 
-func _clamp_cam() -> void:
-	_cam.x = clampf(_cam.x, size.x * (1.0 - _zoom), 0.0)
-	_cam.y = clampf(_cam.y, size.y * (1.0 - _zoom), 0.0)
-
-
 func _gui_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
-			_zoom_at(event.position, 1.15)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
-			_zoom_at(event.position, 1.0 / 1.15)
-		elif event.button_index == MOUSE_BUTTON_LEFT:
-			if event.pressed:
-				_dragging = true
-				_drag_moved = false
-			else:
-				_dragging = false
-				if not _drag_moved and _hover >= 0:
-					var nm := str(locations[_hover].get("name", ""))
-					if nm != here:
-						travel_requested.emit(nm)
+	if _camera.handle(event, self):
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
+		if not _camera.drag_moved and _hover >= 0:
+			var nm := str(locations[_hover].get("name", ""))
+			if nm != here:
+				travel_requested.emit(nm)
 	elif event is InputEventMouseMotion:
-		if _dragging and _zoom > 1.001:
-			_cam += event.relative
-			_drag_moved = _drag_moved or event.relative.length() > 2.0
-			_clamp_cam()
-			queue_redraw()
-			return
-		var mp := _to_map(event.position)
+		var mp := _camera.to_map(event.position)
 		var prev := _hover
 		_hover = -1
 		for i in locations.size():
-			if _pos_of(locations[i]).distance_to(mp) < 22.0 / _zoom:
+			if _pos_of(locations[i]).distance_to(mp) < 22.0 / _camera.zoom:
 				_hover = i
 		if _hover != prev:
 			queue_redraw()
 
 
-func _zoom_at(at: Vector2, factor: float) -> void:
-	var before := _to_map(at)
-	_zoom = clampf(_zoom * factor, 1.0, 2.6)
-	_cam = at - before * _zoom
-	_clamp_cam()
-	queue_redraw()
-
-
 func _draw() -> void:
-	draw_set_transform(_cam, 0.0, Vector2(_zoom, _zoom))
+	draw_set_transform(_camera.cam, 0.0, Vector2(_camera.zoom, _camera.zoom))
 	# The paper: parchment chart preferred, key art as the fallback land.
 	var art := Art.texture_for("chart-" + GameState.world_id().validate_filename())
 	if art == null:
