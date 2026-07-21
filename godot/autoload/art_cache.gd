@@ -369,8 +369,13 @@ func _finish(key: String, ok: bool) -> void:
 
 # ── Prompt builders: one voice for each art family ──────────────────────────
 func world_flavor() -> String:
-	# The active World Skin's art style — every generated image inherits the
-	# campaign's visual language, not a hardcoded fantasy default (M-B).
+	# A COMPILED world speaks for itself: its Style Guide's prompt_anchor is the
+	# single clause appended to every image, and the strongest defence against
+	# style drift (docs/WorldCompiler.md §11 R2). An uncompiled world falls back
+	# to its deterministic family flavour (M-B).
+	var anchor := Compiler.prompt_anchor(GameState.world_id())
+	if anchor != "":
+		return anchor
 	return str(WorldSkin.skin_for_id(GameState.world_id()).get("flavor", {}).get("world", "high fantasy"))
 
 

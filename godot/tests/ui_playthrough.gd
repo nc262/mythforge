@@ -317,6 +317,29 @@ func _check_one_art_door() -> void:
 		assert(Art.has_method(m), "Art Director: missing %s() from the contract" % m)
 	assert(Art.get("Lane") != null or true, "")
 	print("  Art Director: one door, contract intact (queue/lanes/cancel/status/routing)")
+	await _check_compiler()
+
+
+## The World Compiler's seed tier (Style Guide + Asset Language) must produce a
+## valid, consultable style for a world EVEN WHEN the model can't answer — a
+## compile degrades, it never fails. Under test_mode the LLM returns nothing,
+## so this exercises exactly the fallback path.
+func _check_compiler() -> void:
+	var world := {"id": "cw-testrealm-abcd", "name": "Testrealm",
+		"kind": "grim frontier", "tagline": "the edge of the map", "lore": "A cold place."}
+	var pack: Dictionary = await Compiler.compile_seed(world)
+	assert(not pack.is_empty(), "compiler: seed produced no package")
+	assert(str(pack.get("compile_state", "")) == Compiler.SEEDED, "compiler: never reached SEEDED")
+	assert(pack.get("style") is Dictionary and str(pack["style"].get("prompt_anchor", "")) != "",
+		"compiler: style guide has no prompt_anchor (drift defence missing)")
+	assert(pack.get("assets") is Dictionary and pack["assets"].get("materials") is Array
+		and not (pack["assets"]["materials"] as Array).is_empty(),
+		"compiler: asset language has no materials to compose from")
+	# The anchor must actually reach an image prompt through the one door.
+	GameState.character = {"id": "dm-x", "world_id": "cw-testrealm-abcd"}
+	assert(Art.world_flavor() == Compiler.prompt_anchor("cw-testrealm-abcd"),
+		"compiler: the Style Guide's anchor isn't feeding image prompts")
+	print("  compiler: seed compiles (style+assets), degrades cleanly, anchor feeds art")
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

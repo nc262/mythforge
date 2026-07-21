@@ -275,6 +275,12 @@ func _seal() -> void:
 	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
 	_sealed = world
 	Art.ensure(wid, str(world.get("backdrop", "")))
+	# Compile the world's SEED — its Style Guide + Asset Language. Text only,
+	# ~40s, no GPU; it is what every later stage (and every image) consults, so
+	# it is laid down the moment the world is bound. (docs/WorldCompiler.md)
+	_status.text = "Compiling the world — reading its own mind…"
+	Compiler.stage_started.connect(func(_s, human): _status.text = human)
+	await Compiler.compile_seed(world)
 	_busy = false
 	_status.text = ""
 	Sfx.play("sting")
