@@ -71,7 +71,9 @@ func _draw() -> void:
 	# Candlelight at its anchors, guttering.
 	for li in lights.size():
 		var l: Vector2 = lights[li]
-		var flick := (0.16 + 0.05 * sin(_phase * 7.0 + li * 1.7) + 0.03 * sin(_phase * 12.3 + li)) if not Ui.reduce_motion else 0.18
+		# Slow gutter (≤ ~2.5 Hz, small swing) — the 7/12 Hz candle read as
+		# SCREEN FLICKER over a 190px halo, not firelight. (Flicker RCA #3)
+		var flick := (0.16 + 0.025 * sin(_phase * 2.3 + li * 1.7) + 0.012 * sin(_phase * 3.9 + li)) if not Ui.reduce_motion else 0.18
 		var cp := Vector2(size.x * l.x, size.y * l.y)
 		draw_texture_rect(Ui.glow_tex(), Rect2(cp - Vector2(95, 95), Vector2(190, 190)), false, Color(Ui.c("gold"), flick))
 		draw_circle(cp, 2.6, Color(1.0, 0.9, 0.62, 0.9))

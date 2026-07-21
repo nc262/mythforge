@@ -39,6 +39,14 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	# Fit the menu to the screen it lives in — a fixed 1280x820 never fit the
+	# 1280x800 base window, and the first layout pass (pages not yet hidden)
+	# wrapped the window to ~1284 tall: OK button off-screen, mouse-unreachable.
+	# Caught by tests/click_driver.
+	var avail := Vector2(get_tree().root.get_visible_rect().size)
+	min_size = Vector2i(mini(1280, int(avail.x) - 8), mini(820, int(avail.y) - 8))
+	max_size = Vector2i(int(avail.x) - 8, int(avail.y) - 8)  # wrap_controls regrows to content min; the screen is the ceiling
+	size = min_size
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
@@ -56,8 +64,13 @@ func _ready() -> void:
 	for name in TABS:
 		var b := Button.new()
 		b.text = name
-		b.custom_minimum_size = Vector2(126, 46)
-		b.add_theme_font_size_override("font_size", 17)
+		# Tabs SHARE the rail's width — nine fixed 126px tabs ran the rail to
+		# 1166px and pushed Chronicle/The Table past the window edge, mouse-
+		# unreachable (caught by tests/click_driver).
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size = Vector2(0, 46)
+		b.clip_text = true
+		b.add_theme_font_size_override("font_size", 16)
 		b.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 		b.pressed.connect(_show_page.bind(name))
 		_tabs[name] = b
@@ -88,6 +101,7 @@ func _ready() -> void:
 	for name in TABS:
 		_pages[name].size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		_pages[name].size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_pages[name].visible = (name == _active)  # hidden BEFORE the first layout, or the window wraps to all 9 pages stacked
 		_host.add_child(_pages[name])
 	_show_page(_active)
 	# Item art lands async; repaint the pack when it does (auto-disconnects on

@@ -15,6 +15,7 @@ var _last_player_msg := ""  # the visible player line, paired into memory beats
 var _conjuring := false
 var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
 var _panel_mode := "sheet"  # what the right panel shows: sheet | codex
+var _sheet_sig := ""        # last-rendered HUD content; unchanged → no repaint
 var _shop_markup := 1.0  # haggling moves the keeper's prices
 var _insp_armed := false  # spend Inspiration on the next roll
 var _turns_since_tick := 0  # the clock walks every 3 player turns
@@ -1660,8 +1661,13 @@ func _render_sheet() -> void:
 			else "[color=%s]◇ spent[/color]" % Ui.c("ink_dim").to_html(false)])
 	lines.append("")
 	lines.append("[center][url=record]Open the Record ›[/url][/center]")
-	_sheet_panel.clear()
+	# Same content → don't clear/rebuild (a needless repaint is a visible blink).
 	var face := Art.round_tex("hero-" + GameState.cid().validate_filename(), 148)
+	var sig := "\n".join(lines) + "|" + str(face)
+	if sig == _sheet_sig:
+		return
+	_sheet_sig = sig
+	_sheet_panel.clear()
 	if face != null:
 		_sheet_panel.append_text("[center]")
 		_sheet_panel.add_image(face)
@@ -1716,6 +1722,7 @@ func _on_counter_left(deals: Array) -> void:
 
 # ── The codex panel: the cast you've met and the threads you're pulling ─────
 func _render_codex() -> void:
+	_sheet_sig = ""  # the panel now holds codex text; the HUD must rebuild on return
 	var gold := Ui.c("gold_soft").to_html(false)
 	_sheet_panel.clear()
 	_sheet_panel.append_text("%s [color=%s][b]The Cast[/b][/color]\n" % [Ui.ico("scroll", 18), gold])
