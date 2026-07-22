@@ -370,8 +370,12 @@ func _check_compiler() -> void:
 		"compiler: world has no creatures")
 	assert(not Combat.stat_block(str((beasts[0] as Dictionary)["name"])).is_empty(),
 		"compiler: a world creature didn't resolve to a combat stat block")
-	print("  compiler: seed→catalogue→kits→creatures, %d items, kit=%d, %d beasts, loot rolls" % [
-		cat.size(), kit.size(), beasts.size()])
+	# S7: the world has a named cast with dispositions.
+	var folk := Compiler.npcs_for("cw-testrealm-abcd")
+	assert(folk.size() > 0 and (folk[0] as Dictionary).has("disposition"),
+		"compiler: world has no named people")
+	print("  compiler: seed→catalogue→kits→creatures→npcs, %d items, kit=%d, %d beasts, %d folk" % [
+		cat.size(), kit.size(), beasts.size(), folk.size()])
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

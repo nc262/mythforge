@@ -128,11 +128,19 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	pack["creature_count"] = creatures.size()
 	stage_done.emit("creatures", not creatures.is_empty())
 
+	# S7 — the world's PEOPLE (data half). A named cast the GM can reference
+	# consistently, so the world feels inhabited by specific someones.
+	stage_started.emit("npcs", "Gathering the world's people…")
+	var npcs := await _stage_npcs(world, style)
+	_write(wid, "data/npcs.json", npcs)
+	pack["npc_count"] = npcs.size()
+	stage_done.emit("npcs", not npcs.is_empty())
+
 	pack["compile_state"] = SEEDED
 	_write(wid, "world.json", pack)
 	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty(),
 		"catalogue": not catalogue.is_empty(), "kits": not kits.is_empty(),
-		"creatures": not creatures.is_empty()}
+		"creatures": not creatures.is_empty(), "npcs": not npcs.is_empty()}
 	compiled.emit(wid, SEEDED)
 
 	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
@@ -154,9 +162,10 @@ func compile_seed(world: Dictionary) -> Dictionary:
 		_write(wid, "world.json", pack)
 		compiled.emit(wid, FURNISHED)
 
-		# S6 (art half): a concept portrait per creature. The world is POPULATED
-		# once its beasts have faces.
-		await _stage_creature_art(wid, creatures)
+		# S6/S7 (art half): a portrait per creature and per NPC. The world is
+		# POPULATED once its beasts and its people have faces.
+		await _stage_portrait_art(wid, creatures, "creature")
+		await _stage_portrait_art(wid, npcs, "npc")
 		pack = read_pack(wid)
 		pack["compile_state"] = POPULATED
 		_write(wid, "world.json", pack)
@@ -385,23 +394,25 @@ world — no goblins/kobolds/dragons unless the world truly is that generic.""" 
 	return out if not out.is_empty() else _fallback_creatures(style)
 
 
-## Art half — a concept portrait per creature (portrait profile: painted, 1024,
-## no matte, to match the existing bestiary look). Sequential: one GPU.
-func _stage_creature_art(world_id: String, creatures: Array) -> void:
-	if creatures.is_empty():
+## Art half for a roster — one painted portrait per entry (portrait profile:
+## 1024, no matte, matching the bestiary look). kind picks the key prefix and
+## package sub-dir ("creature"→art/creatures, "npc"→art/npc). Sequential: one GPU.
+func _stage_portrait_art(world_id: String, entries: Array, kind: String) -> void:
+	if entries.is_empty():
 		return
-	stage_started.emit("creature_art", "Giving the beasts faces…")
+	stage_started.emit(kind + "_art", "Giving the %s faces…" % ("beasts" if kind == "creature" else "people"))
 	var anchor := prompt_anchor(world_id)
-	for c in creatures:
-		var slug := str((c as Dictionary).get("slug", ""))
+	var sub := "creatures" if kind == "creature" else "npc"
+	for e in entries:
+		var slug := str((e as Dictionary).get("slug", ""))
 		if slug == "":
 			continue
-		var key := "creature-%s-%s" % [world_id.validate_filename(), slug]
+		var key := "%s-%s-%s" % [kind, world_id.validate_filename(), slug]
 		await _await_art(key,
-			"%s. %s. no text" % [str((c as Dictionary).get("art", "")), anchor],
+			"%s. %s. no text" % [str((e as Dictionary).get("art", "")), anchor],
 			{"profile": "portrait", "lane": Art.Lane.IDLE},
-			"art/creatures/%s.png" % slug)
-	stage_done.emit("creature_art", true)
+			"art/%s/%s.png" % [sub, slug])
+	stage_done.emit(kind + "_art", true)
 
 
 func _fallback_creatures(style: Dictionary) -> Array:
@@ -422,6 +433,68 @@ func _fallback_creatures(style: Dictionary) -> Array:
 			"weakness": "Bound to its lair — it will not follow far.",
 			"tactics": "Ambush from the dark, then overwhelm.", "habitat": "the deep places",
 			"art": "%s, terrifying apex creature, creature concept art, dark background" % beast, "generated": false},
+	]
+
+
+## S7 — the world's PEOPLE. A named cast (patron, merchant, authority, outcast…)
+## the GM can name consistently, so the world is inhabited by specific someones
+## instead of anonymous "a guard". Derived from the world's culture and clothing.
+func _stage_npcs(world: Dictionary, style: Dictionary) -> Array:
+	var ask := """You are the casting director for a role-playing game world. Name its PEOPLE — the
+faces a traveller actually meets.
+
+WORLD: %s — %s
+HOW PEOPLE DRESS: %s
+CUSTOM/FAITH/LAW: %s
+
+Answer with ONE JSON object, no prose, no markdown fence:
+{"npcs":[
+ {"slug":"lowercase_id","name":"Person Name","role":"what they do (innkeeper, captain, fence…)",
+  "disposition":"friendly|wary|hostile|neutral",
+  "look":"one vivid sentence describing their appearance",
+  "location":"where they are usually found",
+  "hook":"one sentence: what they want, or a rumour they carry",
+  "art":"a short image-prompt phrase: the person, character portrait"}
+]}
+Rules: exactly 6 people, varied roles and dispositions. Every slug
+lowercase_with_underscores and unique. Names and roles must fit THIS world.""" % [
+		str(world.get("name", "a world")), str(style.get("visual_language", "")),
+		str(style.get("clothing", "")), str(style.get("culture", ""))]
+	var got := await _ask_json(ask)
+	var raw = got.get("npcs") if got.get("npcs") is Array else []
+	var out: Array = []
+	for c in raw:
+		if not (c is Dictionary) or str(c.get("slug", "")) == "":
+			continue
+		var disp := str(c.get("disposition", "neutral"))
+		if not disp in ["friendly", "wary", "hostile", "neutral"]:
+			disp = "neutral"
+		out.append({
+			"slug": str(c["slug"]), "name": str(c.get("name", c["slug"])),
+			"role": str(c.get("role", "")), "disposition": disp,
+			"look": str(c.get("look", "")), "location": str(c.get("location", "")),
+			"hook": str(c.get("hook", "")),
+			"art": str(c.get("art", str(c.get("name", "")) + ", character portrait")),
+			"generated": true,
+		})
+	return out if not out.is_empty() else _fallback_npcs(style)
+
+
+func _fallback_npcs(style: Dictionary) -> Array:
+	var dress := str(style.get("clothing", "practical, worn clothes"))
+	return [
+		{"slug": "the_host", "name": "The Host", "role": "innkeeper", "disposition": "friendly",
+			"look": "A broad, easy-smiling keeper of the common room.", "location": "the waystop",
+			"hook": "Trades a warm meal for the latest news of the road.",
+			"art": "an innkeeper wearing %s, character portrait" % dress, "generated": false},
+		{"slug": "the_warden", "name": "The Warden", "role": "authority", "disposition": "wary",
+			"look": "Hard-eyed and armoured, watching every door.", "location": "the gate",
+			"hook": "Wants order kept, and remembers who breaks it.",
+			"art": "a stern warden in armour, character portrait", "generated": false},
+		{"slug": "the_fence", "name": "The Fence", "role": "merchant", "disposition": "neutral",
+			"look": "Soft-spoken, quick-fingered, never quite meeting your eye.", "location": "the back room",
+			"hook": "Buys what shouldn't be sold, for a price.",
+			"art": "a shadowy merchant, character portrait", "generated": false},
 	]
 
 
@@ -720,7 +793,16 @@ func item_glow(item: Dictionary) -> Color:
 
 ## The world's compiled creatures (bestiary-shaped entries), or [] if none.
 func creatures_for(world_id: String) -> Array:
-	var p := "%s/data/creatures.json" % world_dir(world_id)
+	return _read_roster(world_id, "creatures")
+
+
+## The world's compiled NPCs (the named cast), or [] if none.
+func npcs_for(world_id: String) -> Array:
+	return _read_roster(world_id, "npcs")
+
+
+func _read_roster(world_id: String, name: String) -> Array:
+	var p := "%s/data/%s.json" % [world_dir(world_id), name]
 	if not FileAccess.file_exists(p):
 		return []
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(p))
