@@ -398,11 +398,12 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
             prompt = style["prefix"] + prompt   # some checkpoints (e.g. Pony) need tag prefixes
         content = f"{prompt}\n{ckpt}\n{size}"
         regions = data.get("regions") if isinstance(data.get("regions"), list) else None
+        matte = bool(data.get("matte"))   # World Compiler item/prop art wants a cut-out
         result = await do_generate_image(
             content, session_id=None, owner=user, character=character,
             steps=(style["steps"] if style else None),
             cfg=(style["cfg"] if style else None),
-            regions=regions,
+            regions=regions, matte=matte,
         )
         if result.get("error"):
             raise HTTPException(502, result["error"])

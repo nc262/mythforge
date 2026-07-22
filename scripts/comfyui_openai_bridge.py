@@ -76,6 +76,9 @@ class ImageRequest(BaseModel):
     # Regional prompting: [{prompt, x, y, w, h}] paints each subject in its own
     # canvas zone (keeps two characters from bleeding together).
     regions: list | None = None
+    # Cut the subject out to a transparent PNG (World Compiler item art needs an
+    # alpha so icons recolour/composite cleanly). Adds an Inspyrenet rembg pass.
+    matte: bool = False
     # When set (e.g. "meg", "lilly"), condition generation on that character's
     # reference photos via IP-Adapter so the look stays consistent across scenes.
     character: str | None = None
@@ -172,8 +175,20 @@ def _steps_for_quality(quality: str) -> int:
     }.get(quality, base)
 
 
+def _matte_save(wf: dict) -> dict:
+    """Insert an Inspyrenet rembg pass between decode and save so the PNG comes
+    back with the subject cut out (transparent background). Node ships with
+    ComfyUI-Inspyrenet-Rembg; its single dep is transparent-background."""
+    wf["rembg"] = {
+        "class_type": "InspyrenetRembg",
+        "inputs": {"image": ["decode", 0], "torchscript_jit": "default"},
+    }
+    wf["save"]["inputs"]["images"] = ["rembg", 0]
+    return wf
+
+
 def _build_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
-                    steps: int, seed: int, cfg: float = None) -> dict:
+                    steps: int, seed: int, cfg: float = None, matte: bool = False) -> dict:
     """Minimal SDXL txt2img graph in ComfyUI API ('prompt') format.
 
     The 'cudnn' node forces torch.backends.cudnn.enabled=False before sampling.
@@ -224,7 +239,7 @@ def _build_workflow(ckpt: str, prompt: str, negative: str, w: int, h: int,
         },
         "save": {
             "class_type": "SaveImage",
-            "inputs": {"filename_prefix": "odysseus", "images": ["decode", 0]},
+            "inputs": {"filename_prefix": "mythforge", "images": ["decode", 0]},
         },
     }
 
@@ -269,7 +284,7 @@ def _build_regional_workflow(ckpt: str, regions: list, negative: str, w: int, h:
         "cfg": cfg if cfg is not None else _args.cfg,
         "sampler_name": _args.sampler, "scheduler": _args.scheduler, "denoise": 1.0}}
     wf["decode"] = {"class_type": "VAEDecode", "inputs": {"samples": ["sampler", 0], "vae": ["ckpt", 2]}}
-    wf["save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "odysseus", "images": ["decode", 0]}}
+    wf["save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "mythforge", "images": ["decode", 0]}}
     return wf
 
 
@@ -334,7 +349,7 @@ def _build_ipadapter_workflow(ckpt: str, prompt: str, negative: str, w: int, h: 
             "sam_bbox_expansion": 0, "sam_mask_hint_threshold": 0.7, "sam_mask_hint_use_negative": "False",
             "drop_size": 10, "wildcard": "", "cycle": 1}}
         final = "facedetail"
-    wf["save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "odysseus", "images": [final, 0]}}
+    wf["save"] = {"class_type": "SaveImage", "inputs": {"filename_prefix": "mythforge", "images": [final, 0]}}
     return wf
 
 
@@ -367,9 +382,10 @@ async def _list_checkpoints(client: httpx.AsyncClient) -> list[str]:
 
 async def _generate_one(client: httpx.AsyncClient, prompt: str, negative: str,
                         w: int, h: int, steps: int, ckpt: str, ref_image: str | None = None,
-                        cfg: float = None, regions: list | None = None) -> str:
+                        cfg: float = None, regions: list | None = None, matte: bool = False) -> str:
     """Queue one txt2img job, wait for it, return base64 PNG. regions → multi-
-    subject regional prompting; else ref_image → IP-Adapter; else plain txt2img."""
+    subject regional prompting; else ref_image → IP-Adapter; else plain txt2img.
+    matte → cut the subject out (transparent PNG) for item icons."""
     seed = random.randint(1, 2**63 - 1)
     if regions:
         workflow = _build_regional_workflow(ckpt, regions, negative, w, h, steps, seed, cfg, prompt)
@@ -377,6 +393,8 @@ async def _generate_one(client: httpx.AsyncClient, prompt: str, negative: str,
         workflow = _build_ipadapter_workflow(ckpt, prompt, negative, w, h, steps, seed, ref_image)
     else:
         workflow = _build_workflow(ckpt, prompt, negative, w, h, steps, seed, cfg)
+    if matte:
+        workflow = _matte_save(workflow)
     client_id = uuid.uuid4().hex
 
     resp = await client.post(
@@ -460,7 +478,7 @@ async def generate(req: ImageRequest):
                     logger.info("character %r -> appearance anchor (%d chars)", req.character, len(appearance))
             data = []
             for _ in range(n):
-                b64 = await _generate_one(client, prompt, negative, w, h, steps, ckpt, ref_image, cfg, req.regions)
+                b64 = await _generate_one(client, prompt, negative, w, h, steps, ckpt, ref_image, cfg, req.regions, req.matte)
                 data.append({"b64_json": b64})
         return {"created": 0, "data": data}
     except Exception as e:

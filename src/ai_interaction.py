@@ -1591,7 +1591,7 @@ async def do_ui_control(content: str, session_id: Optional[str] = None, owner: O
 # Image generation
 # ---------------------------------------------------------------------------
 
-async def do_generate_image(content: str, session_id: Optional[str] = None, owner: Optional[str] = None, character: Optional[str] = None, steps: Optional[int] = None, cfg: Optional[float] = None, regions: Optional[list] = None) -> Dict:
+async def do_generate_image(content: str, session_id: Optional[str] = None, owner: Optional[str] = None, character: Optional[str] = None, steps: Optional[int] = None, cfg: Optional[float] = None, regions: Optional[list] = None, matte: bool = False) -> Dict:
     """Generate an image using an image-capable model (e.g. gpt-image-1).
 
     Content format:
@@ -1723,6 +1723,8 @@ async def do_generate_image(content: str, session_id: Optional[str] = None, owne
             payload["cfg"] = cfg
         if regions:
             payload["regions"] = regions
+        if matte:
+            payload["matte"] = True   # World Compiler item art: return a cut-out (alpha)
 
     logger.info(
         "Image generation: endpoint=%s, model=%s, size=%s, quality=%s, char=%s, prompt=%s",
