@@ -486,6 +486,17 @@ func _seal() -> void:
 	cworlds.append(world)
 	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
 	_sealed_world = world
+	# Compile the world's SEED — Style Guide, Asset Language, item catalogue,
+	# starting kits, creatures, NPCs, tactical layouts. This is the data that
+	# makes the world TRUE (world-specific gear, monsters, loot). It blocks only
+	# for the fast data seed; the ~80 GPU images then bake in the background while
+	# you play, filling in as they finish. (docs/WorldCompiler.md)
+	_status.text = "Compiling the world — its armory, its beasts, its people…"
+	var on_stage := func(_s, human): _status.text = human
+	Compiler.stage_started.connect(on_stage)
+	await Compiler.compile_seed(world)
+	if Compiler.stage_started.is_connected(on_stage):
+		Compiler.stage_started.disconnect(on_stage)
 	_busy = false
 	_status.text = ""
 	await _run_sequence()

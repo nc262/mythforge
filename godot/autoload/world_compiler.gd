@@ -33,6 +33,8 @@ const COMPILER_VERSION := 1
 var busy := false
 var current_world := ""
 var _reforging := false   # set during reforge() so _await_art repaints, not caches
+var _background := false   # set while queueing art fire-and-forget (non-blocking)
+var _bg_pending := {}      # world_id → GPU jobs still baking; hits 0 → POPULATED
 
 var _journal := {}   # world_id → {stage → true}
 
@@ -154,38 +156,36 @@ func compile_seed(world: Dictionary) -> Dictionary:
 		"layouts": not layouts.is_empty()}
 	compiled.emit(wid, SEEDED)
 
-	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
-	# runs after the seed is safely written; the world is PRESENTABLE the moment
-	# key art lands. Skipped without a real backend (headless tests own no GPU).
+	# TIER B/C art bakes in the BACKGROUND. All the DATA a world needs to be
+	# played is now written (catalogue, kits, creatures, npcs, layouts), so the
+	# forge returns HERE — the player starts immediately. The ~80 GPU images
+	# (key art, biomes, 60 item icons, portraits, maps) are queued to the Art
+	# Director's IDLE lane and adopted into the package as each lands; the world
+	# reaches POPULATED when the last one finishes. Skipped headless (no GPU).
+	busy = false
 	if not Api.test_mode:
-		await _stage_identity(wid, world, style)
+		_start_background_art(wid, world, style, assets, creatures, npcs)
 		pack = read_pack(wid)
 		pack["compile_state"] = PRESENTABLE
 		_write(wid, "world.json", pack)
 		compiled.emit(wid, PRESENTABLE)
-
-		# The base ARMORY: one matted, neutral-material image per form. Every
-		# catalogue item reuses its form's base art, tinted by material at draw
-		# time (T1 palette recolour — proven). ~10 images, so it trails key art.
-		await _stage_parts(wid, style, assets)
-		pack = read_pack(wid)
-		pack["compile_state"] = FURNISHED
-		_write(wid, "world.json", pack)
-		compiled.emit(wid, FURNISHED)
-
-		# S6/S7 (art half): a portrait per creature and per NPC. The world is
-		# POPULATED once its beasts and its people have faces.
-		await _stage_portrait_art(wid, creatures, "creature")
-		await _stage_portrait_art(wid, npcs, "npc")
-		# S9 (art half) — a top-down battle map per biome, so a fight in the marsh
-		# looks like the marsh from above, not a blank grid.
-		await _stage_tactical(wid, style)
-		pack = read_pack(wid)
-		pack["compile_state"] = POPULATED
-		_write(wid, "world.json", pack)
-		compiled.emit(wid, POPULATED)
-	busy = false
 	return pack
+
+
+## Queue every GPU art job fire-and-forget (see compile_seed). Each _await_art
+## call, under _background, registers an on_ready that adopts the finished image
+## into THIS world's package and ticks the pending counter down to POPULATED.
+func _start_background_art(world_id: String, world: Dictionary, style: Dictionary,
+		assets: Dictionary, creatures: Array, npcs: Array) -> void:
+	_background = true
+	current_world = world_id
+	_bg_pending[world_id] = 0
+	_stage_identity(world_id, world, style)
+	_stage_parts(world_id, style, assets)
+	_stage_portrait_art(world_id, creatures, "creature")
+	_stage_portrait_art(world_id, npcs, "npc")
+	_stage_tactical(world_id, style)
+	_background = false
 
 
 # ── Reforge ─────────────────────────────────────────────────────────────────
@@ -291,6 +291,16 @@ func _await_art(key: String, prompt: String, opts: Dictionary, dest_rel := "") -
 	# returns the cache otherwise). The logical id/filename is unchanged.
 	if _reforging:
 		Art.forget(key)
+	var dest := dest_rel if dest_rel != "" else world_dir_key(key)
+	# Background mode: queue and return immediately (don't block). The Art Director
+	# paints it in its own time and the on_ready adopts it into the package.
+	if _background:
+		var wid := current_world
+		_bg_pending[wid] = int(_bg_pending.get(wid, 0)) + 1
+		var ob := opts.duplicate()
+		ob["on_ready"] = func(k): _bg_adopt(wid, dest, str(k))
+		Art.request(key, prompt, ob)
+		return
 	var done := [false]
 	var o := opts.duplicate()
 	o["on_ready"] = func(_k): done[0] = true
@@ -308,22 +318,41 @@ func _await_art(key: String, prompt: String, opts: Dictionary, dest_rel := "") -
 	if Art.art_progress.is_connected(fail):
 		Art.art_progress.disconnect(fail)
 	if Art.has_art(key):
-		_adopt(dest_rel if dest_rel != "" else world_dir_key(key), key)
+		_adopt_to(current_world, dest, key)
 
 
-## Copy a painted asset into the world's package directory (content that never
-## gets evicted). world_dir_key derives the package sub-path from the key kind.
-func _adopt(dest_rel: String, key: String) -> void:
-	if dest_rel == "" or current_world == "":
+## Adopt a finished background image into its world, then tick the pending
+## counter; when a world's last image lands, mark it POPULATED.
+func _bg_adopt(world_id: String, dest_rel: String, key: String) -> void:
+	_adopt_to(world_id, dest_rel, key)
+	_bg_pending[world_id] = maxi(0, int(_bg_pending.get(world_id, 0)) - 1)
+	if int(_bg_pending.get(world_id, 0)) == 0:
+		var p := read_pack(world_id)
+		if str(p.get("compile_state", "")) != POPULATED:
+			p["compile_state"] = POPULATED
+			_write(world_id, "world.json", p)
+			compiled.emit(world_id, POPULATED)
+
+
+## Copy a painted asset into a specific world's package (content that never gets
+## evicted). Takes an explicit world_id so background jobs don't race on
+## current_world.
+func _adopt_to(world_id: String, dest_rel: String, key: String) -> void:
+	if dest_rel == "" or world_id == "":
 		return
 	var src := Art.path_for(key)
 	if not FileAccess.file_exists(src):
 		return
-	var dst := "%s/%s" % [world_dir(current_world), dest_rel]
+	var dst := "%s/%s" % [world_dir(world_id), dest_rel]
 	DirAccess.make_dir_recursive_absolute(dst.get_base_dir())
 	var img := Image.load_from_file(src)
 	if img != null and not img.is_empty():
 		img.save_png(dst)
+
+
+## Back-compat shim for any caller still adopting to the active world.
+func _adopt(dest_rel: String, key: String) -> void:
+	_adopt_to(current_world, dest_rel, key)
 
 
 func world_dir_key(key: String) -> String:
