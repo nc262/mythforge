@@ -379,6 +379,18 @@ func _check_compiler() -> void:
 		and Compiler._clean_id("Brine Iron_material_id") == "brine_iron"
 		and Compiler._clean_id("tide-worm") == "tide_worm",
 		"compiler: _clean_id didn't normalise ids")
+	# S9: tactical layouts are combat-shaped (terrain "x,y"→kind, cells in bounds).
+	var lays := Compiler.layouts_for("cw-testrealm-abcd")
+	assert(lays.size() >= 3, "compiler: too few tactical layouts")
+	for lay in lays:
+		var terr = (lay as Dictionary).get("terrain", {})
+		assert(terr is Dictionary and not terr.is_empty(), "compiler: layout has no terrain")
+		for key in terr:
+			var xy: PackedStringArray = str(key).split(",")
+			assert(xy.size() == 2 and int(xy[0]) >= 0 and int(xy[0]) < 16 and int(xy[1]) >= 0 and int(xy[1]) < 10,
+				"compiler: layout terrain cell out of the 16x10 grid")
+			assert(str(terr[key]) in ["block", "water", "cover"],
+				"compiler: layout terrain kind not in combat's vocabulary")
 	print("  compiler: seed→catalogue→kits→creatures→npcs, %d items, kit=%d, %d beasts, %d folk" % [
 		cat.size(), kit.size(), beasts.size(), folk.size()])
 

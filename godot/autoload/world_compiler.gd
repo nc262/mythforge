@@ -136,11 +136,20 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	pack["npc_count"] = npcs.size()
 	stage_done.emit("npcs", not npcs.is_empty())
 
+	# S9 (geometry half) — tactical LAYOUTS: handcrafted terrain arrangements on
+	# the combat grid, ready for the fight to load instead of an empty field. The
+	# geometry is world-agnostic; the world's look comes from the battle-map art.
+	stage_started.emit("layouts", "Laying out the battlefields…")
+	var layouts := _build_layouts()
+	_write(wid, "data/layouts.json", layouts)
+	stage_done.emit("layouts", not layouts.is_empty())
+
 	pack["compile_state"] = SEEDED
 	_write(wid, "world.json", pack)
 	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty(),
 		"catalogue": not catalogue.is_empty(), "kits": not kits.is_empty(),
-		"creatures": not creatures.is_empty(), "npcs": not npcs.is_empty()}
+		"creatures": not creatures.is_empty(), "npcs": not npcs.is_empty(),
+		"layouts": not layouts.is_empty()}
 	compiled.emit(wid, SEEDED)
 
 	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
@@ -166,6 +175,9 @@ func compile_seed(world: Dictionary) -> Dictionary:
 		# POPULATED once its beasts and its people have faces.
 		await _stage_portrait_art(wid, creatures, "creature")
 		await _stage_portrait_art(wid, npcs, "npc")
+		# S9 (art half) — a top-down battle map per biome, so a fight in the marsh
+		# looks like the marsh from above, not a blank grid.
+		await _stage_tactical(wid, style)
 		pack = read_pack(wid)
 		pack["compile_state"] = POPULATED
 		_write(wid, "world.json", pack)
@@ -534,6 +546,78 @@ func _fallback_npcs(style: Dictionary) -> Array:
 	]
 
 
+# ── S9 tactical layouts (geometry, CPU) ─────────────────────────────────────
+## The combat grid (Combat.MAP_COLS × MAP_ROWS = 16×10). Kinds match combat's
+## terrain vocabulary exactly: block (impassable), water (difficult), cover (+2).
+const MAP_W := 16
+const MAP_H := 10
+
+
+## Handcrafted battlefields as terrain dicts ("x,y" → kind) combat loads directly.
+## Geometry is world-agnostic; the world's identity is the battle-map painting.
+func _build_layouts() -> Array:
+	return [
+		{"name": "Open Ground", "terrain": _lay_scatter("cover", [[3, 2], [12, 7], [6, 8], [10, 2]])},
+		{"name": "The Chokepoint", "terrain": _lay_wall("block", 8, [4, 5])},
+		{"name": "Broken Cover", "terrain": _lay_scatter("cover", [[4, 3], [11, 3], [7, 5], [3, 7], [12, 6], [8, 8]])},
+		{"name": "The Crossing", "terrain": _lay_band("water", 5, [3, 10])},
+		{"name": "The Ruins", "terrain": _lay_merge(
+			_lay_scatter("block", [[5, 3], [5, 4], [10, 5], [11, 5]]),
+			_lay_scatter("cover", [[6, 4], [9, 5], [8, 2], [3, 8], [13, 3]]))},
+	]
+
+
+func _lay_put(t: Dictionary, x: int, y: int, kind: String) -> void:
+	if x >= 0 and x < MAP_W and y >= 0 and y < MAP_H:
+		t["%d,%d" % [x, y]] = kind
+
+
+func _lay_scatter(kind: String, cells: Array) -> Dictionary:
+	var t := {}
+	for c in cells:
+		_lay_put(t, int(c[0]), int(c[1]), kind)
+	return t
+
+
+## A vertical wall down column `col`, open at the given rows (a gap to fight over).
+func _lay_wall(kind: String, col: int, gap_rows: Array) -> Dictionary:
+	var t := {}
+	for y in MAP_H:
+		if not y in gap_rows:
+			_lay_put(t, col, y, kind)
+	return t
+
+
+## A horizontal band across row `row`, open at the given columns (fords/stones).
+func _lay_band(kind: String, row: int, gap_cols: Array) -> Dictionary:
+	var t := {}
+	for x in MAP_W:
+		if not x in gap_cols:
+			_lay_put(t, x, row, kind)
+	return t
+
+
+func _lay_merge(a: Dictionary, b: Dictionary) -> Dictionary:
+	for k in b:
+		a[k] = b[k]
+	return a
+
+
+## S9 (art half) — a top-down tactical map per biome, painted overhead so it
+## reads as a battlefield from above. `scene` profile (no matte — it's a floor).
+func _stage_tactical(world_id: String, style: Dictionary) -> void:
+	stage_started.emit("tactical", "Mapping the battlegrounds…")
+	var anchor := str(style.get("prompt_anchor", ""))
+	for i in BIOMES.size():
+		var key := "map-%s-%d" % [world_id.validate_filename(), i]
+		await _await_art(key,
+			"top-down tactical battle map of %s, %s. overhead bird's-eye view, flat readable ground, no characters, no text, no grid lines" % [
+				BIOMES[i], anchor],
+			{"profile": "scene", "lane": Art.Lane.IDLE},
+			"art/maps/map-%d.png" % i)
+	stage_done.emit("tactical", true)
+
+
 ## One JSON answer from the local model. Small models fence their JSON and
 ## chatter around it, so the payload is extracted rather than trusted.
 func _ask_json(prompt: String) -> Dictionary:
@@ -888,6 +972,27 @@ func _read_roster(world_id: String, name: String) -> Array:
 		return []
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(p))
 	return parsed if parsed is Array else []
+
+
+## The world's compiled tactical layouts (terrain arrangements), or [] if none.
+func layouts_for(world_id: String) -> Array:
+	return _read_roster(world_id, "layouts")
+
+
+## A random tactical layout for a fight — {name, terrain} — or {} if uncompiled.
+func layout_for(world_id: String, rng: RandomNumberGenerator = null) -> Dictionary:
+	var ls := layouts_for(world_id)
+	if ls.is_empty():
+		return {}
+	if rng == null:
+		rng = RandomNumberGenerator.new()
+		rng.randomize()
+	return ls[rng.randi_range(0, ls.size() - 1)]
+
+
+## Absolute path to a biome's top-down battle map (may not be painted yet).
+func battle_map_path(world_id: String, biome_index: int) -> String:
+	return "%s/art/maps/map-%d.png" % [world_dir(world_id), biome_index]
 
 
 ## A starting loadout resolved to full catalogue records, for an archetype id
