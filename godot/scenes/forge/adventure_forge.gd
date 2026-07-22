@@ -22,6 +22,7 @@ var draft := {"hero": "", "adv": {}, "companions": true, "difficulty": 1.0, "hou
 var _worlds: Array = []
 var _personas: Array = []   # forged companions from the gallery (Companion Forge)
 var _child_forge: Control = null
+var _camp_world: Dictionary = {}   # The Campaign is two steps: world first, then its tales.
 
 
 func _ready() -> void:
@@ -54,14 +55,16 @@ func _load_worlds() -> void:
 
 
 ## Overrides the base nav: this table uses the big MythButtons.
-func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
+## back_fn overrides the plain stage jump — used by the two-step Campaign stage,
+## where "back" means "back to the world list", not "back a stage".
+func _nav(back_to: int, fwd_text: String, fwd: Callable, back_fn := Callable()) -> void:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_theme_constant_override("separation", Ui.SPACE["l"])
-	if back_to >= 0:
+	if back_to >= 0 or back_fn.is_valid():
 		var back := BtnM.new("BACK", "", "leather")
 		back.custom_minimum_size = Vector2(140, 52)
-		back.pressed.connect(func(): _enter_stage(back_to))
+		back.pressed.connect(back_fn if back_fn.is_valid() else func(): _enter_stage(back_to))
 		row.add_child(back)
 	var go := BtnM.new(fwd_text, "compass", "brass")
 	go.custom_minimum_size = Vector2(300, 56)
@@ -161,49 +164,99 @@ func _spawn_char_forge() -> void:
 
 
 func _stage_campaign() -> void:
-	_title_label("Which Tale?")
+	if _camp_world.is_empty():
+		_stage_campaign_world()
+	else:
+		_stage_campaign_tale()
+
+
+## Step one: where does tonight's tale happen?
+func _stage_campaign_world() -> void:
+	_title_label("Which World?")
+	var cards: Array = []
+	var grid := _grid()
+	var forge_card := Card.new({"glyph": "⚒", "title": "Forge a Campaign now", "body": "the war table awaits", "foot": "world + voice + rules"})
+	forge_card.pressed.connect(_spawn_camp_forge)
+	grid.add_child(forge_card)
+	for w in _worlds:
+		var world: Dictionary = w
+		var wid := str(world.get("id", ""))
+		var stories := _stories_for(world)
+		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid),
+			"title": str(world.get("name", "an unnamed world")).left(26),
+			"body": str(world.get("tagline", "")).left(60),
+			"foot": "%d tale%s + free roam" % [stories.size(), "" if stories.size() == 1 else "s"]})
+		card.set_selected(str(draft["adv"].get("world_id", "")) == wid)
+		card.pressed.connect(func():
+			_camp_world = world
+			for c in cards:
+				c.set_selected(c == card)
+			_enter_stage(2))
+		cards.append(card)
+		grid.add_child(card)
+	_stage_box.add_child(_scrolled(grid))
+	_nav(1, "NEXT — THE PARTY", func():
+		if draft["adv"].is_empty():
+			_status.text = "Choose a world — or forge one at the war table."
+			return
+		_enter_stage(3))
+
+
+## Step two: which of that world's tales — or free roam within it?
+func _stage_campaign_tale() -> void:
+	var wid := str(_camp_world.get("id", ""))
+	_title_label("Which Tale in %s?" % str(_camp_world.get("name", "this world")))
+	var cards: Array = []
+	var grid := _grid()
+	for st in [{}] + _stories_for(_camp_world):
+		var story: Dictionary = st if st is Dictionary else {}
+		var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
+		var title := str(story.get("title", "")) if not story.is_empty() else "Free Roam"
+		var adv := {"id": "dm-%s-%s" % [wid, slug], "name": title, "world_id": wid, "world": _camp_world, "story": story}
+		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
+			"body": str(story.get("hook", "wander it as you please")).left(60),
+			"foot": str(_camp_world.get("name", ""))})
+		card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))
+		card.pressed.connect(func():
+			draft["adv"] = adv
+			for c in cards:
+				c.set_selected(c == card))
+		cards.append(card)
+		grid.add_child(card)
+	_stage_box.add_child(_scrolled(grid))
+	var to_worlds := func():
+		_camp_world = {}
+		_enter_stage(2)
+	var to_party := func():
+		if draft["adv"].is_empty():
+			_status.text = "Choose a tale — free roam counts."
+			return
+		_enter_stage(3)
+	_nav(-1, "NEXT — THE PARTY", to_party, to_worlds)
+
+
+## Forged worlds carry their own stories; built-ins keep theirs in worlds.json.
+func _stories_for(world: Dictionary) -> Array:
+	if world.get("stories") is Array:
+		return world["stories"]
+	return Rules.world_stories(str(world.get("id", "")))
+
+
+func _grid() -> GridContainer:
 	var grid := GridContainer.new()
 	grid.columns = 4
 	grid.add_theme_constant_override("h_separation", Ui.SPACE["s"])
 	grid.add_theme_constant_override("v_separation", Ui.SPACE["s"])
-	var cards: Array = []
-	var forge_card := Card.new({"glyph": "⚒", "title": "Forge a Campaign now", "body": "the war table awaits", "foot": "world + voice + rules"})
-	forge_card.pressed.connect(_spawn_camp_forge)
-	cards.append(forge_card)
-	grid.add_child(forge_card)
-	for w in _worlds:
-		var wid := str(w.get("id", ""))
-		var stories: Array = w.get("stories") if w.get("stories") is Array else []
-		var opts: Array = [{}] + stories
-		for st in opts:
-			var story: Dictionary = st if st is Dictionary else {}
-			var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
-			var title := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(w.get("name", ""))
-			var adv := {"id": "dm-%s-%s" % [wid, slug], "name": title, "world_id": wid, "world": w, "story": story}
-			var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
-				"body": str(w.get("name", "")), "foot": str(story.get("hook", "")).left(40)})
-			card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))
-			card.pressed.connect(func():
-				draft["adv"] = adv
-				for c in cards:
-					c.set_selected(c == card))
-			cards.append(card)
-			grid.add_child(card)
-			if cards.size() >= 12:
-				break
-		if cards.size() >= 12:
-			break
+	return grid
+
+
+func _scrolled(inner: Control) -> Control:
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(900, 330)
-	scroll.add_child(grid)
+	scroll.add_child(inner)
 	var sc := CenterContainer.new()
 	sc.add_child(scroll)
-	_stage_box.add_child(sc)
-	_nav(1, "NEXT — THE PARTY", func():
-		if draft["adv"].is_empty():
-			_status.text = "Choose a tale — or forge one at the war table."
-			return
-		_enter_stage(3))
+	return sc
 
 
 func _spawn_camp_forge() -> void:
