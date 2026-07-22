@@ -74,10 +74,21 @@ func stat_block(nm: String) -> Dictionary:
 
 func bestiary_for(nm: String) -> Dictionary:
 	var n := nm.to_lower()
+	# The active world's own compiled creatures take precedence — a world monster
+	# should read as itself, not fall through to a generic global entry.
+	for e in Compiler.creatures_for(GameState.world_id()):
+		if _beast_matches(n, e):
+			return e
 	for e in Rules.bestiary:
-		if n.contains(str(e.get("slug", "")).replace("-", " ")) or n.contains(str(e.get("name", "")).to_lower()):
+		if _beast_matches(n, e):
 			return e
 	return {}
+
+
+func _beast_matches(name_lower: String, e: Dictionary) -> bool:
+	var slug := str(e.get("slug", "")).replace("-", " ").replace("_", " ")
+	return (slug != "" and name_lower.contains(slug)) \
+		or name_lower.contains(str(e.get("name", "")).to_lower())
 
 
 func weapon_dmg_type(nm: String) -> String:

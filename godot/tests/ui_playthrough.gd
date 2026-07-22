@@ -364,7 +364,14 @@ func _check_compiler() -> void:
 	var kit := Compiler.kit_for("cw-testrealm-abcd", "warrior")
 	assert(kit.size() > 0 and (kit[0] as Dictionary).has("id"),
 		"compiler: warrior kit didn't resolve to catalogue items")
-	print("  compiler: seed→catalogue→kits compiles, %d items, warrior kit=%d pieces, loot rolls" % [cat.size(), kit.size()])
+	# S6: the world has bestiary-shaped creatures, and combat can stat one.
+	var beasts := Compiler.creatures_for("cw-testrealm-abcd")
+	assert(beasts.size() > 0 and (beasts[0] as Dictionary).has("tier"),
+		"compiler: world has no creatures")
+	assert(not Combat.stat_block(str((beasts[0] as Dictionary)["name"])).is_empty(),
+		"compiler: a world creature didn't resolve to a combat stat block")
+	print("  compiler: seed→catalogue→kits→creatures, %d items, kit=%d, %d beasts, loot rolls" % [
+		cat.size(), kit.size(), beasts.size()])
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

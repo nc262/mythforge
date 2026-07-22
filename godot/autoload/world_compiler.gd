@@ -119,10 +119,20 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	_write(wid, "data/kits.json", kits)
 	stage_done.emit("kits", not kits.is_empty())
 
+	# S6 — the world's own CREATURES (data half). Bestiary-shaped entries derived
+	# from the style guide, so combat can give a world monster real stats. LLM in
+	# the loop; degrades to a family-flavoured fallback so a world always has foes.
+	stage_started.emit("creatures", "Loosing the world's beasts…")
+	var creatures := await _stage_creatures(world, style)
+	_write(wid, "data/creatures.json", creatures)
+	pack["creature_count"] = creatures.size()
+	stage_done.emit("creatures", not creatures.is_empty())
+
 	pack["compile_state"] = SEEDED
 	_write(wid, "world.json", pack)
 	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty(),
-		"catalogue": not catalogue.is_empty(), "kits": not kits.is_empty()}
+		"catalogue": not catalogue.is_empty(), "kits": not kits.is_empty(),
+		"creatures": not creatures.is_empty()}
 	compiled.emit(wid, SEEDED)
 
 	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
@@ -143,6 +153,14 @@ func compile_seed(world: Dictionary) -> Dictionary:
 		pack["compile_state"] = FURNISHED
 		_write(wid, "world.json", pack)
 		compiled.emit(wid, FURNISHED)
+
+		# S6 (art half): a concept portrait per creature. The world is POPULATED
+		# once its beasts have faces.
+		await _stage_creature_art(wid, creatures)
+		pack = read_pack(wid)
+		pack["compile_state"] = POPULATED
+		_write(wid, "world.json", pack)
+		compiled.emit(wid, POPULATED)
 	busy = false
 	return pack
 
@@ -320,6 +338,91 @@ Every id lowercase_with_underscores. Names must sound like THIS world.""" % [
 		return _fallback_assets(style)
 	got["generated"] = true
 	return got
+
+
+## S6 — the world's CREATURES. Bestiary-shaped so Combat.bestiary_for can give a
+## world monster real stats (tier → TIER_STATS). Derived from the style guide's
+## monsters/fauna, so the beasts belong to THIS world, not generic fantasy.
+func _stage_creatures(world: Dictionary, style: Dictionary) -> Array:
+	var ask := """You are the monster designer for a role-playing game world. Populate its BESTIARY.
+
+WORLD: %s — %s
+WHAT THREATENS PEOPLE: %s
+FAUNA: %s
+FAMILY: %s
+
+Answer with ONE JSON object, no prose, no markdown fence:
+{"creatures":[
+ {"slug":"lowercase_id","name":"Display Name","tier":"minor|standard|dire",
+  "desc":"one vivid sentence of what it is and how it fights",
+  "weakness":"one concrete, exploitable weakness",
+  "tactics":"one sentence on how it fights",
+  "habitat":"where it is found",
+  "art":"a short image-prompt phrase: the creature, concept art, dark background"}
+]}
+Rules: exactly 8 creatures. Spread the tiers (about 4 minor, 3 standard, 1 dire).
+Every slug lowercase_with_underscores and unique. Names must sound like THIS
+world — no goblins/kobolds/dragons unless the world truly is that generic.""" % [
+		str(world.get("name", "a world")), str(style.get("visual_language", "")),
+		str(style.get("monsters", "")), str(style.get("fauna", "")),
+		WorldSkin.family_of(world)]
+	var got := await _ask_json(ask)
+	var raw = got.get("creatures") if got.get("creatures") is Array else []
+	var out: Array = []
+	for c in raw:
+		if not (c is Dictionary) or str(c.get("slug", "")) == "":
+			continue
+		var tier := str(c.get("tier", "minor"))
+		if not tier in ["minor", "standard", "dire"]:
+			tier = "standard"
+		out.append({
+			"slug": str(c["slug"]), "name": str(c.get("name", c["slug"])), "tier": tier,
+			"desc": str(c.get("desc", "")), "weakness": str(c.get("weakness", "")),
+			"tactics": str(c.get("tactics", "")), "habitat": str(c.get("habitat", "")),
+			"art": str(c.get("art", str(c.get("name", "")) + ", creature concept art, dark background")),
+			"generated": true,
+		})
+	return out if not out.is_empty() else _fallback_creatures(style)
+
+
+## Art half — a concept portrait per creature (portrait profile: painted, 1024,
+## no matte, to match the existing bestiary look). Sequential: one GPU.
+func _stage_creature_art(world_id: String, creatures: Array) -> void:
+	if creatures.is_empty():
+		return
+	stage_started.emit("creature_art", "Giving the beasts faces…")
+	var anchor := prompt_anchor(world_id)
+	for c in creatures:
+		var slug := str((c as Dictionary).get("slug", ""))
+		if slug == "":
+			continue
+		var key := "creature-%s-%s" % [world_id.validate_filename(), slug]
+		await _await_art(key,
+			"%s. %s. no text" % [str((c as Dictionary).get("art", "")), anchor],
+			{"profile": "portrait", "lane": Art.Lane.IDLE},
+			"art/creatures/%s.png" % slug)
+	stage_done.emit("creature_art", true)
+
+
+func _fallback_creatures(style: Dictionary) -> Array:
+	var beast := str(style.get("monsters", "a lurking predator"))
+	return [
+		{"slug": "scavenger", "name": "Scavenger", "tier": "minor",
+			"desc": "A wary pack-hunter that harries the weak and flees the strong.",
+			"weakness": "Cowardly — break one and the pack scatters.",
+			"tactics": "Circle, dart in, retreat.", "habitat": "the wilds",
+			"art": "%s, small pack predator, creature concept art, dark background" % beast, "generated": false},
+		{"slug": "brute", "name": "Brute", "tier": "standard",
+			"desc": "A heavy, thick-hided thing that trades finesse for force.",
+			"weakness": "Slow to turn — flank it.", "tactics": "Charge and crush.",
+			"habitat": "broken ground",
+			"art": "%s, large heavy brute, creature concept art, dark background" % beast, "generated": false},
+		{"slug": "horror", "name": "Horror", "tier": "dire",
+			"desc": "The thing the world's mothers warn their children about.",
+			"weakness": "Bound to its lair — it will not follow far.",
+			"tactics": "Ambush from the dark, then overwhelm.", "habitat": "the deep places",
+			"art": "%s, terrifying apex creature, creature concept art, dark background" % beast, "generated": false},
+	]
 
 
 ## One JSON answer from the local model. Small models fence their JSON and
@@ -613,6 +716,15 @@ func item_tint(item: Dictionary) -> Color:
 
 func item_glow(item: Dictionary) -> Color:
 	return Color.from_string(str(item.get("glow", "#9aa4b2")), Color.GRAY)
+
+
+## The world's compiled creatures (bestiary-shaped entries), or [] if none.
+func creatures_for(world_id: String) -> Array:
+	var p := "%s/data/creatures.json" % world_dir(world_id)
+	if not FileAccess.file_exists(p):
+		return []
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(p))
+	return parsed if parsed is Array else []
 
 
 ## A starting loadout resolved to full catalogue records, for an archetype id
