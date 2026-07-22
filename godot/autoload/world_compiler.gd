@@ -32,6 +32,7 @@ const COMPILER_VERSION := 1
 
 var busy := false
 var current_world := ""
+var _reforging := false   # set during reforge() so _await_art repaints, not caches
 
 var _journal := {}   # world_id → {stage → true}
 
@@ -87,6 +88,7 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	var pack := read_pack(wid)
 	pack["id"] = wid
 	pack["name"] = str(world.get("name", ""))
+	pack["kind"] = str(world.get("kind", ""))   # kept so Reforge can rebuild prompts
 	pack["family"] = WorldSkin.family_of(world)
 	pack["compiler"] = COMPILER_VERSION
 	pack["forged_at"] = int(Time.get_unix_time_from_system())
@@ -186,6 +188,48 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	return pack
 
 
+# ── Reforge ─────────────────────────────────────────────────────────────────
+## Re-run one stage of an already-compiled world WITHOUT a full recompile:
+## "generate once" doesn't mean "generate wrong forever". Logical ids are stable,
+## so only the pixels (or the derived data) swap — saves, kits, catalogue refs
+## all keep pointing at the same ids. Reuses the world's stored Style Guide and
+## Asset Language (no LLM) unless you reforge "style"/"assets" themselves.
+##   stage ∈ identity | parts | creatures | npcs | tactical | catalogue | kits | layouts
+func reforge(world_id: String, stage: String) -> Dictionary:
+	if busy:
+		return {}
+	busy = true
+	_reforging = true
+	current_world = world_id
+	var pack := read_pack(world_id)
+	var style: Dictionary = pack.get("style", {}) if pack.get("style") is Dictionary else {}
+	var assets := assets_for(world_id)
+	var world := {"id": world_id, "name": str(pack.get("name", "")), "kind": str(pack.get("kind", ""))}
+	match stage:
+		"identity":
+			await _stage_identity(world_id, world, style)
+		"parts":
+			await _stage_parts(world_id, style, assets)
+		"creatures":
+			await _stage_portrait_art(world_id, creatures_for(world_id), "creature")
+		"npcs":
+			await _stage_portrait_art(world_id, npcs_for(world_id), "npc")
+		"tactical":
+			await _stage_tactical(world_id, style)
+		"catalogue":
+			_write(world_id, "data/items.json", _build_catalogue(assets))
+		"kits":
+			_write(world_id, "data/kits.json", _build_kits(assets))
+		"layouts":
+			_write(world_id, "data/layouts.json", _build_layouts())
+		_:
+			push_warning("Compiler.reforge: unknown stage '%s'" % stage)
+	_reforging = false
+	busy = false
+	compiled.emit(world_id, str(pack.get("compile_state", "")))
+	return read_pack(world_id)
+
+
 ## S3 — key art + biome plates. The world you SEE. Every prompt carries the
 ## Style Guide's anchor (via Art.world_flavor once the world is active), so the
 ## whole set holds one visual identity. Biome plates are the reskin source for
@@ -243,6 +287,10 @@ func _stage_parts(world_id: String, _style: Dictionary, assets: Dictionary) -> v
 ## Request one image and wait for it to actually land (compile is sequential —
 ## one GPU). Copies it into the world package so it is CONTENT, not cache.
 func _await_art(key: String, prompt: String, opts: Dictionary, dest_rel := "") -> void:
+	# On a Reforge, drop the old pixels so this key genuinely repaints (Art.request
+	# returns the cache otherwise). The logical id/filename is unchanged.
+	if _reforging:
+		Art.forget(key)
 	var done := [false]
 	var o := opts.duplicate()
 	o["on_ready"] = func(_k): done[0] = true

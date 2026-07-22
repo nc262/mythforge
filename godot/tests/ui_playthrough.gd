@@ -391,6 +391,14 @@ func _check_compiler() -> void:
 				"compiler: layout terrain cell out of the 16x10 grid")
 			assert(str(terr[key]) in ["block", "water", "cover"],
 				"compiler: layout terrain kind not in combat's vocabulary")
+	# Reforge: re-run a stage without a full recompile; logical ids stay stable.
+	var id_before := str((Compiler.catalogue_for("cw-testrealm-abcd")[0] as Dictionary).get("id", ""))
+	await Compiler.reforge("cw-testrealm-abcd", "catalogue")
+	var cat2 := Compiler.catalogue_for("cw-testrealm-abcd")
+	assert(cat2.size() == cat.size() and str((cat2[0] as Dictionary).get("id", "")) == id_before,
+		"compiler: reforge changed the catalogue size or renumbered ids")
+	await Compiler.reforge("cw-testrealm-abcd", "layouts")
+	assert(Compiler.layouts_for("cw-testrealm-abcd").size() >= 3, "compiler: reforge dropped layouts")
 	print("  compiler: seed→catalogue→kits→creatures→npcs, %d items, kit=%d, %d beasts, %d folk" % [
 		cat.size(), kit.size(), beasts.size(), folk.size()])
 
