@@ -183,6 +183,25 @@ Applied to the brief's own examples:
 
 ---
 
+## As-built status (2026-07-21)
+
+Implemented in `godot/autoload/world_compiler.gd`, both harnesses green:
+
+- **S1 Style Guide, S2 Asset Language** — done (LLM + deterministic fallback).
+- **S3 Key art + biome plates** — done (GPU-gated). Reaches **PRESENTABLE**.
+- **S4 Part libraries + item catalogue** — done. Base matted art per form
+  (`_stage_parts`, `item` profile) + a 300-item catalogue exploded from
+  form×material×rarity (`_build_catalogue`, the doc's S8). Reaches **FURNISHED**.
+- **Starting kits** — done (`_build_kits`): pre-rolled equipment loadouts per
+  archetype. NB: this is *equipment*, distinct from the doc's S5 "Kit plates"
+  (environment/architecture art), which is **not yet built**.
+- **S6 Creatures, S7 NPCs** — done (data half + GPU-gated portraits). Creatures
+  are bestiary-shaped and wired into `Combat.bestiary_for`. Reaches **POPULATED**.
+
+**Not yet built:** S5 kit plates (environment art), S9 tactical layouts,
+S10 UI theming, and Reforge (§10). Matte plumbing (backend → ComfyUI Inspyrenet
+rembg) is verified end-to-end on the GPU.
+
 ## 2. Pipeline overview
 
 Ten stages, but only three tiers that matter operationally:
