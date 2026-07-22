@@ -1,6 +1,6 @@
 # The World Compiler — technical design
 
-**Status: design only. No code written.**
+**Status: implemented — see "As-built status" below.**
 Directive (2026-07-21): *a World is no longer data, it is a compiled game
 package.* Guiding principle: **"Generate once. Play forever."**
 
@@ -202,11 +202,28 @@ Implemented in `godot/autoload/world_compiler.gd`, both harnesses green:
   (environment/architecture art), which is **not yet built**.
 - **S6 Creatures, S7 NPCs** — done (data half + GPU-gated portraits). Creatures
   are bestiary-shaped and wired into `Combat.bestiary_for`. Reaches **POPULATED**.
+- **S9 tactical layouts** — done. `_build_layouts` ships five combat-shaped terrain
+  arrangements (block/water/cover on the 16×10 grid); `_stage_tactical` paints a
+  top-down battle map per biome. Runtime: `layouts_for`, `layout_for`, `battle_map_path`.
+- **S10 UI theming** — done, at runtime (no compile stage needed): `Ui.apply`
+  overlays the world's Style-Guide accent onto its family palette. Accent only,
+  so text contrast never regresses.
+- **Kits made visible** — a hero forged into a compiled world is armed from its
+  catalogue (archetype kit), and the inventory/loot renders material-true icons +
+  rarity glow via `Art.item_tex_for`; generic loot rolls real items via `roll_item`.
+- **Reforge** — done. `Compiler.reforge(world, stage)` re-runs one stage with
+  stable logical ids (§10); art stages force a repaint via `Art.forget`.
+- **Id hygiene** — LLM-supplied ids are scrubbed to clean snake_case (`_clean_id`).
 
-**Not yet built:** S5 kit plates (environment art), S9 tactical layouts,
-S10 UI theming, Reforge (§10), and the client-side render of catalogue items
-in the inventory/loot UI (the data + art exist; nothing draws them yet).
-Matte plumbing (backend → ComfyUI Inspyrenet rembg) is verified end-to-end.
+**S5 "kit plates" (environment art): folded into S3.** The biome plates already
+paint settlement / interior / ruin / wilderness / water / high-place backdrops,
+and the Environmental Art System illustrates per-screen environments — a separate
+architecture/dungeon/village pass would be near-duplicate generation, so it was
+deliberately not built.
+
+**Not yet built:** nothing on the original 10-stage plan. Matte plumbing
+(backend → ComfyUI Inspyrenet rembg) is verified end-to-end; the whole pipeline
+S1→S10 + Reforge compiles a world to POPULATED with world-true, AAA content.
 
 **Seed-stage LLM gotcha (hard-won):** the seed stages POST to
 `/api/characters/studio/complete_json`. That endpoint MUST be (a) in app.py's
