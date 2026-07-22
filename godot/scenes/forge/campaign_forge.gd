@@ -385,7 +385,7 @@ func _strike(refine: String) -> void:
 	var wait := Label.new()
 	wait.theme_type_variation = "HintLabel"
 	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	wait.text = "The smith works — the world takes shape (about a minute)…"
+	wait.text = "The smith works — the world takes shape (a few minutes; the local models are thinking)…"
 	_stage_box.add_child(wait)
 	var t: Dictionary = draft["theme"]
 	var idea := str(draft["idea"])
@@ -486,17 +486,13 @@ func _seal() -> void:
 	cworlds.append(world)
 	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
 	_sealed_world = world
-	# Compile the world's SEED — Style Guide, Asset Language, item catalogue,
-	# starting kits, creatures, NPCs, tactical layouts. This is the data that
-	# makes the world TRUE (world-specific gear, monsters, loot). It blocks only
-	# for the fast data seed; the ~80 GPU images then bake in the background while
-	# you play, filling in as they finish. (docs/WorldCompiler.md)
-	_status.text = "Compiling the world — its armory, its beasts, its people…"
-	var on_stage := func(_s, human): _status.text = human
-	Compiler.stage_started.connect(on_stage)
-	await Compiler.compile_seed(world)
-	if Compiler.stage_started.is_connected(on_stage):
-		Compiler.stage_started.disconnect(on_stage)
+	# Fire the World Compiler in the BACKGROUND (not awaited): its Style Guide,
+	# Asset Language, item catalogue, kits, creatures, NPCs and ~80 images take
+	# several minutes of local LLM/GPU on this box, so we DON'T make the player
+	# wait. The world becomes world-true (world-specific gear, monsters, theme)
+	# over the next few minutes while they already play; assets swap in as each
+	# stage lands. (docs/WorldCompiler.md — "compile doesn't block play".)
+	Compiler.compile_seed(world)
 	_busy = false
 	_status.text = ""
 	await _run_sequence()
