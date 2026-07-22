@@ -518,7 +518,15 @@ func _extract_json(text: String) -> Dictionary:
 	var b := s.rfind("}")
 	if a == -1 or b <= a:
 		return {}
-	var parsed = JSON.parse_string(s.substr(a, b - a + 1))
+	var body := s.substr(a, b - a + 1)
+	var parsed = JSON.parse_string(body)
+	if parsed is Dictionary:
+		return parsed
+	# Repair the one glitch local models emit most on big objects: a trailing
+	# comma before a } or ]. Strip those and retry once before giving up.
+	var re := RegEx.new()
+	re.compile(",\\s*([}\\]])")
+	parsed = JSON.parse_string(re.sub(body, "$1", true))
 	return parsed if parsed is Dictionary else {}
 
 
