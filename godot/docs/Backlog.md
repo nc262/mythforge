@@ -1,8 +1,30 @@
-# Backlog — the full deep dive (2026-07-18)
+# Backlog — the full deep dive (2026-07-18, updated 2026-07-22)
 
 One consolidated view of everything outstanding, pulled from FeatureMatrix,
 Roadmap, TechnicalDebt, KnownIssues, FutureIdeas, and this session's sprint.
 Priority **P1** (core play) → **P4** (nice-to-have). Effort **S/M/L/XL**.
+
+> **Resuming a session? Read [SESSION-HANDOFF.md](SESSION-HANDOFF.md) first.**
+
+## 0. Resolved 2026-07-22 (World Compiler → shipped worlds → no-login → bug pass)
+
+| Item | Now |
+|---|---|
+| World Compiler S1–S10 + Reforge | ✅ compiles a world to POPULATED ([WorldCompiler.md](WorldCompiler.md)) |
+| Per-material item art (form × material, ~60/world) | ✅ AAA, world-true; rarity = draw-time glow |
+| Catalogue visible in play (icons + glow, loot rolls, hero armed from catalogue) | ✅ `Art.item_tex_for`, `Compiler.roll_item`, `kit_for` |
+| Backend matte plumbing (Inspyrenet rembg cut-outs) | ✅ verified end-to-end on GPU |
+| Seed-stage LLM 504s + invalid-JSON fallbacks | ✅ `complete_json` timeout-exempt + `json_mode` + 3000 tok |
+| Four worlds ship PRE-BAKED (saltmarsh, embervale, neonspire, everyday) | ✅ zips in `godot/baked/`, first-run extract, in `worlds.json` |
+| **No login** (single-player) | ✅ `AUTH_ENABLED=false` (pm2 + supervisor); client skips login |
+| Forge no longer blocks play | ✅ `compile_seed` fired unawaited from campaign forge |
+| Playtest bugs: stock icon, no card pictures, dead sheet during load, "loses the thread" | ✅ icon set, card art, `can_panels()`, 180s SSE timeout + Ollama keep-warm |
+
+**Open after 2026-07-22:** tale/world flow decision · sparse `everyday` world ·
+verify-in-play · ship-weight (git-LFS?) · `godot/data` gitignore. Full list in
+[SESSION-HANDOFF.md](SESSION-HANDOFF.md) §4.
+
+---
 
 > **Reconciliation note.** The First-Complete-Experience sprint (language guard,
 > World Skin, Lore Book, skill-tree motif, Chronicles gallery, paper doll, AAA

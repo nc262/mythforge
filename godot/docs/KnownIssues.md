@@ -14,6 +14,10 @@
 | 10b | (RESOLVED, kept for the pattern) Battle-board cover-fit underlay painted outside its rect and flooded the chat column — Controls do NOT clip _draw by default; clip_contents=true on any cover-fit painter | was the real 'only map, no text' RCA | — | fixed in U2; screenshot harness now catches it |
 | 10a | Pack leather surface reads flat at a glance (stitch detail subtle at 1x) | polish gap vs the five pillars | — | material refinement pass in U1.1 |
 | 10 | Godot 4.7 shutdown prints benign RID/StringName leak noise in headless runs | Log noise only | grep-filtered in harnesses | upstream |
+| 11 | Tale and world are coupled — can't pick a tale then choose its world (2026-07-22) | Requested flow missing | Free Roam lets you pick any world | Design decision needed: world-agnostic tales (GM re-skins) vs two-step world→tale. See SESSION-HANDOFF §4 |
+| 12 | The `everyday` (slice-of-life) baked world is sparse — 2 weapon forms → 30 items, 6 icons | Thin loot in that world | fine-ish for modern setting | `Compiler.reforge` its assets or hand-author more `weapon_forms` |
+| 13 | Local LLM is slow on this box (~40–105s/call); worldsmith is multi-call → a fresh forge is minutes | Slow world creation | play a PRE-BAKED world (instant); forge backgrounds | hardware limit; models now kept warm (Ollama KEEP_ALIVE) to cut cold-load |
+| 14 | `godot/data/` is gitignored by a broad `data/` rule — game static data untracked in git | Clones missing worlds/bestiary; exe still ships it from disk | force-add or fix .gitignore | task chip open |
 
 Retired issues live in git history; resolved rows are deleted here only
 after the fix ships AND the harness covers the regression.
