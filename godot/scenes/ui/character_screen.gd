@@ -519,9 +519,12 @@ func _refill_gear() -> void:
 	flow.add_theme_constant_override("v_separation", Ui.SPACE["s"])
 	var worn_ids: Array = inv.get("equipped", {}).values()
 	for it in items:
-		Art.ensure_item_icon(str(it.get("name", "")))
+		# Compiled catalogue items ship their own material-true icon; only the
+		# legacy loose items need an icon generated on demand.
+		if str(it.get("art", "")) == "":
+			Art.ensure_item_icon(str(it.get("name", "")))
 		var card := MythCard.new()
-		card.setup(_pack_payload(it), Art.item_tex(str(it.get("name", ""))))
+		card.setup(_pack_payload(it), Art.item_tex_for(it))
 		# The card tells the interaction where the piece is flying FROM.
 		card.activated.connect(func(p): _pack_double(str(p.get("id", "")), card.get_global_rect()))
 		card.context_requested.connect(_pack_menu)
@@ -604,7 +607,7 @@ func _pack_double(iid: String, from_rect := Rect2()) -> void:
 	var sock: Control = _sockets.get(slot)
 	if sock != null and is_instance_valid(sock):
 		if from_rect.size.x > 0:
-			Ui.fly_to(self, Art.item_tex(str(it.get("name", ""))), from_rect, sock.get_global_rect())
+			Ui.fly_to(self, Art.item_tex_for(it), from_rect, sock.get_global_rect())
 		Ui.pulse(sock)
 		var delta := ""
 		if after_ac != before_ac:
@@ -647,7 +650,7 @@ func _pack_inspect(p: Dictionary) -> void:
 	var box := VBoxContainer.new()
 	box.add_theme_constant_override("separation", Ui.SPACE["m"])
 	var art := MythPlate.new(Vector2(320, 320), 0.5)
-	art.set_texture(Art.item_tex(str(p.get("name", ""))))
+	art.set_texture(Art.item_tex_for(p))
 	box.add_child(art)
 	box.add_child(MythTooltip.build(str(p.get("tip_title", "?")), p.get("tip_rows", []), str(p.get("rarity", ""))))
 	dlg.add_child(box)
@@ -675,7 +678,7 @@ func _gear_socket(key: String) -> Control:
 		var p := it.duplicate()
 		p["tip_title"] = str(it.get("name", "?"))
 		p["tip_rows"] = [[str(it.get("rarity", "common")).capitalize(), "ink_dim"]]
-		sock.set_item(p, Art.item_tex(str(it.get("name", ""))))
+		sock.set_item(p, Art.item_tex_for(it))
 	sock.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			_open_slot_picker(key))

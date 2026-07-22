@@ -797,6 +797,28 @@ func part_art_path(world_id: String, form_id: String, material_id: String) -> St
 	return "%s/art/parts/%s.%s.png" % [world_dir(world_id), form_id, material_id]
 
 
+## The material-true icon for a catalogue item, loaded from the active world's
+## package and cached. Returns null if the item carries no art or the file isn't
+## painted yet (caller falls back to a legacy generated icon).
+var _tex_cache := {}
+
+func item_texture(item: Dictionary) -> Texture2D:
+	var rel := str(item.get("art", ""))
+	if rel == "":
+		return null
+	var full := "%s/%s" % [world_dir(GameState.world_id()), rel]
+	if _tex_cache.has(full):
+		return _tex_cache[full]
+	if not FileAccess.file_exists(full):
+		return null
+	var img := Image.load_from_file(full)
+	if img == null or img.is_empty():
+		return null
+	var tex := ImageTexture.create_from_image(img)
+	_tex_cache[full] = tex
+	return tex
+
+
 ## The material/rarity colours for an item record, as Godot Colors.
 func item_tint(item: Dictionary) -> Color:
 	return Color.from_string(str(item.get("tint", "#cccccc")), Color.WHITE)

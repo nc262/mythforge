@@ -485,6 +485,17 @@ func item_tex(nm: String) -> ImageTexture:
 	return texture_for("item-" + nm.to_lower().replace(" ", "-"))
 
 
+## The right icon for an inventory item: a compiled catalogue item carries its
+## own material-true `art`, painted once at compile — use it. Otherwise fall back
+## to the legacy per-name generated icon. One seam for every item render.
+func item_tex_for(it: Dictionary) -> Texture2D:
+	if str(it.get("art", "")) != "":
+		var tex := Compiler.item_texture(it)
+		if tex != null:
+			return tex
+	return item_tex(str(it.get("name", "")))
+
+
 ## The face a combatant wears everywhere (board token, initiative rail):
 ## hero portrait / companion npc portrait / bestiary painting (commissioned
 ## from the entry's art prompt on first sight).

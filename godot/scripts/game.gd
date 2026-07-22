@@ -862,16 +862,29 @@ func _apply_world_tags(tags: Array) -> void:
 					_say_system("%s %+d — purse now %d" % [GameState.currency(), delta, total], "coins")
 			"loot":
 				var nm := str(a.get("name", "")).strip_edges()
-				if nm != "":
-					var rarity := str(a.get("rarity", "common"))
-					GameState.add_item(nm, rarity, maxi(1, int(a.get("qty", 1))))
+				var rarity := str(a.get("rarity", "common"))
+				var qty := maxi(1, int(a.get("qty", 1)))
+				# World-true loot: a generic drop (empty name, an explicit roll, or
+				# a placeholder like "treasure") pulls a real item from the compiled
+				# catalogue, so it arrives already painted, named and stat-blocked.
+				var rolled := {}
+				if nm == "" or str(a.get("roll", "")) != "" or nm.to_lower() in ["treasure", "loot", "salvage", "an item", "some loot"]:
+					rolled = Compiler.roll_item(GameState.world_id())
+				if not rolled.is_empty():
+					nm = str(rolled.get("name", nm))
+					rarity = str(rolled.get("rarity", rarity))
+					GameState.add_catalogue_item(rolled, qty)
+				elif nm != "":
+					GameState.add_item(nm, rarity, qty)
 					Art.ensure_item_icon(nm)
+				if nm != "":
+					var icon: Texture2D = Art.item_tex_for(rolled) if not rolled.is_empty() else Art.item_tex(nm)
 					# MIL §9/§13 — ceremony scales with rarity: a common dagger
 					# shimmers, a legendary stops the world.
 					if rarity in ["epic", "legendary"]:
 						MythCeremony.play(self, {
 							"title": nm, "line": "A %s find." % rarity,
-							"art": Art.item_tex(nm), "sound": "loot",
+							"art": icon, "sound": "loot",
 							"weight": "major", "tint": Ui.RARITY.get(rarity, "gold"),
 						})
 					else:

@@ -279,6 +279,24 @@ func add_item(nm: String, rarity := "common", qty := 1) -> void:
 	save_kind("inv", v)
 
 
+## Add a compiled World Compiler catalogue item — keeps its material-true icon
+## (`art`), rarity glow and form/material identity, on top of the combat stats
+## the rules derive from its name. This is how world-true loot enters the pack.
+func add_catalogue_item(rec: Dictionary, qty := 1) -> void:
+	if rec.is_empty():
+		return
+	var v := inv()
+	var it: Dictionary = Rules.mk_item(str(rec.get("name", "")), str(rec.get("rarity", "common")), qty)
+	for k in ["art", "glow", "form", "material", "value", "kind", "catalogue_id"]:
+		if rec.has(k):
+			it[k] = rec[k]
+	# The catalogue's kind is authoritative over the name-sniffed type.
+	if rec.has("kind") and str(rec["kind"]) in ["weapon", "armor"]:
+		it["type"] = str(rec["kind"]) if str(rec["kind"]) == "weapon" else it.get("type", "armor")
+	v["items"].append(it)
+	save_kind("inv", v)
+
+
 ## Crafting v2 — typed components, consumed on craft. Recipes live in
 ## tables.json; the GM seeds components through ordinary [[loot]] tags.
 func recipe_ready(r: Dictionary) -> bool:
