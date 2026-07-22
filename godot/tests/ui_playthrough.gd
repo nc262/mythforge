@@ -374,6 +374,11 @@ func _check_compiler() -> void:
 	var folk := Compiler.npcs_for("cw-testrealm-abcd")
 	assert(folk.size() > 0 and (folk[0] as Dictionary).has("disposition"),
 		"compiler: world has no named people")
+	# Id hygiene: the schema-placeholder suffixes small models echo are scrubbed.
+	assert(Compiler._clean_id("cutlass_form_id") == "cutlass"
+		and Compiler._clean_id("Brine Iron_material_id") == "brine_iron"
+		and Compiler._clean_id("tide-worm") == "tide_worm",
+		"compiler: _clean_id didn't normalise ids")
 	print("  compiler: seed→catalogue→kits→creatures→npcs, %d items, kit=%d, %d beasts, %d folk" % [
 		cat.size(), kit.size(), beasts.size(), folk.size()])
 

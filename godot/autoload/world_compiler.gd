@@ -337,22 +337,52 @@ ARMOR looks like: %s
 
 Answer with ONE JSON object, no prose, no markdown fence:
 {
- "materials": [{"id":"lowercase_id","name":"Display Name","dark":"#rrggbb","light":"#rrggbb","tier":1}],
- "treatments": [{"id":"lowercase_id","name":"Display Name","note":"how it changes the look"}],
- "weapon_forms": [{"id":"lowercase_id","name":"Display Name","prompt":"a short image-prompt phrase for this weapon shape"}],
- "armor_forms":  [{"id":"lowercase_id","name":"Display Name","prompt":"a short image-prompt phrase"}],
+ "materials": [{"id":"brine_iron","name":"Display Name","dark":"#rrggbb","light":"#rrggbb","tier":1}],
+ "treatments": [{"id":"salt_worn","name":"Display Name","note":"how it changes the look"}],
+ "weapon_forms": [{"id":"cutlass","name":"Display Name","prompt":"a short image-prompt phrase for this weapon shape"}],
+ "armor_forms":  [{"id":"chain_coat","name":"Display Name","prompt":"a short image-prompt phrase"}],
  "naming": {"prefix":["4 evocative prefixes"],"suffix":["4 suffixes, e.g. 'of the Ash Coast'"]}
 }
 Rules: 6 materials (tier 1-3, cheap to precious, colours must suit the world),
 4 treatments (wear/age/blessing/damage), 6 weapon_forms, 4 armor_forms.
-Every id lowercase_with_underscores. Names must sound like THIS world.""" % [
+Every id is one or two SHORT snake_case words (e.g. cutlass, brine_iron) — do NOT
+append "_id" or "_form". Names must sound like THIS world.""" % [
 		str(world.get("name", "a world")), str(style.get("visual_language", "")),
 		", ".join(mats), str(style.get("weapons", "")), str(style.get("armor", ""))]
 	var got := await _ask_json(ask)
 	if got.is_empty() or not (got.get("materials") is Array):
 		return _fallback_assets(style)
+	# Small models parrot the schema placeholder ("cutlass_form_id") — scrub every
+	# id to clean snake_case so filenames and catalogue ids stay tidy.
+	for group in ["materials", "treatments", "weapon_forms", "armor_forms"]:
+		if got.get(group) is Array:
+			for e in got[group]:
+				if e is Dictionary and e.has("id"):
+					e["id"] = _clean_id(str(e["id"]))
 	got["generated"] = true
 	return got
+
+
+## Normalise an LLM-supplied id to short snake_case, stripping the schema-
+## placeholder suffixes small models echo back ("_form_id", "_id", "_slug").
+func _clean_id(raw: String) -> String:
+	var s := raw.to_lower().strip_edges()
+	for junk in ["_form_id", "_material_id", "_armor_id", "_weapon_id", "_creature_id",
+			"_npc_id", "_slug", "_form", "_id"]:
+		if s.ends_with(junk):
+			s = s.substr(0, s.length() - junk.length())
+			break
+	var out := ""
+	for i in s.length():
+		var ch := s[i]
+		if (ch >= "a" and ch <= "z") or (ch >= "0" and ch <= "9"):
+			out += ch
+		elif ch == " " or ch == "-" or ch == "_":
+			out += "_"
+	while out.contains("__"):
+		out = out.replace("__", "_")
+	out = out.lstrip("_").rstrip("_")
+	return out if out != "" else raw.to_lower()
 
 
 ## S6 — the world's CREATURES. Bestiary-shaped so Combat.bestiary_for can give a
@@ -391,7 +421,7 @@ world — no goblins/kobolds/dragons unless the world truly is that generic.""" 
 		if not tier in ["minor", "standard", "dire"]:
 			tier = "standard"
 		out.append({
-			"slug": str(c["slug"]), "name": str(c.get("name", c["slug"])), "tier": tier,
+			"slug": _clean_id(str(c["slug"])), "name": str(c.get("name", c["slug"])), "tier": tier,
 			"desc": str(c.get("desc", "")), "weakness": str(c.get("weakness", "")),
 			"tactics": str(c.get("tactics", "")), "habitat": str(c.get("habitat", "")),
 			"art": str(c.get("art", str(c.get("name", "")) + ", creature concept art, dark background")),
@@ -476,7 +506,7 @@ lowercase_with_underscores and unique. Names and roles must fit THIS world.""" %
 		if not disp in ["friendly", "wary", "hostile", "neutral"]:
 			disp = "neutral"
 		out.append({
-			"slug": str(c["slug"]), "name": str(c.get("name", c["slug"])),
+			"slug": _clean_id(str(c["slug"])), "name": str(c.get("name", c["slug"])),
 			"role": str(c.get("role", "")), "disposition": disp,
 			"look": str(c.get("look", "")), "location": str(c.get("location", "")),
 			"hook": str(c.get("hook", "")),
