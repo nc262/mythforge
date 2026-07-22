@@ -153,7 +153,13 @@ func login(username: String, password: String) -> Dictionary:
 
 func auth_ok() -> bool:
 	var r := await call_json(HTTPClient.METHOD_GET, "/api/auth/status")
-	return r.get("_status", 0) == 200 and bool(r.get("authenticated", r.get("ok", false)))
+	if r.get("_status", 0) != 200:
+		return false
+	# Backend has auth turned off (single-player desktop): there's no door to
+	# open — go straight in.
+	if not bool(r.get("auth_enabled", true)):
+		return true
+	return bool(r.get("authenticated", r.get("ok", false)))
 
 
 # ── Studio ──────────────────────────────────────────────────────────────────

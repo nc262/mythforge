@@ -28,7 +28,11 @@ module.exports = {
     { name: "odysseus-api", script: "run-api.py", interpreter: "python", cwd,
       env: {
         ODYSSEUS_DATA_DIR: "C:\\Users\\cptahabb\\Documents\\Code\\odysseus\\data",
-        TORCH_BACKENDS_CUDNN_ENABLED: "0"
+        TORCH_BACKENDS_CUDNN_ENABLED: "0",
+        // Mythforge is a single-player desktop game — no login. AUTH_ENABLED=false
+        // disables the auth middleware so the client goes straight to the menu.
+        // Set to "true" only if hosting a shared server for friends (see README).
+        AUTH_ENABLED: "false"
       } },
     { name: "image-stack", script: "scripts/image-stack-watchdog.mjs", cwd, autorestart: true, restart_delay: 5000 }
   ]

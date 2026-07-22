@@ -159,6 +159,9 @@ def setup_auth_routes(auth_manager: AuthManager) -> APIRouter:
         token = request.cookies.get(SESSION_COOKIE)
         result = auth_manager.status(token)
         result["signup_enabled"] = auth_manager.signup_enabled
+        # So a client can skip its login screen entirely when the operator has
+        # turned auth off (single-player desktop game): no account, just play.
+        result["auth_enabled"] = os.getenv("AUTH_ENABLED", "true").lower() != "false"
         # Include the caller's effective privileges so the frontend can
         # hide / dim UI controls the user isn't allowed to use. Admins get
         # ADMIN_PRIVILEGES (everything on), regular users get their stored

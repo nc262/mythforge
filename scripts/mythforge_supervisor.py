@@ -182,6 +182,10 @@ def spawn(svc, job):
     env = dict(os.environ)
     if svc["name"] == "comfyui":
         env["TORCH_BACKENDS_CUDNN_ENABLED"] = "0"    # ZLUDA can't find a cuDNN conv engine
+    if svc["name"] == "backend":
+        # Single-player desktop game: no login. The client goes straight to the
+        # menu (Api.auth_ok honours this). A host sharing a server sets it "true".
+        env.setdefault("AUTH_ENABLED", "false")
     kw = dict(cwd=svc["cwd"], env=env, stdout=subprocess.DEVNULL,
               stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
     if "shell" in svc:
