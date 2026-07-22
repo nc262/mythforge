@@ -111,10 +111,18 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	pack["catalogue_count"] = catalogue.size()
 	stage_done.emit("catalogue", not catalogue.is_empty())
 
+	# S5 — starting KITS. Pre-rolled loadouts per archetype, drawn from the
+	# catalogue, so a freshly forged hero is outfitted in world-true gear the
+	# instant they exist (no empty-hands first turn).
+	stage_started.emit("kits", "Packing the starting satchels…")
+	var kits := _build_kits(assets)
+	_write(wid, "data/kits.json", kits)
+	stage_done.emit("kits", not kits.is_empty())
+
 	pack["compile_state"] = SEEDED
 	_write(wid, "world.json", pack)
 	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty(),
-		"catalogue": not catalogue.is_empty()}
+		"catalogue": not catalogue.is_empty(), "kits": not kits.is_empty()}
 	compiled.emit(wid, SEEDED)
 
 	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
@@ -461,6 +469,60 @@ func _base_value(kind: String, tier: int) -> int:
 	return (12 if kind == "weapon" else 9) * maxi(1, tier)
 
 
+## Starting archetypes and the weapon they favour. Keyword-matched against THIS
+## world's actual form names (LLM form ids differ per world), so a caster gets
+## the staff-like thing whatever it is called, and falls back to any weapon.
+const ARCHETYPES := [
+	{"id": "warrior", "name": "Warrior", "want": ["sword", "blade", "axe", "mace", "spear"]},
+	{"id": "defender", "name": "Defender", "want": ["hammer", "mace", "maul", "shield"]},
+	{"id": "skirmisher", "name": "Skirmisher", "want": ["dagger", "knife", "claw", "sword"]},
+	{"id": "ranger", "name": "Ranger", "want": ["bow", "sling", "gun", "rifle", "throw"]},
+	{"id": "caster", "name": "Caster", "want": ["staff", "wand", "rod", "tome", "focus"]},
+]
+
+
+## Assemble one loadout per archetype from the asset language's forms. Kits store
+## catalogue ITEM IDS (form.material.rarity), so they resolve straight to the
+## catalogue and share its base art — no separate art, no drift.
+func _build_kits(assets: Dictionary) -> Dictionary:
+	var forms := _forms(assets)
+	var weapons := forms.filter(func(f): return str(f["kind"]) == "weapon")
+	var armors := forms.filter(func(f): return str(f["kind"]) == "armor")
+	if weapons.is_empty() and armors.is_empty():
+		return {}
+	# Starting gear is humble: the lowest-tier material, common rarity.
+	var mats: Array = assets.get("materials", []) if assets.get("materials") is Array else []
+	var mat_id := "iron"
+	if not mats.is_empty():
+		var cheapest = mats[0]
+		for m in mats:
+			if m is Dictionary and int(m.get("tier", 9)) < int(cheapest.get("tier", 9)):
+				cheapest = m
+		mat_id = str(cheapest.get("id", "iron"))
+	var out := {}
+	for a in ARCHETYPES:
+		var w := _match_form(weapons, a["want"])
+		var items: Array = []
+		if w != "":
+			items.append("%s.%s.%s" % [w, mat_id, "common"])
+		# Up to three armor pieces, whatever the world has.
+		for i in mini(armors.size(), 3):
+			items.append("%s.%s.%s" % [str(armors[i]["id"]), mat_id, "common"])
+		if not items.is_empty():
+			out[str(a["id"])] = {"name": str(a["name"]), "items": items}
+	return out
+
+
+## First form whose id or name contains any wanted keyword; else the first form.
+func _match_form(forms: Array, want: Array) -> String:
+	for kw in want:
+		for f in forms:
+			var hay := (str(f["id"]) + " " + str(f["name"])).to_lower()
+			if hay.contains(str(kw).to_lower()):
+				return str(f["id"])
+	return str(forms[0]["id"]) if not forms.is_empty() else ""
+
+
 # ── What the rest of the game asks ─────────────────────────────────────────
 ## The style guide for a world, or {} when it has never been compiled.
 func style_for(world_id: String) -> Dictionary:
@@ -551,3 +613,25 @@ func item_tint(item: Dictionary) -> Color:
 
 func item_glow(item: Dictionary) -> Color:
 	return Color.from_string(str(item.get("glow", "#9aa4b2")), Color.GRAY)
+
+
+## A starting loadout resolved to full catalogue records, for an archetype id
+## (warrior/defender/skirmisher/ranger/caster). [] if the world or kit is absent.
+func kit_for(world_id: String, archetype: String) -> Array:
+	var p := "%s/data/kits.json" % world_dir(world_id)
+	if not FileAccess.file_exists(p):
+		return []
+	var kits = JSON.parse_string(FileAccess.get_file_as_string(p))
+	if not (kits is Dictionary) or not kits.has(archetype):
+		return []
+	var ids = kits[archetype].get("items", [])
+	if not (ids is Array):
+		return []
+	var by_id := {}
+	for it in catalogue_for(world_id):
+		by_id[str(it.get("id", ""))] = it
+	var out: Array = []
+	for id in ids:
+		if by_id.has(str(id)):
+			out.append(by_id[str(id)])
+	return out

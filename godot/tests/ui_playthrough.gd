@@ -360,7 +360,11 @@ func _check_compiler() -> void:
 	var loot := Compiler.roll_item("cw-testrealm-abcd", rng)
 	assert(not loot.is_empty() and str(loot.get("rarity", "")) != "",
 		"compiler: roll_item returned nothing rollable")
-	print("  compiler: seed→identity→catalogue compiles, %d items, loot rolls, anchor feeds art" % cat.size())
+	# S5: starting kits resolve to real catalogue records, so a new hero is armed.
+	var kit := Compiler.kit_for("cw-testrealm-abcd", "warrior")
+	assert(kit.size() > 0 and (kit[0] as Dictionary).has("id"),
+		"compiler: warrior kit didn't resolve to catalogue items")
+	print("  compiler: seed→catalogue→kits compiles, %d items, warrior kit=%d pieces, loot rolls" % [cat.size(), kit.size()])
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).
