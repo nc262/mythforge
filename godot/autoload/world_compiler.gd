@@ -689,6 +689,20 @@ func _base_value(kind: String, tier: int) -> int:
 	return (12 if kind == "weapon" else 9) * maxi(1, tier)
 
 
+## Map a class to the kit archetype whose loadout best fits it.
+const CLASS_ARCHETYPE := {
+	"Fighter": "warrior", "Barbarian": "warrior",
+	"Paladin": "defender", "Cleric": "defender",
+	"Rogue": "skirmisher", "Monk": "skirmisher", "Bard": "skirmisher",
+	"Ranger": "ranger",
+	"Druid": "caster", "Wizard": "caster", "Sorcerer": "caster", "Warlock": "caster",
+}
+
+
+func archetype_for_class(cls: String) -> String:
+	return str(CLASS_ARCHETYPE.get(cls, "warrior"))
+
+
 ## Starting archetypes and the weapon they favour. Keyword-matched against THIS
 ## world's actual form names (LLM form ids differ per world), so a caster gets
 ## the staff-like thing whatever it is called, and falls back to any weapon.

@@ -449,9 +449,16 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 			if sp is Array and sp.size() >= 2 and int(sp[1]) <= 1:
 				s["spells"].append({"name": str(sp[0]), "level": int(sp[1])})
 	GameState.set_sheet(s)
-	# The chosen kit lands in the pack, wearable pieces worn.
-	for it_nm in extra.get("kit", []):
-		GameState.add_item(str(it_nm), "common", 1)
+	# Starting gear. In a compiled world the hero is armed from the world's own
+	# catalogue (material-true, world-flavoured) for their class archetype; a
+	# world without a compiled kit falls back to the forge's generic loadout.
+	var world_kit: Array = Compiler.kit_for(GameState.world_id(), Compiler.archetype_for_class(cls))
+	if not world_kit.is_empty():
+		for rec in world_kit:
+			GameState.add_catalogue_item(rec, 1)
+	else:
+		for it_nm in extra.get("kit", []):
+			GameState.add_item(str(it_nm), "common", 1)
 	var inv2 := GameState.inv()
 	var eq2: Dictionary = inv2.get("equipped", {})
 	for it in inv2.get("items", []):

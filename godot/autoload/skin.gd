@@ -762,9 +762,36 @@ func apply(wid: String) -> void:
 	world_id = wid
 	skin = WorldSkin.skin_for_id(wid)
 	var pkey := str(skin.get("palette", "arcane"))
-	pal = PALETTES.get(pkey if PALETTES.has(pkey) else "arcane", PALETTES["arcane"])
+	# Duplicate so a per-world overlay never mutates the shared const palette.
+	pal = (PALETTES[pkey] if PALETTES.has(pkey) else PALETTES["arcane"]).duplicate()
+	_overlay_world_palette(wid)
 	_build()
 	changed.emit()
+
+
+## S10 — a compiled world's own Style Guide colours refine its family palette, so
+## each world's UI carries its specific identity, not just its family's. Only the
+## accent (and a soft variant) are overlaid — surface/ink/text stay the family's,
+## so contrast can never regress (design gate).
+func _overlay_world_palette(wid: String) -> void:
+	if wid == "" or not Compiler.is_compiled(wid):
+		return
+	var cols = Compiler.style_for(wid).get("colors")
+	if not (cols is Dictionary):
+		return
+	var acc = _hex(str(cols.get("accent", "")))
+	if acc != null:
+		pal["gold"] = acc
+		pal["gold_soft"] = acc.lightened(0.28)
+
+
+## Parse a #rrggbb string to a Color, or null if it isn't a valid opaque hex.
+func _hex(s: String):
+	s = s.strip_edges()
+	if not (s.begins_with("#") and s.length() == 7):
+		return null
+	var col := Color.from_string(s, Color.TRANSPARENT)
+	return col if col.a > 0.0 else null
 
 
 func c(name: String) -> Color:
