@@ -189,9 +189,14 @@ Implemented in `godot/autoload/world_compiler.gd`, both harnesses green:
 
 - **S1 Style Guide, S2 Asset Language** — done (LLM + deterministic fallback).
 - **S3 Key art + biome plates** — done (GPU-gated). Reaches **PRESENTABLE**.
-- **S4 Part libraries + item catalogue** — done. Base matted art per form
-  (`_stage_parts`, `item` profile) + a 300-item catalogue exploded from
-  form×material×rarity (`_build_catalogue`, the doc's S8). Reaches **FURNISHED**.
+- **S4 Part libraries + item catalogue** — done. A matted, material-true icon
+  per **(form × material)** (`_stage_parts`, `item` profile — ~60/world) + a
+  300-item catalogue exploded from form×material×rarity (`_build_catalogue`, the
+  doc's S8). Reaches **FURNISHED**. Rarity is a draw-time glow, not new art.
+  NB: the neutral-grey-base + tint-at-draw model was tried and rejected — a real
+  compile showed muddy recolours; per-material generation is the quality bar
+  (verified: driftwood vs brine-iron cutlasses are visually distinct, AAA).
+  Item prompts carry NO scene anchor (it turned a sword into a lantern).
 - **Starting kits** — done (`_build_kits`): pre-rolled equipment loadouts per
   archetype. NB: this is *equipment*, distinct from the doc's S5 "Kit plates"
   (environment/architecture art), which is **not yet built**.
@@ -199,8 +204,18 @@ Implemented in `godot/autoload/world_compiler.gd`, both harnesses green:
   are bestiary-shaped and wired into `Combat.bestiary_for`. Reaches **POPULATED**.
 
 **Not yet built:** S5 kit plates (environment art), S9 tactical layouts,
-S10 UI theming, and Reforge (§10). Matte plumbing (backend → ComfyUI Inspyrenet
-rembg) is verified end-to-end on the GPU.
+S10 UI theming, Reforge (§10), and the client-side render of catalogue items
+in the inventory/loot UI (the data + art exist; nothing draws them yet).
+Matte plumbing (backend → ComfyUI Inspyrenet rembg) is verified end-to-end.
+
+**Seed-stage LLM gotcha (hard-won):** the seed stages POST to
+`/api/characters/studio/complete_json`. That endpoint MUST be (a) in app.py's
+`_TIMEOUT_EXEMPT_PREFIXES` — the asks run ~90s on llama3.1:8b and the 45s
+middleware silently 504'd them, so every world fell back to generic content —
+and (b) called with `json_mode=True` + a high token ceiling (~3000), or the big
+asset/creature objects come back as invalid/truncated JSON and still fall back.
+Both are now fixed; a fallback (`generated:false`) in a world's data is the
+signal this regressed.
 
 ## 2. Pipeline overview
 
