@@ -1,4 +1,4 @@
-# Session Handoff — pick up here (2026-07-22)
+# Session Handoff — pick up here (2026-07-22, second pass)
 
 Read this first when resuming. It captures the current state, the workflows, the
 hard-won gotchas, and the open items. Deeper detail lives in the linked docs.
@@ -79,19 +79,19 @@ and **has no login**.
   `generated:false` flag is the signal this regressed.
 - **App runs on ComfyUI-ZLUDA (AMD RX 7900 GRE):** cuDNN off
   (`TORCH_BACKENDS_CUDNN_ENABLED=0`) or VAEDecode dies.
-- **`godot/data/` is gitignored** by a stale broad `data/` rule — the game's static
-  data (worlds.json, bestiary…) isn't tracked; exports still ship it from disk.
-  A task chip is open to fix the `.gitignore`.
+- ~~`godot/data/` is gitignored~~ — fixed: `!godot/data/` negates the broad
+  `data/` rule, and bestiary/spells/tables/class_lore are now tracked.
 
 ---
 
 ## 4. Open items (consolidated — bugs first, per user's priority)
 
 ### Bugs / decisions awaiting the user
-- **Tale/world flow** *(needs a decision, then build)* — user wants to pick a tale
-  then choose the world it plays in. Tales are currently authored per-world, so
-  this is a flow change: either (a) world-agnostic tales the GM re-skins, or (b) a
-  two-step "world → tale within it". Ask before rebuilding `adventure_forge._stage_campaign`.
+- ✅ **Tale/world flow** — decided (b) and built: The Campaign stage is now two
+  steps, world → tale within it, with BACK returning to the world list. That also
+  fixed built-in worlds showing only Free Roam (their stories live in
+  `worlds.json`; the stage now uses the `Rules.world_stories` fallback) and the
+  12-card cap that hid later worlds' tales entirely.
 - **`everyday` world is sparse** — the 8B gave it only 2 weapon forms → 30 items,
   6 part icons. Reforge its assets or hand-author more forms if it should be richer.
 - **Verify the bug-fix build in play** — confirm the taskbar icon, card pictures,
@@ -102,11 +102,17 @@ and **has no login**.
 2. ✅ Regressions — minimap / tabs / world name
 3. ✅ The Art Director
 4. ✅ Opening never dies
-5. ▶ **Handcrafted defaults + appearance (the big asset pass)** — the World
-   Compiler + baked worlds ARE this for *world* assets (done, shipped). The
-   "+ appearance" half — the player HERO's own rendered portrait/look — is the
-   older Character Render strand and is NOT part of the compiler work. Clarify
-   whether #5 is done or still owes hero-appearance.
+5. ▶ **Handcrafted defaults + appearance (the big asset pass)** — world assets:
+   done (World Compiler + baked worlds). Hero appearance: user confirmed it's
+   still owed. Audit found the pipeline mostly built already — Appearance stage,
+   portrait commission, and the Stage-A paper doll (Gear tab, 13 slots,
+   re-render) all ship. The real hole was **identity**: banked heroes had no id
+   and shared the forge's `heroprev` scratch key, so roster cards were blank and
+   a hero could later play wearing a newer hero's face. Fixed in `bank_hero`
+   (name-derived id + portrait copied to `hero-<id>`), guarded in the harness.
+   Still open on this strand: heroes banked *before* the fix stay id-less until
+   re-banked, and appearance is still free text — no structured look (hair/build/
+   skin) driving the prompt.
 6. Flicker, instrumented
 7. Dialogue identity — see [Dialogue.md](Dialogue.md)
 8. Forge completion ritual
