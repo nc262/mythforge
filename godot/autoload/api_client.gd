@@ -257,7 +257,7 @@ func stream_chat(message: String, session_id: String) -> void:
 			buf = _drain_lines(buf)
 			last_data = Time.get_ticks_msec()
 		else:
-			if Time.get_ticks_msec() - last_data > 75_000:
+			if Time.get_ticks_msec() - last_data > 180_000:
 				push_warning("SSE stalled for 75s — aborting stream")
 				client.close()
 				sse_done.emit(false)

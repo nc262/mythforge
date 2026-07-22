@@ -186,6 +186,12 @@ def spawn(svc, job):
         # Single-player desktop game: no login. The client goes straight to the
         # menu (Api.auth_ok honours this). A host sharing a server sets it "true".
         env.setdefault("AUTH_ENABLED", "false")
+    if svc["name"] == "ollama":
+        # Keep the narration (8B) AND helper (3B) models resident so a turn
+        # doesn't cold-load (slow first token → the "storyteller loses the
+        # thread" stall). Two loaded models fit alongside the image stack here.
+        env.setdefault("OLLAMA_KEEP_ALIVE", "30m")
+        env.setdefault("OLLAMA_MAX_LOADED_MODELS", "2")
     kw = dict(cwd=svc["cwd"], env=env, stdout=subprocess.DEVNULL,
               stderr=subprocess.DEVNULL, creationflags=CREATE_NO_WINDOW)
     if "shell" in svc:
