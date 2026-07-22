@@ -346,7 +346,21 @@ func _check_compiler() -> void:
 	for p in ["item", "scene", "showcase"]:
 		assert(Art.PROFILES.has(p) and str(Art.PROFILES[p].get("style", "")) != "",
 			"compiler: art profile '%s' missing its checkpoint" % p)
-	print("  compiler: seed→identity compiles, degrades cleanly, anchor feeds art, profiles pinned")
+	# Tier C: the item catalogue explodes the asset language into a browsable
+	# spine and rolls loot deterministically (runs even headless).
+	var cat := Compiler.catalogue_for("cw-testrealm-abcd")
+	assert(cat.size() > 0 and int(pack.get("catalogue_count", 0)) == cat.size(),
+		"compiler: item catalogue is empty or not counted in the pack")
+	var it0: Dictionary = cat[0]
+	for k in ["id", "name", "form", "material", "rarity", "value", "art", "tint"]:
+		assert(it0.has(k), "compiler: catalogue item missing '%s'" % k)
+	assert(str(it0["art"]).begins_with("art/parts/"),
+		"compiler: catalogue item art doesn't point at a base part")
+	var rng := RandomNumberGenerator.new(); rng.seed = 7
+	var loot := Compiler.roll_item("cw-testrealm-abcd", rng)
+	assert(not loot.is_empty() and str(loot.get("rarity", "")) != "",
+		"compiler: roll_item returned nothing rollable")
+	print("  compiler: seed→identity→catalogue compiles, %d items, loot rolls, anchor feeds art" % cat.size())
 
 
 ## Wait for any in-flight GM turn to finish (a roll narrates a follow-up turn).

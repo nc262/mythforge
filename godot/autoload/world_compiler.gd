@@ -101,9 +101,20 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	pack["assets"] = assets
 	stage_done.emit("assets", not assets.is_empty())
 
+	# TIER C (data half): the item CATALOGUE. Pure CPU — it explodes the asset
+	# language into the world's item space, so loot never has to be invented at
+	# runtime. Runs even headless (no GPU), so the harness exercises it and the
+	# world is browsable the moment it is seeded.
+	stage_started.emit("catalogue", "Filling the world's coffers…")
+	var catalogue := _build_catalogue(assets)
+	_write(wid, "data/items.json", catalogue)
+	pack["catalogue_count"] = catalogue.size()
+	stage_done.emit("catalogue", not catalogue.is_empty())
+
 	pack["compile_state"] = SEEDED
 	_write(wid, "world.json", pack)
-	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty()}
+	_journal[wid] = {"style": not style.is_empty(), "assets": not assets.is_empty(),
+		"catalogue": not catalogue.is_empty()}
 	compiled.emit(wid, SEEDED)
 
 	# TIER B: the world's IDENTITY — key art then biome plates. GPU work, so it
@@ -115,6 +126,15 @@ func compile_seed(world: Dictionary) -> Dictionary:
 		pack["compile_state"] = PRESENTABLE
 		_write(wid, "world.json", pack)
 		compiled.emit(wid, PRESENTABLE)
+
+		# The base ARMORY: one matted, neutral-material image per form. Every
+		# catalogue item reuses its form's base art, tinted by material at draw
+		# time (T1 palette recolour — proven). ~10 images, so it trails key art.
+		await _stage_parts(wid, style, assets)
+		pack = read_pack(wid)
+		pack["compile_state"] = FURNISHED
+		_write(wid, "world.json", pack)
+		compiled.emit(wid, FURNISHED)
 	busy = false
 	return pack
 
@@ -150,9 +170,26 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 	stage_done.emit("biomes", true)
 
 
+## S8 (art half) — the base ARMORY. One image per weapon/armor form, matted and
+## painted in a NEUTRAL grey material so material tint multiplies cleanly at draw
+## time (the whole catalogue reuses these ~10 images; T2 per-item generation was
+## falsified — too slow, too inconsistent). `item` profile = Turbo 1024 + matte.
+func _stage_parts(world_id: String, style: Dictionary, assets: Dictionary) -> void:
+	stage_started.emit("parts", "Forging the armory…")
+	var anchor := str(style.get("prompt_anchor", ""))
+	for f in _forms(assets):
+		var key := "part-%s-%s" % [world_id.validate_filename(), str(f["id"])]
+		await _await_art(key,
+			"%s, %s. game item icon, single object centered, plain neutral grey material, soft studio lighting, plain background, no text" % [
+				str(f["prompt"]), anchor],
+			{"profile": "item", "lane": Art.Lane.IDLE},
+			"art/parts/%s.png" % str(f["id"]))
+	stage_done.emit("parts", true)
+
+
 ## Request one image and wait for it to actually land (compile is sequential —
 ## one GPU). Copies it into the world package so it is CONTENT, not cache.
-func _await_art(key: String, prompt: String, opts: Dictionary) -> void:
+func _await_art(key: String, prompt: String, opts: Dictionary, dest_rel := "") -> void:
 	var done := [false]
 	var o := opts.duplicate()
 	o["on_ready"] = func(_k): done[0] = true
@@ -170,7 +207,7 @@ func _await_art(key: String, prompt: String, opts: Dictionary) -> void:
 	if Art.art_progress.is_connected(fail):
 		Art.art_progress.disconnect(fail)
 	if Art.has_art(key):
-		_adopt(world_dir_key(key), key)
+		_adopt(dest_rel if dest_rel != "" else world_dir_key(key), key)
 
 
 ## Copy a painted asset into the world's package directory (content that never
@@ -352,6 +389,78 @@ func _fallback_assets(style: Dictionary) -> Dictionary:
 	}
 
 
+# ── The catalogue (Tier C, S8 data) ────────────────────────────────────────
+## Rarity ladder: colour (glow/label), value multiplier, and how many name
+## affixes it earns. Order matters — index is the roll weight tier.
+const RARITIES := [
+	{"id": "common", "name": "Common", "glow": "#9aa4b2", "mult": 1.0, "affix": 0, "weight": 60},
+	{"id": "uncommon", "name": "Uncommon", "glow": "#5fd07a", "mult": 1.8, "affix": 1, "weight": 26},
+	{"id": "rare", "name": "Rare", "glow": "#5aa0ff", "mult": 3.4, "affix": 1, "weight": 10},
+	{"id": "epic", "name": "Epic", "glow": "#b060ff", "mult": 6.5, "affix": 2, "weight": 3},
+	{"id": "legendary", "name": "Legendary", "glow": "#ffb020", "mult": 13.0, "affix": 2, "weight": 1},
+]
+
+
+## All forms as one list, each tagged weapon/armor, in a stable order (so ids
+## stay put across a Reforge). Reads the asset language; empty → nothing.
+func _forms(assets: Dictionary) -> Array:
+	var out: Array = []
+	for kind in ["weapon", "armor"]:
+		var arr = assets.get(kind + "_forms")
+		if arr is Array:
+			for f in arr:
+				if f is Dictionary and f.has("id"):
+					out.append({"id": str(f["id"]), "name": str(f.get("name", f["id"])),
+						"prompt": str(f.get("prompt", f.get("name", ""))), "kind": kind})
+	return out
+
+
+## Explode forms × materials × rarity into concrete item records. Logical ids
+## are STABLE (form.material.rarity) — Reforge swaps the pixels behind an id, it
+## never renumbers the catalogue. Treatments are applied at roll time, not baked,
+## so this stays a browsable spine (hundreds) that rolls into thousands.
+func _build_catalogue(assets: Dictionary) -> Array:
+	var forms := _forms(assets)
+	var mats: Array = assets.get("materials", []) if assets.get("materials") is Array else []
+	var naming = assets.get("naming", {}) if assets.get("naming") is Dictionary else {}
+	var prefixes: Array = naming.get("prefix", []) if naming.get("prefix") is Array else []
+	var suffixes: Array = naming.get("suffix", []) if naming.get("suffix") is Array else []
+	var out: Array = []
+	for f in forms:
+		for m in mats:
+			if not (m is Dictionary and m.has("id")):
+				continue
+			var tier := int(m.get("tier", 1))
+			for ri in RARITIES.size():
+				var r: Dictionary = RARITIES[ri]
+				out.append({
+					"id": "%s.%s.%s" % [str(f["id"]), str(m["id"]), str(r["id"])],
+					"name": _item_name(f, m, r, prefixes, suffixes, out.size()),
+					"kind": str(f["kind"]), "form": str(f["id"]), "material": str(m["id"]),
+					"rarity": str(r["id"]), "tier": tier,
+					"value": int(round(_base_value(str(f["kind"]), tier) * float(r["mult"]))),
+					"art": "art/parts/%s.png" % str(f["id"]),   # shared base, tinted at draw
+					"tint": str(m.get("light", "#cccccc")),
+					"glow": str(r["glow"]),
+				})
+	return out
+
+
+## "Iron Sword" → "Keen Iron Sword of the Ash Coast" as rarity climbs. Affixes
+## are picked deterministically by index so a given id always names the same.
+func _item_name(f: Dictionary, m: Dictionary, r: Dictionary, prefixes: Array, suffixes: Array, idx: int) -> String:
+	var parts: Array = ["%s %s" % [str(m.get("name", "")), str(f.get("name", ""))]]
+	if int(r.get("affix", 0)) >= 1 and not prefixes.is_empty():
+		parts.push_front(str(prefixes[idx % prefixes.size()]))
+	if int(r.get("affix", 0)) >= 2 and not suffixes.is_empty():
+		parts.append(str(suffixes[idx % suffixes.size()]))
+	return " ".join(parts).strip_edges()
+
+
+func _base_value(kind: String, tier: int) -> int:
+	return (12 if kind == "weapon" else 9) * maxi(1, tier)
+
+
 # ── What the rest of the game asks ─────────────────────────────────────────
 ## The style guide for a world, or {} when it has never been compiled.
 func style_for(world_id: String) -> Dictionary:
@@ -368,3 +477,77 @@ func prompt_anchor(world_id: String) -> String:
 func assets_for(world_id: String) -> Dictionary:
 	var a = read_pack(world_id).get("assets")
 	return a if a is Dictionary else {}
+
+
+## The compiled item catalogue (form×material×rarity records), or [] if the
+## world was never seeded. This is the spine loot is rolled from.
+func catalogue_for(world_id: String) -> Array:
+	var p := "%s/data/items.json" % world_dir(world_id)
+	if not FileAccess.file_exists(p):
+		return []
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(p))
+	return parsed if parsed is Array else []
+
+
+## Roll one item from the world's catalogue, rarity-weighted. `luck` (0..1)
+## nudges the roll toward the rare end. Applies a random treatment for flavour.
+## Returns {} if the world has no catalogue. rng lets callers stay deterministic.
+func roll_item(world_id: String, rng: RandomNumberGenerator = null, luck := 0.0) -> Dictionary:
+	var cat := catalogue_for(world_id)
+	if cat.is_empty():
+		return {}
+	if rng == null:
+		rng = RandomNumberGenerator.new()
+		rng.randomize()
+	# Weighted rarity pick (luck scales the rare tiers up).
+	var want := _roll_rarity(rng, luck)
+	var pool := cat.filter(func(it): return str(it.get("rarity", "")) == want)
+	if pool.is_empty():
+		pool = cat
+	var item: Dictionary = (pool[rng.randi_range(0, pool.size() - 1)] as Dictionary).duplicate(true)
+	_apply_treatment(item, world_id, rng)
+	return item
+
+
+func _roll_rarity(rng: RandomNumberGenerator, luck: float) -> String:
+	var total := 0.0
+	var weights: Array = []
+	for r in RARITIES:
+		# luck lifts higher tiers: multiply weight by (1 + luck*affix*2).
+		var w := float(r["weight"]) * (1.0 + clampf(luck, 0.0, 1.0) * float(r["affix"]) * 2.0)
+		weights.append(w)
+		total += w
+	var pick := rng.randf() * total
+	for i in RARITIES.size():
+		pick -= weights[i]
+		if pick <= 0.0:
+			return str(RARITIES[i]["id"])
+	return str(RARITIES[0]["id"])
+
+
+## Stamp a treatment (wear/blessing) from the asset language onto a rolled item,
+## adjusting its display name. Treatments are rolled, never baked, so the same
+## catalogue record can drop clean, worn, or blessed.
+func _apply_treatment(item: Dictionary, world_id: String, rng: RandomNumberGenerator) -> void:
+	var treats = assets_for(world_id).get("treatments")
+	if not (treats is Array) or treats.is_empty():
+		return
+	var t = treats[rng.randi_range(0, treats.size() - 1)]
+	if t is Dictionary and str(t.get("id", "")) != "clean":
+		item["treatment"] = str(t.get("id", ""))
+		item["name"] = "%s %s" % [str(t.get("name", "")), str(item.get("name", ""))]
+
+
+## Absolute path to a form's base art in this world's package (may not exist yet
+## if the GPU parts stage hasn't run). UI tints it by the item's `tint`.
+func part_art_path(world_id: String, form_id: String) -> String:
+	return "%s/art/parts/%s.png" % [world_dir(world_id), form_id]
+
+
+## The material/rarity colours for an item record, as Godot Colors.
+func item_tint(item: Dictionary) -> Color:
+	return Color.from_string(str(item.get("tint", "#cccccc")), Color.WHITE)
+
+
+func item_glow(item: Dictionary) -> Color:
+	return Color.from_string(str(item.get("glow", "#9aa4b2")), Color.GRAY)
