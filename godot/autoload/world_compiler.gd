@@ -205,20 +205,26 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 	stage_done.emit("biomes", true)
 
 
-## S8 (art half) — the base ARMORY. One image per weapon/armor form, matted and
-## painted in a NEUTRAL grey material so material tint multiplies cleanly at draw
-## time (the whole catalogue reuses these ~10 images; T2 per-item generation was
-## falsified — too slow, too inconsistent). `item` profile = Turbo 1024 + matte.
-func _stage_parts(world_id: String, style: Dictionary, assets: Dictionary) -> void:
+## S8 (art half) — the ARMORY. One matted icon per (form × material), painted in
+## the material's ACTUAL look (a driftwood cutlass is driftwood, a brine-iron one
+## is pitted iron) — quality over the neutral-grey-tint shortcut, which produced
+## muddy recolours. ~60 icons per world; rarity is a draw-time glow, not new art.
+## The item prompt carries NO scene anchor — appending the world's scene line
+## ("…lantern light") turned a sword into a lantern. `item` profile = Turbo 1024
+## + matte; "plain flat background, no scene" keeps the cut-out clean.
+func _stage_parts(world_id: String, _style: Dictionary, assets: Dictionary) -> void:
 	stage_started.emit("parts", "Forging the armory…")
-	var anchor := str(style.get("prompt_anchor", ""))
+	var mats: Array = assets.get("materials", []) if assets.get("materials") is Array else []
 	for f in _forms(assets):
-		var key := "part-%s-%s" % [world_id.validate_filename(), str(f["id"])]
-		await _await_art(key,
-			"%s, %s. game item icon, single object centered, plain neutral grey material, soft studio lighting, plain background, no text" % [
-				str(f["prompt"]), anchor],
-			{"profile": "item", "lane": Art.Lane.IDLE},
-			"art/parts/%s.png" % str(f["id"]))
+		for m in mats:
+			if not (m is Dictionary and m.has("id")):
+				continue
+			var key := "part-%s-%s-%s" % [world_id.validate_filename(), str(f["id"]), str(m["id"])]
+			await _await_art(key,
+				("a %s %s. %s. fantasy RPG %s item icon, single subject centered, plain flat background, no scene, dramatic studio lighting, highly detailed painterly render, no text, no hands, no people" % [
+					str(m.get("name", "")), str(f["name"]), str(f["prompt"]), str(f["kind"])]).strip_edges(),
+				{"profile": "item", "lane": Art.Lane.IDLE},
+				"art/parts/%s.%s.png" % [str(f["id"]), str(m["id"])])
 	stage_done.emit("parts", true)
 
 
@@ -631,8 +637,8 @@ func _build_catalogue(assets: Dictionary) -> Array:
 					"kind": str(f["kind"]), "form": str(f["id"]), "material": str(m["id"]),
 					"rarity": str(r["id"]), "tier": tier,
 					"value": int(round(_base_value(str(f["kind"]), tier) * float(r["mult"]))),
-					"art": "art/parts/%s.png" % str(f["id"]),   # shared base, tinted at draw
-					"tint": str(m.get("light", "#cccccc")),
+					"art": "art/parts/%s.%s.png" % [str(f["id"]), str(m["id"])],   # material-true icon
+					"tint": str(m.get("light", "#cccccc")),   # UI accent only; the icon is already material-true
 					"glow": str(r["glow"]),
 				})
 	return out
@@ -784,10 +790,11 @@ func _apply_treatment(item: Dictionary, world_id: String, rng: RandomNumberGener
 		item["name"] = "%s %s" % [str(t.get("name", "")), str(item.get("name", ""))]
 
 
-## Absolute path to a form's base art in this world's package (may not exist yet
-## if the GPU parts stage hasn't run). UI tints it by the item's `tint`.
-func part_art_path(world_id: String, form_id: String) -> String:
-	return "%s/art/parts/%s.png" % [world_dir(world_id), form_id]
+## Absolute path to a (form × material) icon in this world's package (may not
+## exist yet if the GPU parts stage hasn't run). Prefer an item record's `art`
+## field; this is the constructor for callers that only hold form+material ids.
+func part_art_path(world_id: String, form_id: String, material_id: String) -> String:
+	return "%s/art/parts/%s.%s.png" % [world_dir(world_id), form_id, material_id]
 
 
 ## The material/rarity colours for an item record, as Godot Colors.
