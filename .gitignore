@@ -17,6 +17,8 @@ venv/
 
 # Data — all user data stays local
 data/
+# …except the game's static data — shipped content, not user data.
+!godot/data/
 !services/hwfit/data/
 !services/hwfit/data/hf_models.json
 logs/

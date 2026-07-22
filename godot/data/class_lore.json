@@ -1,0 +1,50 @@
+{
+ "Fighter": {
+  "icon": "🗡",
+  "blurb": "Masters of weapons and the space around them. Fighters win by hitting first, hitting again, and refusing to fall."
+ },
+ "Barbarian": {
+  "icon": "🪓",
+  "blurb": "Fury as armor. Barbarians wade through blows that would drop anyone else and answer them in kind."
+ },
+ "Rogue": {
+  "icon": "🗡️",
+  "blurb": "One perfect strike beats ten fair ones. Rogues win fights that never officially happen."
+ },
+ "Ranger": {
+  "icon": "🏹",
+  "blurb": "Hunters of the wild places. Rangers know the land, the quarry, and exactly where the arrow goes."
+ },
+ "Monk": {
+  "icon": "👊",
+  "blurb": "The body as the weapon, discipline as the edge. Monks are faster than the fight around them."
+ },
+ "Paladin": {
+  "icon": "⚜️",
+  "blurb": "An oath with a sword arm. Paladins heal with a touch and smite with borrowed thunder."
+ },
+ "Wizard": {
+  "icon": "📜",
+  "blurb": "Magic as scholarship. Wizards trade hit points for the biggest spellbook in the game."
+ },
+ "Sorcerer": {
+  "icon": "🔥",
+  "blurb": "Magic as bloodline. Sorcerers don't study power; they negotiate with it."
+ },
+ "Cleric": {
+  "icon": "✨",
+  "blurb": "A conduit for something greater. Clerics keep the party standing and the darkness turned."
+ },
+ "Druid": {
+  "icon": "🌿",
+  "blurb": "The wild's ambassador. Druids command root and storm — and sometimes become the beast."
+ },
+ "Bard": {
+  "icon": "🎻",
+  "blurb": "Magic as performance. Bards talk their way in, inspire their way through, and mock their way out."
+ },
+ "Warlock": {
+  "icon": "👁",
+  "blurb": "Power now, terms and conditions later. Warlocks blast eternally and rest cheap."
+ }
+}

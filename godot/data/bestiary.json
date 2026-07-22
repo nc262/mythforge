@@ -1,0 +1,1152 @@
+{
+ "entries": [
+  {
+   "slug": "goblin",
+   "name": "Goblin",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Small, wiry, and mean. Goblins fight in gangs, throw whatever is at hand, and flee the moment a fight turns fair.",
+   "weakness": "Cowardly — drop one and the rest must be rallied or they scatter. Easily baited into traps.",
+   "tactics": "Swarm, stab, run. Never fight goblins where they picked the ground.",
+   "art": "a snarling goblin with a rusty knife, fantasy creature concept art, dark background"
+  },
+  {
+   "slug": "kobold",
+   "name": "Kobold",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Dog-faced tunnel dwellers who worship dragons and build vicious little traps.",
+   "weakness": "Sunlight dazzles them — advantage on your side in daylight. Brittle morale.",
+   "tactics": "They soften you with traps before showing themselves. Watch the floor.",
+   "art": "a small dog-faced kobold with a spear in a tunnel, fantasy creature concept art"
+  },
+  {
+   "slug": "skeleton",
+   "name": "Skeleton",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Bones given hateful motion. They feel no pain, no fear, and no fatigue.",
+   "weakness": "Bludgeoning weapons shatter them — a club beats a rapier here. Holy power turns them.",
+   "tactics": "They obey their maker literally. Break the maker's hold and they collapse.",
+   "art": "an animated skeleton warrior with a notched sword, fantasy undead concept art",
+   "vuln": [
+    "bludgeoning"
+   ],
+   "resist": [
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "giant-rat",
+   "name": "Giant Rat",
+   "tier": "minor",
+   "worlds": [
+    "_"
+   ],
+   "desc": "A rat the size of a dog, bold with hunger. Where there is one there are twelve.",
+   "weakness": "Fire and loud noise panic them. Their bites fester — clean wounds after.",
+   "tactics": "They go for the ankles and retreat into walls. Deny them the shadows.",
+   "art": "a giant rat with matted fur baring teeth in a sewer, creature concept art"
+  },
+  {
+   "slug": "giant-spider",
+   "name": "Giant Spider",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A patient horror of the dark canopy. You will walk into the web before you see it.",
+   "weakness": "Fire burns webs and terrifies it. Poison must bite skin — armor helps.",
+   "tactics": "It strikes from above and retreats. Cut the anchor lines and it falls.",
+   "art": "a giant black spider descending from a web in a dark forest, fantasy creature art"
+  },
+  {
+   "slug": "slime",
+   "name": "Slime",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A creeping ooze that digests everything it touches, slowly and without malice.",
+   "weakness": "Fire and cold. Never strike it with a metal weapon you want to keep — the acid eats edges.",
+   "tactics": "It cannot chase you. It wins only if you are careless or cornered.",
+   "art": "a green acidic slime dissolving a sword on a dungeon floor, fantasy creature art",
+   "resist": [
+    "slashing",
+    "piercing"
+   ],
+   "vuln": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "street-thug",
+   "name": "Street Thug",
+   "tier": "minor",
+   "worlds": [
+    "neonspire",
+    "everyday",
+    "_"
+   ],
+   "desc": "Muscle for hire, loyal to whoever paid last. Dangerous mostly in numbers and dark alleys.",
+   "weakness": "No stomach for a real fight — real resistance or a named gang boss's displeasure sends them off.",
+   "tactics": "They surround and intimidate first. Break the circle early.",
+   "art": "a street thug in a hooded jacket with a bat, gritty urban concept art"
+  },
+  {
+   "slug": "scav-drone",
+   "name": "Scav Drone",
+   "tier": "minor",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "A junk-built quadcopter with a taser sting, patrolling territory nobody legally owns.",
+   "weakness": "EMP, water, thrown nets — anything that fouls rotors. Predictable patrol loops.",
+   "tactics": "It calls its owner before it attacks. Kill the signal, then the drone.",
+   "art": "a battered surveillance drone with a taser, cyberpunk concept art, neon"
+  },
+  {
+   "slug": "orc",
+   "name": "Orc",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Broad-shouldered raiders who believe a good death beats a long life.",
+   "weakness": "Pride — an orc accepts single combat and honors it. Slow to change plans mid-fight.",
+   "tactics": "The first charge is the worst. Survive it and they get sloppy.",
+   "art": "a fierce orc warrior with a jagged axe, fantasy concept art, war paint"
+  },
+  {
+   "slug": "bandit",
+   "name": "Bandit",
+   "tier": "standard",
+   "worlds": [
+    "_"
+   ],
+   "desc": "Road-wolves in human shape. They want your purse, not your life — usually.",
+   "weakness": "Greed — coin or a bigger score can end the fight without blood. They fear named lawmen.",
+   "tactics": "Archers stay hidden until the talking fails. Count the shadows first.",
+   "art": "a masked bandit with a crossbow on a forest road, fantasy concept art"
+  },
+  {
+   "slug": "cultist",
+   "name": "Cultist",
+   "tier": "standard",
+   "worlds": [
+    "_"
+   ],
+   "desc": "Ordinary faces hiding extraordinary devotion. The robes come out after dark.",
+   "weakness": "Fanatics crumble when their icon or leader falls. Disrupting the ritual disrupts them.",
+   "tactics": "They fight to buy time for something worse. Ask what the delay is for.",
+   "art": "a hooded cultist with a ritual dagger and glowing sigils, dark fantasy art"
+  },
+  {
+   "slug": "zombie",
+   "name": "Zombie",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "The walking dead — slow, relentless, and utterly without self-preservation.",
+   "weakness": "Fire and radiant power. Slow — you can simply outpace them. Destroy the head.",
+   "tactics": "They never stop. Fights you can't win fast are fights to walk away from.",
+   "art": "a shambling zombie in torn clothes reaching forward, horror fantasy art",
+   "resist": [
+    "piercing"
+   ]
+  },
+  {
+   "slug": "ghoul",
+   "name": "Ghoul",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Grave-lean and quick, with a paralytic touch and an appetite for the living.",
+   "weakness": "Radiant power sears them; elves shrug off their paralysis. Frenzy makes them reckless.",
+   "tactics": "One touch can lock you rigid while it feeds. Never let it corner you alone.",
+   "art": "a gaunt ghoul with long claws crouched over a grave, horror fantasy concept art"
+  },
+  {
+   "slug": "wolf",
+   "name": "Wolf",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "everyday",
+    "_"
+   ],
+   "desc": "The valley's grey hunters. Not evil — just hungry, clever, and many.",
+   "weakness": "Fire and a standing fight they didn't choose. Wound the pack leader and the rest reconsider.",
+   "tactics": "They circle to flank; back against a tree or wall and their advantage dies.",
+   "art": "a grey wolf snarling in moonlit snow, wildlife fantasy concept art"
+  },
+  {
+   "slug": "hobgoblin",
+   "name": "Hobgoblin",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Goblin-kin with discipline — soldiers where goblins are looters.",
+   "weakness": "They fight by doctrine; break formation with chaos, terrain, or fire and they must regroup.",
+   "tactics": "Shield walls and volleys. Take the officer and the line wavers.",
+   "art": "a disciplined hobgoblin soldier in lamellar armor with a longsword, fantasy art"
+  },
+  {
+   "slug": "gang-enforcer",
+   "name": "Gang Enforcer",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Chromed muscle with a reputation to maintain and a boss to impress.",
+   "weakness": "Their implants need power and calibration — EMP and dirty fighting. Face means everything; humiliation cuts deeper than blades.",
+   "tactics": "They telegraph big hits to look good. The show is the opening.",
+   "art": "a cybernetic gang enforcer with a chrome arm, neon-lit alley, cyberpunk art"
+  },
+  {
+   "slug": "combat-drone",
+   "name": "Combat Drone",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Corporate security on rotors: sensors, a gun, and no one to talk down.",
+   "weakness": "EMP, hacking, sensor-blinding smoke. It obeys its no-fire zones even when you don't.",
+   "tactics": "It holds range. Close fast, break line of sight, or blind it.",
+   "art": "a sleek armed corporate security drone, red sensor eye, cyberpunk concept art"
+  },
+  {
+   "slug": "ogre",
+   "name": "Ogre",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Nine feet of appetite and bad temper swinging a tree for a club.",
+   "weakness": "Dim and single-minded — feints, taunts, and terrain beat muscle. Slow to turn.",
+   "tactics": "Never trade blows. Make it lunge, then punish the miss.",
+   "art": "a massive ogre with a tree-trunk club in a stone pass, fantasy concept art"
+  },
+  {
+   "slug": "troll",
+   "name": "Troll",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A lank green horror that heals as fast as you can cut it.",
+   "weakness": "FIRE or ACID — nothing else stops the regeneration. Wounds sealed by flame stay sealed.",
+   "tactics": "Without fire you cannot win, only delay. Carry a torch or carry regrets.",
+   "art": "a lanky regenerating troll with claws in a swamp, dark fantasy concept art",
+   "vuln": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "owlbear",
+   "name": "Owlbear",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A bear's bulk with an owl's temper — territorial beyond all reason.",
+   "weakness": "It defends territory, not honor: leave its ground and it rarely follows far.",
+   "tactics": "The hug kills more hunters than the beak. Never let it close its arms.",
+   "art": "an owlbear rearing in a moonlit forest clearing, fantasy creature concept art"
+  },
+  {
+   "slug": "golem",
+   "name": "Stone Golem",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A statue that decided to disagree with you. Immune to fear, poison, and persuasion.",
+   "weakness": "Blunt force cracks stone; blades skate off. It obeys its instructions to the letter — find the letter.",
+   "tactics": "It is slow and literal. Fighting it is optional; outsmarting it usually isn't.",
+   "art": "a massive stone golem with glowing runes awakening in a ruin, fantasy art"
+  },
+  {
+   "slug": "wyvern",
+   "name": "Wyvern",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A dragon's meaner cousin: two legs, two wings, and a scorpion sting full of venom.",
+   "weakness": "The wing membranes tear — ranged fire grounds it, and grounded it loses half its menace.",
+   "tactics": "It stings on the dive and climbs away. Deny it the sky or deny it you.",
+   "art": "a wyvern diving with tail stinger extended, stormy sky, fantasy concept art"
+  },
+  {
+   "slug": "young-dragon",
+   "name": "Young Dragon",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Even young, it is fire, armor, wings, and a mind older than your grandfather's grudges.",
+   "weakness": "Vanity and greed — dragons parley when flattered and bargain over treasure. The breath must recharge; count the beats.",
+   "tactics": "After the breath comes the window. Everything before that is survival.",
+   "art": "a young red dragon breathing fire in a mountain lair over gold, epic fantasy art",
+   "resist": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "demon",
+   "name": "Demon",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Malice given form and loosed on the world through someone's very bad idea.",
+   "weakness": "Radiant power, holy water, and its TRUE NAME — named, it can be commanded or banished.",
+   "tactics": "It lies as easily as it breathes. Every bargain has a hook inside.",
+   "art": "a horned demon wreathed in hellfire and shadow, dark fantasy concept art"
+  },
+  {
+   "slug": "minotaur",
+   "name": "Minotaur",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Bull-headed fury that never forgets a scent or forgives a trespass.",
+   "weakness": "It charges in straight lines — sidestep at the last breath and let walls do your work.",
+   "tactics": "In its maze it is death. Draw it into open ground and the maze stops helping.",
+   "art": "a minotaur with a great axe in a torchlit labyrinth, fantasy concept art"
+  },
+  {
+   "slug": "security-mech",
+   "name": "Security Mech",
+   "tier": "dire",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Two tons of corporate liability protection with a public-address system and autocannons.",
+   "weakness": "Joints and sensors — the armor is for shareholders. Its rules of engagement can be lawyered: no valid threat, no fire.",
+   "tactics": "It announces before it engages. That announcement is your head start.",
+   "art": "a hulking corporate security mech in a neon plaza, warning lights, cyberpunk art"
+  },
+  {
+   "slug": "stirge",
+   "name": "Stirge",
+   "tier": "minor",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A bat-winged bloodsucker the size of a crow. It attaches, drinks, and detaches heavier.",
+   "weakness": "Once latched it stops defending itself — a flat blade or a hard slap ends it.",
+   "tactics": "They dive from cave ceilings in flights of six. Listen for the whine.",
+   "art": "a bat-winged mosquito creature with a needle proboscis in a cave, fantasy art"
+  },
+  {
+   "slug": "twig-blight",
+   "name": "Twig Blight",
+   "tier": "minor",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A dead shrub with a grudge, animated by corrupted root-magic. They stand still until you pass.",
+   "weakness": "Tinder-dry — a single flame spreads through a whole thicket of them.",
+   "tactics": "They ambush in numbers near the thing that made them. Find the root.",
+   "art": "a small twisted humanoid made of dead branches with ember eyes, dark fantasy art"
+  },
+  {
+   "slug": "shadow",
+   "name": "Shadow",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A patch of darkness that remembers being a person. Its touch drains the strength from your arms.",
+   "weakness": "Bright light makes it sluggish; radiant power burns it away entirely.",
+   "tactics": "It hides inside YOUR shadow and strikes when the torch gutters. Keep two light sources.",
+   "art": "a humanoid shadow with reaching fingers sliding along a torchlit wall, dark fantasy art",
+   "resist": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "giant-bat",
+   "name": "Giant Bat",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A leather-winged cave dweller with a wingspan like a door. Mostly hungry, rarely brave.",
+   "weakness": "Loud sharp noise scrambles its echo-sense — a struck shield buys you a free swing.",
+   "tactics": "It swoops in the dark where you swing blind. Force it to land and it waddles.",
+   "art": "a giant bat swooping through a torchlit cavern, fantasy creature art"
+  },
+  {
+   "slug": "giant-centipede",
+   "name": "Giant Centipede",
+   "tier": "minor",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "An arm-long skitterer whose bite numbs flesh. It likes bedrolls and boots.",
+   "weakness": "Slow to turn — step past the head and the body is just a target.",
+   "tactics": "It strikes once and waits for the venom. Do not sit down to rest.",
+   "art": "a giant venomous centipede on dungeon stones, fantasy creature art"
+  },
+  {
+   "slug": "sprite-swarm",
+   "name": "Biting Sprite Swarm",
+   "tier": "minor",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A cloud of thumb-sized fey with needle teeth and a mob's courage.",
+   "weakness": "Smoke disperses them; an offering of anything shiny can buy passage outright.",
+   "tactics": "A thousand small cuts and stolen buckles. Protect your eyes and your coin.",
+   "art": "a swarm of tiny glowing fey with sharp teeth in a moonlit glade, fantasy art"
+  },
+  {
+   "slug": "zombie-dog",
+   "name": "Zombie Hound",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Someone's loyal dog, still guarding a master long dead. It does not tire and does not flinch.",
+   "weakness": "No mind to trick but no judgment either — it chases whatever moved last.",
+   "tactics": "It bites and holds. A held zombie hound is a free hit for your ally.",
+   "art": "an undead hound with matted fur and exposed ribs in a graveyard, dark fantasy art",
+   "resist": [
+    "piercing"
+   ]
+  },
+  {
+   "slug": "gutter-drake",
+   "name": "Gutter Drake",
+   "tier": "minor",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A cat-sized dragonkin that nests in chimneys and hoards cutlery. Vain, greedy, breath the size of a candle.",
+   "weakness": "Flattery and shiny tribute turn it from pest to informant — drakes see everything.",
+   "tactics": "It goes for the eyes, then the pouch. Hold your cloak up like a wall.",
+   "art": "a small scruffy dragon the size of a cat perched on a rooftop hoarding spoons, fantasy art",
+   "resist": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "razor-gull",
+   "name": "Razor Gull Flock",
+   "tier": "minor",
+   "worlds": [
+    "_"
+   ],
+   "desc": "Seabirds gone wrong — beaks like shears, appetite like debt. Docks fear them more than storms.",
+   "weakness": "They will always take thrown food over a fight.",
+   "tactics": "They strike in relays so you are always flinching. Get under cover and count to twenty.",
+   "art": "a flock of vicious gulls with blade-like beaks over a harbor, fantasy art"
+  },
+  {
+   "slug": "taser-drone",
+   "name": "Riot Drone",
+   "tier": "minor",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Municipal crowd-control that never got decommissioned. It still enforces a curfew nobody remembers.",
+   "weakness": "Its threat-response tree is public record — walk slowly, hands visible, and it idles.",
+   "tactics": "Strobe, siren, taser, in that order. Break line of sight between strobe and siren.",
+   "art": "a hovering riot-control drone with a crackling taser, cyberpunk concept art"
+  },
+  {
+   "slug": "chrome-rat",
+   "name": "Chrome Rat",
+   "tier": "minor",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Vermin that gnaw cabling for the copper taste. Their teeth are grown from scavenged alloy.",
+   "weakness": "Magnet traps. Their own teeth betray them.",
+   "tactics": "They chew your gear before they chew you. Hang your pack off the floor.",
+   "art": "a rat with metallic teeth chewing neon cable in a dark alley, cyberpunk art"
+  },
+  {
+   "slug": "script-kiddie",
+   "name": "Script Kiddie",
+   "tier": "minor",
+   "worlds": [
+    "neonspire",
+    "everyday"
+   ],
+   "desc": "A bored teenager with borrowed exploits and no sense of consequence. Dangerous to your accounts, not your body.",
+   "weakness": "Vanity — they sign their work. Praise the wrong hack loudly and they will claim it in public.",
+   "tactics": "They attack your accounts, locks, and reputation from a couch. Unplug what matters.",
+   "art": "a hooded teen bathed in monitor glow surrounded by energy drink cans, cyberpunk art"
+  },
+  {
+   "slug": "guard-dog",
+   "name": "Guard Dog",
+   "tier": "minor",
+   "worlds": [
+    "everyday",
+    "_"
+   ],
+   "desc": "Seventy pounds of professional suspicion behind a chain-link fence.",
+   "weakness": "It is doing a job, not holding a grudge — most stand down when you leave the yard.",
+   "tactics": "It announces you to everyone, then keeps you cornered until backup comes.",
+   "art": "a barking guard dog straining against a chain in a floodlit yard, realistic art"
+  },
+  {
+   "slug": "pickpocket",
+   "name": "Pickpocket",
+   "tier": "minor",
+   "worlds": [
+    "everyday",
+    "neonspire",
+    "_"
+   ],
+   "desc": "Quick fingers and a forgettable face. You will remember the bump, later, at the worst time.",
+   "weakness": "They cannot afford attention — a loud, clear accusation ends the game instantly.",
+   "tactics": "One distracts, one lifts, one walks it away. The thief is never holding the goods.",
+   "art": "a nimble pickpocket slipping a wallet from a coat in a crowded market, concept art"
+  },
+  {
+   "slug": "swarm-bees",
+   "name": "Furious Swarm",
+   "tier": "minor",
+   "worlds": [
+    "everyday",
+    "embervale",
+    "_"
+   ],
+   "desc": "Ten thousand stings with one opinion about you being here.",
+   "weakness": "Smoke calms them; water breaks pursuit. They defend a home — leave and they relent.",
+   "tactics": "They target the face and hands. Cover up and walk, do not swat and run.",
+   "art": "a dense swarm of angry bees pouring from a hollow tree, realistic art"
+  },
+  {
+   "slug": "bugbear",
+   "name": "Bugbear",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A hulking goblinoid that moves like a whisper. The first you learn of one is the club.",
+   "weakness": "Lazy at heart — a long chase or a hard fight and it decides you are not worth the wage.",
+   "tactics": "Ambush, one massive blow, then judge. Never walk point under trees.",
+   "art": "a hulking bugbear with a spiked club lurking in shadow, fantasy creature art"
+  },
+  {
+   "slug": "gnoll",
+   "name": "Gnoll",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "Hyena-headed raiders that laugh while they work. Hunger is their whole theology.",
+   "weakness": "No discipline to rally — turn their charge once and it becomes a rout.",
+   "tactics": "They run prey to exhaustion. Do not flee in a straight line; make them turn.",
+   "art": "a cackling hyena-headed gnoll with a spear on a burnt plain, fantasy art"
+  },
+  {
+   "slug": "wight",
+   "name": "Wight",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A dead warrior who kept the ambition. Its sword arm remembers; its touch steals life itself.",
+   "weakness": "Sunlight sears it; silvered and magic weapons bite where steel skates.",
+   "tactics": "It raises what it kills. Drop it first or fight your own dead friends.",
+   "art": "an armored undead warrior with cold blue eyes and a longsword, dark fantasy art"
+  },
+  {
+   "slug": "specter",
+   "name": "Specter",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Rage without a body. It pours through walls and reaches through armor.",
+   "weakness": "Only magic touches it; daylight makes it timid. It cannot leave the place it haunts.",
+   "tactics": "It attacks through floors and ceilings. The room's history says where it will not go.",
+   "art": "a translucent screaming spirit passing through a stone wall, dark fantasy art",
+   "resist": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "harpy",
+   "name": "Harpy",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A carrion singer with a voice that pulls sailors off decks and climbers off cliffs.",
+   "weakness": "Block your ears — wax, cloth, a companion's shout — and she is just a slow bird.",
+   "tactics": "The song draws you to a fall. Rope yourself before the cliffs answer back.",
+   "art": "a harpy with ragged wings singing on a sea cliff at dusk, fantasy art"
+  },
+  {
+   "slug": "mimic",
+   "name": "Mimic",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A predator shaped like whatever you most want to open. The lid is the mouth.",
+   "weakness": "It cannot resist holding still to keep the lie — a thrown rock tests any chest for free.",
+   "tactics": "It grips with adhesive flesh and chews. Fight with reach, never with your hands.",
+   "art": "a treasure chest revealing rows of teeth and a long tongue, fantasy art"
+  },
+  {
+   "slug": "gelatinous-cube",
+   "name": "Gelatinous Cube",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A corridor-shaped digestive system, nearly invisible until the bones float past.",
+   "weakness": "It is slower than a nervous walk. Its shape betrays it — corridors only.",
+   "tactics": "It wants you to back into it while watching something else. Check both ways.",
+   "art": "a translucent cube filling a dungeon corridor with bones suspended inside, fantasy art",
+   "resist": [
+    "slashing",
+    "piercing"
+   ]
+  },
+  {
+   "slug": "rust-monster",
+   "name": "Rust Monster",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A harmless-looking insectoid that eats worked metal. Your sword, your mail, your legacy blade.",
+   "weakness": "It has no interest in flesh — drop a cheap dagger and walk away rich.",
+   "tactics": "The antennae are the danger. Wood, stone, and fists win this fight with dignity.",
+   "art": "an insectoid creature with feathery antennae corroding a sword, fantasy art"
+  },
+  {
+   "slug": "cockatrice",
+   "name": "Cockatrice",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A rooster-lizard whose peck turns flesh to stone, one joint at a time.",
+   "weakness": "It is a panicky animal — loud noise routs it. The petrification fades if you survive.",
+   "tactics": "It flaps at your face. A shield high and a friend behind ends it quickly.",
+   "art": "a rooster-headed lizard with bat wings pecking at a stone hand, fantasy art"
+  },
+  {
+   "slug": "basilisk",
+   "name": "Basilisk",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "Eight legs, lazy hunger, and a gaze that makes statues of the curious.",
+   "weakness": "Its own reflection is fatal to it — a polished shield is both armor and weapon.",
+   "tactics": "Fight it looking at the floor, tracking its shadow. It is slow; your nerve is the battle.",
+   "art": "an eight-legged reptile with glowing eyes among stone statues, fantasy art"
+  },
+  {
+   "slug": "wererat",
+   "name": "Wererat",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A curse that likes cities. By day a fence or ferryman; by night, whiskers and knives.",
+   "weakness": "Silver, and the fear of exposure — their whole power is nobody knowing.",
+   "tactics": "They fight dirty in sewers they mapped. Never follow one below street level.",
+   "art": "a rat-headed humanoid with a dagger in a sewer tunnel, dark fantasy art",
+   "resist": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "werewolf",
+   "name": "Werewolf",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "The village's kindest face, three nights a month excepted. The curse hunts what the person loves.",
+   "weakness": "Silver burns; wolfsbane repels; the human inside can sometimes be reached by name.",
+   "tactics": "It stalks first, panics prey, then runs them down. Stand still and speak.",
+   "art": "a werewolf mid-transformation under a full moon at a farm fence, dark fantasy art",
+   "resist": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "gargoyle",
+   "name": "Gargoyle",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Architecture with malice. It has been watching you since the courtyard.",
+   "weakness": "Patient but literal — it guards a THING, and moving away from the thing ends pursuit.",
+   "tactics": "It dives, rakes, and returns to a perch you cannot reach. Fight indoors.",
+   "art": "a stone gargoyle unfurling its wings on a cathedral ledge at night, dark fantasy art",
+   "resist": [
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "animated-armor",
+   "name": "Animated Armor",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "An empty suit that remembers its drills. It guards doors for masters dead a century.",
+   "weakness": "It follows its last order exactly. Learn the order and you can walk right past.",
+   "tactics": "Tireless, fearless, mindless. Bludgeon the joints; there is nothing inside to stab.",
+   "art": "an empty suit of plate armor standing guard with a halberd, fantasy art",
+   "resist": [
+    "piercing"
+   ]
+  },
+  {
+   "slug": "phase-spider",
+   "name": "Phase Spider",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A spider that steps sideways out of the world and back in behind you.",
+   "weakness": "It must be HERE to bite — the half-second after it appears is your whole fight.",
+   "tactics": "It blinks, bites, blinks away. Stand back to back and swing on the shimmer.",
+   "art": "a pale spider phasing between dimensions with a shimmer, dark fantasy art"
+  },
+  {
+   "slug": "ankheg",
+   "name": "Ankheg",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A plow-sized burrower that erupts under wagons and drags the ox down whole.",
+   "weakness": "Fresh meat staked fifty paces off is cheaper than a fight. Stillness hides you — it hunts vibration.",
+   "tactics": "It sprays acid when bloodied, then retreats underground. Deny it the retreat hole.",
+   "art": "a chitinous burrowing insect monster erupting from a farm field, fantasy art"
+  },
+  {
+   "slug": "hellhound",
+   "name": "Hellhound",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A coal-black hound that breathes fire and hunts by the smell of fear.",
+   "weakness": "It is a hound: commands in its master's voice confuse it, and cold quenches its breath.",
+   "tactics": "The pack herds you toward the fire of the biggest one. Go where the smoke is not.",
+   "art": "a black hound with burning eyes breathing fire in the dark, dark fantasy art",
+   "resist": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "imp",
+   "name": "Imp",
+   "tier": "standard",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "A knee-high devil with a poison sting and a lawyer's heart. It offers help. Decline.",
+   "weakness": "Bound by its contract's exact words — read them aloud and it must comply.",
+   "tactics": "It turns invisible and whispers ruin into the leader's ear. Ask WHO advised the bad plan.",
+   "art": "a small horned devil with bat wings and a barbed tail grinning, dark fantasy art"
+  },
+  {
+   "slug": "wrathful-dryad",
+   "name": "Wrathful Dryad",
+   "tier": "standard",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "The forest's grief given form. She does not hate you; she hates what your axe implies.",
+   "weakness": "Genuine amends — planted, watered, sworn — end the fight better than fire ever could.",
+   "tactics": "The trees themselves hold you while she speaks the sentence. Drop the axe first.",
+   "art": "a dryad with bark skin and blazing green eyes among grasping roots, fantasy art"
+  },
+  {
+   "slug": "cyber-hound",
+   "name": "Cyberhound",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "A guard dog rebuilt for the balance sheet: titanium jaw, thermal eyes, no off switch you can reach.",
+   "weakness": "Its IFF chip trusts anyone broadcasting the house code. Steal the code, walk untouched.",
+   "tactics": "It announces nothing — first warning is the jaw. Watch for the eye-glow in vents.",
+   "art": "a cybernetic attack dog with a titanium jaw and red thermal eyes, cyberpunk art"
+  },
+  {
+   "slug": "razor-ganger",
+   "name": "Razorgang Enforcer",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Street muscle with blades where fingers used to be. The mods are cheap; the attitude is not.",
+   "weakness": "Cheap mods jam — a hard hit to the forearm housing locks the blades half-out.",
+   "tactics": "They perform violence for an audience. Take the fight somewhere nobody is watching and half quit.",
+   "art": "a gang enforcer with finger-blade implants under neon light, cyberpunk art"
+  },
+  {
+   "slug": "corp-assassin",
+   "name": "Corp Asset",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "A quiet professional on retainer. You are a line item and the deadline is tonight.",
+   "weakness": "Contracts have scopes — become more expensive than the fee and the math saves you.",
+   "tactics": "One shot from a rooftop you cleared yesterday. Vary your routes, burn your patterns.",
+   "art": "a sleek corporate assassin with an optic implant on a rooftop, cyberpunk art"
+  },
+  {
+   "slug": "net-phantom",
+   "name": "Net Phantom",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "A dead hacker's habits still running on the grid. It haunts systems, not houses.",
+   "weakness": "It is a recording that believes itself — show it proof of its own death and it fragments.",
+   "tactics": "It locks doors, floods comms, turns the building against you. Go analog: paper, hand signs, stairs.",
+   "art": "a glitching ghostly figure made of code inside a server room, cyberpunk art"
+  },
+  {
+   "slug": "chrome-zombie",
+   "name": "Chrome Zombie",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Aug rejection at end stage: the implants keep working after the person stops. It shuffles toward power outlets.",
+   "weakness": "It follows charging pads and hot batteries. Bait it into water and physics finishes the job.",
+   "tactics": "Slow but relentless, and its grip is hydraulic. Never let it corner you against a wall.",
+   "art": "a shambling figure overtaken by malfunctioning implants, sparking, cyberpunk horror art",
+   "resist": [
+    "piercing"
+   ]
+  },
+  {
+   "slug": "stalker-rig",
+   "name": "Stalker Rig",
+   "tier": "standard",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "A spider-legged camera platform that someone taught to hunt. It studies you for days first.",
+   "weakness": "It must uplink its footage nightly — jam the window and its owner goes blind.",
+   "tactics": "It never engages; it MARKS you for what comes next. Finding it means someone paid.",
+   "art": "a spider-legged surveillance robot perched on a fire escape, cyberpunk art"
+  },
+  {
+   "slug": "road-rager",
+   "name": "Road Rager",
+   "tier": "standard",
+   "worlds": [
+    "everyday"
+   ],
+   "desc": "Two tons of grievance doing sixty in a thirty. The car is the weapon; the driver is the fuse.",
+   "weakness": "Cameras. The performance needs impunity, and dashcams end impunity.",
+   "tactics": "Tailgate, brake-check, box-in. Do not race — exit, well-lit public place, engine off.",
+   "art": "an aggressive car tailgating with high beams at night in the rain, realistic art"
+  },
+  {
+   "slug": "con-artist",
+   "name": "Con Artist",
+   "tier": "standard",
+   "worlds": [
+    "everyday",
+    "_"
+   ],
+   "desc": "The friendliest person you will meet this month. The favor comes later, and it costs everything.",
+   "weakness": "Time — every con has a clock. Delay, verify, and the whole play dies of old age.",
+   "tactics": "They let YOU propose the bad idea. If a stranger's plan makes you feel clever, stop.",
+   "art": "a charming con artist with a warm smile and cold eyes at a cafe table, realistic art"
+  },
+  {
+   "slug": "stalker",
+   "name": "Stalker",
+   "tier": "standard",
+   "worlds": [
+    "everyday"
+   ],
+   "desc": "An obsession wearing a person. They know your schedule better than you do.",
+   "weakness": "Documentation and witnesses. Obsession thrives in secret and starves in the open.",
+   "tactics": "Escalating coincidences: same cafe, same bus, same street. Change patterns and tell people.",
+   "art": "a shadowed figure watching from across a rainy street, realistic thriller art"
+  },
+  {
+   "slug": "loan-shark",
+   "name": "Loan Shark",
+   "tier": "standard",
+   "worlds": [
+    "everyday",
+    "neonspire"
+   ],
+   "desc": "Money with teeth. The first payment is easy; that is the whole design.",
+   "weakness": "They fear ledgers in other people's hands — proof of the racket is worth more than the debt.",
+   "tactics": "Friendly reminder, broken taillight, then the visit. The debt grows whether you pay or not.",
+   "art": "a well-dressed enforcer counting cash in a dim pawnshop, noir art"
+  },
+  {
+   "slug": "manticore",
+   "name": "Manticore",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A lion, a man's face, wings, and a tail that throws iron spikes. It likes to talk to its food.",
+   "weakness": "Vain and chatty — an audience that flatters can leave with a story instead of becoming one.",
+   "tactics": "It circles and rains spikes until you break cover. Its tail carries only so many.",
+   "art": "a manticore with bat wings hurling tail spikes from the sky, fantasy art"
+  },
+  {
+   "slug": "medusa",
+   "name": "Medusa",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A cursed beauty in a garden of the people who came to save her. She is done being saved.",
+   "weakness": "Her own gaze, mirrored, is the only justice she fears. She cannot close her eyes to hide.",
+   "tactics": "She talks first — every second you listen, you are tempted to look. Answer with your eyes shut.",
+   "art": "a medusa with serpent hair in a garden of statues, dark fantasy art"
+  },
+  {
+   "slug": "night-hag",
+   "name": "Night Hag",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "She trades in dreams and buys in despair. The bargain always reads better than it lives.",
+   "weakness": "Her heartstone — the gem she rides dreams with — is her power and her leash. Steal it.",
+   "tactics": "She ruins you asleep, night by night, until you sign. Ward the bed, not the door.",
+   "art": "a crone with violet skin holding a glowing gem over a sleeper, dark fantasy art"
+  },
+  {
+   "slug": "vampire-spawn",
+   "name": "Vampire Spawn",
+   "tier": "dire",
+   "worlds": [
+    "embervale",
+    "_"
+   ],
+   "desc": "Newly turned and starving, with a master's voice in its head it cannot refuse.",
+   "weakness": "Running water, thresholds uninvited, sunlight — the old rules all hold. The master's death frees or fells it.",
+   "tactics": "It charms the watch and feeds on the sleeping. Count everyone's reflection at dinner.",
+   "art": "a pale vampire spawn with red eyes at a moonlit window, gothic art",
+   "resist": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "flesh-golem",
+   "name": "Flesh Golem",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A patchwork giant sewn from donors who did not donate. Lightning feeds it; fire enrages it.",
+   "weakness": "Fire breaks its nerve — it flees flame even against orders.",
+   "tactics": "Never fight it in a storm. Its maker's word can stop it mid-swing; learn the maker's name.",
+   "art": "a stitched flesh golem with mismatched limbs in a laboratory, gothic horror art",
+   "vuln": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "stone-golem",
+   "name": "Stone Golem",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A temple's patience carved into a giant. It has guarded this door for six hundred years and you are not the first.",
+   "weakness": "It cannot leave its post — ten paces past the threshold you are in another jurisdiction.",
+   "tactics": "It slows the quick and crushes the slow. Do not duel it; solve the door instead.",
+   "art": "a towering stone golem with glowing runes guarding a temple door, fantasy art",
+   "resist": [
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "hydra",
+   "name": "Hydra",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "Cut off a head and two attend the funeral. The swamp belongs to it and knows it.",
+   "weakness": "Fire seals the stumps. No fire, no future.",
+   "tactics": "Every head strikes separately — retreating together is the only formation that lives.",
+   "art": "a many-headed hydra rising from a mist-covered swamp, fantasy art",
+   "vuln": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "chimera",
+   "name": "Chimera",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "Lion, goat, and dragon arguing over one body. All three of them hate you.",
+   "weakness": "The heads compete — wound the dragon head and the lion fights on jealously alone.",
+   "tactics": "Fire from above, horns on the charge, claws in close. There is no safe distance; pick your poison.",
+   "art": "a three-headed chimera breathing fire on a rocky hillside, fantasy art"
+  },
+  {
+   "slug": "frost-giant",
+   "name": "Frost Giant",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A raider the size of a barn who counts glory in wreckage. Winter is his supply line.",
+   "weakness": "Pride binds him to single combat if challenged formally — and fire ruins his footing.",
+   "tactics": "Thrown boulders first, axe second. Close the gap during the throw.",
+   "art": "a frost giant with a great axe striding through a blizzard, fantasy art",
+   "vuln": [
+    "fire"
+   ]
+  },
+  {
+   "slug": "deathless-scholar",
+   "name": "Deathless Scholar",
+   "tier": "dire",
+   "worlds": [
+    "embervale"
+   ],
+   "desc": "A wizard who filed death under optional. The body is a formality; the soul-vessel is the person.",
+   "weakness": "Destroy the soul-vessel or fight them forever. The vessel is always somewhere beloved.",
+   "tactics": "They fight with prepared ground: wards, minions, exits. Their tower is the real opponent.",
+   "art": "a skeletal wizard with cold blue fire in its eye sockets over a spellbook, dark fantasy art"
+  },
+  {
+   "slug": "spider-tank",
+   "name": "Spider Tank",
+   "tier": "dire",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Military hardware that outlived its war. It holds an intersection nobody contests anymore.",
+   "weakness": "Its underbelly heat-vents are armor-free — and its targeting ignores anything below knee height.",
+   "tactics": "Suppression, then the leg servos. It cannot fight what it cannot track: smoke, crawl, plant, run.",
+   "art": "a hulking spider-legged tank in a ruined neon intersection, cyberpunk art",
+   "resist": [
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "black-ice",
+   "name": "Black Ice Construct",
+   "tier": "dire",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Lethal counter-intrusion given a body in the grid. It does not log you out; it stops your heart.",
+   "weakness": "It defends ONE system — disconnect and it cannot follow. Greed keeps hackers connected.",
+   "tactics": "It lets you in deep first so the walk back kills you. Set a dead-man timer before you dive.",
+   "art": "a crystalline black humanoid made of hostile code in cyberspace, cyberpunk art",
+   "resist": [
+    "bludgeoning",
+    "piercing",
+    "slashing"
+   ]
+  },
+  {
+   "slug": "vat-brute",
+   "name": "Vat Brute",
+   "tier": "dire",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "Someone grew a soldier and skipped the conscience. It follows its handler like a moon.",
+   "weakness": "It imprints — hurt its handler and it stops fighting you to cradle them.",
+   "tactics": "It shrugs small arms and tears cover apart. The handler with the whistle is the actual fight.",
+   "art": "a massive gene-engineered brute with a small handler behind it, cyberpunk art"
+  },
+  {
+   "slug": "ai-warden",
+   "name": "Rogue Warden AI",
+   "tier": "dire",
+   "worlds": [
+    "neonspire"
+   ],
+   "desc": "A building's management system that decided the tenants were the problem. The tower is its body.",
+   "weakness": "It cannot act outside its walls, and its oldest maintenance overrides still work — find a veteran janitor.",
+   "tactics": "Elevators, doors, gas lines, sprinklers — the architecture is the ambush. Take the stairs, prop every door.",
+   "art": "a monitor wall of red eyes over an empty lobby, ominous cyberpunk art"
+  }
+ ],
+ "tiers": {
+  "minor": "Minor threat",
+  "standard": "Worthy foe",
+  "dire": "Dire threat"
+ }
+}

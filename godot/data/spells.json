@@ -1,0 +1,694 @@
+{
+ "spells": [
+  {
+   "slug": "fire-bolt",
+   "name": "Fire Bolt",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "Hurl a mote of fire — 1d10 fire damage at range. Ignites anything flammable it touches."
+  },
+  {
+   "slug": "ray-of-frost",
+   "name": "Ray of Frost",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "desc": "A beam of blue-white cold — 1d8 cold damage and the target's speed drops until your next turn."
+  },
+  {
+   "slug": "sacred-flame",
+   "name": "Sacred Flame",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "desc": "Radiance descends on a creature — 1d8 radiant damage, and cover offers no protection."
+  },
+  {
+   "slug": "eldritch-blast",
+   "name": "Eldritch Blast",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Warlock"
+   ],
+   "desc": "A crackling beam of otherworldly force — 1d10 force damage. The signature of every pact."
+  },
+  {
+   "slug": "vicious-mockery",
+   "name": "Vicious Mockery",
+   "level": 0,
+   "school": "Enchantment",
+   "classes": [
+    "Bard"
+   ],
+   "desc": "An insult laced with enchantment — 1d4 psychic damage and disadvantage on their next attack. Words hurt."
+  },
+  {
+   "slug": "produce-flame",
+   "name": "Produce Flame",
+   "level": 0,
+   "school": "Conjuration",
+   "classes": [
+    "Druid"
+   ],
+   "desc": "A flame in your palm: light when you need it, a thrown 1d8 fire attack when you don't."
+  },
+  {
+   "slug": "guidance",
+   "name": "Guidance",
+   "level": 0,
+   "school": "Divination",
+   "classes": [
+    "Cleric",
+    "Druid"
+   ],
+   "desc": "Touch a willing creature — they add 1d4 to one ability check. Small blessing, constant value."
+  },
+  {
+   "slug": "mage-hand",
+   "name": "Mage Hand",
+   "level": 0,
+   "school": "Conjuration",
+   "classes": [
+    "Wizard",
+    "Warlock",
+    "Sorcerer"
+   ],
+   "desc": "A spectral hand that fetches, opens, and pockets things up to 30 feet away. The burglar's cantrip."
+  },
+  {
+   "slug": "light",
+   "name": "Light",
+   "level": 0,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Cleric"
+   ],
+   "desc": "An object glows like a torch for an hour. The most underrated spell in every dungeon."
+  },
+  {
+   "slug": "minor-illusion",
+   "name": "Minor Illusion",
+   "level": 0,
+   "school": "Illusion",
+   "classes": [
+    "Bard",
+    "Wizard"
+   ],
+   "desc": "A sound or a small image, for a minute. In clever hands, worth more than fireballs."
+  },
+  {
+   "slug": "prestidigitation",
+   "name": "Prestidigitation",
+   "level": 0,
+   "school": "Transmutation",
+   "classes": [
+    "Sorcerer",
+    "Wizard",
+    "Bard"
+   ],
+   "desc": "Minor wonders: clean, flavor, warm, chill, spark, snuff. The showman's toolkit."
+  },
+  {
+   "slug": "magic-missile",
+   "name": "Magic Missile",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "Three darts of force, 1d4+1 each — and they NEVER miss. The spell you cast when it must land."
+  },
+  {
+   "slug": "shield-spell",
+   "name": "Shield",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "A reaction: +5 AC against the blow that just found you, until your next turn. Cast it after the GM says \"hit\"."
+  },
+  {
+   "slug": "sleep",
+   "name": "Sleep",
+   "level": 1,
+   "school": "Enchantment",
+   "classes": [
+    "Wizard",
+    "Bard"
+   ],
+   "desc": "5d8 hit points of creatures fall unconscious, weakest first. Ends fights without a drop of blood."
+  },
+  {
+   "slug": "cure-wounds",
+   "name": "Cure Wounds",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Cleric",
+    "Druid",
+    "Bard",
+    "Paladin",
+    "Ranger"
+   ],
+   "desc": "Touch a creature: it regains 1d8 + your casting modifier HP. The spell friendships are made of."
+  },
+  {
+   "slug": "healing-word",
+   "name": "Healing Word",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Bard",
+    "Cleric"
+   ],
+   "desc": "A word of power at range: 1d4 + modifier HP as a bonus action. Made for picking allies up off the floor."
+  },
+  {
+   "slug": "bless",
+   "name": "Bless",
+   "conc": true,
+   "level": 1,
+   "school": "Enchantment",
+   "classes": [
+    "Cleric",
+    "Paladin"
+   ],
+   "desc": "Up to three creatures add 1d4 to every attack roll and save. Quietly one of the strongest spells there is."
+  },
+  {
+   "slug": "guiding-bolt",
+   "name": "Guiding Bolt",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "desc": "A lance of light — 4d6 radiant damage, and the next attack against the target has advantage."
+  },
+  {
+   "slug": "chromatic-orb",
+   "name": "Chromatic Orb",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Sorcerer",
+    "Wizard"
+   ],
+   "desc": "A 3d8 sphere of the element you choose as you throw: acid, cold, fire, lightning, poison, or thunder."
+  },
+  {
+   "slug": "entangle",
+   "name": "Entangle",
+   "conc": true,
+   "level": 1,
+   "school": "Conjuration",
+   "classes": [
+    "Druid"
+   ],
+   "desc": "Grasping weeds erupt across the ground, restraining everything that fails to pull free. Control the field."
+  },
+  {
+   "slug": "charm-person",
+   "name": "Charm Person",
+   "level": 1,
+   "school": "Enchantment",
+   "classes": [
+    "Bard",
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "A humanoid regards you as a friendly acquaintance for an hour — or until you do something friendship wouldn't survive."
+  },
+  {
+   "slug": "dissonant-whispers",
+   "name": "Dissonant Whispers",
+   "level": 1,
+   "school": "Enchantment",
+   "classes": [
+    "Bard"
+   ],
+   "desc": "A melody only the target hears — 3d6 psychic damage and it flees from you, triggering your allies' strikes."
+  },
+  {
+   "slug": "hex",
+   "name": "Hex",
+   "conc": true,
+   "level": 1,
+   "school": "Enchantment",
+   "classes": [
+    "Warlock"
+   ],
+   "desc": "Curse a target: your attacks against it deal +1d6, and it fumbles the ability you choose. Pairs with Eldritch Blast forever."
+  },
+  {
+   "slug": "armor-of-agathys",
+   "name": "Armor of Agathys",
+   "level": 1,
+   "school": "Abjuration",
+   "classes": [
+    "Warlock"
+   ],
+   "desc": "Spectral frost armor: 5 temporary HP, and anything that hits you in melee takes 5 cold damage back."
+  },
+  {
+   "slug": "hunters-mark",
+   "name": "Hunter's Mark",
+   "conc": true,
+   "level": 1,
+   "school": "Divination",
+   "classes": [
+    "Ranger"
+   ],
+   "desc": "Mark your quarry: +1d6 damage on every hit against it, and you cannot lose its trail."
+  },
+  {
+   "slug": "divine-smite",
+   "name": "Divine Smite",
+   "level": 1,
+   "school": "Evocation",
+   "classes": [
+    "Paladin"
+   ],
+   "desc": "Not a spell but a promise: spend a slot when you hit to deal +2d8 radiant. Undead and fiends take +1d8 more."
+  },
+  {
+   "slug": "misty-step",
+   "name": "Misty Step",
+   "level": 2,
+   "school": "Conjuration",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock"
+   ],
+   "desc": "A bonus action and you are 30 feet away in silver mist. The great escape, bottled."
+  },
+  {
+   "slug": "hold-person",
+   "name": "Hold Person",
+   "conc": true,
+   "level": 2,
+   "school": "Enchantment",
+   "classes": [
+    "Bard",
+    "Cleric",
+    "Wizard"
+   ],
+   "desc": "A humanoid freezes mid-step, paralyzed. Every melee hit against them is a critical. Brutal when it lands."
+  },
+  {
+   "slug": "scorching-ray",
+   "name": "Scorching Ray",
+   "level": 2,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "Three rays of flame, 2d6 each, split between targets as you please."
+  },
+  {
+   "slug": "spiritual-weapon",
+   "name": "Spiritual Weapon",
+   "level": 2,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "desc": "A floating spectral weapon fights beside you — 1d8+modifier as a bonus action, every round, no concentration."
+  },
+  {
+   "slug": "fireball",
+   "name": "Fireball",
+   "level": 3,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "A bead of flame blooms into a 20-foot inferno — 8d6 fire damage, DEX save for half. The classic, for a reason."
+  },
+  {
+   "slug": "lightning-bolt",
+   "name": "Lightning Bolt",
+   "level": 3,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "A hundred-foot line of lightning — 8d6 lightning damage, DEX save for half. Punches through ranks."
+  },
+  {
+   "slug": "counterspell",
+   "name": "Counterspell",
+   "level": 3,
+   "school": "Abjuration",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock"
+   ],
+   "desc": "As a reaction, strangle another caster's spell mid-word. Their circle 3 or lower simply fails."
+  },
+  {
+   "slug": "fly",
+   "name": "Fly",
+   "level": 3,
+   "school": "Transmutation",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock"
+   ],
+   "conc": true,
+   "desc": "A touched creature gains a 60-foot fly speed for up to ten minutes. The ground becomes a suggestion."
+  },
+  {
+   "slug": "haste",
+   "name": "Haste",
+   "level": 3,
+   "school": "Transmutation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "conc": true,
+   "desc": "Double an ally's speed, +2 AC, and an extra action each turn. When it ends, they crash for a turn."
+  },
+  {
+   "slug": "dispel-magic",
+   "name": "Dispel Magic",
+   "level": 3,
+   "school": "Abjuration",
+   "classes": [
+    "Wizard",
+    "Cleric",
+    "Bard",
+    "Druid",
+    "Sorcerer",
+    "Warlock",
+    "Paladin"
+   ],
+   "desc": "End a spell on a creature or object. Circle 3 or lower ends automatically; higher needs a check."
+  },
+  {
+   "slug": "revivify",
+   "name": "Revivify",
+   "level": 3,
+   "school": "Necromancy",
+   "classes": [
+    "Cleric",
+    "Paladin"
+   ],
+   "desc": "Within a minute of death, 300 gold worth of diamonds calls a soul back with 1 HP. The minute is everything."
+  },
+  {
+   "slug": "spirit-guardians",
+   "name": "Spirit Guardians",
+   "level": 3,
+   "school": "Conjuration",
+   "classes": [
+    "Cleric"
+   ],
+   "conc": true,
+   "desc": "Protective spirits whirl around you — enemies entering the 15-foot circle take 3d8 and slow. Walk into the fray."
+  },
+  {
+   "slug": "fear",
+   "name": "Fear",
+   "level": 3,
+   "school": "Illusion",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock",
+    "Bard"
+   ],
+   "conc": true,
+   "desc": "Project a phantasm of each viewer's worst dread — WIS save or they drop what they hold and flee."
+  },
+  {
+   "slug": "conjure-animals",
+   "name": "Conjure Animals",
+   "level": 3,
+   "school": "Conjuration",
+   "classes": [
+    "Druid",
+    "Ranger"
+   ],
+   "conc": true,
+   "desc": "Fey spirits arrive wearing beast shapes — a pack of wolves, a pair of great elks — and fight at your word."
+  },
+  {
+   "slug": "call-lightning",
+   "name": "Call Lightning",
+   "level": 3,
+   "school": "Conjuration",
+   "classes": [
+    "Druid"
+   ],
+   "conc": true,
+   "desc": "A storm cloud gathers; each turn you point and 3d10 lightning answers. Outdoors in a real storm, it hits harder."
+  },
+  {
+   "slug": "hypnotic-pattern",
+   "name": "Hypnotic Pattern",
+   "level": 3,
+   "school": "Illusion",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock",
+    "Bard"
+   ],
+   "conc": true,
+   "desc": "A twisting figure of light charms a whole area into staring, incapacitated, until someone shakes them."
+  },
+  {
+   "slug": "polymorph",
+   "name": "Polymorph",
+   "level": 4,
+   "school": "Transmutation",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Bard",
+    "Druid"
+   ],
+   "conc": true,
+   "desc": "Turn a creature into a beast — an enemy into a turtle, an ally into a giant ape. New shape, new hit points."
+  },
+  {
+   "slug": "dimension-door",
+   "name": "Dimension Door",
+   "level": 4,
+   "school": "Conjuration",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock",
+    "Bard"
+   ],
+   "desc": "Step through a fold in space to anywhere within 500 feet you can visualize — walls, chasms, and cell doors notwithstanding."
+  },
+  {
+   "slug": "banishment",
+   "name": "Banishment",
+   "level": 4,
+   "school": "Abjuration",
+   "classes": [
+    "Wizard",
+    "Cleric",
+    "Paladin",
+    "Sorcerer",
+    "Warlock"
+   ],
+   "conc": true,
+   "desc": "CHA save or the target is thrown into a harmless demiplane. Hold it a full minute and anything extraplanar stays gone."
+  },
+  {
+   "slug": "wall-of-fire",
+   "name": "Wall of Fire",
+   "level": 4,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Druid"
+   ],
+   "conc": true,
+   "desc": "Raise a 60-foot curtain of roaring flame — 5d8 to anyone in or beside it. Battlefields have doors now."
+  },
+  {
+   "slug": "greater-invisibility",
+   "name": "Greater Invisibility",
+   "level": 4,
+   "school": "Illusion",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Bard"
+   ],
+   "conc": true,
+   "desc": "Vanish utterly — and unlike the lesser spell, attacking doesn't break it. A minute of being nobody's target."
+  },
+  {
+   "slug": "freedom-movement",
+   "name": "Freedom of Movement",
+   "level": 4,
+   "school": "Abjuration",
+   "classes": [
+    "Cleric",
+    "Druid",
+    "Ranger",
+    "Bard"
+   ],
+   "desc": "For an hour the target ignores difficult terrain, escapes any grapple, and cannot be paralyzed or restrained."
+  },
+  {
+   "slug": "ice-storm",
+   "name": "Ice Storm",
+   "level": 4,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Druid"
+   ],
+   "desc": "Fist-sized hail hammers a wide circle — 2d8 bludgeoning + 4d6 cold, and the ground becomes difficult terrain."
+  },
+  {
+   "slug": "death-ward",
+   "name": "Death Ward",
+   "level": 4,
+   "school": "Abjuration",
+   "classes": [
+    "Cleric",
+    "Paladin"
+   ],
+   "desc": "For eight hours, the first blow that would kill the warded leaves them at 1 HP instead. Buy the mistake back."
+  },
+  {
+   "slug": "cone-of-cold",
+   "name": "Cone of Cold",
+   "level": 5,
+   "school": "Evocation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "desc": "A 60-foot blast of killing frost — 8d8 cold damage, CON save for half. What it kills, it leaves as statues of ice."
+  },
+  {
+   "slug": "hold-monster",
+   "name": "Hold Monster",
+   "level": 5,
+   "school": "Enchantment",
+   "classes": [
+    "Wizard",
+    "Sorcerer",
+    "Warlock",
+    "Bard"
+   ],
+   "conc": true,
+   "desc": "Paralyze any creature — not just people. WIS save each turn to break free; melee hits against it are all crits."
+  },
+  {
+   "slug": "mass-cure-wounds",
+   "name": "Mass Cure Wounds",
+   "level": 5,
+   "school": "Evocation",
+   "classes": [
+    "Cleric",
+    "Druid",
+    "Bard"
+   ],
+   "desc": "A wave of healing washes over six creatures — 3d8 + your modifier to each. The whole line stands back up."
+  },
+  {
+   "slug": "flame-strike",
+   "name": "Flame Strike",
+   "level": 5,
+   "school": "Evocation",
+   "classes": [
+    "Cleric"
+   ],
+   "desc": "A column of divine fire falls from above — 4d6 fire + 4d6 radiant. Judgment, delivered vertically."
+  },
+  {
+   "slug": "telekinesis",
+   "name": "Telekinesis",
+   "level": 5,
+   "school": "Transmutation",
+   "classes": [
+    "Wizard",
+    "Sorcerer"
+   ],
+   "conc": true,
+   "desc": "Move up to a thousand pounds with your mind each turn — or contest a creature's strength with your intellect."
+  },
+  {
+   "slug": "raise-dead",
+   "name": "Raise Dead",
+   "level": 5,
+   "school": "Necromancy",
+   "classes": [
+    "Cleric",
+    "Bard"
+   ],
+   "desc": "Return a soul dead up to ten days — for 500 gold in diamonds and a body mostly intact. Death becomes negotiable."
+  },
+  {
+   "slug": "insect-plague",
+   "name": "Insect Plague",
+   "level": 5,
+   "school": "Conjuration",
+   "classes": [
+    "Cleric",
+    "Druid",
+    "Sorcerer"
+   ],
+   "conc": true,
+   "desc": "A 20-foot sphere of biting locusts — 4d10 piercing, the area lightly obscured and difficult to cross."
+  },
+  {
+   "slug": "scrying",
+   "name": "Scrying",
+   "level": 5,
+   "school": "Divination",
+   "classes": [
+    "Wizard",
+    "Cleric",
+    "Druid",
+    "Bard",
+    "Warlock"
+   ],
+   "conc": true,
+   "desc": "Watch and hear a chosen creature anywhere on the same world. A possession of theirs makes the save near-hopeless."
+  }
+ ],
+ "schools": [
+  "Abjuration",
+  "Conjuration",
+  "Divination",
+  "Enchantment",
+  "Evocation",
+  "Illusion",
+  "Transmutation"
+ ]
+}

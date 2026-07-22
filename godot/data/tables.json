@@ -1,0 +1,1551 @@
+{
+ "class_presets": {
+  "Fighter": {
+   "hitDie": 10,
+   "saves": [
+    "STR",
+    "CON"
+   ],
+   "skills": [
+    "athletics",
+    "perception"
+   ],
+   "caster": false
+  },
+  "Barbarian": {
+   "hitDie": 12,
+   "saves": [
+    "STR",
+    "CON"
+   ],
+   "skills": [
+    "athletics",
+    "survival"
+   ],
+   "caster": false
+  },
+  "Rogue": {
+   "hitDie": 8,
+   "saves": [
+    "DEX",
+    "INT"
+   ],
+   "skills": [
+    "stealth",
+    "perception",
+    "acrobatics",
+    "sleight of hand"
+   ],
+   "caster": false
+  },
+  "Ranger": {
+   "hitDie": 10,
+   "saves": [
+    "STR",
+    "DEX"
+   ],
+   "skills": [
+    "survival",
+    "perception",
+    "stealth"
+   ],
+   "caster": false
+  },
+  "Monk": {
+   "hitDie": 8,
+   "saves": [
+    "STR",
+    "DEX"
+   ],
+   "skills": [
+    "acrobatics",
+    "stealth"
+   ],
+   "caster": false
+  },
+  "Paladin": {
+   "hitDie": 10,
+   "saves": [
+    "WIS",
+    "CHA"
+   ],
+   "skills": [
+    "athletics",
+    "persuasion"
+   ],
+   "caster": false
+  },
+  "Wizard": {
+   "hitDie": 6,
+   "saves": [
+    "INT",
+    "WIS"
+   ],
+   "skills": [
+    "arcana",
+    "investigation"
+   ],
+   "caster": true
+  },
+  "Sorcerer": {
+   "hitDie": 6,
+   "saves": [
+    "CON",
+    "CHA"
+   ],
+   "skills": [
+    "arcana",
+    "deception"
+   ],
+   "caster": true
+  },
+  "Cleric": {
+   "hitDie": 8,
+   "saves": [
+    "WIS",
+    "CHA"
+   ],
+   "skills": [
+    "insight",
+    "medicine",
+    "religion"
+   ],
+   "caster": true
+  },
+  "Druid": {
+   "hitDie": 8,
+   "saves": [
+    "INT",
+    "WIS"
+   ],
+   "skills": [
+    "nature",
+    "perception",
+    "medicine"
+   ],
+   "caster": true
+  },
+  "Bard": {
+   "hitDie": 8,
+   "saves": [
+    "DEX",
+    "CHA"
+   ],
+   "skills": [
+    "persuasion",
+    "performance",
+    "deception"
+   ],
+   "caster": true
+  },
+  "Warlock": {
+   "hitDie": 8,
+   "saves": [
+    "WIS",
+    "CHA"
+   ],
+   "skills": [
+    "arcana",
+    "deception"
+   ],
+   "caster": true
+  }
+ },
+ "caster_slots": {
+  "1": {
+   "1": 2
+  },
+  "2": {
+   "1": 3
+  },
+  "3": {
+   "1": 4,
+   "2": 2
+  },
+  "4": {
+   "1": 4,
+   "2": 3
+  },
+  "5": {
+   "1": 4,
+   "2": 3,
+   "3": 2
+  },
+  "6": {
+   "1": 4,
+   "2": 3,
+   "3": 3
+  },
+  "7": {
+   "1": 4,
+   "2": 3,
+   "3": 3,
+   "4": 1
+  },
+  "8": {
+   "1": 4,
+   "2": 3,
+   "3": 3,
+   "4": 2
+  },
+  "9": {
+   "1": 4,
+   "2": 3,
+   "3": 3,
+   "4": 3,
+   "5": 1
+  }
+ },
+ "class_spells": {
+  "Wizard": [
+   [
+    "Fire Bolt",
+    0
+   ],
+   [
+    "Mage Hand",
+    0
+   ],
+   [
+    "Light",
+    0
+   ],
+   [
+    "Magic Missile",
+    1
+   ],
+   [
+    "Shield",
+    1
+   ],
+   [
+    "Sleep",
+    1
+   ]
+  ],
+  "Sorcerer": [
+   [
+    "Fire Bolt",
+    0
+   ],
+   [
+    "Prestidigitation",
+    0
+   ],
+   [
+    "Ray of Frost",
+    0
+   ],
+   [
+    "Chromatic Orb",
+    1
+   ],
+   [
+    "Shield",
+    1
+   ]
+  ],
+  "Cleric": [
+   [
+    "Sacred Flame",
+    0
+   ],
+   [
+    "Guidance",
+    0
+   ],
+   [
+    "Cure Wounds",
+    1
+   ],
+   [
+    "Bless",
+    1
+   ],
+   [
+    "Guiding Bolt",
+    1
+   ]
+  ],
+  "Druid": [
+   [
+    "Produce Flame",
+    0
+   ],
+   [
+    "Guidance",
+    0
+   ],
+   [
+    "Entangle",
+    1
+   ],
+   [
+    "Cure Wounds",
+    1
+   ]
+  ],
+  "Bard": [
+   [
+    "Vicious Mockery",
+    0
+   ],
+   [
+    "Minor Illusion",
+    0
+   ],
+   [
+    "Healing Word",
+    1
+   ],
+   [
+    "Charm Person",
+    1
+   ],
+   [
+    "Dissonant Whispers",
+    1
+   ]
+  ],
+  "Warlock": [
+   [
+    "Eldritch Blast",
+    0
+   ],
+   [
+    "Mage Hand",
+    0
+   ],
+   [
+    "Hex",
+    1
+   ],
+   [
+    "Armor of Agathys",
+    1
+   ]
+  ]
+ },
+ "class_features": {
+  "Fighter": {
+   "1": [
+    "Second Wind (bonus action: recover 1d10+level HP, once per rest)"
+   ],
+   "2": [
+    "Action Surge (one extra action, once per rest)"
+   ],
+   "3": [
+    "Martial Archetype"
+   ],
+   "5": [
+    "Extra Attack (attack twice)"
+   ],
+   "9": [
+    "Indomitable (reroll a failed save, once per rest)"
+   ]
+  },
+  "Barbarian": {
+   "1": [
+    "Rage (bonus damage, resist physical, advantage on STR \u2014 2/rest)",
+    "Unarmored Defense (AC = 10 + DEX + CON)"
+   ],
+   "2": [
+    "Reckless Attack (advantage now, enemies get it back)",
+    "Danger Sense (advantage on DEX saves you can see)"
+   ],
+   "3": [
+    "Primal Path"
+   ],
+   "5": [
+    "Extra Attack",
+    "Fast Movement"
+   ],
+   "7": [
+    "Feral Instinct (advantage on initiative)"
+   ],
+   "9": [
+    "Brutal Critical (+1 die on crits)"
+   ]
+  },
+  "Rogue": {
+   "1": [
+    "Sneak Attack 1d6 (advantage or ally adjacent)",
+    "Thieves' Cant"
+   ],
+   "2": [
+    "Cunning Action (Dash/Disengage/Hide as bonus action)"
+   ],
+   "3": [
+    "Sneak Attack 2d6",
+    "Roguish Archetype"
+   ],
+   "5": [
+    "Sneak Attack 3d6",
+    "Uncanny Dodge (halve one hit per turn)"
+   ],
+   "7": [
+    "Sneak Attack 4d6",
+    "Evasion (DEX saves: fail = half, pass = none)"
+   ],
+   "9": [
+    "Sneak Attack 5d6"
+   ]
+  },
+  "Ranger": {
+   "1": [
+    "Favored Enemy",
+    "Natural Explorer"
+   ],
+   "2": [
+    "Fighting Style",
+    "Spellcasting (ranger)"
+   ],
+   "3": [
+    "Ranger Archetype",
+    "Primeval Awareness"
+   ],
+   "5": [
+    "Extra Attack"
+   ],
+   "8": [
+    "Land's Stride"
+   ],
+   "10": [
+    "Hide in Plain Sight"
+   ]
+  },
+  "Monk": {
+   "1": [
+    "Martial Arts (d4 unarmed, bonus-action strike)",
+    "Unarmored Defense (AC = 10 + DEX + WIS)"
+   ],
+   "2": [
+    "Ki (Flurry of Blows, Patient Defense, Step of the Wind)"
+   ],
+   "3": [
+    "Monastic Tradition",
+    "Deflect Missiles"
+   ],
+   "4": [
+    "Slow Fall"
+   ],
+   "5": [
+    "Extra Attack",
+    "Stunning Strike"
+   ],
+   "6": [
+    "Ki-Empowered Strikes"
+   ],
+   "7": [
+    "Evasion",
+    "Stillness of Mind"
+   ]
+  },
+  "Paladin": {
+   "1": [
+    "Divine Sense",
+    "Lay on Hands (heal pool = 5\u00d7level)"
+   ],
+   "2": [
+    "Fighting Style",
+    "Divine Smite (spend a slot for +2d8 radiant)",
+    "Spellcasting (paladin)"
+   ],
+   "3": [
+    "Sacred Oath",
+    "Divine Health (immune to disease)"
+   ],
+   "5": [
+    "Extra Attack"
+   ],
+   "6": [
+    "Aura of Protection (+CHA to nearby saves)"
+   ],
+   "10": [
+    "Aura of Courage"
+   ]
+  },
+  "Wizard": {
+   "1": [
+    "Arcane Recovery (regain slots on a short rest, once/day)"
+   ],
+   "2": [
+    "Arcane Tradition"
+   ],
+   "10": [
+    "Arcane Tradition feature"
+   ]
+  },
+  "Sorcerer": {
+   "1": [
+    "Sorcerous Origin"
+   ],
+   "2": [
+    "Font of Magic (sorcery points)"
+   ],
+   "3": [
+    "Metamagic (twin, quicken\u2026)"
+   ],
+   "10": [
+    "Metamagic option"
+   ]
+  },
+  "Cleric": {
+   "1": [
+    "Divine Domain"
+   ],
+   "2": [
+    "Channel Divinity (1/rest) \u2014 Turn Undead"
+   ],
+   "5": [
+    "Destroy Undead"
+   ],
+   "6": [
+    "Channel Divinity (2/rest)"
+   ],
+   "8": [
+    "Divine Strike / Potent Spellcasting"
+   ],
+   "10": [
+    "Divine Intervention"
+   ]
+  },
+  "Druid": {
+   "2": [
+    "Wild Shape (become a beast, 2/rest)",
+    "Druid Circle"
+   ],
+   "4": [
+    "Wild Shape improvement (swimming)"
+   ],
+   "8": [
+    "Wild Shape improvement (flying)"
+   ]
+  },
+  "Bard": {
+   "1": [
+    "Bardic Inspiration d6 (bonus action: gift a die)"
+   ],
+   "2": [
+    "Jack of All Trades (+half prof to everything)",
+    "Song of Rest"
+   ],
+   "3": [
+    "Bard College",
+    "Expertise (double prof in two skills)"
+   ],
+   "5": [
+    "Bardic Inspiration d8",
+    "Font of Inspiration (recharge on short rest)"
+   ],
+   "6": [
+    "Countercharm"
+   ],
+   "10": [
+    "Bardic Inspiration d10",
+    "Magical Secrets"
+   ]
+  },
+  "Warlock": {
+   "1": [
+    "Otherworldly Patron",
+    "Pact Magic (slots return on a short rest)"
+   ],
+   "2": [
+    "Eldritch Invocations"
+   ],
+   "3": [
+    "Pact Boon (blade, chain, or tome)"
+   ],
+   "6": [
+    "Patron feature"
+   ],
+   "10": [
+    "Patron feature"
+   ]
+  }
+ },
+ "heritages": {
+  "Human": {
+   "abil": {
+    "STR": 1,
+    "DEX": 1,
+    "CON": 1,
+    "INT": 1,
+    "WIS": 1,
+    "CHA": 1
+   },
+   "speed": 30,
+   "dark": 0,
+   "traits": [
+    "Versatile \u2014 a little better at everything"
+   ],
+   "line": "adaptable and ambitious"
+  },
+  "Elf": {
+   "abil": {
+    "DEX": 2
+   },
+   "speed": 30,
+   "dark": 60,
+   "skills": [
+    "perception"
+   ],
+   "traits": [
+    "Keen Senses (trained in Perception)",
+    "Fey Ancestry (advantage on saves vs charm; magic can\u2019t put you to sleep)",
+    "Trance (a 4-hour rest suffices)"
+   ],
+   "line": "graceful, long-lived, fey-touched"
+  },
+  "Dwarf": {
+   "abil": {
+    "CON": 2
+   },
+   "speed": 25,
+   "dark": 60,
+   "traits": [
+    "Dwarven Resilience (advantage on saves vs poison; resistance to poison damage)",
+    "Stonecunning"
+   ],
+   "line": "hardy, stubborn, stone-wise"
+  },
+  "Halfling": {
+   "abil": {
+    "DEX": 2
+   },
+   "speed": 25,
+   "dark": 0,
+   "lucky": true,
+   "traits": [
+    "Lucky (reroll natural 1s on d20 rolls)",
+    "Brave (advantage on saves vs frightened)",
+    "Nimble"
+   ],
+   "line": "small, brave, and improbably lucky"
+  },
+  "Half-Orc": {
+   "abil": {
+    "STR": 2,
+    "CON": 1
+   },
+   "speed": 30,
+   "dark": 60,
+   "relentless": true,
+   "traits": [
+    "Relentless Endurance (once per long rest, drop to 1 HP instead of 0)",
+    "Savage Attacks (an extra weapon die on melee crits)"
+   ],
+   "line": "powerful, fierce, and hard to put down"
+  },
+  "Tiefling": {
+   "abil": {
+    "CHA": 2,
+    "INT": 1
+   },
+   "speed": 30,
+   "dark": 60,
+   "traits": [
+    "Hellish Resistance (resistance to fire damage)",
+    "Infernal Legacy"
+   ],
+   "line": "infernal-blooded, charismatic, and distrusted"
+  },
+  "Dragonborn": {
+   "abil": {
+    "STR": 2,
+    "CHA": 1
+   },
+   "speed": 30,
+   "dark": 0,
+   "traits": [
+    "Breath Weapon (a burst of elemental damage, once per rest)",
+    "Draconic Resistance"
+   ],
+   "line": "proud, draconic, and elemental"
+  },
+  "Gnome": {
+   "abil": {
+    "INT": 2
+   },
+   "speed": 25,
+   "dark": 60,
+   "traits": [
+    "Gnome Cunning (advantage on INT/WIS/CHA saves vs magic)"
+   ],
+   "line": "clever, curious, and tiny"
+  },
+  "Half-Elf": {
+   "abil": {
+    "CHA": 2,
+    "DEX": 1,
+    "WIS": 1
+   },
+   "speed": 30,
+   "dark": 60,
+   "traits": [
+    "Fey Ancestry (advantage on saves vs charm; no magical sleep)",
+    "a broad, versatile upbringing"
+   ],
+   "line": "caught between two worlds \u2014 charming and adaptable"
+  }
+ },
+ "condition_fx": {
+  "poisoned": {
+   "attack": "dis",
+   "check": "dis"
+  },
+  "frightened": {
+   "attack": "dis",
+   "check": "dis"
+  },
+  "prone": {
+   "attack": "dis"
+  },
+  "restrained": {
+   "attack": "dis",
+   "save": "dis"
+  },
+  "grappled": {},
+  "blinded": {
+   "attack": "dis"
+  },
+  "deafened": {},
+  "stunned": {
+   "save": "dis"
+  },
+  "paralyzed": {
+   "save": "dis"
+  },
+  "unconscious": {
+   "save": "dis"
+  },
+  "petrified": {
+   "save": "dis"
+  },
+  "incapacitated": {},
+  "exhausted": {
+   "check": "dis"
+  },
+  "exhaustion": {
+   "check": "dis"
+  },
+  "charmed": {
+   "check": "dis"
+  },
+  "blessed": {
+   "attack": "adv",
+   "save": "adv"
+  },
+  "inspired": {
+   "attack": "adv",
+   "check": "adv",
+   "save": "adv"
+  },
+  "invisible": {
+   "attack": "adv"
+  },
+  "hidden": {
+   "attack": "adv"
+  },
+  "guided": {
+   "attack": "adv",
+   "check": "adv"
+  }
+ },
+ "condition_desc": {
+  "poisoned": "disadvantage on attacks and ability checks",
+  "frightened": "disadvantage on attacks and checks while the source is in sight; can't willingly move closer to it",
+  "prone": "disadvantage on attacks; melee attackers have advantage; must spend movement to stand",
+  "restrained": "speed 0; disadvantage on attacks and DEX saves; attackers have advantage",
+  "grappled": "speed 0; ends if the grappler is incapacitated or you break free",
+  "blinded": "can't see; auto-fails sight checks; disadvantage on attacks; attackers have advantage",
+  "deafened": "can't hear; auto-fails hearing checks",
+  "stunned": "incapacitated \u2014 can't take actions; auto-fails STR and DEX saves; attackers have advantage",
+  "paralyzed": "incapacitated and can't move; auto-fails STR/DEX saves; attackers have advantage; melee hits are critical",
+  "unconscious": "incapacitated, drops what it holds, falls prone; auto-fails STR/DEX saves; melee hits are critical",
+  "petrified": "turned to stone \u2014 incapacitated, resistance to all damage, immune to poison/disease",
+  "incapacitated": "can't take actions or reactions",
+  "charmed": "can't attack the charmer; the charmer has advantage on social checks with you"
+ },
+ "exhaustion": [
+  "rested",
+  "disadvantage on ability checks",
+  "speed halved",
+  "disadvantage on attacks & saves",
+  "hit point maximum halved",
+  "speed drops to 0",
+  "death"
+ ],
+ "feats": {
+  "Tough": {
+   "desc": "+2 hit points per level \u2014 you are simply harder to drop.",
+   "hp": 2
+  },
+  "Alert": {
+   "desc": "+5 to initiative, and you can't be surprised while conscious."
+  },
+  "Resilient (CON)": {
+   "desc": "+1 Constitution and proficiency in Constitution saves \u2014 a boon for holding concentration."
+  },
+  "War Caster": {
+   "desc": "Advantage on saving throws to maintain concentration; you can cast with your hands full."
+  },
+  "Observant": {
+   "desc": "+1 Wisdom and +5 to passive Perception \u2014 little escapes you."
+  },
+  "Mobile": {
+   "desc": "+10 feet of speed; you ignore difficult terrain when you Dash."
+  },
+  "Actor": {
+   "desc": "+1 Charisma; advantage on Deception & Performance to pass as someone else; mimic voices."
+  },
+  "Lucky": {
+   "desc": "3 luck points per long rest \u2014 reroll a d20 (yours, or an attack against you)."
+  },
+  "Great Weapon Master": {
+   "desc": "Before a melee attack, take \u22125 to hit for +10 damage; a crit or kill grants a bonus attack."
+  },
+  "Sharpshooter": {
+   "desc": "Ignore cover and long-range disadvantage; take \u22125 to hit for +10 damage on a ranged attack."
+  },
+  "Magic Initiate": {
+   "desc": "Learn two cantrips and one 1st-level spell from a class of your choice."
+  },
+  "Skilled": {
+   "desc": "Gain proficiency in any three skills or tools of your choice."
+  }
+ },
+ "subclasses": {
+  "Fighter": [
+   {
+    "name": "Champion",
+    "line": "Your weapon crits on a 19 or 20, and raw athleticism rarely fails you."
+   },
+   {
+    "name": "Battle Master",
+    "line": "Combat maneuvers \u2014 trip, disarm, riposte, feint \u2014 powered by d8 superiority dice (4 per rest)."
+   }
+  ],
+  "Barbarian": [
+   {
+    "name": "Berserker",
+    "line": "Frenzy: an extra melee attack every turn while raging, paid for in exhaustion after."
+   },
+   {
+    "name": "Totem Warrior (Bear)",
+    "line": "While raging you resist ALL damage except psychic."
+   }
+  ],
+  "Rogue": [
+   {
+    "name": "Thief",
+    "line": "Fast Hands: use items, pick locks, or disarm traps as a bonus action; a legendary climber."
+   },
+   {
+    "name": "Assassin",
+    "line": "Advantage against anyone who has not acted yet; hits on surprised foes are critical."
+   }
+  ],
+  "Ranger": [
+   {
+    "name": "Hunter",
+    "line": "Colossus Slayer: once per turn, +1d8 damage to a foe that's already wounded."
+   },
+   {
+    "name": "Beast Master",
+    "line": "A loyal animal companion fights at your command beside you."
+   }
+  ],
+  "Monk": [
+   {
+    "name": "Way of the Open Hand",
+    "line": "Your Flurry of Blows can knock foes prone, shove them away, or deny their reactions."
+   },
+   {
+    "name": "Way of Shadow",
+    "line": "Spend ki to teleport between shadows and cast darkness or silence."
+   }
+  ],
+  "Paladin": [
+   {
+    "name": "Oath of Devotion",
+    "line": "Sacred Weapon (+CHA to hit, once per rest); allies near you cannot be charmed or frightened."
+   },
+   {
+    "name": "Oath of Vengeance",
+    "line": "Vow of Enmity: swear against one foe and gain advantage on every attack against them."
+   }
+  ],
+  "Wizard": [
+   {
+    "name": "Evoker",
+    "line": "Sculpt Spells: your allies stand safely inside your own blasts."
+   },
+   {
+    "name": "Abjurer",
+    "line": "Arcane Ward: a shield of stored magic absorbs damage before your HP does."
+   }
+  ],
+  "Sorcerer": [
+   {
+    "name": "Draconic Bloodline",
+    "line": "Scaled resilience: AC 13 + DEX unarmored, +1 HP per level."
+   },
+   {
+    "name": "Wild Magic",
+    "line": "Chaos rides your casting \u2014 surges of wild magic, and Tides of Chaos grants advantage."
+   }
+  ],
+  "Cleric": [
+   {
+    "name": "Life Domain",
+    "line": "Your healing spells restore extra HP (2 + spell level); Preserve Life mends the whole party."
+   },
+   {
+    "name": "War Domain",
+    "line": "Bonus-action weapon attacks; Guided Strike turns a miss into a +10 hit."
+   }
+  ],
+  "Druid": [
+   {
+    "name": "Circle of the Land",
+    "line": "Natural Recovery: regain spell slots on a short rest; the land grants bonus spells."
+   },
+   {
+    "name": "Circle of the Moon",
+    "line": "Combat Wild Shape as a bonus action, into far stronger beasts."
+   }
+  ],
+  "Bard": [
+   {
+    "name": "College of Lore",
+    "line": "Cutting Words: spend inspiration to shrink an enemy roll; two extra skills."
+   },
+   {
+    "name": "College of Valor",
+    "line": "Your inspiration adds to allies\u2019 damage or AC; you fight in armor with martial weapons."
+   }
+  ],
+  "Warlock": [
+   {
+    "name": "The Fiend",
+    "line": "Dark One's Blessing: temporary HP every time you drop a foe."
+   },
+   {
+    "name": "The Archfey",
+    "line": "Fey Presence charms or frightens everyone near you; Misty Escape teleports you when hurt."
+   }
+  ]
+ },
+ "subclass_grants": {
+  "Battle Master": "Combat Maneuver",
+  "Berserker": "Frenzy",
+  "Oath of Devotion": "Sacred Weapon",
+  "Oath of Vengeance": "Vow of Enmity",
+  "Abjurer": "Arcane Ward",
+  "Wild Magic": "Tides of Chaos",
+  "War Domain": "Guided Strike",
+  "College of Lore": "Cutting Words",
+  "The Archfey": "Fey Presence",
+  "Way of Shadow": "Shadow Step"
+ },
+ "backgrounds": {
+  "Soldier": {
+   "skills": [
+    "athletics",
+    "intimidation"
+   ],
+   "line": "a veteran who has seen real battle and carries its discipline (and its ghosts)"
+  },
+  "Criminal": {
+   "skills": [
+    "stealth",
+    "deception"
+   ],
+   "line": "a former criminal with underworld contacts and a knack for going unnoticed"
+  },
+  "Sage": {
+   "skills": [
+    "arcana",
+    "history"
+   ],
+   "line": "a scholar who has read of things most people have never heard of"
+  },
+  "Acolyte": {
+   "skills": [
+    "insight",
+    "religion"
+   ],
+   "line": "raised in a temple, at home with rites, relics, and the faithful"
+  },
+  "Outlander": {
+   "skills": [
+    "survival",
+    "athletics"
+   ],
+   "line": "raised in the wilds; cities are stranger to you than storms"
+  },
+  "Entertainer": {
+   "skills": [
+    "performance",
+    "acrobatics"
+   ],
+   "line": "a performer who can hold a crowd \u2014 and read one"
+  },
+  "Merchant": {
+   "skills": [
+    "persuasion",
+    "insight"
+   ],
+   "line": "a trader who knows what things are worth and how people bargain"
+  },
+  "Urchin": {
+   "skills": [
+    "sleight of hand",
+    "stealth"
+   ],
+   "line": "grew up on the streets; you know every shortcut and how to disappear"
+  }
+ },
+ "class_reskins": {
+  "neonspire": {
+   "flavor": "Magic here is black-market augmentation: spells are cybernetic mods, casting looks like hardware firing (arm-cannon incendiaries, optic dazzlers, subdermal servos), and holy power is corporate-grade medtech.",
+   "slots": "mod charges",
+   "names": {
+    "Wizard": "Body Modder",
+    "Sorcerer": "Wetware Prodigy",
+    "Warlock": "Debt-Bound Operator",
+    "Cleric": "Street Medic",
+    "Druid": "Bio-Sculptor",
+    "Bard": "Signal Jockey",
+    "Paladin": "Corp Enforcer",
+    "Ranger": "Rooftop Stalker",
+    "Rogue": "Ghost Runner",
+    "Fighter": "Aug Soldier",
+    "Barbarian": "Pit Brawler",
+    "Monk": "Chrome Ascetic"
+   }
+  },
+  "everyday": {
+   "flavor": "A mundane modern world: \"magic\" is charisma, luck, gadgets, and uncanny know-how. Describe spells as skills, tools, and improbable knack \u2014 never literal sorcery.",
+   "slots": "grit",
+   "names": {
+    "Wizard": "Tinkerer",
+    "Sorcerer": "Natural",
+    "Warlock": "Fixer",
+    "Cleric": "Counselor",
+    "Druid": "Naturalist",
+    "Bard": "Performer",
+    "Paladin": "Do-Gooder",
+    "Ranger": "Outdoorsy Type",
+    "Rogue": "Hustler",
+    "Fighter": "Brawler",
+    "Barbarian": "Hothead",
+    "Monk": "Martial Artist"
+   }
+  }
+ },
+ "vendor_stock": {
+  "weapon": [
+   [
+    "Dagger",
+    8
+   ],
+   [
+    "Handaxe",
+    12
+   ],
+   [
+    "Shortsword",
+    25
+   ],
+   [
+    "Longsword",
+    40
+   ],
+   [
+    "Longbow",
+    60
+   ],
+   [
+    "Arrows",
+    3
+   ]
+  ],
+  "armor": [
+   [
+    "Boots",
+    8
+   ],
+   [
+    "Helmet",
+    15
+   ],
+   [
+    "Shield",
+    20
+   ],
+   [
+    "Leather Armor",
+    30
+   ],
+   [
+    "Chain Shirt",
+    60
+   ]
+  ],
+  "potion": [
+   [
+    "Tonic",
+    12
+   ],
+   [
+    "Antidote",
+    25
+   ],
+   [
+    "Elixir of Focus",
+    40
+   ],
+   [
+    "Potion of Healing",
+    50
+   ]
+  ],
+  "food": [
+   [
+    "Bread",
+    1
+   ],
+   [
+    "Ale",
+    1
+   ],
+   [
+    "Meat Pie",
+    2
+   ],
+   [
+    "Cheese",
+    1
+   ],
+   [
+    "Wine",
+    4
+   ]
+  ],
+  "general": [
+   [
+    "Torch",
+    1
+   ],
+   [
+    "Rope",
+    2
+   ],
+   [
+    "Rations",
+    2
+   ],
+   [
+    "Lantern",
+    6
+   ],
+   [
+    "Tent",
+    12
+   ],
+   [
+    "Cheap Map",
+    5
+   ],
+   [
+    "Lockpicks",
+    15
+   ]
+  ]
+ },
+ "vendor_stock_cyber": {
+  "weapon": [
+   [
+    "Mono-Knife",
+    10
+   ],
+   [
+    "Shock Blade",
+    25
+   ],
+   [
+    "Machine Pistol",
+    40
+   ],
+   [
+    "Pulse Rifle",
+    60
+   ],
+   [
+    "Flechette Darts",
+    3
+   ]
+  ],
+  "armor": [
+   [
+    "Combat Boots",
+    8
+   ],
+   [
+    "Ballistic Helmet",
+    15
+   ],
+   [
+    "Riot Shield",
+    20
+   ],
+   [
+    "Padded Street Jacket",
+    30
+   ],
+   [
+    "Carbon Plate Harness",
+    60
+   ]
+  ],
+  "potion": [
+   [
+    "Stim-Patch",
+    12
+   ],
+   [
+    "Anti-Tox Injector",
+    25
+   ],
+   [
+    "Focus Chip",
+    40
+   ],
+   [
+    "Med-Gel Canister",
+    50
+   ]
+  ],
+  "food": [
+   [
+    "Soy Noodles",
+    1
+   ],
+   [
+    "Synth-Caf",
+    1
+   ],
+   [
+    "Vending Ramen",
+    2
+   ],
+   [
+    "Protein Wafer",
+    1
+   ],
+   [
+    "Bootleg Whiskey",
+    4
+   ]
+  ],
+  "general": [
+   [
+    "Glow Stick",
+    1
+   ],
+   [
+    "Zip Cord",
+    2
+   ],
+   [
+    "Ration Packs",
+    2
+   ],
+   [
+    "Signal Jammer",
+    15
+   ],
+   [
+    "Sleep Pod Pass",
+    12
+   ],
+   [
+    "District Map Chip",
+    5
+   ],
+   [
+    "Bypass Deck",
+    15
+   ]
+  ]
+ },
+ "vendor_stock_everyday": {
+  "weapon": [
+   [
+    "Pocket Knife",
+    8
+   ],
+   [
+    "Kitchen Knife",
+    12
+   ],
+   [
+    "Walking Staff",
+    10
+   ],
+   [
+    "Hunting Bow",
+    60
+   ]
+  ],
+  "armor": [
+   [
+    "Hiking Boots",
+    8
+   ],
+   [
+    "Bike Helmet",
+    15
+   ],
+   [
+    "Work Gloves",
+    6
+   ],
+   [
+    "Leather Jacket",
+    30
+   ],
+   [
+    "Padded Vest",
+    45
+   ]
+  ],
+  "potion": [
+   [
+    "Aspirin",
+    5
+   ],
+   [
+    "Bandages",
+    8
+   ],
+   [
+    "Energy Drink",
+    12
+   ],
+   [
+    "First-Aid Kit",
+    25
+   ]
+  ],
+  "food": [
+   [
+    "Coffee",
+    1
+   ],
+   [
+    "Sandwich",
+    2
+   ],
+   [
+    "Pizza Slice",
+    2
+   ],
+   [
+    "Groceries",
+    4
+   ],
+   [
+    "Instant Noodles",
+    1
+   ]
+  ],
+  "general": [
+   [
+    "Flashlight",
+    6
+   ],
+   [
+    "Rope",
+    2
+   ],
+   [
+    "Duct Tape",
+    2
+   ],
+   [
+    "City Map",
+    5
+   ],
+   [
+    "Umbrella",
+    4
+   ],
+   [
+    "Multitool",
+    15
+   ],
+   [
+    "Phone Charger",
+    8
+   ]
+  ]
+ },
+ "vendor_stock_space": {
+  "weapon": [
+   [
+    "Vibro-Knife",
+    10
+   ],
+   [
+    "Plasma Pistol",
+    30
+   ],
+   [
+    "Laser Rifle",
+    60
+   ],
+   [
+    "Arc Blade",
+    25
+   ]
+  ],
+  "armor": [
+   [
+    "Mag Boots",
+    8
+   ],
+   [
+    "Pilot Helmet",
+    15
+   ],
+   [
+    "Deflector Shield",
+    20
+   ],
+   [
+    "Padded Vac-Liner",
+    30
+   ],
+   [
+    "Hull Plate Vest",
+    60
+   ]
+  ],
+  "potion": [
+   [
+    "Med-Stim",
+    12
+   ],
+   [
+    "Rad-Purge Vial",
+    25
+   ],
+   [
+    "Nano-Repair Dose",
+    50
+   ],
+   [
+    "Focus Ampoule",
+    40
+   ]
+  ],
+  "food": [
+   [
+    "Protein Bar",
+    1
+   ],
+   [
+    "Caf Bulb",
+    1
+   ],
+   [
+    "Ration Tin",
+    2
+   ],
+   [
+    "Hydro-Fruit",
+    2
+   ]
+  ],
+  "general": [
+   [
+    "Glow Rod",
+    1
+   ],
+   [
+    "Tether Line",
+    2
+   ],
+   [
+    "O2 Canister",
+    6
+   ],
+   [
+    "Star Chart Chip",
+    5
+   ],
+   [
+    "Bypass Kit",
+    15
+   ],
+   [
+    "Berth Token",
+    12
+   ]
+  ]
+ },
+ "recipes": [
+  {
+   "name": "Potion of Healing",
+   "components": [
+    "Healing Herbs",
+    "Glass Vial"
+   ],
+   "rarity": "uncommon"
+  },
+  {
+   "name": "Antidote",
+   "components": [
+    "Bitterleaf",
+    "Glass Vial"
+   ],
+   "rarity": "common"
+  },
+  {
+   "name": "Torch",
+   "components": [
+    "Wood Branch",
+    "Oil Flask"
+   ],
+   "rarity": "common"
+  },
+  {
+   "name": "Fire Bomb",
+   "components": [
+    "Oil Flask",
+    "Rag Wick"
+   ],
+   "rarity": "uncommon"
+  },
+  {
+   "name": "Trail Rations",
+   "components": [
+    "Meat Cut",
+    "Herb Bundle"
+   ],
+   "rarity": "common"
+  },
+  {
+   "name": "Smoke Bomb",
+   "components": [
+    "Ash Powder",
+    "Rag Wick"
+   ],
+   "rarity": "uncommon"
+  }
+ ]
+}
