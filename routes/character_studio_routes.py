@@ -486,7 +486,13 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
         prompt = (data.get("prompt") or "").strip()
         if not prompt:
             raise HTTPException(400, "prompt required.")
-        model_spec = _default_text_model(user, (data.get("model") or "").strip())
+        # The World Compiler's seed is creative, quality-critical work (weapon
+        # forms, materials, monsters that must READ right — the 3B fast model
+        # produces junk here, e.g. "weapon forms" = sharpening stones). Use the
+        # full default (narration-grade) model. `fast:true` opts a caller into the
+        # small model for cheap stages that can tolerate it.
+        pick = _extractor_model if bool(data.get("fast")) else _default_text_model
+        model_spec = pick(user, (data.get("model") or "").strip())
         if not model_spec:
             raise HTTPException(400, "No text model available.")
         try:

@@ -705,7 +705,13 @@ func _ask_json(prompt: String) -> Dictionary:
 	# The endpoint returns raw model text under "text"; small models fence and
 	# chatter around the object, so extract it rather than trust it.
 	if r.get("text") is String:
-		return _extract_json(str(r["text"]))
+		var d := _extract_json(str(r["text"]))
+		# The fast (3B) model often wraps the whole thing in a single descriptive
+		# key ({"style-guide": {...}}); unwrap once so the expected keys surface
+		# instead of the stage falling back to generic content.
+		if d.size() == 1 and (d.values()[0] is Dictionary):
+			return d.values()[0]
+		return d
 	return {}
 
 
