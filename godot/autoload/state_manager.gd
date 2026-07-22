@@ -67,6 +67,14 @@ func can(action: String) -> bool:
 	return STATES.get(state, {}).get("allowed", []).has(action)
 
 
+## Opening the character sheet / inventory is a read-only VIEW, so it stays
+## available even while the GM is streaming (busy) — a player must never be
+## locked out of their own sheet during a slow turn. Mutations inside the panel
+## still route through can("panels"), which honours busy.
+func can_panels() -> bool:
+	return STATES.get(state, {}).get("allowed", []).has("panels")
+
+
 func is_state(s: StringName) -> bool:
 	return state == s
 

@@ -113,7 +113,9 @@ func _stage_hero() -> void:
 	# Every banked legend — a forged hero survives to play many nights.
 	for h in heroes:
 		var hd: Dictionary = h
-		var card := Card.new({"glyph": "banner", "title": str(hd.get("name", "The legend")),
+		var card := Card.new({"glyph": "banner",
+			"art": Art.texture_for("hero-" + str(hd.get("id", "")).validate_filename()),
+			"title": str(hd.get("name", "The legend")),
 			"body": "%s %s" % [str(hd.get("race", "")), str(hd.get("cls", ""))], "foot": "your roster"})
 		card.set_selected(_hero_selected(hd))
 		card.pressed.connect(func():
@@ -178,7 +180,7 @@ func _stage_campaign() -> void:
 			var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
 			var title := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(w.get("name", ""))
 			var adv := {"id": "dm-%s-%s" % [wid, slug], "name": title, "world_id": wid, "world": w, "story": story}
-			var card := Card.new({"glyph": "🌍", "title": title.left(26),
+			var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
 				"body": str(w.get("name", "")), "foot": str(story.get("hook", "")).left(40)})
 			card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))
 			card.pressed.connect(func():

@@ -2382,7 +2382,9 @@ func _open_lore_book(at := "") -> void:
 ## Story/Destiny/Atlas/Chronicle/The Table). Opens on whichever tab you asked
 ## for, so nothing is buried behind a text link any more.
 func _open_character_screen(at := "", pulse := -1) -> void:
-	if not Mode.can("panels"):
+	# can_panels() (not can) so the sheet/inventory opens even mid-stream (busy) —
+	# viewing is safe; equip/sell inside still honour can("panels").
+	if not Mode.can_panels():
 		return
 	var rec := preload("res://scenes/ui/character_screen.gd").new()
 	MythEnvironment.mount(rec, "env-fireside", "dust", [Vector2(0.1, 0.2)])

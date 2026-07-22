@@ -4,6 +4,7 @@ config_version=5
 [application]
 
 config/name="Mythforge"
+config/icon="res://icon_src.png"
 run/main_scene="res://scenes/login.tscn"
 config/features=PackedStringArray("4.7")
 

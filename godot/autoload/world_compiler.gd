@@ -1054,7 +1054,17 @@ func item_texture(item: Dictionary) -> Texture2D:
 	var rel := str(item.get("art", ""))
 	if rel == "":
 		return null
-	var full := "%s/%s" % [world_dir(GameState.world_id()), rel]
+	return _load_tex("%s/%s" % [world_dir(GameState.world_id()), rel])
+
+
+## The world's establishing key art (for world/tale cards, backdrops). null if
+## the world isn't compiled/baked yet.
+func key_art(world_id: String) -> Texture2D:
+	return _load_tex("%s/art/key.png" % world_dir(world_id))
+
+
+## Load a package image into a cached texture; null if absent/unreadable.
+func _load_tex(full: String) -> Texture2D:
 	if _tex_cache.has(full):
 		return _tex_cache[full]
 	if not FileAccess.file_exists(full):
