@@ -500,9 +500,15 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
             {"role": "user", "content": prompt},
         ]
         try:
+            # json_mode grammar-constrains the decode to ONE valid JSON value
+            # (Ollama format:"json"), so a small model can't emit the malformed
+            # objects the World Compiler kept falling back on. The higher token
+            # ceiling stops big arrays (8-creature bestiaries) truncating
+            # mid-structure — the "Expected ']'" failures.
             raw = await llm_call_async(url, model_id, messages,
                                        temperature=0.9,
-                                       max_tokens=int(data.get("max_tokens") or 1200),
+                                       max_tokens=int(data.get("max_tokens") or 3000),
+                                       json_mode=True,
                                        headers=headers)
         except Exception as e:
             logger.warning("Studio complete_json failed: %s", e)
