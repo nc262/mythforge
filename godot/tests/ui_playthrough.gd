@@ -158,10 +158,13 @@ func _turn_damage_heal() -> void:
 func _check_persistence() -> void:
 	var name := "Pathfinder_%d" % (GameState.sheet().get("level", 1))  # unique-ish, avoids clobbering a real roster entry
 	GameState.bank_hero({"name": name, "race": "Human", "cls": "Fighter", "level": 3})
-	var found := GameState.banked_heroes().any(func(h): return str(h.get("name", "")) == name)
+	var banked: Array = GameState.banked_heroes().filter(func(h): return str(h.get("name", "")) == name)
 	GameState.unbank_hero(name)  # keep the run hermetic — don't leave a test hero in the roster
-	assert(found, "persistence: banked hero did not survive a fresh roster read (bug #8)")
-	print("  persistence: forged hero survives a disk round-trip")
+	assert(not banked.is_empty(), "persistence: banked hero did not survive a fresh roster read (bug #8)")
+	# Identity — the roster's art key is "hero-<id>", and the forge's preview key
+	# is shared scratch. No id means a blank card and, later, a stranger's face.
+	assert(str(banked[0].get("id", "")) != "", "persistence: banked hero has no id — roster art can't resolve")
+	print("  persistence: forged hero survives a disk round-trip, with its own id")
 
 
 ## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no

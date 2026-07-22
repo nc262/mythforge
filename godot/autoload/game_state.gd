@@ -53,7 +53,17 @@ func banked_heroes() -> Array:
 func bank_hero(d: Dictionary) -> void:
 	if d.is_empty() or str(d.get("name", "")) == "":
 		return
-	_write_roster(_roster_upsert(banked_heroes(), d))
+	# A banked legend needs a face of its own. The forge paints its preview into
+	# the shared scratch key "heroprev", which the NEXT forging overwrites — so
+	# pin a copy to this hero's own id, or the roster shows a stranger's face
+	# (and blank cards, since the roster art key is "hero-<id>").
+	var h := d.duplicate(true)
+	if str(h.get("id", "")) == "":
+		h["id"] = str(h["name"]).validate_filename().to_lower()
+	var own := "hero-" + str(h["id"]).validate_filename()
+	if Art.copy(str(h.get("portrait_key", "")), own):
+		h["portrait_key"] = own
+	_write_roster(_roster_upsert(banked_heroes(), h))
 
 
 func unbank_hero(hero_name: String) -> void:
