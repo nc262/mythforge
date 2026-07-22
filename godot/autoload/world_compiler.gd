@@ -39,6 +39,43 @@ var _bg_pending := {}      # world_id → GPU jobs still baking; hits 0 → POPU
 var _journal := {}   # world_id → {stage → true}
 
 
+# ── Shipped (pre-baked) worlds ──────────────────────────────────────────────
+## The game ships built-in worlds already compiled (world-true items, creatures,
+## art) as zips under res://baked/, so a downloaded copy plays them instantly
+## with no forge wait. On first run each zip is unpacked into user://worlds/ if
+## it isn't there yet. PNGs are zipped (not loose in res://) so Godot's importer
+## doesn't turn them into .ctex — the compiler reads them as ordinary files.
+func _ready() -> void:
+	_seed_baked_worlds()
+
+
+func _seed_baked_worlds() -> void:
+	var d := DirAccess.open("res://baked")
+	if d == null:
+		return
+	for f in d.get_files():
+		if not f.ends_with(".zip"):
+			continue
+		var id := f.get_basename()
+		if FileAccess.file_exists("%s/world.json" % world_dir(id)):
+			continue   # already unpacked (or the player recompiled it)
+		_unpack_baked("res://baked/%s" % f, id)
+
+
+func _unpack_baked(zip_path: String, id: String) -> void:
+	var zr := ZIPReader.new()
+	if zr.open(zip_path) != OK:
+		return
+	for inner in zr.get_files():
+		var out := "%s/%s" % [world_dir(id), inner]
+		DirAccess.make_dir_recursive_absolute(out.get_base_dir())
+		var fa := FileAccess.open(out, FileAccess.WRITE)
+		if fa != null:
+			fa.store_buffer(zr.read_file(inner))
+			fa.close()
+	zr.close()
+
+
 # ── Storage ────────────────────────────────────────────────────────────────
 ## The compiled package lives beside the world record, not in the art cache:
 ## compiled assets are CONTENT (they are the world's identity), never a cache
