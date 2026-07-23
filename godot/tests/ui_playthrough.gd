@@ -31,6 +31,7 @@ func _ready() -> void:
 	_check_persistence()
 	_check_gm_model_pick()
 	_check_adventure_ids()
+	_check_every_slot_has_forms()
 	_check_save_spells()
 	_check_multiclass()
 	_check_controller()
@@ -174,6 +175,29 @@ func _check_gm_model_pick() -> void:
 			best = mid
 	assert(best == "llama3.1:8b", "auto GM pick: expected the largest ≤9B, got '%s'" % best)
 	print("  gm model: Auto picks the largest model in the fast window (llama3.1:8b)")
+
+
+## The catalogue only ever covered weapon and armor, so eleven of the thirteen
+## worn slots had no forms and rendered as identical grey diamonds. Every slot
+## the game can equip must have shapes to build items from — including when the
+## seed model returns nothing at all.
+func _check_every_slot_has_forms() -> void:
+	var kinds := {}
+	for f in Compiler._forms({}):        # {} = the seed gave us nothing
+		kinds[str(f.get("kind", ""))] = true
+	var missing: Array = []
+	for pair in Rules.EQUIP_SLOTS:
+		var slot := str(pair[0])
+		# weapon/armor are dressed by the seed's own forms; both ring fingers
+		# take the one "ring" shape family.
+		var covered: bool = kinds.has(slot) \
+			or (slot in ["ring1", "ring2"] and kinds.has("ring")) \
+			or (slot == "weapon" and kinds.has("weapon")) \
+			or (slot == "armor" and kinds.has("armor"))
+		if not covered:
+			missing.append(slot)
+	assert(missing.is_empty(), "slot forms: no shapes for %s — those slots render as empty diamonds" % str(missing))
+	print("  slot forms: all %d equip slots have shapes even with an empty seed" % Rules.EQUIP_SLOTS.size())
 
 
 ## Every tale in a world used to collapse onto "dm-<world>-freeroam", because

@@ -835,15 +835,58 @@ const RARITIES := [
 
 ## All forms as one list, each tagged weapon/armor, in a stable order (so ids
 ## stay put across a Reforge). Reads the asset language; empty → nothing.
+## The eleven worn slots beyond weapon/armor, handcrafted rather than asked for.
+## Asking the seed model for thirteen form lists blows up the JSON, and the small
+## models already fail at two (the 3B returned *sharpening stones* for weapon
+## forms). These carry a shape prompt only — the world's own `prompt_anchor`
+## supplies medium, palette, materials and mood, so a brine-iron circlet and a
+## chrome one come out world-true without the model inventing either. Shipping
+## them means a weak seed can never again leave eleven slots empty — the eleven
+## identical grey diamonds on the Gear tab (UXAudit R5, VIS-15).
+const SLOT_FORMS := {
+	"head": [["circlet", "a simple circlet"], ["helm", "a full helm"], ["hood", "a deep hood"]],
+	"neck": [["amulet", "an amulet on a cord"], ["torc", "a heavy neck torc"], ["pendant", "a small pendant"]],
+	"cloak": [["cloak", "a long travelling cloak"], ["mantle", "a shoulder mantle"], ["cape", "a short cape"]],
+	"hands": [["gloves", "a pair of gloves"], ["gauntlets", "armoured gauntlets"], ["wraps", "wrapped hand bindings"]],
+	"waist": [["belt", "a wide buckled belt"], ["sash", "a knotted sash"], ["girdle", "a reinforced girdle"]],
+	"legs": [["greaves", "a pair of leg greaves"], ["breeches", "sturdy breeches"], ["leggings", "close-fitting leggings"]],
+	"feet": [["boots", "a pair of boots"], ["sandals", "strapped sandals"], ["shod_boots", "armoured boots"]],
+	"ring": [["band", "a plain ring band"], ["signet", "a signet ring"], ["coil_ring", "a coiled ring"]],
+	"shield": [["round_shield", "a round shield"], ["kite_shield", "a tall kite shield"], ["buckler", "a small buckler"]],
+	"offhand": [["parry_dagger", "a parrying dagger"], ["focus", "a spellcasting focus"], ["lantern", "a hand lantern"]],
+}
+
+## The floor under the seed's own two groups. Only used when the model returned
+## nothing usable — `everyday` shipped with 2 weapon forms and 33 images because
+## nothing caught that. A world may be plain; it may not be empty.
+const FALLBACK_FORMS := {
+	"weapon": [["blade", "a straight blade"], ["axe", "a hand axe"], ["spear", "a long spear"],
+		["club", "a heavy club"], ["bow", "a short bow"], ["knife", "a work knife"]],
+	"armor": [["chest_plate", "a chest plate"], ["mail_shirt", "a mail shirt"],
+		["padded_coat", "a padded coat"], ["scale_vest", "a scaled vest"]],
+}
+
+
+## Every form the catalogue is built from: what the seed invented for weapons and
+## armour, plus the handcrafted set for the other ten slots.
 func _forms(assets: Dictionary) -> Array:
 	var out: Array = []
 	for kind in ["weapon", "armor"]:
+		var before := out.size()
 		var arr = assets.get(kind + "_forms")
 		if arr is Array:
 			for f in arr:
 				if f is Dictionary and f.has("id"):
 					out.append({"id": str(f["id"]), "name": str(f.get("name", f["id"])),
 						"prompt": str(f.get("prompt", f.get("name", ""))), "kind": kind})
+		if out.size() == before:     # the seed gave us nothing for this kind
+			for pair in FALLBACK_FORMS[kind]:
+				out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
+					"prompt": str(pair[1]), "kind": kind})
+	for slot in SLOT_FORMS:
+		for pair in SLOT_FORMS[slot]:
+			out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
+				"prompt": str(pair[1]), "kind": str(slot)})
 	return out
 
 
