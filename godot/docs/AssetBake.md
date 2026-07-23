@@ -89,6 +89,62 @@ art competing with their narrator.
    ghosted shape each — 11 images total, not 900. Worth doing first so the Gear
    tab stops looking broken while the big bake runs.
 
+---
+
+## Director's refinement (2026-07-23): material chooses the form
+
+> *"a leather chest piece will look different than a steel chest piece, not just
+> in texture but a completely different style — one is almost like a shirt, the
+> other full-on armor… and there is more than just sword weapons, we need ranged,
+> blunt etc."*
+
+This breaks the flat form × material grid, and it should. **"Chest plate in
+leather" is incoherent.** A leather chest is a jerkin; a steel chest is a
+cuirass. The shape follows the material class, so the grid must be *filtered*,
+not multiplied.
+
+### The model
+
+Every form carries a **material class** it accepts; every material carries the
+class it belongs to. `_build_catalogue` crosses only compatible pairs.
+
+| class | materials like | chest forms | notes |
+|-------|----------------|-------------|-------|
+| `soft` | cloth, hide, leather, sailcloth | jerkin, vest, padded coat, robe | reads as clothing |
+| `mail` | chain, scale, ring | mail shirt, scale vest, chain coat | flexible metal |
+| `rigid` | iron, steel, brine-iron, chrome | cuirass, breastplate, plate harness | full armour |
+| `exotic` | bone, chitin, crystal, salvage | carapace, bound-plate | per-world flavour |
+
+Same rule everywhere: a `soft` head form is a hood or a wrap, a `rigid` one is a
+helm. A `soft` hands form is wraps or gloves; `rigid` is gauntlets.
+
+**This raises quality *and* count.** Ten materials no longer produce ten
+repaints of one silhouette — they produce four genuinely different silhouettes,
+each in the materials that suit it.
+
+### Weapon families
+
+`weapon` is currently one bucket, and the seed reaches for blades. It needs
+families, each with its own shapes:
+
+`blade` · `axe` · `blunt` · `polearm` · `ranged` · `thrown` · `exotic`
+
+6–8 shapes per family across 7 families ≈ **~50 weapon forms alone**, before
+materials. That is where the Director's "thousands" actually comes from.
+
+### Work this adds, before B5
+
+| # | Item | Effort |
+|---|------|--------|
+| C1 | `class` tag on every form; `class` on every material (seed schema + fallbacks) | S |
+| C2 | `_build_catalogue` crosses only compatible (form, material) pairs | S |
+| C3 | Expand `SLOT_FORMS` per class — soft/mail/rigid/exotic variants per slot | M (table work) |
+| C4 | Weapon families with 6–8 shapes each | M (table work) |
+| C5 | Seed prompt asks for materials **with their class**, so world-invented materials slot in correctly | S |
+
+C1+C2 are the mechanism and must land before C3/C4 make the tables large —
+otherwise the first pour bakes incoherent pairs at scale.
+
 ## Status
 
 Planned, not started. B1–B4 are the build; B5 is the pour. Nothing has been
