@@ -137,6 +137,8 @@ not negotiable against visual work.
 | B3 | **Forge a World fails every time** — worldsmith returns 200 with no `name`; 2.5 min + 6 LLM calls burned, then "The forge sputtered (200)" | S msg / M contract |
 | B4 | **"Strike again" is dead** after that failure — the World Forge is a hard dead end | S |
 | B5 | **The Campaign Shelf is entirely inert** — 8 tales, no hover, no click, no error; a whole main-menu destination does nothing | M |
+| B6 | **No way out of a tale.** The play screen's exit (tooltip: "Close") is dead at three click points, and Escape does nothing — so Return to Main Menu and Continue are both unreachable | S |
+| B7 | **The empty minimap frame floats above the transcript** and covers live story text, the combat roll bar and the "Still composing" status | S |
 
 ### Tier 1 — highest impact ÷ lowest effort. The most "real game" per hour.
 
@@ -185,10 +187,23 @@ the narration column to 60–75 characters (~150 today) · migrate legacy roster
 heroes (Quin and Sister Maren are faceless; Corin Vale, banked after today's
 fix, is not).
 
+### Second pass — vendor, scene art, combat (all now played)
+
+| # | Item | Effort |
+|---|------|--------|
+| 21 | **Paint the scene automatically on every location/beat change.** Today art only exists if the player finds an unlabelled icon and clicks "Conjure a painting" — which is why the play screen looked art-less for a whole session. Keep the button as a re-roll | M |
+| 22 | **Give combat an interface.** "Roll to hit d20 +5 vs AC 13" on a bare bar is the whole of it — no initiative, no enemy nameplate or HP, no target, no player HP in view | L |
+| 23 | **Land the dice.** A natural 1 prints as `*attack roll* → d20 1 +5 = 6 — critical miss!` — raw markdown, no colour, no die, no stinger, inside the player's own chat bubble | M |
+| 24 | **3–4 suggested actions per beat.** The GM asks "What do you do next?" and the UI answers with an empty text box, every single turn | M |
+| 25 | **Fix the vendor pack list** — four items all truncate to the same "Splintered Shoreswood…" prefix and none carry art, though the Gear tab has art for the same objects | S |
+| 26 | **World-true vendor stock.** Saltmarsh's keeper sells Dagger / Handaxe / Longsword / Leather Armor while the player carries a Fishhook-Edged Cutlass. Pirate world, generic-fantasy shop | M |
+| 27 | **Vendor title + ✕ render outside the panel**, on top of the story text | S |
+| 28 | **Frame and centre the scene painting** — it sits left-aligned and unframed in a panel twice its width, and reflows the transcript when it lands | S |
+| 29 | **Stream the GM's reply.** ~2 min per turn, arriving all at once, with one static grey line as feedback | M |
+
 ### Not covered — schedule before calling Round 5 complete
 
-**Vendors** and **combat** were never reached (GM-driven; the local model was
-too slow inside the session). **Continue an Existing Adventure** could not be
-tested — the run ended trapped in the Lore Book (B1), and there is no Continue
-entry to begin with. **Forge a Campaign**, **Forge a GM**, **Forge a Companion**
-and **A Quiet Table** were not entered. Audio was not assessed.
+**Return to Main Menu** and **Continue an Existing Adventure** are blocked by
+B6 — there is no working exit from a tale, so the round-trip cannot be tested.
+**Forge a Campaign**, **Forge a GM**, **Forge a Companion** and **A Quiet
+Table** were not entered. Audio was not assessed.

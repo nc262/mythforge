@@ -68,19 +68,22 @@ whose only job is to announce an unshipped feature, 0 fullscreen option.
 | 30 | — Record · Skills tabs | tab bar | — |
 | 31 | Lore Book — The Lore of Saltmarsh Reach | action bar | — |
 
+**Second pass (after the Director freed the stuck Lore Book):** 32 The trading
+post (vendor) · 33 Scene painting ("Conjure a painting of the current scene") ·
+34 Combat — attack prompt, roll, critical miss, resolution · 35 the play
+screen's exit control.
+
 ### Not exercised — and why
 
 Honest gaps, so this document is not read as complete coverage:
 
-- **Vendors / Combat** — both are GM-driven events. The opening narration alone
-  took the local model long enough that a shop or an encounter could not be
-  reached inside the session. **Untested.**
 - **Forge a Campaign · Forge a GM · Forge a Companion · A Quiet Table** — not
   entered. (`A QUIET TABLE` is in fact *unreachable* at this window size, see
   UX-02.)
-- **Continue an Existing Adventure** — could not be tested, because the run
-  ended trapped inside the Lore Book (BLK-05) and there is no Continue entry
-  on the main menu to begin with (UX-01).
+- **Return to Main Menu · Continue an Existing Adventure** — **blocked by
+  BLK-06**: the play screen's exit control does not work, so there is no way to
+  leave a tale and come back to it. There is also no Continue entry on the main
+  menu to return to (UX-01).
 - **Audio** — a screenshot cannot hear. Sound is excluded from every finding;
   "missing sound" is listed only as an *open question* in §7.
 
@@ -150,17 +153,30 @@ which is **clipped by the bottom of the window** (roughly half the button is
 off-screen). A player who does not guess to click a half-visible button is
 stuck in the sheet.
 
-### BLK-05 · The Lore Book cannot be closed at all
-**Severity: Critical** — this ended the play session.
+### BLK-05 · The Lore Book's close control has a broken hit area
+**Severity: High** *(revised down from Critical — see note)*
 
-"Close the book" (clicked at two points), Escape — none of them close it. The
-run terminated trapped inside the Lore Book with the game unusable. This is
-the single worst defect found: it is unrecoverable without killing the process.
+"Close the book" clicked at two points, plus Escape, all failed and the session
+appeared trapped. **The Director then closed it by hand on the third attempt**,
+so the control is not dead — its **hit area does not match its label**, and
+Escape genuinely does nothing. Recorded honestly: not unrecoverable, but a
+player who clicks the words and gets no response twice will believe it is.
 
-**Fix for BLK-04/05 together:** one modal-dismiss contract — Escape closes the
-topmost panel, ✕ and the labelled control call the same handler, and no
-dismiss control may sit outside the viewport. **Effort:** S–M. **Depends on:**
-a shared panel base (does not exist yet — that *is* the fix).
+### BLK-06 · There is no way out of a tale — the play screen's exit is dead
+**Severity: Critical**
+
+The door glyph at the top-right of the play screen tooltips as **"Close"**.
+Clicked at three points across its glyph, plus Escape: nothing, in any case.
+Once a tale is open there is no route back to the main menu. This is why
+**Return to Main Menu** and **Continue an Existing Adventure** could not be
+tested in this session — the exit that would have started that test is the
+defect.
+
+**Fix for BLK-04/05/06 together:** one dismiss contract — Escape closes the
+topmost surface, ✕/labelled controls call the same handler, hit areas match
+their glyph + label, and no dismiss control may sit outside the viewport.
+**Effort:** S–M. **Depends on:** a shared panel base (does not exist — that
+*is* the fix).
 
 ---
 
@@ -211,6 +227,49 @@ a shared panel base (does not exist yet — that *is* the fix).
 | VIS-20 | **Settings is a Windows settings page** — full-width rows, an unlabelled stock volume slider with no value readout, stock toggles, ~50 % dead space. | Med | No layout system on this screen | Constrained centred panel, labelled slider with value | S |
 | VIS-21 | **Four faint grey disclosure lines** ("Advanced: shape the five pillars by hand", "Make this path your own", "Your story, in your words", "Or take the standard array") are the power-user paths and are nearly invisible, several sitting directly on bright background art. | Med | Styled as footnotes | Real expander control with a scrim | S |
 | VIS-22 | **Crest/wordmark clipped** at the top of the main menu; the stage rail's diamonds sit tight against the window chrome on every forge. | Low | No top safe-area | Safe-area padding | XS |
+
+---
+
+## 4b. Second pass — vendor, scene art, combat
+
+### Vendors — "The trading post"
+
+| ID | Finding | Sev | Improvement | Effort |
+|----|---------|-----|-------------|--------|
+| VEN-01 | **The panel title and its ✕ render outside the panel, on top of the story text.** "The trading post" collides with "…it seems today is different in more ways than one." | High | Title inside the panel chrome | S |
+| VEN-02 | **Your pack is unusable** — all four items truncate to "Splintered Shoreswood Fishhook-Edged Cut…", "…Breastplate of Rusti…", "…Slatted Board Armor…", "…Chain-Coated Sailcl…". Four items, none identifiable, all sharing the same 20-character prefix. **And no item art at all**, though the Gear tab shows art for the same objects | **High** | Show art + drop the world prefix in lists; name column ≥ the widest generated name | S |
+| VEN-03 | **The keeper's wares are generic fantasy in a pirate world** — Dagger, Handaxe, Shortsword, Longsword, Longbow, Arrows, Boots, Helmet, Shield, Leather Armor. The player's own gear is world-true; the shop's is not. (Round 3 shipped world-skinned stock for cyber/everyday/space; a pirate world falls back to the fantasy base) | **High** | A Saltmarsh stock table, or generate stock from the world catalogue the compiler already built | M |
+| VEN-04 | **Only 3 of ~11 wares have icons** (Dagger, Longsword, Leather Armor); the rest are text, so rows with icons indent differently from rows without and the list looks ragged | Med | Icon for every ware, or none | S |
+| VEN-05 | **Three button styles inside one small modal** (gold Buy, ghost Sell, teal-outline "Leave the counter" in its own detached box below the panel); the Haggle line's die glyph floats far-left, detached from its centred label | Med | One modal footer, one button contract | S |
+| VEN-06 | **No scrim behind the modal** — the story text stays at full strength behind and competes with the shop | Med | Dim the page behind modals | XS |
+
+### Scene art
+
+| ID | Finding | Sev | Improvement | Effort |
+|----|---------|-----|-------------|--------|
+| ART-01 | **Scene art is manual and hidden.** The only way to get an image is to find an unlabelled picture icon and click "Conjure a painting of the current scene". A player will never discover it. This is why the play screen looked art-less for the entire first session | **High** | Paint automatically on scene/location change; keep the button as a re-roll | M |
+| ART-02 | **Then it takes ~65 s** with one grey line ("The scene paints itself…") and no placeholder frame | High | Reserved frame + skeleton, painted ahead of the beat | M |
+| ART-03 | **The painting is left-aligned in a panel twice its width** — roughly half the container is empty green — and it is unframed while every other AI image in the app ships in a MythPlate | High | Centre + frame, or fill the panel | S |
+| ART-04 | **When the art lands the transcript reflows and clips the player's own message** behind the header | Med | Reserve the slot before painting | S |
+| ART-05 | The prompt returned **a lone character portrait, not the scene** ("a crowd near a flagpole" → one pirate on a beach) | Med | Scene prompts should name the place and the crowd, not the hero | S |
+| ART-06 | The world backdrop that finally appears behind the play screen has **no scrim** — the header, right gutter and action bar sit over a busy ship scene | High | Same scrim rule as RD-03 | S |
+
+### Combat
+
+| ID | Finding | Sev | Improvement | Effort |
+|----|---------|-----|-------------|--------|
+| CMB-01 | **There is no combat interface.** An attack is a gold bar reading "Roll to hit d20 +5 vs AC 13". No initiative order, no enemy nameplate, no enemy HP, no target indicator, no player HP in view | **High** | A combat strip: initiative, target card with HP, your HP, the roll | L |
+| CMB-02 | **A natural 1 is rendered as plain text with raw markdown leaking**: `*attack roll* → d20 1 +5 = 6 — critical miss!` — asterisks unparsed, in the player's own chat bubble, no colour, no die, no flourish. The single most dramatic roll in tabletop, delivered as a log line | **High** | Parse the markup; a die that tumbles and lands, crit-fail colour + stinger | M |
+| CMB-03 | **~2 minutes per turn**, with "Still composing — the local mind is slow tonight" as the only feedback, and the reply arrives all at once rather than streaming | High | Stream tokens; elapsed timer; let the player queue the next action | M |
+| CMB-04 | **No suggested actions, ever.** The GM asks "What do you do next?" and the UI offers a blank text box. Every turn is a blank-page problem | **High** | 3–4 GM-authored options per beat, plus free text | M |
+
+### The minimap
+
+| ID | Finding | Sev | Improvement | Effort |
+|----|---------|-----|-------------|--------|
+| MAP-01 | **The empty minimap frame floats above the transcript and covers live story text** — it obscured "instead of finding its mark", "The other pirates freeze…", "Tell me what happens next", the "Still composing" status, and part of the combat roll bar | **High** | Put it in the layout, not on top of it; hide until it has a map | S |
+| MAP-02 | It renders its own loading copy ("Charting by dead reckoning…") **underneath its own frame**, unreadable | Med | Same fix | S |
+| MAP-03 | After charting completed it is **still an empty rectangle** | High | Render the chart, or hide the frame | M |
 
 ---
 
