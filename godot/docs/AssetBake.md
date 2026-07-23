@@ -145,7 +145,30 @@ materials. That is where the Director's "thousands" actually comes from.
 C1+C2 are the mechanism and must land before C3/C4 make the tables large —
 otherwise the first pour bakes incoherent pairs at scale.
 
-## Status
+## Status (2026-07-23)
 
-Planned, not started. B1–B4 are the build; B5 is the pour. Nothing has been
-generated yet — the numbers above are targets, not results.
+**The mechanism is done. Nothing has been generated yet.**
+
+| | |
+|---|---|
+| ✅ B1 | `_forms()` covers all 13 worn slots (was weapon+armor only) |
+| ✅ B3 | `FALLBACK_FORMS` floor — a failed seed can no longer ship a 33-image world |
+| ✅ C1/C2 | material classes + the compatibility filter — no leather cuirasses, no steel hoods |
+| ✅ C3 | slot forms re-authored per class (hood/coif/helm/mask, not one silhouette) |
+| ✅ C4 | 7 weapon families, 30 forms, always shipped — the seed layers on top |
+| ✅ C5 | seed declares each material's `class`; keywords are the fallback |
+| ✅ — | enchantment tints at draw time (`treatment_modulate`), wired into MythSocket + MythCard |
+| ☐ B2 | raise the material ask 6 → 10. **Needs a live seed run** to confirm the 8B still returns clean JSON with the new `class` field — not a harness check |
+| ☐ B4 | resumable, idempotent bake. The last mechanism, and the one that must not be skipped |
+| ☐ B5 | the pour |
+
+**Spine today:** 77 handcrafted forms + ~10 from the seed. At 10 materials,
+filtered by class, that is **~400–500 generated images per world** — roughly
+3–4 h each, ~14 h for four. Rarity × treatments compose on top for the item
+count, so tens of thousands per world without generating them.
+
+Every claim above is guarded in `tests/ui_playthrough.gd`: all 13 slots have
+shapes with an empty seed, every weapon family is represented, the armoury
+clears 25 forms, flame ≠ frost ≠ plain, and an unknown material or treatment
+degrades to "matches everything" / "looks ordinary" rather than emptying a
+catalogue or painting something wrong.
