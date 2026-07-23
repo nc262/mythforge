@@ -212,6 +212,22 @@ func _check_every_slot_has_forms() -> void:
 	assert(Compiler._form_takes(helm, "any"), "an unclassified material still fits")
 	assert(Compiler._form_takes({}, "soft"), "a form with no classes takes anything (the seed's own forms)")
 	print("  material classes: form follows material — no leather cuirasses, no steel hoods")
+	# C5 — a declared class beats the keyword guess, so a world can invent a
+	# material whose name carries no known word.
+	assert(Compiler._class_of({"id": "sunmetal", "class": "rigid"}) == "rigid", "class: declared wins")
+	assert(Compiler._class_of({"id": "salt_leather"}) == "soft", "class: keywords still work undeclared")
+	# C4 — an armoury is not six swords. Every family must be represented, even
+	# when the seed returns nothing at all.
+	var fams := {}
+	var weapons := 0
+	for f in Compiler._forms({}):
+		if str(f.get("kind", "")) == "weapon":
+			weapons += 1
+			fams[str(f.get("family", ""))] = true
+	for want in ["blade", "axe", "blunt", "polearm", "ranged", "thrown"]:
+		assert(fams.has(want), "weapon families: nothing to swing in the '%s' family" % want)
+	assert(weapons >= 25, "weapon families: only %d weapon forms — an armoury, not a rack of swords" % weapons)
+	print("  weapon families: %d weapon forms across %d families" % [weapons, fams.size()])
 
 
 ## Every tale in a world used to collapse onto "dm-<world>-freeroam", because

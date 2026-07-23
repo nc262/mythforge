@@ -463,12 +463,15 @@ ARMOR looks like: %s
 
 Answer with ONE JSON object, no prose, no markdown fence:
 {
- "materials": [{"id":"brine_iron","name":"Display Name","dark":"#rrggbb","light":"#rrggbb","tier":1}],
+ "materials": [{"id":"brine_iron","name":"Display Name","dark":"#rrggbb","light":"#rrggbb","tier":1,"class":"rigid"}],
  "treatments": [{"id":"salt_worn","name":"Display Name","note":"how it changes the look"}],
  "weapon_forms": [{"id":"cutlass","name":"Display Name","prompt":"a short image-prompt phrase for this weapon shape"}],
  "armor_forms":  [{"id":"chain_coat","name":"Display Name","prompt":"a short image-prompt phrase"}],
  "naming": {"prefix":["4 evocative prefixes"],"suffix":["4 suffixes, e.g. 'of the Ash Coast'"]}
 }
+Every material's "class" is one of: soft (cloth/hide/leather), mail (chain/scale),
+rigid (metal/stone/wood), exotic (bone/crystal/salvage/strange). The class decides
+which shapes it can be made into — a soft chest is a jerkin, a rigid one a cuirass.
 Rules: 6 materials (tier 1-3, cheap to precious, colours must suit the world),
 4 treatments (wear/age/blessing/damage), 6 weapon_forms, 4 armor_forms.
 Every id is one or two SHORT snake_case words (e.g. cutlass, brine_iron) — do NOT
@@ -884,9 +887,18 @@ const CLASS_WORDS := {
 }
 
 
-## Which class a material id belongs to. Unknown materials match EVERYTHING —
-## a classifier miss must never silently empty a world's catalogue. World-invented
-## materials ("brine_iron", "salt_worn_pine") usually carry a known word.
+## C5 — the class a material belongs to. The seed is asked to declare one; when
+## it does we trust it, because a world can invent a material whose name carries
+## no known word ("sunmetal", "godsflesh"). Otherwise fall back to keywords.
+func _class_of(mat: Dictionary) -> String:
+	var declared := str(mat.get("class", "")).strip_edges().to_lower()
+	if declared in ["soft", "mail", "rigid", "exotic"]:
+		return declared
+	return _material_class(str(mat.get("id", "")))
+
+
+## Which class a material id belongs to by name. Unknown materials match
+## EVERYTHING — a classifier miss must never silently empty a world's catalogue.
 func _material_class(mat_id: String) -> String:
 	var low := mat_id.to_lower()
 	for cls in CLASS_WORDS:
@@ -908,14 +920,39 @@ func _form_takes(form: Dictionary, mat_class: String) -> bool:
 	return accepts.has(mat_class)
 
 
-## The floor under the seed's own two groups. Only used when the model returned
+## C4 — weapon families. `weapon` was one bucket and the seed reaches for blades
+## every time, so a world's armoury was six swords in six metals. These ship
+## ALWAYS (the seed's own world-flavoured weapons layer on top), so every world
+## has something to swing, shoot and throw. Classes keep a wooden club wooden and
+## a bowstring off the plate rack.
+const WEAPON_FAMILIES := {
+	"blade": [["shortblade", "a short straight blade", ["rigid"]], ["longblade", "a long sword blade", ["rigid"]],
+		["curved_blade", "a curved sabre", ["rigid"]], ["greatblade", "a two-handed great blade", ["rigid"]],
+		["shard_blade", "a jagged shard blade", ["exotic"]]],
+	"axe": [["hand_axe", "a one-handed axe", ["rigid"]], ["war_axe", "a bearded war axe", ["rigid"]],
+		["great_axe", "a two-handed great axe", ["rigid"]], ["cleaver", "a heavy cleaver", ["rigid"]]],
+	"blunt": [["club", "a heavy wooden club", ["soft", "rigid"]], ["mace", "a flanged mace", ["rigid"]],
+		["hammer", "a war hammer", ["rigid"]], ["maul", "a two-handed maul", ["rigid"]],
+		["bone_cudgel", "a knotted bone cudgel", ["exotic"]]],
+	"polearm": [["spear", "a long spear", ["rigid"]], ["halberd", "a halberd", ["rigid"]],
+		["glaive", "a curved glaive", ["rigid"]], ["pike", "a long pike", ["rigid"]]],
+	"ranged": [["shortbow", "a short bow", ["soft", "rigid"]], ["longbow", "a tall longbow", ["soft", "rigid"]],
+		["crossbow", "a heavy crossbow", ["rigid"]], ["sling", "a leather sling", ["soft"]]],
+	"thrown": [["javelin", "a throwing javelin", ["rigid"]], ["throwing_knife", "a balanced throwing knife", ["rigid"]],
+		["bola", "a weighted bola", ["soft"]], ["harpoon", "a barbed harpoon", ["rigid"]]],
+	"exotic_arm": [["whip", "a coiled whip", ["soft"]], ["chain_flail", "a chained flail", ["mail", "rigid"]],
+		["talon_claw", "a strapped claw", ["exotic"]], ["focus_rod", "a channelling rod", ["exotic"]]],
+}
+
+
+## The floor under the seed's own armour group. Only used when the model returned
 ## nothing usable — `everyday` shipped with 2 weapon forms and 33 images because
 ## nothing caught that. A world may be plain; it may not be empty.
 const FALLBACK_FORMS := {
-	"weapon": [["blade", "a straight blade"], ["axe", "a hand axe"], ["spear", "a long spear"],
-		["club", "a heavy club"], ["bow", "a short bow"], ["knife", "a work knife"]],
-	"armor": [["chest_plate", "a chest plate"], ["mail_shirt", "a mail shirt"],
-		["padded_coat", "a padded coat"], ["scale_vest", "a scaled vest"]],
+	"armor": [["jerkin", "a leather jerkin", ["soft"]], ["padded_coat", "a padded coat", ["soft"]],
+		["mail_shirt", "a mail shirt", ["mail"]], ["scale_vest", "a scaled vest", ["mail"]],
+		["cuirass", "a plate cuirass", ["rigid"]], ["breastplate", "a fitted breastplate", ["rigid"]],
+		["carapace", "a bound carapace", ["exotic"]]],
 }
 
 
@@ -931,10 +968,15 @@ func _forms(assets: Dictionary) -> Array:
 				if f is Dictionary and f.has("id"):
 					out.append({"id": str(f["id"]), "name": str(f.get("name", f["id"])),
 						"prompt": str(f.get("prompt", f.get("name", ""))), "kind": kind})
-		if out.size() == before:     # the seed gave us nothing for this kind
-			for pair in FALLBACK_FORMS[kind]:
+		# Armour has a floor; weapons have a whole spine (WEAPON_FAMILIES below).
+		if kind == "armor" and out.size() == before:
+			for pair in FALLBACK_FORMS["armor"]:
 				out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
-					"prompt": str(pair[1]), "kind": kind})
+					"prompt": str(pair[1]), "kind": "armor", "classes": pair[2]})
+	for fam in WEAPON_FAMILIES:
+		for pair in WEAPON_FAMILIES[fam]:
+			out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
+				"prompt": str(pair[1]), "kind": "weapon", "family": str(fam), "classes": pair[2]})
 	for slot in SLOT_FORMS:
 		for pair in SLOT_FORMS[slot]:
 			out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
@@ -956,7 +998,7 @@ func _build_catalogue(assets: Dictionary) -> Array:
 	var out: Array = []
 	for f in forms:
 		for m in mats:
-			if m is Dictionary and not _form_takes(f, _material_class(str(m.get("id", "")))):
+			if m is Dictionary and not _form_takes(f, _class_of(m)):
 				continue   # C2: no leather cuirasses, no steel hoods
 			if not (m is Dictionary and m.has("id")):
 				continue
