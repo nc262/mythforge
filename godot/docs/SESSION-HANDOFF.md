@@ -1,4 +1,47 @@
-# Session Handoff — pick up here (2026-07-22, second pass)
+# Session Handoff — pick up here (2026-07-23)
+
+## ▶ START HERE: The Great Bake (B1–B5)
+
+Director approved 2026-07-23: **build the bake, then pour it.** Full plan and
+numbers in [AssetBake.md](AssetBake.md); the *why* is in
+[Performance.md](Performance.md) §7 (live art generation is what starved the
+narrator down to 67 % GPU).
+
+Order, and do not reorder — B4 protects B5:
+
+1. **B1 — `_forms()` past weapon/armor.** `world_compiler.gd:838` iterates
+   `["weapon", "armor"]`; the game has 13 slots (`Rules.EQUIP_SLOTS`). Add
+   `<slot>_forms` to the seed schema (`world_compiler.gd:468`) and to `_forms()`.
+   This is the unblocker for everything, and it also kills the eleven identical
+   grey diamonds on the Gear tab.
+2. **B2 — ask the seed for 10 materials and 10 treatments.** Verify the 8B still
+   returns usable asset language; the 3B provably cannot (it returned
+   *sharpening stones* for weapon forms — see §3 gotchas below).
+3. **B3 — handcrafted fallback forms per slot in `data/tables.json`**, so a weak
+   model or a failed seed can never ship another 33-PNG world (`everyday` today).
+4. **Enchantment icon overlays — DECIDED: in scope, before the pour.** Rarity is
+   already a draw-time glow; treatments currently touch names and stats only, so
+   10 enchantments × 900 bases would all render identically and the
+   combinatorics would exist only on paper.
+5. **B4 — make the bake resumable and idempotent.** Skip keys already on disk,
+   checkpoint per form×material. Non-negotiable: the pour is ~6.5 h per world
+   and a crash at hour five must not restart it.
+6. **B5 — pour** all four worlds (~3 600 images, ~26 h), re-zip, re-export.
+   Also bake vendor stock icons in the same pass (Performance §7 A1) — they are
+   a constant in `tables.json` and they are the exact jobs that half-offloaded
+   the model.
+
+Cheap parallel win while the pour runs: **11 empty-slot silhouettes** — 11
+images, not 900, and the Gear tab stops looking broken immediately.
+
+**Before any of it:** read [UXAudit-Round5.md](UXAudit-Round5.md). The Round-5
+blocking tier (B1–B8 in [UIPolish.md](UIPolish.md)) is still open — two panels
+whose close controls have broken hit areas, a dead exit from the play screen, a
+dead Campaign Shelf, and a World Forge that fails every time.
+
+---
+
+# Previous handoff (2026-07-22, second pass)
 
 Read this first when resuming. It captures the current state, the workflows, the
 hard-won gotchas, and the open items. Deeper detail lives in the linked docs.
