@@ -228,6 +228,16 @@ func _check_every_slot_has_forms() -> void:
 		assert(fams.has(want), "weapon families: nothing to swing in the '%s' family" % want)
 	assert(weapons >= 25, "weapon families: only %d weapon forms — an armoury, not a rack of swords" % weapons)
 	print("  weapon families: %d weapon forms across %d families" % [weapons, fams.size()])
+	# Enchantments must READ. Ten treatments over one baked shape have to look
+	# like ten things, or the combinatorics only exist on paper.
+	var flame := Compiler.treatment_modulate({"treatment": "flame_kissed"})
+	var frost := Compiler.treatment_modulate({"treatment": "rimebound"})
+	assert(flame != Color.WHITE and frost != Color.WHITE, "treatments: a known treatment must tint")
+	assert(flame != frost, "treatments: flame and frost must not look alike")
+	assert(Compiler.treatment_modulate({}) == Color.WHITE, "treatments: no treatment, no tint")
+	assert(Compiler.treatment_modulate({"treatment": "zzz_unknown"}) == Color.WHITE,
+		"treatments: an unrecognised treatment must look ordinary, never wrong")
+	print("  treatments: enchantments tint the icon (flame ≠ frost ≠ plain)")
 
 
 ## Every tale in a world used to collapse onto "dm-<world>-freeroam", because

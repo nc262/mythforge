@@ -39,6 +39,9 @@ func set_item(p: Dictionary, tex: Texture2D = null) -> void:
 	payload = p
 	add_theme_stylebox_override("panel", Ui.sb_socket(not p.is_empty()))
 	_icon.texture = tex
+	# The enchantment paints the icon — a flame-kissed blade and a rimebound one
+	# share a baked shape and must not share a look. White for a plain item.
+	_icon.modulate = Compiler.treatment_modulate(p)
 	_glyph.visible = tex == null
 	if p.is_empty():
 		_glyph.text = ghost

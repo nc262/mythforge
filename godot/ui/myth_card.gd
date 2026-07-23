@@ -46,6 +46,7 @@ func setup(p: Dictionary, tex: Texture2D = null) -> void:
 	payload = p
 	add_theme_stylebox_override("panel", Ui.sb_card(str(p.get("rarity", "common"))))
 	_icon.texture = tex
+	_icon.modulate = Compiler.treatment_modulate(p)   # the enchantment paints the icon
 	_glyph.visible = tex == null
 	_glyph.text = str(p.get("glyph", "◆"))
 	var q := int(p.get("qty", 1))

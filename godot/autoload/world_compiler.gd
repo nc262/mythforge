@@ -1197,6 +1197,37 @@ func item_texture(item: Dictionary) -> Texture2D:
 	return _load_tex("%s/%s" % [world_dir(GameState.world_id()), rel])
 
 
+## Enchantment/treatment tints. Rarity is already a draw-time glow; treatments
+## touched only names and stats, so ten treatments over 500 baked shapes rendered
+## identically and the combinatorics existed on paper only. A tint is applied at
+## DRAW time — free, no second bake, and it composes with the rarity glow. Worlds
+## invent their own treatment ids, so match by keyword like materials do.
+const TREATMENT_TINTS := {
+	"flame": [["flam", "burn", "ember", "sear", "ash"], Color(1.25, 0.82, 0.60)],
+	"frost": [["frost", "ice", "cold", "rime", "chill"], Color(0.72, 0.94, 1.25)],
+	"venom": [["venom", "poison", "toxic", "blight"], Color(0.78, 1.20, 0.72)],
+	"storm": [["storm", "shock", "volt", "thunder", "arc"], Color(0.82, 0.92, 1.30)],
+	"blessed": [["bless", "holy", "sacred", "sun", "radiant"], Color(1.28, 1.18, 0.80)],
+	"cursed": [["curse", "wraith", "void", "shadow", "dread"], Color(0.72, 0.62, 0.92)],
+	"worn": [["worn", "salt", "rust", "weather", "old", "tarnish"], Color(0.86, 0.82, 0.74)],
+	"blood": [["blood", "gore", "carn"], Color(1.20, 0.70, 0.70)],
+}
+
+
+## The colour an item's treatment paints it. White when it has none, or when the
+## world invented a treatment we don't recognise — an unknown treatment must look
+## ordinary, never wrong.
+func treatment_modulate(item: Dictionary) -> Color:
+	var t := str(item.get("treatment", "")).to_lower()
+	if t == "":
+		return Color.WHITE
+	for key in TREATMENT_TINTS:
+		for w in TREATMENT_TINTS[key][0]:
+			if t.contains(str(w)):
+				return TREATMENT_TINTS[key][1]
+	return Color.WHITE
+
+
 ## The world's establishing key art (for world/tale cards, backdrops). null if
 ## the world isn't compiled/baked yet.
 func key_art(world_id: String) -> Texture2D:
