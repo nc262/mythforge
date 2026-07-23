@@ -142,6 +142,61 @@ faster and better pacing — this may be the cheapest real win after P1.
 currently gets one static grey line. Stream visibly, show elapsed time, and let
 them queue the next action.
 
+---
+
+## 7. The Director's call: nothing predictable paints during play
+
+Raised after reading §1 — *"shouldn't all these icons, backgrounds etc. be
+pre-rendered? those are all standard buttons and backgrounds… should all be part
+of the world build. or even a 30s load screen before the game drops you into an
+unready interface."*
+
+Correct, and the evidence is stronger than the hunch. The icons that flooded the
+GPU mid-combat were the **vendor's wares**, and vendor stock is not dynamic — it
+is a static table in `data/tables.json` (`vendor_stock`, `vendor_stock_cyber`,
+`vendor_stock_everyday`, …). Eleven fixed names per world family, identical for
+every player, fully known at build time. We paint them on the player's GPU, one
+at a time, at ~22–27 s each, the first time a shop opens.
+
+That is the root cause of §1: the LLM loaded at 67 % GPU **because of art we
+could have shipped**.
+
+### The rule
+
+**If it can be known before play, it is painted before play.** Runtime
+`Art.ensure` is reserved for the genuinely emergent — a loot item the GM
+invented this turn, a scene of a place that did not exist a minute ago.
+
+Everything else is world-build work, and the World Compiler already does exactly
+this for the world catalogue (~60 per-material item icons) and already ships
+four worlds pre-baked as zips. Vendor stock, standard kit, the UI's own
+furniture and the sheet/gear backdrops belong in that same pass — they are the
+easy half, because they are a constant.
+
+### The second half: an honest load
+
+Today a forged world **backgrounds** its compile so play can start sooner
+(`SESSION-HANDOFF.md §1`, "play starts after worldsmith, the world fills in
+behind"). That trade is what produces the symptoms in the Round-5 audit: an
+empty minimap, a shop with three of eleven icons, art appearing minutes late,
+and generation competing with the narrator.
+
+The Director's alternative — a short, ceremonial "preparing the world" step, then
+a game that is *ready* — is the better trade for perceived quality. A 30-second
+forge ritual reads as craft. A game that dribbles its own furniture in over the
+first ten minutes reads as unfinished.
+
+### Work
+
+| # | Item | Effort |
+|---|------|--------|
+| A1 | Bake vendor stock icons per world family into the compile + the shipped zips (they are a constant — this is pure build work) | S |
+| A2 | Audit every runtime `Art.ensure` call and move each to the compiler unless it is genuinely emergent | M |
+| A3 | Replace the background compile with a "preparing the world" ceremony that finishes before play opens — with real per-stage progress, which the forge wait screen needs anyway (UIPolish B8 / VIS-09) | M |
+| A4 | Ship the pre-baked set with the exe so a friend's first shop is instant and their GPU is free for the narrator | S |
+
+A1+A4 alone remove the exact jobs that half-offloaded the model.
+
 ## Sources
 
 - [Ollama Performance Tuning: Batching, KV Cache, and OOM](https://eastondev.com/blog/en/posts/ai/20260410-ollama-performance-optimization/)
