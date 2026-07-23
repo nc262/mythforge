@@ -109,3 +109,86 @@ back to the fantasy base) · selected-item detail strip ✅ · in-panel chart
 header on the Atlas tab ✅.
 
 Rounds 4+ append below as screenshots arrive.
+
+---
+
+## Round 5 — full end-to-end playthrough of the shipped exe (2026-07-23)
+
+Source: **[UXAudit-Round5.md](UXAudit-Round5.md)** — the whole game played as a
+player, menu → forges → adventure → play → panels. Shots in
+`docs/audit/round5/`. This round breaks the 10-wrong/10-improve format because
+five findings are **blocking bugs**, not polish: they are listed first and are
+not negotiable against visual work.
+
+### The Round-5 diagnosis (adds two roots to Round 1's three)
+
+4. **No shared panel/modal contract** — panels ignore Escape and their own ✕;
+   two of them cannot be closed at all.
+5. **The world skin has no scope or contrast rules** — it recolours every
+   foreground to one hue and composites photographs under body text with no
+   scrim, on the most-used screen in the game.
+
+### Tier 0 — blocking. Fix before any polish.
+
+| # | Item | Effort |
+|---|------|--------|
+| B1 | **Lore Book cannot be closed** (Close the book / Escape both dead) — traps the player, unrecoverable | S |
+| B2 | **Character sheet ignores ✕ and Escape**; the only working exit ("Return to the tale") is clipped off-screen | S |
+| B3 | **Forge a World fails every time** — worldsmith returns 200 with no `name`; 2.5 min + 6 LLM calls burned, then "The forge sputtered (200)" | S msg / M contract |
+| B4 | **"Strike again" is dead** after that failure — the World Forge is a hard dead end | S |
+| B5 | **The Campaign Shelf is entirely inert** — 8 tales, no hover, no click, no error; a whole main-menu destination does nothing | M |
+
+### Tier 1 — highest impact ÷ lowest effort. The most "real game" per hour.
+
+| # | Item | Why it ranks here | Effort |
+|---|------|-------------------|--------|
+| 1 | **Make the choice card contain its own text** — `foot` and body render *outside* the border on Heritage, Class, Background, Which World? | One component, six screens; kills the biggest "unfinished" tell | S |
+| 2 | **Scrim behind all text over generated art** | Turns three unreadable panels legible | S |
+| 3 | **Contrast floor on skin tokens (AA 4.5:1)** — equipped item names are dark green on tan today | Same fix, at the token level | S |
+| 4 | **Skin sets accent + backdrop only** — stop it recolouring every glyph, border and title | Removes the monochrome-terminal look from the whole session | M |
+| 5 | **Pre-bake the 4 origin-hero + 9 heritage portraits** | Kills the blank-purple-box first impression; zero runtime cost; biggest perceived-quality jump available | S |
+| 6 | **Three button tiers, delete the other five** | Eight treatments today; bare text doesn't read as a control | M |
+| 7 | **Skip the duplicate Quenching** when the pending hero is already forged | Removes a re-confirm *on top of the running game*, and 1 of 3 "Begin" clicks | S |
+| 8 | **Key art on the Campaign Shelf + adventure preview** | Both already have the images; two text screens become poster screens | S |
+| 9 | **Errors next to their control, in an error style** | Today: body-grey, 250 px away, at the screen bottom | S |
+| 10 | **Word-boundary truncation + ellipsis** (incl. my `.left(60)` in `adventure_forge`) | Stops "quiet adventu" | S |
+
+### Tier 2 — high impact, real work
+
+| # | Item | Effort |
+|---|------|--------|
+| 11 | **A real loading state for The Forging** — stage narration, anvil loop, lore cards, cancel. The ritual the game is named after is a static line | M |
+| 12 | **Main menu: Continue first and default-focused; 11 entries → 6** — and fix the overflow that makes "A Quiet Table" unreachable | M |
+| 13 | **Play-screen HUD + scene art** — portrait, HP, gold, time; the minimap is an empty rectangle and 400 px sits void | L |
+| 14 | **Post-creation destination** — banking a hero lands on an unchanged menu, no acknowledgement, no way to play them | M |
+| 15 | **Fold Session Zero into House Rules** — kills the stock-Godot dialog and the duplicate tone step at once | M |
+| 16 | **Give the player their six abilities at creation** — "Destiny: 15, 14, 13…" is unmapped text until after the game starts | M |
+| 17 | **Icon sets that match their taxonomies** — 9 heritages share one shield, 12 classes share 4 glyphs, Intrigue=Norse, Pirates=Sci-Fi | M |
+| 18 | **Lore Book earns "illustrated"** — place art + a paragraph per entry | M |
+| 19 | **Hide the three unshipped stages** (Ruleset alternatives, The Voice, The Party) — 11 forge steps → 8 | S |
+| 20 | **Saltmarsh tale hooks** — the default world's tales have no premise text: blank on the Shelf, identical in the forge | S (content) |
+
+### Tier 3 — consistency and finish
+
+Lexicon: settle **World / Tale / Chronicle**, delete campaign/premise/story/
+record as synonyms · one forward verb and one exit word per forge (six and four
+today) · fixed tab widths (the bar shifts between tabs; "The Table" clips) ·
+empty states that carry their own CTA (Chronicles tells you to begin an
+adventure and offers no way to) · per-slot equipment silhouettes · HP bar
+colour ramp (red at full health) · full-width world key art (64×48 thumbnails
+today) · reserved art slots + cross-fade (the Appearance portrait shoves the
+layout when it lands) · multi-line themed inputs (the Spark scrolls your
+premise out of view; "hopeful.." typo) · Settings as a centred game panel with
+a labelled volume value · a Video section with **fullscreen** (there is none) ·
+hide "Sign out" when auth is off · safe-area padding (the crest clips) · clamp
+the narration column to 60–75 characters (~150 today) · migrate legacy roster
+heroes (Quin and Sister Maren are faceless; Corin Vale, banked after today's
+fix, is not).
+
+### Not covered — schedule before calling Round 5 complete
+
+**Vendors** and **combat** were never reached (GM-driven; the local model was
+too slow inside the session). **Continue an Existing Adventure** could not be
+tested — the run ended trapped in the Lore Book (B1), and there is no Continue
+entry to begin with. **Forge a Campaign**, **Forge a GM**, **Forge a Companion**
+and **A Quiet Table** were not entered. Audio was not assessed.
