@@ -45,6 +45,22 @@ func world_locations(wid: String) -> Array:
 	return worlds_json.get("locations", {}).get(wid, [])
 
 
+## The save-slot id for one tale in one world. Every caller used to read
+## `story.slug` with "freeroam" as the fallback — but the built-in stories in
+## worlds.json carry a title and NO slug, so every tale in a world collapsed
+## onto "dm-<world>-freeroam": one save, one GM session and one chronicle
+## shared by all of them, and picking a different tale changed nothing. Fall
+## back to the title before surrendering to "freeroam" (which now means only
+## Free Roam itself).
+func adventure_id(world_id: String, story: Dictionary) -> String:
+	var slug := str(story.get("slug", "")).strip_edges()
+	if slug == "":
+		slug = str(story.get("title", "")).to_lower().replace(" ", "-").validate_filename()
+	if slug == "":
+		slug = "freeroam"
+	return "dm-%s-%s" % [world_id.validate_filename(), slug]
+
+
 func _load_json(path: String) -> Dictionary:
 	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
 	return parsed if parsed is Dictionary else {}

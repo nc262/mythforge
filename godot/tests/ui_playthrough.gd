@@ -30,6 +30,7 @@ func _ready() -> void:
 	await _check_mil()
 	_check_persistence()
 	_check_gm_model_pick()
+	_check_adventure_ids()
 	_check_save_spells()
 	_check_multiclass()
 	_check_controller()
@@ -173,6 +174,20 @@ func _check_gm_model_pick() -> void:
 			best = mid
 	assert(best == "llama3.1:8b", "auto GM pick: expected the largest ≤9B, got '%s'" % best)
 	print("  gm model: Auto picks the largest model in the fast window (llama3.1:8b)")
+
+
+## Every tale in a world used to collapse onto "dm-<world>-freeroam", because
+## the built-in stories carry a title and no slug — one save, one GM session and
+## one chronicle for all of them. Distinct tales must get distinct slots.
+func _check_adventure_ids() -> void:
+	var a := Rules.adventure_id("saltmarsh", {"title": "The Tide-Debt"})
+	var b := Rules.adventure_id("saltmarsh", {"title": "What the Nets Dragged Up"})
+	var free := Rules.adventure_id("saltmarsh", {})
+	assert(a != b, "adventure_id: two named tales collapsed onto one save slot (%s)" % a)
+	assert(a != free and b != free, "adventure_id: a named tale collided with Free Roam")
+	assert(free == "dm-saltmarsh-freeroam", "adventure_id: Free Roam must keep its id, got %s" % free)
+	assert(Rules.adventure_id("saltmarsh", {"slug": "tide"}) == "dm-saltmarsh-tide", "adventure_id: an explicit slug still wins")
+	print("  adventure ids: each tale gets its own save slot (%s / %s / %s)" % [a, b, free])
 
 
 ## Bug #8 guard — a forged hero must survive a shutdown. bank_hero writes the

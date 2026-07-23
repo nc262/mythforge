@@ -646,9 +646,8 @@ func _begin_campaign() -> void:
 	var world := _sealed_world
 	var wid := str(world.get("id", ""))
 	var story := _story
-	var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
 	var adv_name := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(world.get("name", ""))
-	var adv_id := "dm-%s-%s" % [wid, slug]
+	var adv_id := Rules.adventure_id(wid, story)
 	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
 		"id": adv_id, "name": adv_name,
 		"personality": Composer.compose_world_gm(world, story),

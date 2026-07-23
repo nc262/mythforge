@@ -773,20 +773,20 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 		return
 	_busy = true
 	var wid := str(w.get("id", ""))
-	var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
+	var adv_id := Rules.adventure_id(wid, story)
 	var name := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(w.get("name", ""))
 	_sub_status.text = "Opening %s…" % name
 	var full := w.duplicate(true)
 	if not (full.get("locations") is Array) or full.get("locations", []).is_empty():
 		full["locations"] = Rules.world_locations(wid)
 	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
-		"id": "dm-%s-%s" % [wid, slug], "name": name,
+		"id": adv_id, "name": name,
 		"personality": Composer.compose_world_gm(full, story),
 		"relationship": "Dungeon Master", "world_id": wid,
 	})
-	await _seed_forge_defaults(w, "dm-%s-%s" % [wid, slug])
+	await _seed_forge_defaults(w, adv_id)
 	_busy = false
-	var adv := {"id": "dm-%s-%s" % [wid, slug], "name": name, "world_id": wid}
+	var adv := {"id": adv_id, "name": name, "world_id": wid}
 	# A live save already? Continue it or start over (archive + wipe).
 	var cfg := ConfigFile.new()
 	cfg.load(Api.COOKIE_FILE)

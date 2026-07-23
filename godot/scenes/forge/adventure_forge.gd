@@ -210,9 +210,8 @@ func _stage_campaign_tale() -> void:
 	var grid := _grid()
 	for st in [{}] + _stories_for(_camp_world):
 		var story: Dictionary = st if st is Dictionary else {}
-		var slug := str(story.get("slug", "freeroam")) if not story.is_empty() else "freeroam"
 		var title := str(story.get("title", "")) if not story.is_empty() else "Free Roam"
-		var adv := {"id": "dm-%s-%s" % [wid, slug], "name": title, "world_id": wid, "world": _camp_world, "story": story}
+		var adv := {"id": Rules.adventure_id(wid, story), "name": title, "world_id": wid, "world": _camp_world, "story": story}
 		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
 			"body": str(story.get("hook", "wander it as you please")).left(60),
 			"foot": str(_camp_world.get("name", ""))})
