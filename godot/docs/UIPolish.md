@@ -159,9 +159,28 @@ not negotiable against visual work.
    (`Api.sse_delta` → `_on_delta`), so streaming is not broken — but TTFT is
    >60 s and the only feedback for that whole minute is one static grey line.
 
-Fixes, in order of win-per-effort: pin narration to `llama3.1:8b` · hold the art
-queue while a GM stream is in flight · show elapsed time / a live indicator
-instead of a static line.
+**Shipped (2026-07-23), measured on the exe, not claimed:**
+
+| Beat | Before | After |
+|------|--------|-------|
+| Opening turn, same tale | **107.5 s** (qwen2.5:14b) | **68.3 s** (llama3.1:8b, *including* its cold load) |
+| Mid-play turn | 53.5 s LLM — **~2 min felt**, art grinding alongside | **45.1 s**, art held |
+
+- `Api.auto_gm_model()` — "Auto" now takes the largest model in the ≤9B window
+  instead of the biggest installed. Verified in the shipped build: the new
+  session logs `Context length for llama3.1:8b`. Prose quality holds (Mornin'
+  Emily, Gully 'Sea Snake' Gordon, the seaweed-infused ale).
+- `Art.hold` — the art queue pauses for the length of a GM stream, so the
+  narrator gets the card. 180 s safety valve.
+
+**Still open on B8.** ~45 s a turn is better, not good. What's left: a token
+ceiling on GM replies (they run 3–4 paragraphs), `llama3.2:3b` for a "fast
+table" option, and the perceived half — the wait is still one static grey line
+with no elapsed time, and time-to-first-token is most of the turn.
+
+Third cause found while verifying: **every tale in a world shared one save
+slot** (`dm-<world>-freeroam`), so a "new" tale resumed the old session and its
+old model. Fixed in `Rules.adventure_id`.
 
 **Bonus defect found in the same log:** the world-material suffix is applied to
 consumables — the shop generated *"game inventory icon of a **Ale** of salt-worn
