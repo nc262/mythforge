@@ -48,6 +48,12 @@ func _ready() -> void:
 	min_size = Vector2i(mini(1280, int(avail.x) - 8), mini(820, int(avail.y) - 8))
 	max_size = Vector2i(int(avail.x) - 8, int(avail.y) - 8)  # wrap_controls regrows to content min; the screen is the ceiling
 	size = min_size
+	# Round-5 blocker: the ✕ and Escape both did nothing, leaving "Return to the
+	# tale" — clipped by the window's bottom edge — as the only way out. An
+	# AcceptDialog only auto-closes when it isn't exclusive, and its close button
+	# needs somewhere to go. Wire both to the same exit.
+	exclusive = false
+	close_requested.connect(hide)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:

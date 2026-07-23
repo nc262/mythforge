@@ -21,6 +21,16 @@ var _art_targets := {}   # art key → [TextureRect…] awaiting the paint
 var _title_l: Label
 
 
+## Round-5 blocker: the book is a plain Control, so Escape was never wired and
+## "Close the book" — a small text label — was the only way out. A player who
+## misses it twice believes the game has trapped them. Escape now closes the
+## topmost surface here as everywhere else.
+func _unhandled_key_input(e: InputEvent) -> void:
+	if e is InputEventKey and e.pressed and e.keycode == KEY_ESCAPE:
+		accept_event()
+		closed.emit()
+
+
 func _ready() -> void:
 	theme = Ui.theme
 	MythEnvironment.mount(self, "env-journal", "dust", [Vector2(0.12, 0.86), Vector2(0.88, 0.86)])

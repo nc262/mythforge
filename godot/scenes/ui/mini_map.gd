@@ -17,7 +17,19 @@ func _ready() -> void:
 	Art.art_ready.connect(func(_k): queue_redraw())
 
 
+## Round-5 blocker: this floats above the transcript, and with no chart painted
+## it is an empty outlined box that covered live story text, the combat roll bar
+## and the composing status for a whole session. An empty frame is worth nothing
+## and costs the player words — so it only exists once it has a chart to show.
+func _has_chart() -> bool:
+	var wid := GameState.world_id().validate_filename()
+	return Art.has_art("chart-" + wid) or Art.has_art(wid)
+
+
 func _process(delta: float) -> void:
+	visible = _has_chart()
+	if not visible:
+		return
 	_phase += delta
 	queue_redraw()
 

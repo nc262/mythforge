@@ -312,9 +312,15 @@ func _mic_stop() -> void:
 
 
 func _leave_to_hall() -> void:
+	# Round-5 blocker: this refused mid-stream and said so at the BOTTOM of a
+	# transcript the player wasn't looking at, so the door read as dead — and a
+	# turn runs ~45s, so the refusing window is most of the session. The tale is
+	# saved continuously; there is nothing to protect by holding them here.
 	if _streaming:
-		_say_system("The GM is mid-breath — let the reply finish, then leave.")
-		return
+		Api.cancel_stream()
+		_streaming = false
+		Art.hold = false
+		_dismiss_thinking()
 	GameState.remember_adventure()   # the Hall remembers where you stopped
 	Mode.enter("MainMenu")
 	Ui.transition("res://scenes/main_menu.tscn", get_tree())

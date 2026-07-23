@@ -245,6 +245,15 @@ func ensure_session(char_id: String, char_name: String) -> String:
 # ── SSE chat stream ─────────────────────────────────────────────────────────
 ## Streams one GM turn. Emits sse_delta per token batch, sse_event for
 ## message_saved / tool_output / error, then sse_done exactly once.
+var _stream_cancel := false
+
+## Drop the GM turn in flight. The player leaving the table must not have to
+## wait out a ~45s reply they've already walked away from; the tale is saved
+## continuously, so an abandoned turn costs nothing.
+func cancel_stream() -> void:
+	_stream_cancel = true
+
+
 func stream_chat(message: String, session_id: String) -> void:
 	if test_mode:
 		var reply := str(test_replies.pop_front()) if not test_replies.is_empty() else "The quiet holds a moment longer."
@@ -283,6 +292,11 @@ func stream_chat(message: String, session_id: String) -> void:
 	# no tokens — first token on a slow local model can take ~50s.
 	var last_data := Time.get_ticks_msec()
 	while client.get_status() == HTTPClient.STATUS_BODY:
+		if _stream_cancel:
+			_stream_cancel = false
+			client.close()
+			sse_done.emit(false)
+			return
 		client.poll()
 		var chunk := client.read_response_body_chunk()
 		if chunk.size() > 0:
