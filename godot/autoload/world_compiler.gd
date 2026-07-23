@@ -844,17 +844,69 @@ const RARITIES := [
 ## them means a weak seed can never again leave eleven slots empty — the eleven
 ## identical grey diamonds on the Gear tab (UXAudit R5, VIS-15).
 const SLOT_FORMS := {
-	"head": [["circlet", "a simple circlet"], ["helm", "a full helm"], ["hood", "a deep hood"]],
-	"neck": [["amulet", "an amulet on a cord"], ["torc", "a heavy neck torc"], ["pendant", "a small pendant"]],
-	"cloak": [["cloak", "a long travelling cloak"], ["mantle", "a shoulder mantle"], ["cape", "a short cape"]],
-	"hands": [["gloves", "a pair of gloves"], ["gauntlets", "armoured gauntlets"], ["wraps", "wrapped hand bindings"]],
-	"waist": [["belt", "a wide buckled belt"], ["sash", "a knotted sash"], ["girdle", "a reinforced girdle"]],
-	"legs": [["greaves", "a pair of leg greaves"], ["breeches", "sturdy breeches"], ["leggings", "close-fitting leggings"]],
-	"feet": [["boots", "a pair of boots"], ["sandals", "strapped sandals"], ["shod_boots", "armoured boots"]],
-	"ring": [["band", "a plain ring band"], ["signet", "a signet ring"], ["coil_ring", "a coiled ring"]],
-	"shield": [["round_shield", "a round shield"], ["kite_shield", "a tall kite shield"], ["buckler", "a small buckler"]],
-	"offhand": [["parry_dagger", "a parrying dagger"], ["focus", "a spellcasting focus"], ["lantern", "a hand lantern"]],
+	"head": [["hood", "a deep hood", ["soft"]], ["coif", "a mail coif", ["mail"]],
+		["helm", "a full helm", ["rigid"]], ["circlet", "a slim circlet", ["rigid", "exotic"]],
+		["mask", "a carved face mask", ["exotic"]]],
+	"neck": [["scarf", "a wound neck scarf", ["soft"]], ["torc", "a heavy neck torc", ["rigid"]],
+		["amulet", "an amulet on a cord", ["rigid", "exotic"]], ["pendant", "a small pendant", ["exotic"]]],
+	"cloak": [["cloak", "a long travelling cloak", ["soft"]], ["cape", "a short cape", ["soft"]],
+		["mantle", "a heavy shoulder mantle", ["mail", "rigid"]], ["shroud", "a strange shroud", ["exotic"]]],
+	"hands": [["wraps", "wrapped hand bindings", ["soft"]], ["gloves", "a pair of gloves", ["soft"]],
+		["mail_gloves", "mail-backed gloves", ["mail"]], ["gauntlets", "armoured gauntlets", ["rigid"]],
+		["claws", "clawed hand guards", ["exotic"]]],
+	"waist": [["sash", "a knotted sash", ["soft"]], ["belt", "a wide buckled belt", ["soft", "rigid"]],
+		["girdle", "a reinforced girdle", ["mail", "rigid"]]],
+	"legs": [["breeches", "sturdy breeches", ["soft"]], ["leggings", "close-fitting leggings", ["soft"]],
+		["mail_chausses", "mail leg chausses", ["mail"]], ["greaves", "a pair of plate greaves", ["rigid"]]],
+	"feet": [["sandals", "strapped sandals", ["soft"]], ["boots", "a pair of boots", ["soft"]],
+		["shod_boots", "armoured boots", ["mail", "rigid"]], ["talons", "taloned footguards", ["exotic"]]],
+	"ring": [["band", "a plain ring band", ["rigid"]], ["signet", "a signet ring", ["rigid"]],
+		["coil_ring", "a coiled ring", ["exotic"]]],
+	"shield": [["targe", "a hide-faced targe", ["soft"]], ["buckler", "a small buckler", ["mail", "rigid"]],
+		["round_shield", "a round shield", ["rigid"]], ["kite_shield", "a tall kite shield", ["rigid"]]],
+	"offhand": [["parry_dagger", "a parrying dagger", ["rigid"]], ["focus", "a spellcasting focus", ["exotic"]],
+		["lantern", "a hand lantern", ["rigid"]], ["charm", "a bundled charm", ["soft", "exotic"]]],
 }
+
+## C1 — material classes. A leather chest and a steel chest are not one
+## silhouette in two textures; they are a jerkin and a cuirass. Every form
+## declares which classes it accepts, every material resolves to one, and
+## _build_catalogue crosses only compatible pairs. Ten materials then yield
+## several genuinely different shapes rather than ten repaints of one.
+const CLASS_WORDS := {
+	"soft": ["leather", "hide", "cloth", "linen", "silk", "canvas", "sail", "fur",
+		"pelt", "wool", "rag", "rope", "weave", "cotton", "denim", "nylon", "kevlar"],
+	"mail": ["chain", "scale", "ring", "mail", "link", "lamellar"],
+	"rigid": ["iron", "steel", "bronze", "brass", "copper", "silver", "gold", "chrome",
+		"titan", "alloy", "plate", "adamant", "cobalt", "obsidian", "stone", "wood", "oak"],
+	"exotic": ["bone", "chitin", "crystal", "glass", "salvage", "coral", "shell",
+		"ivory", "resin", "void", "spirit", "ghost", "neon", "plasma", "circuit"],
+}
+
+
+## Which class a material id belongs to. Unknown materials match EVERYTHING —
+## a classifier miss must never silently empty a world's catalogue. World-invented
+## materials ("brine_iron", "salt_worn_pine") usually carry a known word.
+func _material_class(mat_id: String) -> String:
+	var low := mat_id.to_lower()
+	for cls in CLASS_WORDS:
+		for w in CLASS_WORDS[cls]:
+			if low.contains(str(w)):
+				return str(cls)
+	return "any"
+
+
+## C2 — does this form accept this material? A form with no declared classes
+## takes anything (that is how the seed's own weapon/armor forms behave, since
+## the model isn't asked for classes).
+func _form_takes(form: Dictionary, mat_class: String) -> bool:
+	var accepts = form.get("classes")
+	if not (accepts is Array) or (accepts as Array).is_empty():
+		return true
+	if mat_class == "any":
+		return true
+	return accepts.has(mat_class)
+
 
 ## The floor under the seed's own two groups. Only used when the model returned
 ## nothing usable — `everyday` shipped with 2 weapon forms and 33 images because
@@ -886,7 +938,8 @@ func _forms(assets: Dictionary) -> Array:
 	for slot in SLOT_FORMS:
 		for pair in SLOT_FORMS[slot]:
 			out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
-				"prompt": str(pair[1]), "kind": str(slot)})
+				"prompt": str(pair[1]), "kind": str(slot),
+				"classes": (pair[2] if pair.size() > 2 else [])})
 	return out
 
 
@@ -903,6 +956,8 @@ func _build_catalogue(assets: Dictionary) -> Array:
 	var out: Array = []
 	for f in forms:
 		for m in mats:
+			if m is Dictionary and not _form_takes(f, _material_class(str(m.get("id", "")))):
+				continue   # C2: no leather cuirasses, no steel hoods
 			if not (m is Dictionary and m.has("id")):
 				continue
 			var tier := int(m.get("tier", 1))

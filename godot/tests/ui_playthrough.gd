@@ -198,6 +198,20 @@ func _check_every_slot_has_forms() -> void:
 			missing.append(slot)
 	assert(missing.is_empty(), "slot forms: no shapes for %s — those slots render as empty diamonds" % str(missing))
 	print("  slot forms: all %d equip slots have shapes even with an empty seed" % Rules.EQUIP_SLOTS.size())
+	# C1/C2 — material chooses the form. A leather cuirass and a steel hood are
+	# incoherent; the catalogue must not contain either.
+	assert(Compiler._material_class("brine_iron") == "rigid", "class: brine_iron is rigid")
+	assert(Compiler._material_class("salt_leather") == "soft", "class: leather is soft")
+	assert(Compiler._material_class("chain") == "mail", "class: chain is mail")
+	assert(Compiler._material_class("whalebone") == "exotic", "class: bone is exotic")
+	assert(Compiler._material_class("zzz_unknown") == "any", "class: an unknown material must match everything, never empty the catalogue")
+	var helm := {"classes": ["rigid"]}
+	var hood := {"classes": ["soft"]}
+	assert(Compiler._form_takes(helm, "rigid") and not Compiler._form_takes(helm, "soft"), "no leather helms")
+	assert(Compiler._form_takes(hood, "soft") and not Compiler._form_takes(hood, "rigid"), "no steel hoods")
+	assert(Compiler._form_takes(helm, "any"), "an unclassified material still fits")
+	assert(Compiler._form_takes({}, "soft"), "a form with no classes takes anything (the seed's own forms)")
+	print("  material classes: form follows material — no leather cuirasses, no steel hoods")
 
 
 ## Every tale in a world used to collapse onto "dm-<world>-freeroam", because
