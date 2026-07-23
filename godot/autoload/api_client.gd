@@ -173,6 +173,37 @@ func activate(char_id: String, char_name: String) -> void:
 		{"id": char_id, "name": char_name})
 
 
+## Param count (billions) read off a model id — "llama3.1:8b" → 8.0. Unknown
+## ids score huge so a size-blind name never wins the "fastest" race. Mirrors
+## the server's own `_model_size` in character_studio_routes.py.
+func model_size_b(mid: String) -> float:
+	var m := RegEx.new()
+	m.compile("(\\d+(?:\\.\\d+)?)\\s*[bB]\\b")
+	var hit := m.search(mid)
+	return float(hit.get_string(1)) if hit != null else 999.0
+
+
+## What "Auto" means for the narrator. The account default is whatever model is
+## biggest, which on a one-GPU box is whatever model is slowest — a 14B took
+## 53s for one turn and the player waited two minutes. So Auto takes the LARGEST
+## model that still fits the fast window (≤9B): good prose, a fraction of the
+## wait. Returns {} when nothing qualifies, and the caller falls back to the
+## account default as before. Settings still overrides this outright.
+const GM_FAST_CEILING := 9.0
+
+func auto_gm_model() -> Dictionary:
+	var mods := await call_json(HTTPClient.METHOD_GET, "/api/models")
+	var best := {}
+	var best_sz := 0.0
+	for host in mods.get("items", []):
+		for mn in host.get("models", []):
+			var sz := model_size_b(str(mn))
+			if sz <= GM_FAST_CEILING and sz > best_sz:
+				best_sz = sz
+				best = {"url": str(host.get("url", "")), "model": str(mn)}
+	return best
+
+
 ## Session per character, mirrored from the web client's _ensureSession:
 ## reuse a remembered session if /api/history/{sid} still 200s, else create one
 ## seeded with the caller's default chat endpoint (/api/default-chat).
@@ -190,6 +221,8 @@ func ensure_session(char_id: String, char_name: String) -> String:
 	var cfg2 := ConfigFile.new()
 	cfg2.load(COOKIE_FILE)
 	var pick = JSON.parse_string(str(cfg2.get_value("settings", "gm_model", "")))
+	if not (pick is Dictionary and str(pick.get("url", "")) != ""):
+		pick = await auto_gm_model()   # "Auto" means fast, not biggest
 	var ep := await call_json(HTTPClient.METHOD_GET, "/api/default-chat")
 	var fields := {"name": char_name}
 	if pick is Dictionary and str(pick.get("url", "")) != "":

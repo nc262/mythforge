@@ -546,7 +546,7 @@ func _show_settings() -> void:
 	_content.add_child(_section("GAME MASTER"))
 	var model_in := OptionButton.new()
 	model_in.custom_minimum_size = Vector2(420, 0)
-	model_in.add_item("Auto — the account default")
+	model_in.add_item("Auto — the fastest capable narrator")
 	var picks: Array = []
 	var mods := await Api.call_json(HTTPClient.METHOD_GET, "/api/models")
 	for host in mods.get("items", []):
@@ -562,7 +562,7 @@ func _show_settings() -> void:
 		_set_setting("gm_model", "" if idx == 0 else JSON.stringify(picks[idx - 1])))
 	var model_hint := Label.new()
 	model_hint.theme_type_variation = "HintLabel"
-	model_hint.text = "The narrator's mind — applies to newly opened adventures."
+	model_hint.text = "The narrator's mind — applies to newly opened adventures. Auto keeps the biggest models out of the chair — they narrate no better and cost minutes a turn."
 	_content.add_child(model_in)
 	_content.add_child(model_hint)
 	_content.add_child(_section("SOUND & MOTION"))

@@ -327,9 +327,22 @@ func pending() -> int:
 	return _queue.size() + (1 if _painting != "" else 0)
 
 
+## While the GM is mid-stream the GPU belongs to the narrator. Ollama and
+## ComfyUI share one card on this box, so a queue of item icons starves the
+## turn: opening the shop enqueued ten icons that ran back-to-back at ~22–27s
+## each straight through a 53s narration call, and the player waited ~2 minutes
+## for one reply. game.gd raises this for the length of a stream.
+var hold := false
+const HOLD_MAX := 180.0   # ponytail: safety valve — a stuck flag must never freeze art for good
+
+
 func _pump() -> void:
 	_pumping = true
 	while not _queue.is_empty():
+		var waited := 0.0
+		while hold and waited < HOLD_MAX:
+			await get_tree().create_timer(0.25).timeout
+			waited += 0.25
 		var job: Dictionary = _queue.pop_front()
 		var key := str(job["key"])
 		if _cancelled.get(key, false):

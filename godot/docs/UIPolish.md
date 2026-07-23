@@ -139,6 +139,33 @@ not negotiable against visual work.
 | B5 | **The Campaign Shelf is entirely inert** — 8 tales, no hover, no click, no error; a whole main-menu destination does nothing | M |
 | B6 | **No way out of a tale.** The play screen's exit (tooltip: "Close") is dead at three click points, and Escape does nothing — so Return to Main Menu and Continue are both unreachable | S |
 | B7 | **The empty minimap frame floats above the transcript** and covers live story text, the combat roll bar and the "Still composing" status | S |
+| B8 | **~2 minutes per turn — time-to-first-token over 60 s.** Director: unacceptable, promoted from CMB-03. Three measured causes, see below | M |
+
+#### B8 — why a turn takes two minutes (measured, 2026-07-23 06:05–06:09)
+
+1. **Narration runs on `qwen2.5:14b`.** There is **no `data/settings.json` on this
+   box**, so every model setting is at its default (`default_model: ""`) and the
+   resolver falls through to "most capable enabled text model" — the 14B. One
+   narration call measured **53.53 s**. `llama3.1:8b` is installed and is what
+   the fast-window extractor path already prefers.
+2. **The GPU is grinding art while the player waits.** Opening the shop enqueued
+   an icon job for every ware; the log shows them firing back-to-back at
+   ~22–27 s each (*Chain Shirt · Shield · Helmet · Boots · Arrows · Longbow ·
+   Shortsword · Handaxe · Ale · Cheese*) straight through the combat turn, plus
+   repeated `candid photo of The Tide-Debt` scene jobs. Ollama and ComfyUI share
+   one AMD GPU, so the narration call is starved. **This is the gap between the
+   53 s LLM call and the ~2 min the player experiences.**
+3. **Nothing is shown until the first token.** The client *does* stream
+   (`Api.sse_delta` → `_on_delta`), so streaming is not broken — but TTFT is
+   >60 s and the only feedback for that whole minute is one static grey line.
+
+Fixes, in order of win-per-effort: pin narration to `llama3.1:8b` · hold the art
+queue while a GM stream is in flight · show elapsed time / a live indicator
+instead of a static line.
+
+**Bonus defect found in the same log:** the world-material suffix is applied to
+consumables — the shop generated *"game inventory icon of a **Ale** of salt-worn
+wood, rope, and iron"* and *"**Cheese** of salt-worn wood, rope, and iron"*.
 
 ### Tier 1 — highest impact ÷ lowest effort. The most "real game" per hour.
 

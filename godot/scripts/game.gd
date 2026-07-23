@@ -602,6 +602,7 @@ var _last_framed := ""
 func _stream(framed: String) -> void:
 	_last_framed = framed
 	_streaming = true
+	Art.hold = true    # the GPU belongs to the narrator until the reply lands
 	Mode.busy = true
 	_acc = ""
 	_shown = 0
@@ -786,6 +787,7 @@ func _on_done(_ok: bool) -> void:
 		return
 	_empty_retry = 0
 	_streaming = false
+	Art.hold = false   # the brush may have the card back
 	Mode.busy = false
 	_send_btn.disabled = false
 	_dismiss_thinking()   # a silent/failed turn must never strand the wait

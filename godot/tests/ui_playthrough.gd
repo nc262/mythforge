@@ -29,6 +29,7 @@ func _ready() -> void:
 	await _turn_levelup()  # last: the ceremony correctly blocks further sends
 	await _check_mil()
 	_check_persistence()
+	_check_gm_model_pick()
 	_check_save_spells()
 	_check_multiclass()
 	_check_controller()
@@ -150,6 +151,28 @@ func _turn_damage_heal() -> void:
 	assert(int(GameState.sheet().get("hp", 0)) > hp1, "heal: the roll did not restore HP (was %d)" % hp1)
 	await _settle()  # the heal roll narrates too; settle before the next turn's send
 	print("  turn damage/heal: ok (%d → %d → %d)" % [hp0, hp1, int(GameState.sheet().get("hp", 0))])
+
+
+## Latency guard — "Auto" must not seat the biggest model in the narrator's
+## chair. A 14B measured 53s for one turn (player-felt: ~2 min); the fast
+## window (≤9B) is what keeps play playable, and the LARGEST model inside it
+## wins so prose quality isn't thrown away for speed.
+func _check_gm_model_pick() -> void:
+	assert(Api.model_size_b("llama3.1:8b") == 8.0, "model_size_b: plain tag")
+	assert(Api.model_size_b("qwen2.5:14b") == 14.0, "model_size_b: 14b must read as 14, not 2.5")
+	assert(Api.model_size_b("deepseek-r1:32b") == 32.0, "model_size_b: 32b")
+	assert(Api.model_size_b("llama3.2:3b") == 3.0, "model_size_b: 3b")
+	assert(Api.model_size_b("some-mystery-model") == 999.0, "model_size_b: unknown must lose the race")
+	# The real pick: 8b beats 3b (quality) and 14b/32b are out of the window.
+	var best := ""
+	var best_sz := 0.0
+	for mid in ["qwen2.5:14b", "llama3.2:3b", "llama3.1:8b", "deepseek-r1:32b"]:
+		var sz: float = Api.model_size_b(mid)
+		if sz <= Api.GM_FAST_CEILING and sz > best_sz:
+			best_sz = sz
+			best = mid
+	assert(best == "llama3.1:8b", "auto GM pick: expected the largest ≤9B, got '%s'" % best)
+	print("  gm model: Auto picks the largest model in the fast window (llama3.1:8b)")
 
 
 ## Bug #8 guard — a forged hero must survive a shutdown. bank_hero writes the
