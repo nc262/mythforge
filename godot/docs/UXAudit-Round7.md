@@ -33,8 +33,31 @@ is the difference between "asserted" and "actually reachable".
 | **BUG-14** screenshots mislabelled by a station | `_shot` awaited | code |
 | **LAT-22/23 / STR-23** all six zips unpacked in `_ready` (~1.4 GB before first frame) | Lazy per-world unpack at `world_dir()` | code |
 
-Roughly **50 of 281** findings, weighted hard toward the Criticals: 13 of the
-18 Critical-severity items are closed.
+**Counted, not estimated** (script over the Round 6 tables — an earlier draft of
+this section said "13 of 18 Criticals", which was simply wrong; there are 51):
+
+| Severity | Fixed | Open | Retracted |
+|---|---:|---:|---:|
+| Critical | **35** | 14 | 2 |
+| High | 22 | 79 | 1 |
+| Medium | 8 | 86 | — |
+| Low | 3 | 28 | — |
+| **Total** | **68** | **210** | **3** |
+
+| Category | Fixed | Open |
+|---|---:|---:|
+| Bugs | 17 | 14 |
+| Aesthetic | 10 | 21 |
+| Blank/unrendered | 8 | 22 |
+| AAA quality | 8 | 24 |
+| Unnecessary screens | 6 | 25 |
+| Latency | 6 | 24 |
+| Fun | 5 | 25 |
+| Playability pain | 4 | 28 |
+| Structural | 4 | 27 |
+
+**69 % of Criticals are closed; 24 % of everything is.** The skew is deliberate —
+the fix passes went after severity and root cause, not row count.
 
 ## 2. Still open — highest value first
 
