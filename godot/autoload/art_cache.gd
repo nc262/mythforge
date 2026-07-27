@@ -332,8 +332,48 @@ func pending() -> int:
 ## turn: opening the shop enqueued ten icons that ran back-to-back at ~22–27s
 ## each straight through a 53s narration call, and the player waited ~2 minutes
 ## for one reply. game.gd raises this for the length of a stream.
-var hold := false
+var hold := false:
+	set(v):
+		var rising := v and not hold
+		hold = v
+		if rising:
+			_yield_the_card()
 const HOLD_MAX := 180.0   # ponytail: safety valve — a stuck flag must never freeze art for good
+
+## Where the image engine lives. Localhost-only and fixed for this stack; a
+## player without it simply gets no answer and nothing happens.
+const COMFY_FREE_URL := "http://127.0.0.1:8188/free"
+var _yielded := false
+
+
+## Give the narrator the whole graphics card while it speaks.
+##
+## Measured 2026-07-27: ComfyUI sits on ~7.4 GB of VRAM even completely idle,
+## which caps llama3.1:8b at 79 % on GPU — and Ollama fixes that split ONCE, at
+## load time, for the life of the model. Performance.md §1 measured 6–9 tok/s
+## with the art stack warm against 27.3 tok/s with the card free: a 3–4× swing,
+## and the single largest lever in the game. Pausing our own queue (`hold`) was
+## never enough, because idle ComfyUI still owns the memory.
+##
+## So the moment a GM turn begins we ask ComfyUI to unload. It reloads its
+## checkpoint on the next image, which costs ~10 s of art latency ONCE after a
+## story beat — deliberately paid, because the worlds ship pre-baked and runtime
+## art is now reserved for what the player invents (see docs/AssetBake.md).
+## Fire-and-forget: this must never delay or fail a turn.
+func _yield_the_card() -> void:
+	if _yielded or Api.test_mode:
+		return
+	_yielded = true   # once per session is enough; the split is set at model load
+	var req := HTTPRequest.new()
+	add_child(req)
+	req.request_completed.connect(func(_r, code, _h, _b):
+		req.queue_free()
+		if code == 200:
+			print("Art: image engine released the card for the narrator"))
+	var err := req.request(COMFY_FREE_URL, ["Content-Type: application/json"],
+		HTTPClient.METHOD_POST, JSON.stringify({"unload_models": true, "free_memory": true}))
+	if err != OK:
+		req.queue_free()   # no image engine on this machine — fine, nothing to free
 
 
 func _pump() -> void:

@@ -290,6 +290,9 @@ func stream_chat(message: String, session_id: String) -> void:
 		return
 	var body := _urlencode({
 		"message": message, "session": session_id, "mode": "chat", "preset_id": "custom",
+		# The player's own reply-length ceiling (GM tuning → "Reply length").
+		# 0 = uncapped, which is what every turn used to be.
+		"max_tokens": str(Composer.reply_cap()),
 	})
 	var headers := _headers([
 		"Content-Type: application/x-www-form-urlencoded",

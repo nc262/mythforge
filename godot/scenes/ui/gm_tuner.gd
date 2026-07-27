@@ -13,6 +13,12 @@ const KNOBS := [
 	["grit", "Grit & danger", "Gentle", "Brutal", 50],
 	["pace", "Pace", "Slow", "Fast", 55],
 	["rules", "Rules", "Loose", "Strict 5e", 50],
+	# Reply length is a TONE knob, not a setting: how much prose you want per
+	# turn is a table preference like humour or pace. It also happens to be the
+	# lever with the largest effect on how long a turn takes on a local model
+	# (R6 LAT-07) — so the player controls their own pacing/latency trade
+	# instead of a constant deciding it for them. "Let it run" = uncapped.
+	["length", "Reply length", "Brief", "Let it run", 50],
 ]
 
 var initial: Dictionary = {}   # current gm knobs (retune) or {} for defaults

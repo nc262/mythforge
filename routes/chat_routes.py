@@ -594,6 +594,20 @@ def setup_chat_routes(
 
         _research_flags = {"do": do_research}  # Mutable container for generator scope
 
+        # Mythforge: a PER-REQUEST reply-length ceiling. GM turns had no
+        # num_predict at all, and at 6-27 tok/s a 300-token reply simply is the
+        # 45-second turn the playtest complained about (Performance.md P6).
+        # The cap lives on the preset, which is shared with every other persona
+        # on this box, so the game passes its own instead of mutating that —
+        # and the player owns the value, as a "Reply length" knob in the GM
+        # tuning rather than a constant somebody has to guess at.
+        try:
+            _mf_cap = int(form_data.get("max_tokens") or 0)
+        except (TypeError, ValueError):
+            _mf_cap = 0
+        if _mf_cap > 0:
+            ctx.preset.max_tokens = _mf_cap
+
         # Query active document — prefer explicit ID from frontend, fall back to session lookup
         active_doc = None
         _doc_db = SessionLocal()

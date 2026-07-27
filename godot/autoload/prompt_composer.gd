@@ -116,6 +116,25 @@ func gm_directive() -> String:
 	return prefix + "GM style — " + "; ".join(bits) + "."
 
 
+## The player's reply-length ceiling, as tokens for the model.
+##
+## R6 LAT-07 / Performance.md P6: GM turns ran 3–4 paragraphs with no ceiling at
+## all, and on this hardware the length IS the wait. Rather than bake a number
+## in — or change the preset every other persona on this box shares — the pace
+## of the prose is the player's to set, next to humour and grit. The knob reads
+## 0–100; 50 is a comfortable few paragraphs.
+##   0  → "let the GM run" (uncapped, the old behaviour)
+##   1..100 → ~120 to ~700 tokens
+func reply_cap() -> int:
+	var k = GameState.state.get("gm")
+	if not (k is Dictionary):
+		return 0
+	var v := int(k.get("length", 50))
+	if v <= 0:
+		return 0
+	return int(round(120.0 + (float(v) / 100.0) * 580.0))
+
+
 ## Table rules written at the Campaign Forge ride every turn.
 func house_rules_text() -> String:
 	var house := str(GameState.rule("house", ""))

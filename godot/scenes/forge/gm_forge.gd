@@ -8,16 +8,17 @@ signal gm_forged(persona: Dictionary)
 
 const STAGES := ["The Seat", "The Tone", "The Seal"]
 const ARCHETYPES := [
-	{"glyph": "crown", "title": "Classic DM", "body": "fair, steady, by the book", "knobs": {"humor": 40, "spice": 0, "grit": 55, "pace": 50, "rules": 75}},
-	{"glyph": "book", "title": "Narrative", "body": "story first, rules soft", "knobs": {"humor": 55, "spice": 40, "grit": 45, "pace": 40, "rules": 25}},
-	{"glyph": "skull", "title": "Hardcore", "body": "brutal, strict, earned", "knobs": {"humor": 20, "spice": 0, "grit": 95, "pace": 60, "rules": 90}},
-	{"glyph": "compass", "title": "Sandbox", "body": "player-led, world breathes", "knobs": {"humor": 45, "spice": 20, "grit": 50, "pace": 70, "rules": 40}},
-	{"glyph": "sigil", "title": "Cinematic", "body": "set pieces, hard cuts", "knobs": {"humor": 50, "spice": 30, "grit": 65, "pace": 85, "rules": 35}},
+	{"glyph": "crown", "title": "Classic DM", "body": "fair, steady, by the book", "knobs": {"length": 50, "humor": 40, "spice": 0, "grit": 55, "pace": 50, "rules": 75}},
+	{"glyph": "book", "title": "Narrative", "body": "story first, rules soft", "knobs": {"length": 70, "humor": 55, "spice": 40, "grit": 45, "pace": 40, "rules": 25}},
+	{"glyph": "skull", "title": "Hardcore", "body": "brutal, strict, earned", "knobs": {"length": 35, "humor": 20, "spice": 0, "grit": 95, "pace": 60, "rules": 90}},
+	{"glyph": "compass", "title": "Sandbox", "body": "player-led, world breathes", "knobs": {"length": 45, "humor": 45, "spice": 20, "grit": 50, "pace": 70, "rules": 40}},
+	{"glyph": "sigil", "title": "Cinematic", "body": "set pieces, hard cuts", "knobs": {"length": 40, "humor": 50, "spice": 30, "grit": 65, "pace": 85, "rules": 35}},
 ]
-const KNOB_ROWS := [["humor", "Humor — serious ↔ comedic"], ["spice", "Romance & spice — none ↔ bold"],
+const KNOB_ROWS := [["length", "Reply length — brief ↔ let it run"],
+	["humor", "Humor — serious ↔ comedic"], ["spice", "Romance & spice — none ↔ bold"],
 	["grit", "Grit & danger — gentle ↔ brutal"], ["pace", "Pace — slow ↔ fast"], ["rules", "Rules — loose ↔ strict"]]
 
-var draft := {"title": "", "line": "", "knobs": {"humor": 45, "spice": 10, "grit": 55, "pace": 55, "rules": 50}}
+var draft := {"title": "", "line": "", "knobs": {"length": 50, "humor": 45, "spice": 10, "grit": 55, "pace": 55, "rules": 50}}
 var _sealed := false
 
 
