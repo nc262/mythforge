@@ -13,8 +13,12 @@
 ; fetched at first run from official sources / your GitHub release — so this
 ; installer itself stays small (tens of MB) and well under any asset-size cap.
 
+; NOTE: while the repo is PRIVATE, this URL needs an authenticated fetch — a
+; plain download returns 404 for anyone without access. Make the repo public, or
+; host the client somewhere the player can reach, before handing the installer
+; to a friend. (Everything else it downloads is from public official sources.)
 #ifndef ClientUrl
-  #define ClientUrl "https://github.com/YOURNAME/mythforge/releases/latest/download/Mythforge.exe"
+  #define ClientUrl "https://github.com/nc262/mythforge/releases/latest/download/Mythforge.exe"
 #endif
 #define AppVer "1.0.0"
 
