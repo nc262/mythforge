@@ -98,7 +98,7 @@ func _build_primary_controls() -> void:
 		["CAMPAIGNS", "scroll", "leather", _show_campaigns, "premises across every world"],
 		["CHRONICLES", "book", "leather", _open_chronicles, "the saved tales"],
 		["A  QUIET  TABLE", "cups", "leather", _show_companions, "chat with a companion"],
-		["SETTINGS", "runewheel", "steel", _show_settings, "sound, motion, text"],
+		["SETTINGS", "runewheel", "steel", _show_settings, "sound, motion, contrast"],
 		["EXIT  THE  HALL", "door", "leather", _quit_game, ""],
 	]
 	for sp in specs:
@@ -639,6 +639,15 @@ func _show_settings() -> void:
 	motion.button_pressed = bool(cfg.get_value("settings", "reduce_motion", false))
 	motion.toggled.connect(func(on): _set_setting("reduce_motion", on); Ui.reduce_motion = on)
 	_content.add_child(motion)
+	# R6 STR-24/25 — the only accessibility control was reduce-motion, while the
+	# app lays body text over paintings in a dozen places, several of which
+	# measured well under WCAG AA. This deepens every scrim and backing plate at
+	# once (they all route through Ui). Takes effect on the next screen built.
+	var contrast := CheckButton.new()
+	contrast.text = "Higher contrast — darker panels behind text"
+	contrast.button_pressed = bool(cfg.get_value("settings", "high_contrast", false))
+	contrast.toggled.connect(func(on): _set_setting("high_contrast", on); Ui.high_contrast = on)
+	_content.add_child(contrast)
 	_content.add_child(_section("ACCOUNT"))
 	var out := Button.new()
 	out.text = "Sign out"
@@ -667,6 +676,7 @@ func _load_settings() -> void:
 	Sfx.ambient_enabled = bool(cfg.get_value("settings", "ambient", true))
 	Sfx.ambient_volume = float(cfg.get_value("settings", "ambient_vol", 0.6))
 	Ui.reduce_motion = bool(cfg.get_value("settings", "reduce_motion", false))
+	Ui.high_contrast = bool(cfg.get_value("settings", "high_contrast", false))
 
 
 # ── The World Forge (full-screen pillar, docs/forges — a realm of your own) ──

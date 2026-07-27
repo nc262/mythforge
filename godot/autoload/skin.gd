@@ -110,6 +110,12 @@ const INTERACT := {"budget": 0.60}  # max length of an ORDINARY interaction
 
 var world_id := ""
 var reduce_motion := false
+## R6 STR-24/25 — the game composites body text over paintings in a dozen places
+## and several measured well under WCAG AA. Every scrim and backing plate in the
+## app routes through Ui, so one flag lets a player who needs it deepen all of
+## them at once. Off by default: the art should breathe for those who can read
+## it comfortably.
+var high_contrast := false
 var pal: Dictionary = PALETTES["arcane"]
 var skin: Dictionary = {}   # the active World Skin (WorldSkin.FAMILIES entry); set by apply()
 var theme := Theme.new()
@@ -307,7 +313,7 @@ func panel_backing(host: Control, opacity := 0.985) -> PanelContainer:
 	var back := PanelContainer.new()
 	back.set_anchors_preset(Control.PRESET_FULL_RECT)
 	back.mouse_filter = Control.MOUSE_FILTER_STOP   # and stop clicks reaching the game
-	var sb := _flat(Color(c("night"), opacity), Color(c("gold_soft"), 0.22), 0, 0, 0)
+	var sb := _flat(Color(c("night"), minf(1.0, opacity + (0.015 if high_contrast else 0.0))), Color(c("gold_soft"), 0.22), 0, 0, 0)
 	back.add_theme_stylebox_override("panel", sb)
 	host.add_child(back)
 	host.move_child(back, 0)
@@ -321,7 +327,7 @@ func panel_backing(host: Control, opacity := 0.985) -> PanelContainer:
 ## R6 BUG-15, AAA-22, AES-03/06.
 func scrim(host: Control, strength := 0.72) -> ColorRect:
 	var s := ColorRect.new()
-	s.color = Color(c("night"), strength)
+	s.color = Color(c("night"), minf(0.94, strength + (0.16 if high_contrast else 0.0)))
 	s.set_anchors_preset(Control.PRESET_FULL_RECT)
 	s.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	host.add_child(s)
@@ -828,6 +834,32 @@ func transition(scene_path: String, tree: SceneTree) -> void:
 	out.tween_callback(layer.queue_free)
 
 
+## The slider's handle: a small forged diamond, not the engine's grey pill. Cheap
+## to draw, cached per colour, and it matches the diamond motif the rest of the
+## UI already uses for sockets and rail runes. R6 AAA-05.
+var _grabbers := {}
+
+func _grabber_tex(col: Color) -> ImageTexture:
+	var ck := col.to_html()
+	if _grabbers.has(ck):
+		return _grabbers[ck]
+	var s := 18
+	var img := Image.create(s, s, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var half := float(s) / 2.0
+	for y in s:
+		for x in s:
+			# |dx| + |dy| <= r is a diamond; feather the last pixel so it isn't jagged.
+			var d := absf(x + 0.5 - half) + absf(y + 0.5 - half)
+			if d <= half - 1.0:
+				img.set_pixel(x, y, col)
+			elif d <= half:
+				img.set_pixel(x, y, Color(col, 0.45))
+	var tex := ImageTexture.create_from_image(img)
+	_grabbers[ck] = tex
+	return tex
+
+
 func _nine(tex: ImageTexture, margin: int, content: int) -> StyleBoxTexture:
 	var sb := StyleBoxTexture.new()
 	sb.texture = tex
@@ -937,6 +969,22 @@ func _build() -> void:
 	theme.set_color("font_placeholder_color", "LineEdit", c("ink_dim"))
 	theme.set_color("caret_color", "LineEdit", c("gold"))
 
+	# Sliders — R6 AAA-05 / AES-18 (both Critical). Every knob in the game (the
+	# GM tuner, Session Zero, the Record's Table tab, the GM Forge) was a raw
+	# Godot HSlider: flat grey track, grey grabber, no palette, no gold. Five of
+	# them stacked on a purple-and-gold panel is the loudest "unfinished" signal
+	# in the app, and it was never themed because nothing else in the game uses a
+	# slider — so it fell through to the engine default. One entry here dresses
+	# every one of them, in every skin, at once.
+	var track := _flat(Color(c("night"), 0.9), Color(c("border"), 0.9), RADIUS["s"], 1, 0)
+	track.content_margin_top = 3
+	track.content_margin_bottom = 3
+	theme.set_stylebox("slider", "HSlider", track)
+	theme.set_stylebox("grabber_area", "HSlider", _flat(Color(c("gold"), 0.55), Color(c("gold"), 0.0), RADIUS["s"], 0, 0))
+	theme.set_stylebox("grabber_area_highlight", "HSlider", _flat(Color(c("gold"), 0.75), Color(c("gold"), 0.0), RADIUS["s"], 0, 0))
+	theme.set_icon("grabber", "HSlider", _grabber_tex(c("gold_soft")))
+	theme.set_icon("grabber_highlight", "HSlider", _grabber_tex(Color(c("gold_soft")).lightened(0.25)))
+
 	# Panels — ornate double-trim frames with corner diamonds; lists ride the
 	# same language; long-form text sits on parchment grain.
 	theme.set_stylebox("panel", "PanelContainer", _nine(ornate_frame_tex(c("surface"), c("border")), 10, 16))
@@ -957,7 +1005,14 @@ func _build() -> void:
 
 	# Ghost button — low-emphasis actions; quiet until courted.
 	theme.set_type_variation("GhostButton", "Button")
-	theme.set_stylebox("normal", "GhostButton", _flat(Color(c("night2"), 0.0), Color(c("border"), 0.0), RADIUS["s"], 1, 8))
+	# R6 AAA-13/14/15, PLAY-10, STR-27 — "quiet until courted" was taken all the
+	# way to INVISIBLE: a fully transparent background AND a fully transparent
+	# border, so "Close the book", "Return to the Hall" and every forge's leave
+	# affordance rendered as bare floating words. They were real 44px buttons the
+	# whole time; nothing said so, and a player who cannot find the way out of
+	# the Lore Book twice concludes the game has trapped them (Round 5 B1's
+	# actual root cause). Quiet is a faint edge, not no edge.
+	theme.set_stylebox("normal", "GhostButton", _flat(Color(c("night2"), 0.35), Color(c("border"), 0.75), RADIUS["s"], 1, 8))
 	theme.set_stylebox("hover", "GhostButton", _flat(Color(c("gold"), 0.07), Color(c("gold"), 0.35), RADIUS["s"], 1, 8))
 	theme.set_stylebox("pressed", "GhostButton", _flat(Color(c("gold"), 0.12), c("gold"), RADIUS["s"], 1, 8))
 

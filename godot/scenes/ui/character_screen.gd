@@ -526,7 +526,13 @@ func _refill_gear() -> void:
 	var stat := Label.new()
 	stat.theme_type_variation = "HintLabel"
 	stat.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	stat.text = "Armor Class %d   ·   %d pieces worn   ·   click a slot to change it" % [Rules.eff_ac(s, inv), worn]
+	# R6 PLAY-09/CUT-14 — Armour Class is the most important defensive number the
+	# player has and it was the least prominent text on the panel, trailing an
+	# instruction ("click a slot to change it") that only existed to compensate
+	# for a missing affordance. The wells now carry tooltips instead, so the
+	# instruction is gone and the number leads.
+	stat.text = "Armor Class %d   ·   %d worn" % [Rules.eff_ac(s, inv), worn]
+	stat.add_theme_color_override("font_color", Ui.c("gold_soft"))
 	_gear_host.add_child(stat)
 	# ── The Pack — the goods live here now, not in a separate window ──────────
 	_gear_host.add_child(MythHeader.new("The Pack"))
@@ -700,6 +706,9 @@ func _gear_socket(key: String) -> Control:
 		p["tip_title"] = str(it.get("name", "?"))
 		p["tip_rows"] = [[str(it.get("rarity", "common")).capitalize(), "ink_dim"]]
 		sock.set_item(p, Art.item_tex_for(it))
+	# The affordance the footer instruction used to stand in for (R6 PLAY-08).
+	sock.tooltip_text = "%s — click to change what you wear here" % _slot_label(key)
+	sock.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	sock.gui_input.connect(func(e):
 		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
 			_open_slot_picker(key))
