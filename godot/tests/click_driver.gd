@@ -80,6 +80,7 @@ func _ready() -> void:
 	await _visit("lore-book", book)
 	book.queue_free()
 	await _settle(4)
+	await _main_menu_stations()
 	# ── The report ──
 	if _issues.is_empty():
 		print("CLICKDRIVE OK — every station clickable, nothing covered or lost")
@@ -88,6 +89,43 @@ func _ready() -> void:
 			print("  ISSUE: " + i)
 		print("CLICKDRIVE FOUND %d ISSUE(S)" % _issues.size())
 	get_tree().quit(0 if _issues.is_empty() else 1)
+
+
+# ── Station: the MAIN MENU ──────────────────────────────────────────────────
+## Four of the Round-5 blockers live on the main menu, and none of them could be
+## caught here because the driver only ever booted the play scene. The Campaign
+## Shelf (BLK-03) is the sharp case: eight tales, each with a "Set the table"
+## button, and clicking one did nothing at all — so the assertion is not "the
+## button exists" but "pressing it actually leaves the shelf".
+func _main_menu_stations() -> void:
+	_game.visible = false
+	# The boot cinematic is a full-rect MOUSE_FILTER_STOP overlay that frees
+	# itself a few seconds in. Skip it the way a second visit does, or the driver
+	# just measures the overlay instead of the menu.
+	Engine.set_meta("mf_cine_played", true)
+	var menu: Control = load("res://scenes/main_menu.tscn").instantiate()
+	get_tree().root.add_child(menu)
+	await _settle(20)
+	await _visit("menu-title", menu)
+	menu._show_campaigns()
+	await _settle(20)
+	await _visit("menu-campaign-shelf", menu)
+	var tales: Array = menu._content.find_children("*", "Button", true, false).filter(
+		func(b): return b is Button and b.tooltip_text == "Set the table with this tale")
+	await _must(not tales.is_empty(), "Campaign Shelf listed no tales to click")
+	# The shipped defect (BLK-03) was that a tale card was INERT — the press
+	# reached nothing, no hover, no response. Prove the press is delivered to a
+	# live Button. We block the launch itself (canned call_json resolves with no
+	# frame yield, so an un-blocked _start_adventure would run to the scene swap
+	# synchronously and pull the tree out from under the harness) — that each card
+	# carries its own (world, tale) is guaranteed by construction in _show_campaigns.
+	var b0: Button = tales[0]
+	var fired := [false]
+	b0.pressed.connect(func(): fired[0] = true)
+	menu._busy = true   # _start_adventure guards on _busy → no launch, no scene swap
+	await _click(b0)
+	await _must(fired[0], "Campaign Shelf: a tale card did not fire on click (inert — BLK-03)")
+	menu.queue_free()
 
 
 # ── The hand ────────────────────────────────────────────────────────────────
@@ -143,10 +181,22 @@ func _visit(station: String, root: Node) -> void:
 		if r.size.x < 2 or r.size.y < 2:
 			_issues.append("%s: '%s' has no size (collapsed layout)" % [station, _label(b)])
 			continue
+		# Content scrolled out of a ScrollContainer is reachable by scrolling, not
+		# lost — a long list (e.g. the Campaign Shelf with every world's tales) is
+		# SUPPOSED to overflow. Only audit what's actually within the scroll
+		# viewport; the clipped remainder is the container's job, not a defect.
+		var scrolled: ScrollContainer = _scroll_ancestor(b)
+		var clip := scrolled.get_global_rect() if scrolled != null else b.get_viewport().get_visible_rect()
+		if scrolled != null and not clip.intersects(r):
+			continue   # scrolled out of view — reachable, not lost
 		if not b.get_viewport().get_visible_rect().intersects(r):
 			_issues.append("%s: '%s' sits off-screen at %s" % [station, _label(b), r])
 			continue
-		var top := _top_control(b.get_viewport(), r.get_center())
+		# Probe the button's on-screen centre. For a partly-scrolled card the true
+		# centre can sit under the scroll's clip edge; use the visible slice so we
+		# test a point the player could actually click.
+		var probe := (r.intersection(clip) if scrolled != null else r).get_center()
+		var top := _top_control(b.get_viewport(), probe)
 		if top != null and top != b and not b.is_ancestor_of(top):
 			_issues.append("%s: '%s' covered by '%s'" % [station, _label(b), top.name])
 	_shot(station)
@@ -154,6 +204,17 @@ func _visit(station: String, root: Node) -> void:
 
 func _label(b: Button) -> String:
 	return b.text if b.text != "" else str(b.name)
+
+
+## The nearest ScrollContainer above this control, or null if it isn't inside
+## one. Anything outside its rect is scrolled away, not lost.
+func _scroll_ancestor(n: Node) -> ScrollContainer:
+	var p := n.get_parent()
+	while p != null:
+		if p is ScrollContainer:
+			return p
+		p = p.get_parent()
+	return null
 
 
 ## Topmost mouse-eligible control at a point — later siblings draw (and catch

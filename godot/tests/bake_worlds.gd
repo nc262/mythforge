@@ -4,8 +4,22 @@ extends Node
 ## Sequential (one GPU); waits for each world to reach POPULATED before the next.
 ##   godot --headless --path godot res://tests/bake_worlds.tscn
 ## Needs a reachable backend + GPU (auth is off, so no login required).
+##
+## RESUMABLE (AssetBake B4). The pour is hours per world, so this is written to be
+## killed and re-run:
+##   · a world already POPULATED is skipped outright;
+##   · compile_seed(resume) reuses the stored style/assets/creatures/npcs rather
+##     than re-asking the model, which would invent new ids and orphan every icon
+##     already painted;
+##   · each image is skipped if its file is already in the world package, and
+##     those files are written atomically, so a half-written PNG is never
+##     mistaken for a finished one.
+## Re-running after a kill therefore costs one seed round-trip and picks up
+## exactly where it stopped.
 
 const POP := "populated"
+const TICK := 5.0        # seconds between progress polls
+const STALL_TICKS := 240 # give up on a world after 20 min with no image landing
 
 
 func _ready() -> void:
@@ -16,23 +30,39 @@ func _ready() -> void:
 
 	var worlds: Array = Rules.builtin_worlds()
 	print("=== baking %d built-in worlds ===" % worlds.size())
+	var incomplete := 0
 	for w in worlds:
 		var wid := str(w.get("id", ""))
 		if wid == "":
+			continue
+		if Compiler.compile_state(wid) == POP:
+			print("\n--- %s: already POPULATED — skipping ---" % wid)
 			continue
 		print("\n--- %s (%s) ---" % [str(w.get("name", wid)), wid])
 		var t0 := Time.get_ticks_msec()
 		# compile_seed writes the data seed then backgrounds the art; poll until
 		# the last image lands (POPULATED) before moving to the next world.
-		await Compiler.compile_seed(w.duplicate(true))
-		var guard := 0
-		while Compiler.compile_state(wid) != POP and guard < 4800:   # ~40 min ceiling
-			await get_tree().create_timer(0.5).timeout
-			guard += 1
+		await Compiler.compile_seed(w.duplicate(true), true)
+		var last := -1
+		var stall := 0
+		while Compiler.compile_state(wid) != POP:
+			await get_tree().create_timer(TICK).timeout
+			var left := Compiler.pending_art(wid)
+			if left != last:
+				last = left
+				stall = 0
+				print("    … %4d images left (%.0fs elapsed)" % [
+					left, (Time.get_ticks_msec() - t0) / 1000.0])
+				continue
+			stall += 1
+			if stall >= STALL_TICKS:
+				print("    ! stalled with %d left — moving on; re-run to resume" % left)
+				incomplete += 1
+				break
 		var secs := (Time.get_ticks_msec() - t0) / 1000.0
 		print("--- %s → %s in %.0fs (%d items, %d creatures) ---" % [
 			wid, Compiler.compile_state(wid), secs,
 			Compiler.catalogue_for(wid).size(), Compiler.creatures_for(wid).size()])
 
-	print("\n=== BAKE COMPLETE ===")
-	get_tree().quit(0)
+	print("\n=== BAKE %s ===" % ("COMPLETE" if incomplete == 0 else "INCOMPLETE (%d world(s) stalled — re-run)" % incomplete))
+	get_tree().quit(0 if incomplete == 0 else 2)

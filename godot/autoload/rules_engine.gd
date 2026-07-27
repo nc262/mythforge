@@ -148,8 +148,25 @@ func item_type(nm: String) -> String:
 ## stim-patches, not daggers. Families without their own table (steam, pirate,
 ## norse, horror) fit the fantasy base well enough and fall back to it.
 func vendor_stock() -> Dictionary:
-	var fam := WorldSkin.family_for_id(GameState.world_id())
+	return vendor_stock_for(WorldSkin.family_for_id(GameState.world_id()))
+
+
+## Same table by family, for the compiler — it bakes the shelves before there is
+## an active world to ask about (Performance §7 A1).
+func vendor_stock_for(fam: String) -> Dictionary:
 	return tables.get("vendor_stock_" + fam, tables.get("vendor_stock", {}))
+
+
+## Every ware name a keeper of this family can stock, flattened. Constant per
+## family, so it is build-time work, never play-time work.
+func vendor_stock_names(fam: String) -> Array:
+	var out: Array = []
+	for cat in vendor_stock_for(fam).values():
+		if cat is Array:
+			for gd in cat:
+				if gd is Array and gd.size() >= 1 and not out.has(str(gd[0])):
+					out.append(str(gd[0]))
+	return out
 
 
 func item_value(rarity: String) -> int:

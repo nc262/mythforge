@@ -401,7 +401,7 @@ func _strike(refine: String) -> void:
 	var payload := {"idea": refine if refine != "" else idea, "mode": "world", "fields": fields}
 	if refine != "" and not _forged.is_empty():
 		payload["prior"] = _forged
-	var w := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", payload)
+	var w := await Api.worldsmith(payload)
 	_busy = false
 	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
 		_status.text = "The forge sputtered (%s) — strike again." % str(w.get("_status", 0))
@@ -544,7 +544,7 @@ func _run_sequence() -> void:
 	# 4. The opening scene — the campaign smith writes the first page.
 	steps["intro"].set_state("work", "the quill scratches…")
 	var intro_idea := str(draft["name"]) if str(draft["name"]) != "" else "an opening campaign true to this world's theme"
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", {
+	var r := await Api.worldsmith({
 		"idea": "The opening campaign: %s. Begin it at %s." % [intro_idea, _settlement if _settlement != "" else "the world's heart"],
 		"mode": "story",
 		"world": {"name": world.get("name", ""), "kind": world.get("kind", ""), "lore": world.get("lore", "")}})

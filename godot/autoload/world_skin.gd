@@ -36,7 +36,8 @@ const FAMILIES := {
 		"flavor": {"map": "chart", "pack": "pack", "book": "saga", "world": "norse saga fantasy"}},
 }
 
-const BUILTIN := {"embervale": "fantasy", "neonspire": "cyber", "everyday": "everyday"}
+const BUILTIN := {"embervale": "fantasy", "neonspire": "cyber", "everyday": "everyday",
+	"fimbulreach": "norse", "brasshaven": "steam"}
 
 ## The World Style Guide's generative + voice descriptors, per family (A1 —
 ## ArchitectureEvolution §6). Referenced by the Art prompt builders (character

@@ -1,6 +1,63 @@
 # Session Handoff — pick up here (2026-07-23)
 
-## ▶ START HERE: The Great Bake (B1–B5)
+## ▶ STATE AS OF THE BAKE SESSION — THE GREAT BAKE IS DONE
+
+**B1–B7 complete. All six worlds are poured, verified, zipped and exported.**
+Full numbers in [AssetBake.md](AssetBake.md); the section below is the original
+plan, kept for context.
+
+- **Six** shipped worlds now, not four: the four originals plus **fimbulreach**
+  (Norse saga) and **brasshaven** (gaslamp steampunk), both added mid-session at
+  the Director's call because no built-in world covered those families.
+- ~1 800 images, 7 390 catalogue entries, 1.4 GB of zips, ~11 h of GPU.
+- `dist/Mythforge.exe` = **1.6 GB**, all six bundled, **copied to the Desktop and
+  verified byte-for-byte** (the sandbox gotcha in §3 is real — it needs
+  `dangerouslyDisableSandbox` twice: once to copy, once to prove it survived).
+- Every world: 0 truncated PNGs, 0 catalogue entries with a missing icon.
+
+**If a future pour is interrupted, just run it again** — that is the whole point
+of B4. `godot --headless --path godot res://tests/bake_worlds.tscn` skips every
+world already POPULATED and every image already on disk, and re-uses the stored
+seed rather than re-asking the model. Proven by killing it mid-pour.
+
+**One leftover to clean up when you're happy with the build:** the pre-bake packs
+are renamed, not deleted, at
+`%APPDATA%\Godot\app_userdata\Mythforge\worlds\<id>.prebake` (four dirs, ~300 MB).
+They were the fallback if the pour had to be abandoned. The old zips are likewise
+parked in the session scratchpad. Both are now redundant — the new zips are in
+`godot/baked/` and verified.
+
+## ▶ Packaging: the one-click installer (`installer/`)
+
+New this session. A friend downloads one `Mythforge-Setup.exe`, clicks through,
+and everything configures itself — no Python, no git, no manual downloads.
+It is a **thin wrapper over `scripts/install.ps1`**, which already did the hard
+parts (GPU detect → CUDA/ZLUDA/none, Ollama + models, ComfyUI + matting node +
+SDXL, the app venv). The new code adds only the Godot client download, the
+`model_endpoints` seeding, and runtime orchestration.
+
+- `mythforge.ps1` — the only thing a player runs. Self-heals (bootstraps if
+  unconfigured), starts Ollama → backend → image stack on loopback, seeds the
+  two endpoint rows, launches the game, tears it all down on quit.
+- `bootstrap.ps1` — first-run download & configure; idempotent, doubles as repair.
+- `Mythforge-Setup.iss` — the Inno Setup one-click wrapper.
+
+**Verified:** both scripts parse clean; the endpoint-seed POST is idempotent
+(dedupes on `base_url` — added zero rows against the live backend).
+**NOT yet verified, and it matters:** a full first-run on a clean machine, the
+NVIDIA/CUDA path (this box is AMD), compiling the `.iss` (needs Inno Setup 6),
+and code-signing for SmartScreen. See [installer/README.md](../../installer/README.md).
+
+Also fixed this session, off the GPU path (UIPolish Round 5 Tier 0):
+**B3** (World Forge failed *every* time — the worldsmith envelope was never
+unwrapped, so `name` was always empty; one `Api.worldsmith()` helper fixes all
+four call sites), **B4** (a failed strike now stays on the anvil with a live
+retry instead of dumping the player back to the pillars), and **B5** (the
+Campaign Shelf's cards are real `_big_card`s bound to their tale — the old ghost
+button called `_open_adventure_forge()` with no arguments and threw the chosen
+tale away). `click_driver` now has a **main-menu station** that guards all of it.
+
+## ▶ ORIGINAL PLAN: The Great Bake (B1–B5)
 
 Director approved 2026-07-23: **build the bake, then pour it.** Full plan and
 numbers in [AssetBake.md](AssetBake.md); the *why* is in
