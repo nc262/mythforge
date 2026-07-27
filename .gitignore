@@ -103,3 +103,10 @@ dist/
 
 # Windows export tooling (downloaded, not vendored) — see docs/Build.md
 tools/rcedit-x64.exe
+
+# Pre-baked world packages — SHIPPED AS RELEASE ASSETS, not in git.
+# The Great Bake produces ~1.4 GB of these (six worlds, ~250 MB each); the exe
+# bundles them at export time and the installer fetches the exe, so nothing in
+# the build path needs them from a clone. Rebuild any of them locally with
+# tests/bake_worlds.tscn + scripts/bake_zip.py — see docs/AssetBake.md.
+godot/baked/*.zip

@@ -29,6 +29,19 @@ iscc /DClientUrl="https://github.com/<you>/mythforge/releases/download/vX/Mythfo
 installer fetches from official sources (Ollama, ComfyUI, HuggingFace, the
 Ollama model registry), so those are the only two files you host.
 
+### The baked worlds are release assets too, not git
+
+`godot/baked/*.zip` (~1.4 GB, six worlds) is **gitignored on purpose**. The exe
+bundles them at export time, and players get them inside `Mythforge.exe`, so a
+clone never needs them — keeping them out stops the repo growing by gigabytes
+per bake. Rebuild locally with `tests/bake_worlds.tscn` + `scripts/bake_zip.py`
+(see [AssetBake.md](../godot/docs/AssetBake.md)), or attach them to the release
+if you want them downloadable on their own.
+
+**Consequence to know:** a fresh clone has no `godot/baked/`, so an export from
+it produces an exe with **no pre-baked worlds** until you either bake them or
+drop the release zips into `godot/baked/`.
+
 ## What's verified, and what needs a clean box
 
 Validated on the dev machine (AMD / ZLUDA):

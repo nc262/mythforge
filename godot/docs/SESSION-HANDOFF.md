@@ -20,6 +20,13 @@ of B4. `godot --headless --path godot res://tests/bake_worlds.tscn` skips every
 world already POPULATED and every image already on disk, and re-uses the stored
 seed rather than re-asking the model. Proven by killing it mid-pour.
 
+**The baked zips are NOT in git** (Director's call): `godot/baked/*.zip` is
+gitignored and they ship as **release assets**, because the exe bundles them at
+export and 1.4 GB per bake would bloat the repo forever. The four that were
+tracked have been untracked (files untouched on disk). **A fresh clone therefore
+exports an exe with no pre-baked worlds** until you re-bake or drop the release
+zips into `godot/baked/`.
+
 **One leftover to clean up when you're happy with the build:** the pre-bake packs
 are renamed, not deleted, at
 `%APPDATA%\Godot\app_userdata\Mythforge\worlds\<id>.prebake` (four dirs, ~300 MB).
