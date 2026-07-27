@@ -1394,6 +1394,43 @@ func key_art(world_id: String) -> Texture2D:
 	return _load_tex("%s/art/key.png" % world_dir(world_id))
 
 
+## One of the world's six baked biome plates (see BIOMES), or null.
+func biome_art(world_id: String, index: int) -> Texture2D:
+	return _load_tex("%s/art/biome-%s-%d.png" % [
+		world_dir(world_id), world_id.validate_filename(), clampi(index, 0, BIOMES.size() - 1)])
+
+
+## Which baked biome plate best stands in for a PLACE.
+##
+## R6 FUN-28/FUN-25/BLANK-24 — every world bakes six of these and, until now,
+## nothing ever drew one: 36 finished paintings across the shipped set, unused.
+## Meanwhile travelling anywhere commissioned a fresh ~25 s render on the
+## player's own GPU, mid-play, which is the exact behaviour Performance.md §7
+## ruled out ("if it can be known before play, it is painted before play").
+## A named location's kind is known at build time, so it can answer instantly.
+const BIOME_FOR_KIND := {
+	"tavern": 2, "shop": 2, "home": 2, "interior": 2,
+	"settlement": 1, "town": 1, "city": 1,
+	"wilds": 0, "wilderness": 0, "forest": 0,
+	"ruin": 5, "landmark": 3,
+}
+const WATER_WORDS := ["harbor", "harbour", "quay", "dock", "pier", "sea", "river",
+	"lake", "fjord", "marsh", "bay", "cove", "shore", "tide", "wharf", "canal"]
+
+
+func biome_for_place(place: String, kind := "") -> int:
+	var low := place.to_lower()
+	for w in WATER_WORDS:
+		if low.contains(w):
+			return 4   # "a place of water" beats the kind — it is what you SEE
+	if BIOME_FOR_KIND.has(kind.to_lower()):
+		return int(BIOME_FOR_KIND[kind.to_lower()])
+	for k in BIOME_FOR_KIND:
+		if low.contains(str(k)):
+			return int(BIOME_FOR_KIND[k])
+	return 1   # a settlement is the safest guess for a named place
+
+
 ## The best baked surface to draw a CHART on. The minimap and the Atlas both
 ## asked `Art.texture_for(world_id)` — the art *cache* — which for a shipped
 ## world holds whatever environment plate happened to be painted last. That is

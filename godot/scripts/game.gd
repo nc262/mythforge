@@ -592,6 +592,31 @@ func _say_system(text: String, glyph := "") -> void:
 	_scroll_bottom()
 
 
+## An ordinary drop, but the piece is SHOWN. R6 FUN-04/FUN-05: the bake put
+## 1 150+ painted items in each world and a common find announced itself as a
+## line of grey text — the art existed and the player never saw it at the one
+## moment they cared. The icon is already in hand; put it on screen.
+func _say_loot(nm: String, icon: Texture2D, rarity: String) -> void:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["s"])
+	if icon != null:
+		var tr := TextureRect.new()
+		tr.texture = icon
+		tr.custom_minimum_size = Vector2(34, 34)
+		tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		row.add_child(tr)
+	var l := Label.new()
+	l.theme_type_variation = "HintLabel"
+	l.text = "%s added to your pack" % nm
+	l.add_theme_color_override("font_color", Ui.rarity_color(rarity))
+	row.add_child(l)
+	_thread.add_child(_sys_plate(row))
+	Ui.pulse(row)
+	_scroll_bottom()
+
+
 ## A quiet backing plate for a system line, so it stays readable over the world's
 ## painting without dressing up as a speech bubble. R7-02.
 func _sys_plate(inner: Control) -> Control:
@@ -939,9 +964,17 @@ func _apply_world_tags(tags: Array) -> void:
 							"art": icon, "sound": "loot",
 							"weight": "major", "tint": Ui.RARITY.get(rarity, "gold"),
 						})
+					elif rarity == "rare":
+						# R6 FUN-06 — ceremony stopped at epic, so a *rare* drop read
+						# exactly like a rusty dagger. Lighter beat, still a moment.
+						MythCeremony.play(self, {
+							"title": nm, "line": "A rare find.", "art": icon,
+							"sound": "loot", "weight": "light",
+							"tint": Ui.RARITY.get(rarity, "gold"),
+						})
 					else:
 						Sfx.ui("loot")
-						_say_system("%s added to your pack" % nm, "pack")
+						_say_loot(nm, icon, rarity)
 			"spell-learned":
 				var sp := str(a.get("name", "")).strip_edges()
 				if sp != "" and GameState.learn_spell(sp):
@@ -1908,15 +1941,42 @@ func _show_image(key: String) -> void:
 func _repaint_scene(place: String) -> void:
 	var key := "scene-%s-%s" % [GameState.world_id().validate_filename(),
 		place.to_lower().replace(" ", "-").validate_filename().left(48)]
+	# R6 FUN-28 / Performance §7 — the room CHANGES the instant you arrive.
+	#
+	# This used to do one thing: queue a bespoke ~25 s render in the NOW lane and
+	# leave the old scene up until it landed. So the world visibly lagged the
+	# story by half a minute, on the player's own GPU, competing with the
+	# narrator — while six finished biome plates for this very world sat unused
+	# in its package. Show the baked plate immediately (free, instant), and let
+	# the bespoke painting replace it later from the IDLE lane if the player ever
+	# generates one. Nothing waits on the GPU to feel like somewhere new.
+	if not Art.has_art(key):
+		var kind := ""
+		for l in Rules.world_locations(GameState.world_id()):
+			if l is Dictionary and str(l.get("name", "")) == place:
+				kind = str(l.get("kind", ""))
+				break
+		var plate: Texture2D = Compiler.biome_art(GameState.world_id(),
+			Compiler.biome_for_place(place, kind))
+		if plate != null:
+			_paint_backdrop(plate)
 	var prompt := "%s, in the world of %s. Atmospheric %s establishing scene, cinematic lighting, no people, no text." % [
 		place, WorldSkin.world_name(GameState.world_id()), Art.world_flavor()]
-	Art.request(key, prompt, {"lane": Art.Lane.NOW, "owner": self,
+	Art.request(key, prompt, {"lane": Art.Lane.IDLE, "owner": self,
 		"on_ready": func(k: String): _show_backdrop(k)})
 
 
 ## Fade a cached painting in as the room behind the words.
 func _show_backdrop(key: String) -> void:
 	var tex := Art.texture_for(key)
+	if tex == null:
+		return
+	_paint_backdrop(tex)
+
+
+## The actual crossfade, for either source — a baked biome plate on arrival, or
+## the bespoke painting once it exists.
+func _paint_backdrop(tex: Texture2D) -> void:
 	if tex == null or not is_inside_tree():
 		return
 	_scene_art.texture = tex
