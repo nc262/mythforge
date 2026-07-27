@@ -199,7 +199,7 @@ func _visit(station: String, root: Node) -> void:
 		var top := _top_control(b.get_viewport(), probe)
 		if top != null and top != b and not b.is_ancestor_of(top):
 			_issues.append("%s: '%s' covered by '%s'" % [station, _label(b), top.name])
-	_shot(station)
+	await _shot(station)   # awaited, or the PNG lands a station or two late and lies
 
 
 func _label(b: Button) -> String:
