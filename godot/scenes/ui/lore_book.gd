@@ -33,6 +33,11 @@ func _unhandled_key_input(e: InputEvent) -> void:
 
 func _ready() -> void:
 	theme = Ui.theme
+	# R6 BUG-05 / BLANK-09 / AES-24 — the book had NO background. It is a plain
+	# Control laid over the play screen, so the toolbar, the input box and the
+	# tale's own title all showed through the "page" and two UIs shared the same
+	# pixels. An opaque backing also stops clicks falling through to the game.
+	Ui.panel_backing(self)
 	MythEnvironment.mount(self, "env-journal", "dust", [Vector2(0.12, 0.86), Vector2(0.88, 0.86)])
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)

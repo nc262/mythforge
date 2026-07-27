@@ -249,6 +249,86 @@ func sb_card(rarity := "common") -> StyleBoxFlat:
 	return sb
 
 
+## ── The panel contract (UXAudit R6, root cause #2) ──────────────────────────
+## Every full-screen surface used to dress itself, and none of them agreed:
+## the Record and the Shop were raw AcceptDialogs wearing the OS title bar, a
+## stock white ✕ and a grey unthemed chrome band, while the Lore Book was a
+## bare Control with NO background at all — the play screen's toolbar showed
+## straight through the "page". On top of that the Record's only exit sat below
+## the window's bottom edge, because the dialog sized its CONTENT to the whole
+## screen and then had to find room for the button underneath.
+##
+## One call now dresses any of them: opaque themed panel, no OS chrome, and —
+## the part that was actually broken — content height capped so the exit button
+## always has somewhere to live. Fixes R6 BUG-01/06/07/09/10/11, AAA-06, AES-02.
+const PANEL_RESERVE := 76   # px kept free at the bottom for the exit control
+
+
+func dress_dialog(dlg: AcceptDialog, content: Control = null) -> void:
+	dlg.borderless = true          # no OS-style title bar, no stock ✕
+	dlg.transparent_bg = false
+	var sb := _flat(c("night"), Color(c("gold_soft"), 0.34), RADIUS["m"], 2, 0)
+	sb.shadow_color = Color(0, 0, 0, 0.55)   # R6 AAA-28: panels sit ABOVE, not on
+	sb.shadow_size = 18
+	dlg.add_theme_stylebox_override("panel", sb)
+	# The grey band was the dialog's own button strip showing through unthemed.
+	var ok := dlg.get_ok_button()
+	ok.theme_type_variation = "AccentButton"
+	ok.custom_minimum_size = Vector2(240, 44)   # R6 STR-27: a real 44px target
+	if content != null:
+		_cap_panel_content(dlg, content)
+
+
+## Cap the content so `wrap_controls` can never grow the window past the screen
+## and push the exit off the bottom. Re-applied on resize — a windowed player
+## can change the screen out from under us.
+func _cap_panel_content(dlg: AcceptDialog, content: Control) -> void:
+	var apply := func():
+		if not is_instance_valid(dlg) or not is_instance_valid(content) or not content.is_inside_tree():
+			return
+		var avail: Vector2 = Vector2(dlg.get_tree().root.get_visible_rect().size)
+		content.custom_minimum_size.y = 0
+		content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		dlg.max_size = Vector2i(int(avail.x) - 8, int(avail.y) - 8)
+		# The ceiling the content may occupy, once the exit strip is spoken for.
+		var cap := maxf(120.0, avail.y - 8.0 - PANEL_RESERVE)
+		if content.get_combined_minimum_size().y > cap:
+			content.custom_minimum_size.y = cap
+	# Deferred: the content's real minimum height only exists once its children
+	# are in the tree, and callers dress the panel while still building it.
+	apply.call_deferred()
+	if not dlg.get_tree().root.size_changed.is_connected(apply):
+		dlg.get_tree().root.size_changed.connect(apply)
+
+
+## A full-bleed opaque backing for a plain-Control surface (the Lore Book), so
+## it stops compositing over live gameplay. R6 BUG-05 / BLANK-09 / AES-24.
+func panel_backing(host: Control, opacity := 0.985) -> PanelContainer:
+	var back := PanelContainer.new()
+	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.mouse_filter = Control.MOUSE_FILTER_STOP   # and stop clicks reaching the game
+	var sb := _flat(Color(c("night"), opacity), Color(c("gold_soft"), 0.22), 0, 0, 0)
+	back.add_theme_stylebox_override("panel", sb)
+	host.add_child(back)
+	host.move_child(back, 0)
+	return back
+
+
+## A scrim between a photographic backdrop and the text laid over it. The Round-5
+## diagnosis named this as a root cause and it was still unfixed at Round 6:
+## the Campaign Shelf and The Table rendered body copy directly onto a
+## full-brightness photograph, at roughly 10% effective contrast.
+## R6 BUG-15, AAA-22, AES-03/06.
+func scrim(host: Control, strength := 0.72) -> ColorRect:
+	var s := ColorRect.new()
+	s.color = Color(c("night"), strength)
+	s.set_anchors_preset(Control.PRESET_FULL_RECT)
+	s.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	host.add_child(s)
+	host.move_child(s, 0)
+	return s
+
+
 ## Worn leather with stitching at the border — the pack/merchant material.
 ## Palette-tinted: Neonspire reads as coated canvas, Everyday as satchel cloth.
 func leather_tex() -> ImageTexture:

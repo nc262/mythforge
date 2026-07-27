@@ -23,7 +23,11 @@ func _ready() -> void:
 ## and costs the player words — so it only exists once it has a chart to show.
 func _has_chart() -> bool:
 	var wid := GameState.world_id().validate_filename()
-	return Art.has_art("chart-" + wid) or Art.has_art(wid)
+	# R6 BLANK-02: a baked world ships six overhead plates, so ask the compiler
+	# before deciding the player gets no map. This box was empty in play not
+	# because the art was missing but because nobody looked where it lives.
+	return Compiler.chart_art(GameState.world_id()) != null \
+		or Art.has_art("chart-" + wid) or Art.has_art(wid)
 
 
 func _process(delta: float) -> void:
@@ -40,7 +44,9 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	var art := Art.texture_for("chart-" + GameState.world_id().validate_filename())
+	var art: Texture2D = Compiler.chart_art(GameState.world_id())
+	if art == null:
+		art = Art.texture_for("chart-" + GameState.world_id().validate_filename())
 	if art == null:
 		art = Art.texture_for(GameState.world_id())
 	if art != null:

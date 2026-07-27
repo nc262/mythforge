@@ -65,7 +65,13 @@ func _gui_input(event: InputEvent) -> void:
 func _draw() -> void:
 	draw_set_transform(_camera.cam, 0.0, Vector2(_camera.zoom, _camera.zoom))
 	# The paper: parchment chart preferred, key art as the fallback land.
-	var art := Art.texture_for("chart-" + GameState.world_id().validate_filename())
+	# R6 BUG-12 — this asked the art CACHE, which for a shipped world holds the
+	# last environment plate painted, so the Atlas drew its location pins over a
+	# photograph of a tavern fireplace. The compiler knows where the real
+	# overhead plates live.
+	var art: Texture2D = Compiler.chart_art(GameState.world_id())
+	if art == null:
+		art = Art.texture_for("chart-" + GameState.world_id().validate_filename())
 	if art == null:
 		art = Art.texture_for(GameState.world_id())
 	if art != null:

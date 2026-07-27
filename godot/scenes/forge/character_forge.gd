@@ -9,7 +9,13 @@ extends ForgeFlow
 
 signal hero_forged(draft: Dictionary)
 
-const STAGES := ["The Anvil", "Origin", "Ruleset", "Heritage", "Class", "Background", "Nature", "Appearance", "The Voice", "Equipment", "Quenching"]
+## R6 CUT-01/CUT-02 — "The Anvil" is gone. It was an entire stage whose whole
+## content was the line "Every legend begins as raw metal." and a button reading
+## "Light the forge ›": no input, no choice, nothing to look at, and one more
+## click between the player and the thing they asked for. Ceremony belongs where
+## there is something to be ceremonious about — the forge now OPENS on the first
+## real decision, and the eleven-dot progress rail is a ten.
+const STAGES := ["Origin", "Ruleset", "Heritage", "Class", "Background", "Nature", "Appearance", "The Voice", "Equipment", "Quenching"]
 const PREBUILT := [
 	{"glyph": "🪓", "title": "Brakka Ironhide", "body": "Half-Orc Fighter — the wall that walks", "race": "Half-Orc", "cls": "Fighter", "bg": "Soldier"},
 	{"glyph": "🔮", "title": "Elara Venn", "body": "Elf Wizard — patience, then fire", "race": "Elf", "cls": "Wizard", "bg": "Sage"},
@@ -59,7 +65,7 @@ func _initial_stage() -> int:
 	var shot_stage := OS.get_environment("MF_FORGE_STAGE")
 	if shot_stage != "":
 		return int(shot_stage)
-	return 10 if start_at_quench else 0
+	return STAGES.size() - 1 if start_at_quench else 0   # Quenching is the last rune
 
 
 func _on_stage_entered(_i: int) -> void:
@@ -122,37 +128,25 @@ func _story_fold(title: String, hint: String, draft_key: String) -> Control:
 func _build_stage(i: int) -> void:
 	match i:
 		0:
-			_stage_anvil()
-		1:
 			_stage_origin()
-		2:
+		1:
 			_stage_ruleset()
-		3:
+		2:
 			_stage_heritage()
-		4:
+		3:
 			_stage_class()
-		5:
+		4:
 			_stage_background()
-		6:
+		5:
 			_stage_nature()
-		7:
+		6:
 			_stage_appearance()
-		8:
+		7:
 			_stage_voice()
-		9:
+		8:
 			_stage_equipment()
-		10:
+		9:
 			_stage_quenching()
-
-
-func _stage_anvil() -> void:
-	_title_label("The Cold Anvil")
-	var line := Label.new()
-	line.theme_type_variation = "HintLabel"
-	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	line.text = "Every legend begins as raw metal."
-	_stage_box.add_child(line)
-	_nav(-1, "Light the forge ›", func(): _enter_stage(1))
 
 
 func _stage_origin() -> void:
@@ -170,12 +164,12 @@ func _stage_origin() -> void:
 			draft["kit"] = KITS[0]["items"] if str(e["cls"]) in ["Fighter", "Cleric"] else (KITS[1]["items"] if str(e["cls"]) == "Rogue" else KITS[2]["items"])
 			_roll_destiny()
 			_status.text = "%s stands ready — the Quenching awaits (walk back through any rune to reshape them)." % draft["name"]
-			_enter_stage(10)
+			_enter_stage(9)
 		)
-	_nav(0, "Continue ›", func():
+	_nav(-1, "Continue ›", func():   # first stage now — nothing behind it
 		if str(draft["origin"]) == "":
 			draft["origin"] = "Raw Metal"
-		_enter_stage(2))
+		_enter_stage(1))
 
 
 func _stage_ruleset() -> void:
@@ -192,7 +186,7 @@ func _stage_ruleset() -> void:
 		fc.modulate = Color(1, 1, 1, 0.45)
 		row.add_child(fc)
 	_stage_box.add_child(row)
-	_nav(1, "Continue ›", func(): _enter_stage(3))
+	_nav(0, "Continue ›", func(): _enter_stage(2))
 
 
 ## The heritages, each with a generated portrait that fills in as you browse
@@ -269,11 +263,11 @@ func _stage_heritage() -> void:
 			Ui.pulse(port))
 	if str(draft["race"]) != "":
 		show_race.call(str(draft["race"]))
-	_nav(2, "Strike ›", func():
+	_nav(1, "Strike ›", func():
 		if str(draft["race"]) == "":
 			_status.text = "The metal needs a heritage — choose one."
 			return
-		_enter_stage(4))
+		_enter_stage(3))
 
 
 ## The commission for a heritage reference portrait — world-flavored.
@@ -300,13 +294,13 @@ func _stage_class() -> void:
 		"Why did you take up this class? A mentor, a curse, a debt, a calling — the GM weaves it into whatever world you're dropped into.",
 		"cls_story")
 	_stage_box.add_child(story)
-	_nav(3, "Strike ›", func():
+	_nav(2, "Strike ›", func():
 		if str(draft["cls"]) == "":
 			_status.text = "The blade needs a shape — choose a class."
 			return
 		if _story_edit != null:
 			draft["cls_story"] = _story_edit.text.strip_edges()
-		_enter_stage(5))
+		_enter_stage(4))
 
 
 func _stage_background() -> void:
@@ -324,13 +318,13 @@ func _stage_background() -> void:
 		"Where do you come from, and what set you on the road? The GM reinterprets your past inside whatever world the tale drops you into.",
 		"bg_story")
 	_stage_box.add_child(story)
-	_nav(4, "Strike ›", func():
+	_nav(3, "Strike ›", func():
 		if str(draft["bg"]) == "":
 			_status.text = "Every legend was someone first — choose a background."
 			return
 		if _story_edit != null:
 			draft["bg_story"] = _story_edit.text.strip_edges()
-		_enter_stage(6))
+		_enter_stage(5))
 
 
 func _roll_destiny() -> void:
@@ -386,7 +380,7 @@ func _stage_nature() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	_nav(5, "Strike ›", func():
+	_nav(4, "Strike ›", func():
 		if adv.content.visible:
 			var used: Array = []
 			var assign := {}
@@ -402,7 +396,7 @@ func _stage_nature() -> void:
 				return
 			draft["assign"] = assign
 			draft["rolled"] = []
-		_enter_stage(7))
+		_enter_stage(6))
 
 
 ## The portrait commission — shared by the live Appearance preview and the
@@ -493,9 +487,9 @@ func _stage_appearance() -> void:
 			port.texture = Art.texture_for("heroprev")
 			_status.text = ""
 			Ui.pulse(port))
-	_nav(6, "Strike ›", func():
+	_nav(5, "Strike ›", func():
 		draft["appearance"] = desc.text.strip_edges()
-		_enter_stage(8))
+		_enter_stage(7))
 
 
 func _stage_voice() -> void:
@@ -507,7 +501,7 @@ func _stage_voice() -> void:
 	vc.modulate = Color(1, 1, 1, 0.45)
 	row.add_child(vc)
 	_stage_box.add_child(row)
-	_nav(7, "Continue ›", func(): _enter_stage(9))
+	_nav(6, "Continue ›", func(): _enter_stage(8))
 
 
 func _stage_equipment() -> void:
@@ -517,10 +511,10 @@ func _stage_equipment() -> void:
 		if draft["kit"] == k["items"]:
 			sel = str(k["title"])
 	_card_grid(KITS, 3, sel, func(e): draft["kit"] = e["items"])
-	_nav(8, "To the Quenching ›", func():
+	_nav(7, "To the Quenching ›", func():
 		if draft["kit"].is_empty():
 			draft["kit"] = KITS[0]["items"]
-		_enter_stage(10))
+		_enter_stage(9))
 
 
 # ── The Quenching: steam, gold, the finished legend ─────────────────────────
@@ -572,7 +566,7 @@ func _stage_quenching() -> void:
 	var rsc := CenterContainer.new()
 	rsc.add_child(restrike)
 	_stage_box.add_child(rsc)
-	_nav(9, "BEGIN THE ADVENTURE" if not menu_mode else "BANK THIS LEGEND", func():
+	_nav(8, "BEGIN THE ADVENTURE" if not menu_mode else "BANK THIS LEGEND", func():
 		draft["name"] = name_in.text.strip_edges()
 		if draft["name"] == "":
 			_status.text = "A legend needs a name — strike it."

@@ -51,6 +51,17 @@ func _ready() -> void:
 	title = here if here_shop != "" else "The trading post"
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 8)
+	# R6 BUG-07/08/09 — the shared panel contract: the grey chrome band, the
+	# title rendering OUTSIDE the panel over the day banner, and the stock ✕
+	# floating off the top-right corner were all the undressed AcceptDialog.
+	Ui.dress_dialog(self, root)
+	# The keeper is a person, not a vending machine (R6 PLAY-07/FUN-22): name the
+	# counter inside the panel where the title used to escape to.
+	var head := Label.new()
+	head.theme_type_variation = "HeaderLabel"
+	head.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	head.text = title
+	root.add_child(head)
 	# The purse is a ROW, not a sentence: the number lives alone so it can be
 	# counted down rather than snapped (MIL §9).
 	_purse_row = HBoxContainer.new()

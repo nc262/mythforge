@@ -17,6 +17,17 @@ const DOLL_SLOTS := [["weapon", "Main hand"], ["armor", "Armor"], ["offhand", "O
 const TABS := ["Record", "Gear", "Skills", "Powers", "Story", "Destiny", "Atlas", "Chronicle", "The Table"]
 ## Pages that cost real work (art, HTTP, big canvases) build on first visit.
 const LAZY := ["Destiny", "Atlas", "Chronicle"]
+## R6 BLANK-04 / PLAY-08 / AAA-09 — every one of the thirteen wells was built
+## with the same "◇", so the Gear tab read as eleven identical grey diamonds and
+## the player could not tell a head slot from a ring without reading the caption.
+## A distinct silhouette per slot is the cheap half of the fix that AssetBake.md
+## flagged ("slot silhouettes are a separate, cheaper win") and never got done.
+const SLOT_GHOST := {
+	"head": "⛑", "neck": "◈", "cloak": "🜄", "armor": "⛊", "hands": "✋",
+	"waist": "⌁", "legs": "⑃", "feet": "👣", "ring1": "◯", "ring2": "◯",
+	"weapon": "⚔", "offhand": "🜚", "shield": "🛡",
+}
+
 const GEAR_LEFT := ["head", "neck", "cloak", "armor", "hands"]
 const GEAR_RIGHT := ["waist", "legs", "feet", "ring1", "ring2"]
 const GEAR_BOTTOM := ["weapon", "offhand", "shield"]
@@ -55,6 +66,10 @@ func _ready() -> void:
 	exclusive = false
 	close_requested.connect(hide)
 	var margin := MarginContainer.new()
+	# R6 BUG-01/06/10 — the shared panel contract. Dresses off the OS title bar
+	# and the grey chrome band, and (the real defect) caps this content so
+	# "Return to the tale" can no longer be pushed under the window's edge.
+	Ui.dress_dialog(self, margin)
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for m in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
 		margin.add_theme_constant_override(m, Ui.SPACE["l"])
@@ -677,7 +692,7 @@ func _socket_col(keys: Array) -> Control:
 func _gear_socket(key: String) -> Control:
 	var wrap := VBoxContainer.new()
 	wrap.add_theme_constant_override("separation", 2)
-	var sock := MythSocket.new(key, "◇", 64)
+	var sock := MythSocket.new(key, SLOT_GHOST.get(key, "◇"), 64)
 	_sockets[key] = sock
 	var it := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get(key, "")))
 	if not it.is_empty():
@@ -699,6 +714,12 @@ func _gear_socket(key: String) -> Control:
 
 
 func _slot_label(key: String) -> String:
+	# R6 BUG-17: both ring wells printed a bare "Ring", so the two were
+	# indistinguishable and a player could not tell which hand they were filling.
+	if key == "ring1":
+		return "Ring · left"
+	if key == "ring2":
+		return "Ring · right"
 	for pair in Rules.EQUIP_SLOTS:
 		if str(pair[0]) == key:
 			return str(pair[1])

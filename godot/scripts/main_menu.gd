@@ -85,16 +85,20 @@ func _build_primary_controls() -> void:
 	_btn_continue.visible = false
 	_btn_continue.pressed.connect(_continue_last)
 	box.add_child(_btn_continue)
+	# R6 CUT-10 / BUG-02: this column carried TWELVE buttons — five of them
+	# "FORGE A …" — and at 1280×800 the last two rendered entirely BELOW the
+	# viewport with no scroll: unreachable, and the wordmark was clipped off the
+	# top by the same overflow. Folding the five forges behind one destination
+	# fixes the overflow at its cause and stops the menu reading as a wall of
+	# near-identical options. Material now means RANK (oak = play, steel = make,
+	# leather = browse), not decoration — R6 AAA-01.
 	var specs := [
 		["BEGIN  A  NEW  ADVENTURE", "compass", "oak", _open_adventure_forge, "the table is set"],
-		["FORGE  A  HERO", "anvil", "steel", _open_character_forge_pillar, ""],
-		["FORGE  A  WORLD", "globe", "oak", _open_world_forge_pillar, "a realm of your own"],
-		["FORGE  A  CAMPAIGN", "wartable", "oak", _open_campaign_forge_pillar, ""],
-		["FORGE  A  GM", "crown", "steel", _open_gm_forge_pillar, "a voice of your own"],
-		["FORGE  A  COMPANION", "cups", "steel", _open_persona_forge_pillar, "a friend for the road"],
+		["THE  FORGE", "anvil", "steel", _show_forges, "hero · world · campaign · GM · companion"],
 		["CAMPAIGNS", "scroll", "leather", _show_campaigns, "premises across every world"],
 		["CHRONICLES", "book", "leather", _open_chronicles, "the saved tales"],
-		["SETTINGS", "runewheel", "steel", _show_settings, ""],
+		["A  QUIET  TABLE", "cups", "leather", _show_companions, "chat with a companion"],
+		["SETTINGS", "runewheel", "steel", _show_settings, "sound, motion, text"],
 		["EXIT  THE  HALL", "door", "leather", _quit_game, ""],
 	]
 	for sp in specs:
@@ -103,15 +107,59 @@ func _build_primary_controls() -> void:
 		box.add_child(b)
 		if str(sp[1]) == "anvil":
 			_btn_forge_hero = b
-	var comp := MythButton.new("A QUIET TABLE", "cups", "leather", "chat with a companion")
-	comp.custom_minimum_size = Vector2(430, 48)
-	comp.pressed.connect(_show_companions)
-	box.add_child(comp)
 	box.get_child(1).grab_focus()
+	_fit_title_column()
+
+
+## R6 BUG-02/03/04 — a self-healing floor under the menu's height. Consolidating
+## the buttons is what actually made it fit, but nothing STOPPED it overflowing
+## again the next time someone adds an entry, and the failure mode is silent:
+## a CenterContainer overflows off BOTH edges, so the wordmark clips and the
+## bottom buttons become mouse-unreachable with no error. Measure the column and
+## tighten spacing/wordmark until it fits the window it actually has.
+func _fit_title_column() -> void:
+	var box: VBoxContainer = $Title/Box
+	var brand: Label = $Title/Box/Brand
+	for attempt in 6:
+		await get_tree().process_frame
+		var need := box.get_combined_minimum_size().y
+		var have := get_viewport_rect().size.y - 24.0
+		if need <= have:
+			return
+		# Squeeze the two things that cost the most height and matter the least.
+		var sep := maxi(2, box.get_theme_constant("separation") - 3)
+		box.add_theme_constant_override("separation", sep)
+		brand.add_theme_font_size_override("font_size",
+			maxi(44, brand.get_theme_font_size("font_size") - 10))
 
 
 func _quit_game() -> void:
 	get_tree().quit()
+
+
+## R6 CUT-10 — the five forges, behind one door. They were five of the twelve
+## buttons on the title screen, which is what pushed two of them off the bottom
+## of the window entirely. Grouped here they read as one workshop with five
+## benches, and each card says what it MAKES rather than repeating the verb.
+func _show_forges() -> void:
+	_show_sub("The Forge", "make something of your own")
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 14)
+	grid.add_theme_constant_override("v_separation", 14)
+	for f in [
+			["A Hero", "Race, class, background, face and voice — someone to be.", _open_character_forge_pillar],
+			["A World", "The smith writes lore, places, people and beasts from your idea.", _open_world_forge_pillar],
+			["A Campaign", "A story to play through, shaped to the world it lives in.", _open_campaign_forge_pillar],
+			["A Game Master", "The voice at the table — its humour, grit and pace.", _open_gm_forge_pillar],
+			["A Companion", "A friend for the road, with a face and a history.", _open_persona_forge_pillar]]:
+		var card := _big_card(str(f[0]), str(f[1]), Ui.pal["gold"])
+		card.pressed.connect(f[2])
+		grid.add_child(card)
+	var gc := CenterContainer.new()
+	gc.add_child(grid)
+	_content.add_child(gc)
+	Ui.reveal_children(grid, 0.05)
 
 
 ## 🧭 Begin a New Adventure — the table-setting ritual orchestrating both
@@ -191,7 +239,11 @@ func _refresh() -> void:
 		_btn_continue.visible = true
 		_btn_continue.set_meta("char", {"id": last.get("id"), "name": last.get("name"),
 			"world_id": last.get("world_id", "")})
-		var tex := Art.texture_for(str(last.get("world_id", "")))
+		# R6 root cause #1 again: prefer the world's BAKED establishing shot over
+		# whatever the art cache happens to hold under the bare world id.
+		var tex: Texture2D = Compiler.key_art(str(last.get("world_id", "")))
+		if tex == null:
+			tex = Art.texture_for(str(last.get("world_id", "")))
 		if tex != null:
 			$KeyArt.texture = tex
 
@@ -199,6 +251,7 @@ func _refresh() -> void:
 # ── View plumbing ────────────────────────────────────────────────────────────
 func _show_title() -> void:
 	Mode.enter("MainMenu")
+	$Scrim.color = Color(0.047, 0.039, 0.11, 0.45)   # let the art breathe again
 	_sub.visible = false
 	_title.visible = true
 	Ui.apply("")
@@ -207,6 +260,12 @@ func _show_title() -> void:
 func _show_sub(heading: String, step := "") -> void:
 	_title.visible = false
 	_sub.visible = true
+	# R6 BUG-15 / AAA-22 / AES-03/06 — the title screen is mostly wordmark over
+	# art and reads fine at the shipped scrim, but a SUB view lays paragraphs of
+	# body copy over the same photograph, where it measured at roughly a tenth of
+	# usable contrast. Deepen the scrim while text is the subject, restore it when
+	# the art is.
+	$Scrim.color = Color(Ui.c("night"), 0.78)
 	_heading.text = heading
 	_step.text = step
 	_sub_status.text = ""

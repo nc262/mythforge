@@ -106,7 +106,18 @@ func _ready() -> void:
 	$Margin/Split/ChatBox/Header.text = "✦ %s" % str(GameState.character.get("name", "?"))
 	Sfx.music(WorldSkin.music_for_id(GameState.world_id()))
 	# The world's key art is the room you sit in from the first breath.
-	var world_tex := Art.texture_for(str(GameState.character.get("world_id", "")))
+	#
+	# R6 BLANK-01 — and this is root cause #1 of the whole audit in one line.
+	# This looked the key art up in the ART CACHE under the bare world_id, but a
+	# baked world writes its establishing shot into its PACKAGE as art/key.png.
+	# The cache lookup therefore missed for every shipped world, `world_tex` came
+	# back null, and the play screen — the screen the player spends the entire
+	# game on — rendered ~60% empty void. Six worlds, ~1800 painted images, and
+	# the reason none of them showed up here was the wrong lookup. Ask the
+	# compiler first; keep the cache as the fallback for uncompiled worlds.
+	var world_tex: Texture2D = Compiler.key_art(GameState.world_id())
+	if world_tex == null:
+		world_tex = Art.texture_for(str(GameState.character.get("world_id", "")))
 	if world_tex != null:
 		_scene_art.texture = world_tex
 		# Empty-state: before any words exist the scene IS the screen — bright.
@@ -2272,6 +2283,18 @@ func _render_chips() -> void:
 	_apply_time_tint()
 	var c: Dictionary = GameState.clock()
 	var bits: Array[String] = []
+	# R6 PLAY-01 / STR-04 — HP and purse led this row's absence: the two numbers
+	# a player needs continuously lived ONLY inside the Record modal, so the
+	# honest answer to "am I dying?" was "open a dialog and read". They go first,
+	# and HP takes the wound colour as it falls so the state is legible at a
+	# glance rather than requiring arithmetic.
+	var sh := GameState.sheet()
+	var hp := int(sh.get("hp", 0))
+	var hp_max := maxi(1, int(sh.get("hpMax", 1)))
+	var frac := float(hp) / float(hp_max)
+	var hp_col: Color = Ui.c("ink") if frac > 0.5 else (Ui.c("ember") if frac > 0.25 else Ui.c("danger"))
+	bits.append("[color=#%s]%s %d/%d[/color]" % [hp_col.to_html(false), Ui.ico("blood", 15), hp, hp_max])
+	bits.append("%s %d %s" % [Ui.ico("coins", 15), int(sh.get("gold", 0)), GameState.currency()])
 	var wx := str(c.get("wx", {}).get("name", "")) if c.get("wx") is Dictionary else ""
 	bits.append("%s %s · Day %d %s" % [Ui.ico("hourglass", 15), GameState.TIMES[clampi(int(c.get("ti", 0)), 0, GameState.TIMES.size() - 1)], int(c.get("day", 1)), wx])
 	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""

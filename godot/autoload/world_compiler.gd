@@ -45,21 +45,39 @@ var _journal := {}   # world_id → {stage → true}
 ## with no forge wait. On first run each zip is unpacked into user://worlds/ if
 ## it isn't there yet. PNGs are zipped (not loose in res://) so Godot's importer
 ## doesn't turn them into .ctex — the compiler reads them as ordinary files.
+## R6 LAT-22/23/STR-23 — this used to unpack EVERY shipped zip here, in _ready,
+## synchronously. With six baked worlds that is ~1.4 GB of PNGs written to disk
+## before the first frame can present, on a launch where the player will open
+## exactly one world. Now boot only *notes* which zips exist (a directory listing)
+## and each world unpacks the first time something actually asks for it.
+var _zips := {}        # world_id → res:// zip path, not yet unpacked
+var _unpacked := {}    # world_id → true, so the hot path checks a dict, not disk
+
+
 func _ready() -> void:
-	_seed_baked_worlds()
+	_index_baked_worlds()
 
 
-func _seed_baked_worlds() -> void:
+func _index_baked_worlds() -> void:
 	var d := DirAccess.open("res://baked")
 	if d == null:
 		return
 	for f in d.get_files():
-		if not f.ends_with(".zip"):
-			continue
-		var id := f.get_basename()
-		if FileAccess.file_exists("%s/world.json" % world_dir(id)):
-			continue   # already unpacked (or the player recompiled it)
-		_unpack_baked("res://baked/%s" % f, id)
+		if f.ends_with(".zip"):
+			_zips[f.get_basename()] = "res://baked/%s" % f
+
+
+## Unpack-on-demand. Called from world_dir(), which every accessor already goes
+## through, so there is exactly one choke point and no caller has to remember.
+func _ensure_unpacked(world_id: String) -> void:
+	if world_id == "" or _unpacked.has(world_id):
+		return
+	_unpacked[world_id] = true          # set first: _unpack_baked re-enters world_dir
+	if not _zips.has(world_id):
+		return
+	if FileAccess.file_exists("user://worlds/%s/world.json" % world_id.validate_filename()):
+		return   # already on disk (or the player recompiled it)
+	_unpack_baked(str(_zips[world_id]), world_id)
 
 
 func _unpack_baked(zip_path: String, id: String) -> void:
@@ -81,6 +99,7 @@ func _unpack_baked(zip_path: String, id: String) -> void:
 ## compiled assets are CONTENT (they are the world's identity), never a cache
 ## the LRU may evict (design §6).
 func world_dir(world_id: String) -> String:
+	_ensure_unpacked(world_id)   # lazy first-touch unpack (see _index_baked_worlds)
 	return "user://worlds/%s" % world_id.validate_filename()
 
 
@@ -1371,6 +1390,21 @@ func treatment_modulate(item: Dictionary) -> Color:
 ## the world isn't compiled/baked yet.
 func key_art(world_id: String) -> Texture2D:
 	return _load_tex("%s/art/key.png" % world_dir(world_id))
+
+
+## The best baked surface to draw a CHART on. The minimap and the Atlas both
+## asked `Art.texture_for(world_id)` — the art *cache* — which for a shipped
+## world holds whatever environment plate happened to be painted last. That is
+## why the Atlas rendered its location pins over a photograph of a tavern
+## fireplace (R6 BUG-12): it was never a map, it was the room. A baked world has
+## six genuine top-down plates in art/maps/; overhead ground reads as a chart,
+## so use one of those and fall back to the establishing shot only if it must.
+## R6 BUG-12, BLANK-02/05, PLAY-02, STR-05, AES-25.
+func chart_art(world_id: String) -> Texture2D:
+	var t := _load_tex("%s/art/chart.png" % world_dir(world_id))
+	if t == null:
+		t = _load_tex(battle_map_path(world_id, 0))
+	return t if t != null else key_art(world_id)
 
 
 ## Load a package image into a cached texture; null if absent/unreadable.
