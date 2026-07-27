@@ -356,3 +356,12 @@ against a larger icon or a detail/zoom view, at roughly 3× the download. If tha
 ever needs revisiting, the lever is a downscale inside `bake_zip.py` only; the
 full-res masters stay in `user://worlds/` regardless, so it is reversible without
 re-pouring.
+
+### What the harness guards
+
+The mechanism claims above are not left to inspection —
+`tests/ui_playthrough.gd` asserts them: all 13 slots have shapes with an empty
+seed, every weapon family is represented, the armoury clears 25 forms,
+flame ≠ frost ≠ plain, and an unknown material or treatment degrades to
+"matches everything" / "looks ordinary" rather than emptying a catalogue or
+painting something wrong. `tests/click_driver.gd` covers the screens.
