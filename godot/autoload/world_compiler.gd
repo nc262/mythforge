@@ -117,7 +117,12 @@ func is_compiled(world_id: String) -> bool:
 # ── The pipeline ───────────────────────────────────────────────────────────
 ## Run Tier A for a freshly forged world. Cheap (~40 s, no GPU) and it is the
 ## thing every later stage consults, so it runs before any picture is painted.
-func compile_seed(world: Dictionary) -> Dictionary:
+## `resume` is for a re-run of an interrupted bake (B4): re-asking the model would
+## invent DIFFERENT material, form and creature ids, orphaning every icon already
+## on disk and restarting a six-hour pour. On a resume the stored seed IS the
+## truth — only the pixels are still owed. The CPU stages (catalogue, kits,
+## layouts) always rebuild; they are pure functions of the seed and cost nothing.
+func compile_seed(world: Dictionary, resume := false) -> Dictionary:
 	var wid := str(world.get("id", ""))
 	if wid == "" or busy:
 		return {}
@@ -125,6 +130,7 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	current_world = wid
 	_ensure_dirs(wid)
 	var pack := read_pack(wid)
+	var keep := resume and int(pack.get("compiler", -1)) == COMPILER_VERSION
 	pack["id"] = wid
 	pack["name"] = str(world.get("name", ""))
 	pack["kind"] = str(world.get("kind", ""))   # kept so Reforge can rebuild prompts
@@ -133,12 +139,16 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	pack["forged_at"] = int(Time.get_unix_time_from_system())
 
 	stage_started.emit("style", "Reading the world's own mind…")
-	var style := await _stage_style_guide(world)
+	var style: Dictionary = pack["style"] if keep and pack.get("style") is Dictionary else {}
+	if style.is_empty():
+		style = await _stage_style_guide(world)
 	pack["style"] = style
 	stage_done.emit("style", not style.is_empty())
 
 	stage_started.emit("assets", "Naming what things are made of…")
-	var assets := await _stage_asset_language(world, style)
+	var assets: Dictionary = pack["assets"] if keep and pack.get("assets") is Dictionary else {}
+	if assets.is_empty():
+		assets = await _stage_asset_language(world, style)
 	pack["assets"] = assets
 	stage_done.emit("assets", not assets.is_empty())
 
@@ -164,7 +174,9 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	# from the style guide, so combat can give a world monster real stats. LLM in
 	# the loop; degrades to a family-flavoured fallback so a world always has foes.
 	stage_started.emit("creatures", "Loosing the world's beasts…")
-	var creatures := await _stage_creatures(world, style)
+	var creatures: Array = creatures_for(wid) if keep else []
+	if creatures.is_empty():
+		creatures = await _stage_creatures(world, style)
 	_write(wid, "data/creatures.json", creatures)
 	pack["creature_count"] = creatures.size()
 	stage_done.emit("creatures", not creatures.is_empty())
@@ -172,7 +184,9 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	# S7 — the world's PEOPLE (data half). A named cast the GM can reference
 	# consistently, so the world feels inhabited by specific someones.
 	stage_started.emit("npcs", "Gathering the world's people…")
-	var npcs := await _stage_npcs(world, style)
+	var npcs: Array = npcs_for(wid) if keep else []
+	if npcs.is_empty():
+		npcs = await _stage_npcs(world, style)
 	_write(wid, "data/npcs.json", npcs)
 	pack["npc_count"] = npcs.size()
 	stage_done.emit("npcs", not npcs.is_empty())
@@ -201,11 +215,17 @@ func compile_seed(world: Dictionary) -> Dictionary:
 	# reaches POPULATED when the last one finishes. Skipped headless (no GPU).
 	busy = false
 	if not Api.test_mode:
-		_start_background_art(wid, world, style, assets, creatures, npcs)
-		pack = read_pack(wid)
+		# PRESENTABLE is written BEFORE the art starts: a cached/already-baked key
+		# answers its callback synchronously, so a resumed world can reach
+		# POPULATED inside _start_background_art — writing PRESENTABLE after would
+		# clobber it back down.
 		pack["compile_state"] = PRESENTABLE
 		_write(wid, "world.json", pack)
 		compiled.emit(wid, PRESENTABLE)
+		_start_background_art(wid, world, style, assets, creatures, npcs)
+		if int(_bg_pending.get(wid, 0)) == 0:
+			_mark_populated(wid)   # resumed with nothing left to paint
+		pack = read_pack(wid)
 	return pack
 
 
@@ -219,6 +239,7 @@ func _start_background_art(world_id: String, world: Dictionary, style: Dictionar
 	_bg_pending[world_id] = 0
 	_stage_identity(world_id, world, style)
 	_stage_parts(world_id, style, assets)
+	_stage_vendor_icons(world_id, WorldSkin.family_of(world))
 	_stage_portrait_art(world_id, creatures, "creature")
 	_stage_portrait_art(world_id, npcs, "npc")
 	_stage_tactical(world_id, style)
@@ -231,7 +252,7 @@ func _start_background_art(world_id: String, world: Dictionary, style: Dictionar
 ## so only the pixels (or the derived data) swap — saves, kits, catalogue refs
 ## all keep pointing at the same ids. Reuses the world's stored Style Guide and
 ## Asset Language (no LLM) unless you reforge "style"/"assets" themselves.
-##   stage ∈ identity | parts | creatures | npcs | tactical | catalogue | kits | layouts
+##   stage ∈ identity | parts | wares | creatures | npcs | tactical | catalogue | kits | layouts
 func reforge(world_id: String, stage: String) -> Dictionary:
 	if busy:
 		return {}
@@ -253,6 +274,8 @@ func reforge(world_id: String, stage: String) -> Dictionary:
 			await _stage_portrait_art(world_id, npcs_for(world_id), "npc")
 		"tactical":
 			await _stage_tactical(world_id, style)
+		"wares":
+			await _stage_vendor_icons(world_id, str(pack.get("family", "fantasy")))
 		"catalogue":
 			_write(world_id, "data/items.json", _build_catalogue(assets))
 		"kits":
@@ -312,6 +335,14 @@ func _stage_parts(world_id: String, _style: Dictionary, assets: Dictionary) -> v
 		for m in mats:
 			if not (m is Dictionary and m.has("id")):
 				continue
+			# C2, and it MUST be the same test _build_catalogue uses. This stage
+			# was crossing the unfiltered grid while the catalogue crossed the
+			# filtered one, so 770 icons were painted per world to back 230 items
+			# — 540 pictures of leather cuirasses and steel hoods that nothing
+			# could ever reference. Measured on embervale: 807 queued vs 267 owed,
+			# i.e. ~3.7 h of GPU per world spent painting unreachable art.
+			if not _form_takes(f, _class_of(m)):
+				continue
 			var key := "part-%s-%s-%s" % [world_id.validate_filename(), str(f["id"]), str(m["id"])]
 			await _await_art(key,
 				("a %s %s. %s. fantasy RPG %s item icon, single subject centered, plain flat background, no scene, dramatic studio lighting, highly detailed painterly render, no text, no hands, no people" % [
@@ -319,6 +350,37 @@ func _stage_parts(world_id: String, _style: Dictionary, assets: Dictionary) -> v
 				{"profile": "item", "lane": Art.Lane.IDLE},
 				"art/parts/%s.%s.png" % [str(f["id"]), str(m["id"])])
 	stage_done.emit("parts", true)
+
+
+## S8b — the SHELVES. A keeper's stock is a constant per world family (`tables.json`
+## `vendor_stock*`), identical for every player and fully known at build time — yet
+## we were painting all eleven on the player's GPU the first time a shop opened.
+## Those are the exact jobs that half-offloaded the narrator to 67 % GPU
+## (Performance §7 A1). Baked here, a friend's first shop is instant and their card
+## is free for the story. Same `item` profile as the armoury, and no scene anchor —
+## appending the world's scene line turns a sword into a lantern.
+func _stage_vendor_icons(world_id: String, family: String) -> void:
+	var names := Rules.vendor_stock_names(family)
+	if names.is_empty():
+		return
+	stage_started.emit("wares", "Stocking the keeper's shelves…")
+	for nm in names:
+		await _await_art("ware-%s-%s" % [world_id.validate_filename(), icon_slug(str(nm))],
+			"a %s. fantasy RPG item icon, single subject centered, plain flat background, no scene, dramatic studio lighting, highly detailed painterly render, no text, no hands, no people" % str(nm),
+			{"profile": "item", "lane": Art.Lane.IDLE},
+			"art/icons/%s.png" % icon_slug(str(nm)))
+	stage_done.emit("wares", true)
+
+
+## The filename a named (non-catalogue) icon is baked under.
+func icon_slug(nm: String) -> String:
+	return nm.to_lower().replace(" ", "-").validate_filename()
+
+
+## A baked icon for a plain item NAME (vendor wares, standard kit), or null if
+## this world never baked one. The seam Art.item_tex falls back through.
+func named_icon(world_id: String, nm: String) -> Texture2D:
+	return _load_tex("%s/art/icons/%s.png" % [world_dir(world_id), icon_slug(nm)])
 
 
 ## Request one image and wait for it to actually land (compile is sequential —
@@ -329,6 +391,13 @@ func _await_art(key: String, prompt: String, opts: Dictionary, dest_rel := "") -
 	if _reforging:
 		Art.forget(key)
 	var dest := dest_rel if dest_rel != "" else world_dir_key(key)
+	# B4 — the resume checkpoint. The finished file in the world package IS the
+	# journal: at ~25 s an icon, a pour that dies at hour five must not repaint the
+	# 700 it already has. Safe to trust because _adopt_to writes atomically, so a
+	# half-written PNG is never visible under its final name. A Reforge means
+	# "repaint this on purpose", so it never skips.
+	if not _reforging and FileAccess.file_exists("%s/%s" % [world_dir(current_world), dest]):
+		return
 	# Background mode: queue and return immediately (don't block). The Art Director
 	# paints it in its own time and the on_ready adopts it into the package.
 	if _background:
@@ -363,12 +432,29 @@ func _await_art(key: String, prompt: String, opts: Dictionary, dest_rel := "") -
 func _bg_adopt(world_id: String, dest_rel: String, key: String) -> void:
 	_adopt_to(world_id, dest_rel, key)
 	_bg_pending[world_id] = maxi(0, int(_bg_pending.get(world_id, 0)) - 1)
-	if int(_bg_pending.get(world_id, 0)) == 0:
-		var p := read_pack(world_id)
-		if str(p.get("compile_state", "")) != POPULATED:
-			p["compile_state"] = POPULATED
-			_write(world_id, "world.json", p)
-			compiled.emit(world_id, POPULATED)
+	# NOT while still queueing. Art.request answers SYNCHRONOUSLY for a key it
+	# already has cached, so during _start_background_art the counter can dip to
+	# zero between two stages — and a world would be declared POPULATED with
+	# ~400 images not yet even queued. The bake harness would then walk on to the
+	# next world and paint two at once on one GPU. _start_background_art settles
+	# the count itself once every stage has been queued.
+	if not _background and int(_bg_pending.get(world_id, 0)) == 0:
+		_mark_populated(world_id)
+
+
+func _mark_populated(world_id: String) -> void:
+	var p := read_pack(world_id)
+	if p.is_empty() or str(p.get("compile_state", "")) == POPULATED:
+		return
+	p["compile_state"] = POPULATED
+	_write(world_id, "world.json", p)
+	compiled.emit(world_id, POPULATED)
+
+
+## How many GPU images a world is still waiting on (the bake harness watches this
+## to tell "slow" from "stalled").
+func pending_art(world_id: String) -> int:
+	return int(_bg_pending.get(world_id, 0))
 
 
 ## Copy a painted asset into a specific world's package (content that never gets
@@ -383,8 +469,13 @@ func _adopt_to(world_id: String, dest_rel: String, key: String) -> void:
 	var dst := "%s/%s" % [world_dir(world_id), dest_rel]
 	DirAccess.make_dir_recursive_absolute(dst.get_base_dir())
 	var img := Image.load_from_file(src)
-	if img != null and not img.is_empty():
-		img.save_png(dst)
+	if img == null or img.is_empty():
+		return
+	# B4 — write, then rename. A kill mid-write must not leave a truncated PNG
+	# under the final name, because the resume check reads that name as "done".
+	var tmp := dst + ".part"
+	if img.save_png(tmp) == OK:
+		DirAccess.rename_absolute(tmp, dst)
 
 
 ## Back-compat shim for any caller still adopting to the active world.
@@ -420,7 +511,7 @@ Answer with ONE JSON object, no prose, no markdown fence, using EXACTLY these ke
  "visual_language": "one sentence: how this world looks, overall",
  "lighting": "characteristic light and time of day",
  "weather": ["3 typical weather moods"],
- "materials": ["6 materials this world is BUILT from — be specific and evocative"],
+ "materials": ["10 materials this world is BUILT from — be specific and evocative"],
  "colors": {"dominant":"#rrggbb","accent":"#rrggbb","shadow":"#rrggbb"},
  "architecture": "how buildings look — forms, roofs, ornament",
  "clothing": "how ordinary people dress",
@@ -451,6 +542,21 @@ Be concrete and sensory. Avoid generic fantasy filler.""" % [
 ## the item catalogue is assembled from: which part families exist, which
 ## materials tint them, which treatments and rarities apply. This is the
 ## Borderlands move — design a system, not twenty thousand objects.
+##
+## B2 — the ask is MATERIALS AND TREATMENTS ONLY. It used to ask for weapon and
+## armour forms too, and raising the material ask from 6 to 10 made the 8B worse
+## at everything at once: measured 2026-07-23 against the live backend, it
+## returned 8 materials, 4 treatments, and its forms collapsed from 6/4 to 3/2
+## ("leather_greaves" filed under armour). The JSON was clean both times, so this
+## is capacity, not format — and the answer is a smaller ask, not a smaller model
+## (the 3B provably cannot do asset language at all).
+##
+## We can afford the cut because forms are no longer the seed's job: 30 weapon
+## shapes across 7 families and 40 worn-slot shapes are handcrafted and always
+## apply, with a floor under armour. What the seed is genuinely needed for is what
+## this world is MADE of and what happens to it — so it now spends its whole
+## budget there. Older packs that still carry weapon_forms/armor_forms keep
+## working; _forms() layers whatever it finds on top.
 func _stage_asset_language(world: Dictionary, style: Dictionary) -> Dictionary:
 	var mats: Array = style.get("materials", []) if style.get("materials") is Array else []
 	var ask := """You are designing the ASSET LANGUAGE for a role-playing game world, so thousands of
@@ -465,15 +571,16 @@ Answer with ONE JSON object, no prose, no markdown fence:
 {
  "materials": [{"id":"brine_iron","name":"Display Name","dark":"#rrggbb","light":"#rrggbb","tier":1,"class":"rigid"}],
  "treatments": [{"id":"salt_worn","name":"Display Name","note":"how it changes the look"}],
- "weapon_forms": [{"id":"cutlass","name":"Display Name","prompt":"a short image-prompt phrase for this weapon shape"}],
- "armor_forms":  [{"id":"chain_coat","name":"Display Name","prompt":"a short image-prompt phrase"}],
  "naming": {"prefix":["4 evocative prefixes"],"suffix":["4 suffixes, e.g. 'of the Ash Coast'"]}
 }
 Every material's "class" is one of: soft (cloth/hide/leather), mail (chain/scale),
 rigid (metal/stone/wood), exotic (bone/crystal/salvage/strange). The class decides
 which shapes it can be made into — a soft chest is a jerkin, a rigid one a cuirass.
-Rules: 6 materials (tier 1-3, cheap to precious, colours must suit the world),
-4 treatments (wear/age/blessing/damage), 6 weapon_forms, 4 armor_forms.
+
+Give EXACTLY 10 materials — at least two soft, two mail, two rigid, two exotic —
+tiers 1 to 3 from cheap to precious, with colours that suit the world.
+Give EXACTLY 10 treatments: wear and age, and also flame, frost, venom, storm,
+blessed and cursed, each named in THIS world's own language.
 Every id is one or two SHORT snake_case words (e.g. cutlass, brine_iron) — do NOT
 append "_id" or "_form". Names must sound like THIS world.""" % [
 		str(world.get("name", "a world")), str(style.get("visual_language", "")),
@@ -556,7 +663,20 @@ world — no goblins/kobolds/dragons unless the world truly is that generic.""" 
 			"art": str(c.get("art", str(c.get("name", "")) + ", creature concept art, dark background")),
 			"generated": true,
 		})
-	return out if not out.is_empty() else _fallback_creatures(style)
+	# Floor under the bestiary — the creature-side of FALLBACK_FORMS. The 8B
+	# sometimes returns a thin roster (fimbulreach came back with 2 where its
+	# siblings gave 7-9); a world with two monsters repeats itself in every
+	# fight. Merge in the family-flavoured fallbacks (never replace the real
+	# ones) until there are enough to vary combat. Deduped by slug.
+	if out.size() >= 5:
+		return out
+	var seen := {}
+	for c in out:
+		seen[str((c as Dictionary).get("slug", ""))] = true
+	for c in _fallback_creatures(style):
+		if not seen.has(str(c.get("slug", ""))):
+			out.append(c)
+	return out
 
 
 ## Art half for a roster — one painted portrait per entry (portrait profile:
@@ -798,16 +918,35 @@ func _fallback_assets(style: Dictionary) -> Dictionary:
 	var mats: Array = style.get("materials", []) if style.get("materials") is Array else ["iron", "bronze", "bone"]
 	var out: Array = []
 	var ramp := [["#1a1c22", "#ced6e0"], ["#2e1c0a", "#e4ac54"], ["#363024", "#f0e9d0"],
-		["#08161f", "#56eeea"], ["#241408", "#96602f"], ["#3c2806", "#fad060"]]
-	for i in mini(mats.size(), 6):
+		["#08161f", "#56eeea"], ["#241408", "#96602f"], ["#3c2806", "#fad060"],
+		["#101a14", "#7fbf9a"], ["#22101c", "#d07ac0"], ["#1c1c10", "#c8c07a"],
+		["#0e1420", "#8fa8d8"]]
+	for i in mini(mats.size(), 10):
 		out.append({"id": str(mats[i]).to_lower().replace(" ", "_"), "name": str(mats[i]).capitalize(),
-			"dark": ramp[i % ramp.size()][0], "light": ramp[i % ramp.size()][1], "tier": 1 + i / 2})
+			"dark": ramp[i % ramp.size()][0], "light": ramp[i % ramp.size()][1], "tier": 1 + i / 3})
+	# A style guide can list ten cloths and no metal; the catalogue still needs a
+	# shape in every class or the filter empties whole slots. Top up what's missing.
+	var have := {}
+	for m in out:
+		have[_class_of(m)] = true
+	if not have.has("any"):   # an unclassified material already fits every form
+		for pair in [["soft", "Hide", "#241408", "#96602f"], ["mail", "Chain", "#1a1c22", "#ced6e0"],
+				["rigid", "Iron", "#15181d", "#9aa4b2"], ["exotic", "Bone", "#232018", "#e8e0c8"]]:
+			if not have.has(pair[0]):
+				out.append({"id": str(pair[1]).to_lower(), "name": str(pair[1]),
+					"dark": pair[2], "light": pair[3], "tier": 1, "class": pair[0]})
 	return {
 		"materials": out,
 		"treatments": [{"id": "clean", "name": "Clean", "note": "as made"},
 			{"id": "worn", "name": "Worn", "note": "scratched and dulled"},
 			{"id": "blooded", "name": "Blooded", "note": "darkened, used"},
-			{"id": "blessed", "name": "Blessed", "note": "faintly lit"}],
+			{"id": "blessed", "name": "Blessed", "note": "faintly lit"},
+			{"id": "flame_touched", "name": "Flame-Touched", "note": "scorched, ember-lit"},
+			{"id": "frostbound", "name": "Frostbound", "note": "rimed and pale"},
+			{"id": "venomed", "name": "Venomed", "note": "stained a sick green"},
+			{"id": "storm_struck", "name": "Storm-Struck", "note": "arced and blue-white"},
+			{"id": "cursed", "name": "Cursed", "note": "drinks the light"},
+			{"id": "salt_eaten", "name": "Salt-Eaten", "note": "pitted and dulled"}],
 		"weapon_forms": [{"id": "sword", "name": "Sword", "prompt": "a straight double-edged sword"},
 			{"id": "axe", "name": "Axe", "prompt": "a war axe"},
 			{"id": "dagger", "name": "Dagger", "prompt": "a slim dagger"},
@@ -1203,13 +1342,13 @@ func item_texture(item: Dictionary) -> Texture2D:
 ## DRAW time — free, no second bake, and it composes with the rarity glow. Worlds
 ## invent their own treatment ids, so match by keyword like materials do.
 const TREATMENT_TINTS := {
-	"flame": [["flam", "burn", "ember", "sear", "ash"], Color(1.25, 0.82, 0.60)],
-	"frost": [["frost", "ice", "cold", "rime", "chill"], Color(0.72, 0.94, 1.25)],
+	"flame": [["flam", "burn", "ember", "sear", "ash", "flare", "scorch", "char"], Color(1.25, 0.82, 0.60)],
+	"frost": [["frost", "ice", "cold", "rime", "chill", "froze", "frozen"], Color(0.72, 0.94, 1.25)],
 	"venom": [["venom", "poison", "toxic", "blight"], Color(0.78, 1.20, 0.72)],
-	"storm": [["storm", "shock", "volt", "thunder", "arc"], Color(0.82, 0.92, 1.30)],
-	"blessed": [["bless", "holy", "sacred", "sun", "radiant"], Color(1.28, 1.18, 0.80)],
+	"storm": [["storm", "shock", "volt", "thunder", "arc", "galv"], Color(0.82, 0.92, 1.30)],
+	"blessed": [["bless", "holy", "sacred", "sun", "radiant", "anoint"], Color(1.28, 1.18, 0.80)],
 	"cursed": [["curse", "wraith", "void", "shadow", "dread"], Color(0.72, 0.62, 0.92)],
-	"worn": [["worn", "salt", "rust", "weather", "old", "tarnish"], Color(0.86, 0.82, 0.74)],
+	"worn": [["worn", "salt", "rust", "weather", "old", "tarnish", "wear", "age", "wind"], Color(0.86, 0.82, 0.74)],
 	"blood": [["blood", "gore", "carn"], Color(1.20, 0.70, 0.70)],
 }
 

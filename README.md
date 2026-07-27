@@ -10,9 +10,12 @@ friends join from a browser. Or run your own server.
 
 ## What's in the box
 
-- **Worlds** — three built-in settings (high fantasy, cyberpunk, slice-of-life)
-  plus a **Worldsmith**: describe any world in a sentence and the AI forges the
-  realm, its people, campaigns, and map. Refine it, export it, share it.
+- **Worlds** — six built-in settings (high fantasy, cyberpunk, slice-of-life,
+  drowned-pirate coast, Norse saga, and gaslamp steampunk), each shipped fully
+  pre-baked: thousands of world-true items, creatures, and painted art, ready
+  the instant you start. Plus a **Worldsmith**: describe any world in a sentence
+  and the AI forges the realm, its people, campaigns, and map. Refine it, export
+  it, share it.
 - **A real Game Master** — narrates, plays every NPC, calls for checks,
   remembers your story, and honors the rules.
 - **A real character** — 12 classes with per-level features you can *use*
@@ -27,16 +30,47 @@ friends join from a browser. Or run your own server.
   companions who take wounds and hold grudges, random encounters, shops.
 - Generated art everywhere: portraits, backdrops, items, monsters, key art.
 
-## Join a server (the easy way)
+## Download & play (the easy way)
 
-You need: **a browser.** That's it.
+The desktop edition is a **single installer**. Download it, double-click, click
+through — it sets everything up on your machine and leaves a **Mythforge**
+shortcut. No accounts, no cloud, no separate downloads to chase.
+
+1. Download **`Mythforge-Setup.exe`** from the
+   [latest release](../../releases/latest).
+2. Run it. On first launch it downloads and configures everything **for your
+   hardware, automatically** — the local AI Game Master (Ollama + model), the
+   art engine (ComfyUI, on the right backend for your GPU), and the game itself.
+   Budget a one-time ~10 GB download and a coffee; after that it's instant.
+3. Click the **Mythforge** shortcut and play. Every launch quietly starts the
+   engine, opens the game, and shuts the engine down when you quit — you never
+   touch a server or a terminal.
+
+**What "for your hardware" means:** an NVIDIA card gets CUDA, an AMD card gets
+the ZLUDA path, and a machine with no capable GPU still plays the full game —
+all six worlds ship with their art pre-baked, so the story, combat, and worlds
+never wait on a GPU. Generated art (new items the GM invents, your own forged
+worlds) is the only thing that needs one.
+
+> Everything is local. Your stories, heroes, and saves never leave your machine.
+> The only things fetched are the open-source engine and models, from their
+> official sources.
+
+Building the installer yourself (maintainers): see
+[`installer/`](installer/) — an [Inno Setup](https://jrsoftware.org/isdl.php)
+script wrapping the lean backend, plus a launcher and a first-run bootstrap that
+reuses [`scripts/install.ps1`](scripts/install.ps1).
+
+## Play in a browser instead (join a host)
+
+Prefer the browser client, or joining a friend who hosts? You need **a browser.**
 
 1. Get invited to the host's [Tailscale](https://tailscale.com) network
    (free; it's a private VPN — nothing is exposed to the internet).
 2. Open `http://<host-name>:7000`, create your account.
 3. **New Adventure.** Your campaigns, heroes, and saves are yours alone.
 
-## Host your own server
+## Host your own server (from source)
 
 ### Requirements
 

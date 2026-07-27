@@ -27,7 +27,8 @@ n = 0
 with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     z.writestr("world.json", json.dumps(wj))
     for f in glob.glob(os.path.join(src, "**", "*"), recursive=True):
-        if os.path.isfile(f) and not f.endswith("world.json"):
+        # *.part is a half-written image from a killed pour (bake B4) — never ship it.
+        if os.path.isfile(f) and not f.endswith("world.json") and not f.endswith(".part"):
             rel = os.path.relpath(f, src).replace(os.sep, "/")
             z.write(f, rel)
             n += 1

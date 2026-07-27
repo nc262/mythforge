@@ -247,6 +247,14 @@ func _show_worlds() -> void:
 
 ## The campaign shelf: every authored premise across EVERY world in one
 ## place — browse cross-world, then go set the table.
+##
+## The shelf used to hand-roll a flat PanelContainer with one ghost button that
+## called _open_adventure_forge() — which takes no arguments, so the tale the
+## player had just chosen was THROWN AWAY: the whole point of the screen. The
+## card was also the only card in the game that wasn't a _big_card, which is why
+## it alone had no hover state and read as dead (UXAudit R5 BLK-03 / VIS-05).
+## Now it is the same card as everywhere else, bound to its tale, and the whole
+## card is the target — not a 254 px button in the corner.
 func _show_campaigns() -> void:
 	_show_sub("The Campaign Shelf", "every authored premise, across every world")
 	var list := VBoxContainer.new()
@@ -257,28 +265,11 @@ func _show_campaigns() -> void:
 		for st in stories:
 			if not (st is Dictionary) or str(st.get("title", "")) == "":
 				continue
-			var card := PanelContainer.new()
-			card.add_theme_stylebox_override("panel", Ui.sb_card())
-			var col := VBoxContainer.new()
-			col.add_theme_constant_override("separation", 4)
-			var t := Label.new()
-			t.theme_type_variation = "HeaderLabel"
-			t.text = "%s   ·   %s" % [str(st["title"]), str(w.get("name", ""))]
-			col.add_child(t)
-			var prem := Label.new()
-			prem.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			prem.add_theme_color_override("font_color", Ui.c("ink_soft"))
-			prem.text = str(st.get("premise", "")).left(240)
-			col.add_child(prem)
-			var go := Button.new()
-			go.theme_type_variation = "GhostButton"
-			go.text = "Set the table with this tale ›"
-			go.pressed.connect(_open_adventure_forge)
-			var gr := HBoxContainer.new()
-			gr.alignment = BoxContainer.ALIGNMENT_END
-			gr.add_child(go)
-			col.add_child(gr)
-			card.add_child(col)
+			var card := _big_card("%s   ·   %s" % [str(st["title"]), str(w.get("name", ""))],
+				str(st.get("premise", "")).left(240), Ui.pal["amethyst"])
+			card.custom_minimum_size = Vector2(720, 104)
+			card.tooltip_text = "Set the table with this tale"
+			card.pressed.connect(func(): _start_adventure(w, st))
 			list.add_child(card)
 	if list.get_child_count() == 0:
 		var empty := Label.new()
@@ -748,7 +739,7 @@ func _open_campaign_forge(w: Dictionary) -> void:
 			return
 		_busy = true
 		_sub_status.text = "✦ Drafting the campaign…"
-		var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", {
+		var r := await Api.worldsmith({
 			"idea": txt, "mode": "story",
 			"world": {"name": w.get("name", ""), "kind": w.get("kind", ""), "lore": w.get("lore", "")}})
 		_busy = false

@@ -35,6 +35,7 @@ const Fold := preload("res://ui/myth_fold.gd")
 var draft := {"name": "", "idea": "", "theme": {}, "fields": {}}
 var _forged: Dictionary = {}   # the smith's latest take, pre-seal
 var _sealed: Dictionary = {}   # the world after the wax came down
+var _fails := 0                # consecutive failed strikes, for an honest message
 
 
 func _stages() -> Array:
@@ -171,6 +172,8 @@ func _stage_forging() -> void:
 
 
 func _strike(refine: String) -> void:
+	if _busy:
+		return   # one strike at a time; a second re-entered a half-built stage
 	_clear_stage()
 	_title_label("The Forging")
 	_busy = true
@@ -193,16 +196,51 @@ func _strike(refine: String) -> void:
 	var payload := {"idea": refine if refine != "" else idea, "mode": "world", "fields": fields}
 	if refine != "" and not _forged.is_empty():
 		payload["prior"] = _forged
-	var w := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", payload)
+	var w := await Api.worldsmith(payload)
 	_busy = false
 	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
-		_status.text = "The forge sputtered (%s) — strike again." % str(w.get("_status", 0))
 		_forged = {}
-		_enter_stage(1)
+		_fails += 1
+		_show_failure()
 		return
 	_status.text = ""
+	_fails = 0
 	_forged = w
 	_enter_stage(2)
+
+
+## A failed strike stays ON the anvil with a live retry. Dropping the player back
+## to the pillars with one grey line at the foot of the screen is what read as a
+## hard dead end (UIPolish R5 B4): the only thing resembling "strike again" was a
+## stage away, and pressing it re-entered a stage that was still building — so it
+## looked like a dead button. Here the retry is the obvious control, and a second
+## failure says something different from the first instead of repeating itself.
+func _show_failure() -> void:
+	_clear_stage()
+	_title_label("The Forging")
+	_status.text = ""
+	var msg := Label.new()
+	msg.theme_type_variation = "HintLabel"
+	msg.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.custom_minimum_size = Vector2(560, 0)
+	msg.text = "The smith's strike rang false — the world would not take shape." if _fails < 2 \
+		else "The anvil stays cold after %d strikes. The storyteller's model may be down; try a simpler idea, or re-shape the pillars." % _fails
+	_stage_box.add_child(msg)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["l"])
+	var again := Button.new()
+	again.theme_type_variation = "AccentButton"
+	again.text = "↻ Strike again"
+	again.pressed.connect(func(): _strike(""))
+	row.add_child(again)
+	var back := Button.new()
+	back.theme_type_variation = "GhostButton"
+	back.text = "‹ the pillars"
+	back.pressed.connect(func(): _enter_stage(1))
+	row.add_child(back)
+	_stage_box.add_child(row)
 
 
 func _show_take() -> void:

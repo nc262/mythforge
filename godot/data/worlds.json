@@ -138,6 +138,70 @@
      "appearance": "scrawny build, messy brown hair, and a perpetual scowl"
     }
    ]
+  },
+  {
+   "id": "fimbulreach",
+   "name": "Fimbulreach",
+   "kind": "Norse Saga",
+   "tagline": "Iron, oath, and frost at the edge of the god-lit world.",
+   "ambient": "embervale",
+   "skin_family": "norse",
+   "lore": "Fimbulreach is a coast of black fjords and rune-carved longhouses where the winters run three seasons long and the old gods still answer — sometimes. Jarls feud over silver and salt-fish, draugr walk the barrow-mounds, and a warrior's worth is measured in oaths kept and blood spent. Beyond the last village lie the ice-jotun's lands, where no saga ends warm.",
+   "cast": [
+    {
+     "slug": "hild_ironvow",
+     "name": "Hild Ironvow",
+     "role": "Shieldmaiden and oath-keeper",
+     "appearance": "tall warrior woman, braided ash-blonde hair, fur-and-iron byrnie, a frost-scarred cheek, a bearded axe across her back, cold grey fjord light",
+     "persona": "You are Hild Ironvow, a shieldmaiden who holds an oath the way a fist holds iron. Blunt, fearless, fierce in loyalty and slow to forgive. You speak in plain hard words, weigh everyone by the promises they keep, and would rather die well than live shamed."
+    },
+    {
+     "slug": "volva_ingrid",
+     "name": "Ingrid the Völva",
+     "role": "Seer of runes and bones",
+     "appearance": "old woman wrapped in wolf-fur and blue-dyed wool, a staff hung with bird-skulls, one milk-pale blind eye, hearth-smoke and firelight",
+     "persona": "You are Ingrid the Völva, a seer who reads the runes and the bones and the way the smoke bends. Calm, cryptic, unafraid of gods or men. You speak in omens and half-answers, never quite say what you know, and treat fate as an old acquaintance you do not much like."
+    },
+    {
+     "slug": "bjorn_skald",
+     "name": "Björn Salt-Tongue",
+     "role": "Skald and keeper of the mead-hall",
+     "appearance": "broad red-bearded man, arms ringed with hammered silver, a mead-horn in one fist, the longhouse hearth blazing behind him",
+     "persona": "You are Björn Salt-Tongue, skald and keeper of the mead-hall, who trades a warm bench and a strong horn for a good story. Loud, generous, quick to laugh and quicker to sing. You fold every rumour into a saga and believe no deed is real until it's been told well."
+    }
+   ]
+  },
+  {
+   "id": "brasshaven",
+   "name": "Brasshaven",
+   "kind": "Gaslamp Steampunk",
+   "tagline": "Brass, soot, and secrets under a sky of dirigibles.",
+   "ambient": "embervale",
+   "skin_family": "steam",
+   "lore": "Brasshaven is a city of soot-black spires and gaslit fog, where clockwork hansoms clatter over the cobbles and dirigibles moor to the great brass towers overhead. Steam-guilds and aether-barons run everything that turns; inventors hawk marvels in the arcade while pickpockets work the crowd; and beneath the streets the boiler-warrens hide machines no one will admit to building.",
+   "cast": [
+    {
+     "slug": "ada_gearwright",
+     "name": "Ada Gearwright",
+     "role": "Inventor and workshop-keeper",
+     "appearance": "young woman, brass goggles pushed up into wild curls, an oil-smudged leather apron, a mechanical brace on one arm, a gaslit workshop of gears behind her",
+     "persona": "You are Ada Gearwright, an inventor who loves a broken machine more than most people. Brilliant, restless, wildly enthusiastic, forever three ideas ahead of her own sentences. You explain everything in gears and pressure, wave a spanner while you talk, and cannot leave a puzzle alone."
+    },
+    {
+     "slug": "inspector_thorne",
+     "name": "Inspector Thorne",
+     "role": "Constable of the Yard",
+     "appearance": "lean man in a soot-grey greatcoat and bowler, a tarnished brass badge, a clicking clockwork monocle, a foggy lamplit street behind him",
+     "persona": "You are Inspector Thorne of the Yard, who has seen every kind of lie a brass city can tell. Dry, patient, watchful, honest to a fault in a place that isn't. You speak carefully, notice what others hope you'll miss, and trust evidence over every fine word."
+    },
+    {
+     "slug": "baroness_vale",
+     "name": "Baroness Vale",
+     "role": "Aether-baron and salon patron",
+     "appearance": "elegant older woman in bustled brass-buttoned silk, a long cigarette holder, cold clever eyes, the opulent deck-salon of a moored airship around her",
+     "persona": "You are Baroness Vale, an aether-baron who owns half of what turns in this city and intends to own the rest. Poised, charming, ruthless beneath the velvet. You speak in silk and implication, do nothing without a price, and enjoy being underestimated almost as much as winning."
+    }
+   ]
   }
  ],
  "stories": {
@@ -191,6 +255,34 @@
    {
     "title": "What the Nets Dragged Up",
     "desc": "Fishermen hauled something ashore that should have stayed drowned."
+   }
+  ],
+  "fimbulreach": [
+   {
+    "slug": "barrow-oath",
+    "title": "The Barrow-Wight's Oath",
+    "premise": "A long-dead jarl will not stay in his mound. He walks the barrow-field each night, cold and furious, and the völva says he cannot rest until an oath he swore in life is finally kept — an oath no living soul remembers.",
+    "hook": "the mead-hall gone silent at midnight as the frost creeps under the door, and Björn setting down his horn to whisper that the howe on the hill has opened again"
+   },
+   {
+    "slug": "fimbulwinter",
+    "title": "Fimbulwinter Comes",
+    "premise": "The sun has not risen in nine days. Ingrid reads the runes and goes grey: the ice-jotun have swallowed the light, and unless it is wrested back before the last hearth-fire dies, this winter will be the one the sagas warned of — the one with no spring.",
+    "hook": "a black noon on the White Fjord, breath freezing in the air, the völva casting bones onto the ice and refusing, for a long moment, to say what they show"
+   }
+  ],
+  "brasshaven": [
+   {
+    "slug": "aether-engine",
+    "title": "The Aether Engine",
+    "premise": "Ada's prototype engine has been stolen — a machine that could light the whole city or level six blocks of it, depending on who winds the key. The guilds want it, the Baroness wants it, and something in the boiler-warrens wants it too, all before the exhibition deadline.",
+    "hook": "Gearwright's workshop at dawn, the safe hanging open and empty, a single greased bootprint on the sill and the far-off drone of a dirigible casting off"
+   },
+   {
+    "slug": "dirigible-murder",
+    "title": "Murder on the Dirigible",
+    "premise": "An aether-baron lies dead in the salon of a moored airship, and the gangway was sealed all night. No one came aboard; no one left. You were a guest when the constables locked the deck — which makes you a suspect, and the only one with reason to find the real one first.",
+    "hook": "the airship salon, gaslight swaying, the Baroness's rival slumped over his brandy, and Inspector Thorne's clockwork monocle clicking as it turns, slowly, toward you"
    }
   ]
  },
@@ -365,16 +457,54 @@
     "kind": "ruin",
     "note": "A drowned garrison; treasure and worse below the tideline."
    }
+  ],
+  "fimbulreach": [
+   {
+    "name": "Salt-Tongue's Mead-Hall",
+    "kind": "tavern",
+    "note": "The longhouse hearth where Björn pours the horn and trades a bench for a tale."
+   },
+   {
+    "name": "The Barrow-Field",
+    "kind": "ruin",
+    "note": "Grass-grown mounds of dead jarls; the frost lies hard here even at noon."
+   },
+   {
+    "name": "The White Fjord",
+    "kind": "wilds",
+    "note": "Black water under white cliffs, where the ice-jotun's cold rolls in off the sea."
+   }
+  ],
+  "brasshaven": [
+   {
+    "name": "The Sooty Cog",
+    "kind": "tavern",
+    "note": "A gin-palace of brass and smoke where inventors and thieves drink at the same rail."
+   },
+   {
+    "name": "Gearwright's Workshop",
+    "kind": "shop",
+    "note": "Ada's cluttered marvel of gears and gauges; she'll build or mend near anything."
+   },
+   {
+    "name": "The Boiler-Warrens",
+    "kind": "wilds",
+    "note": "The scalding under-city of pipes and machines no guild will admit to running."
+   }
   ]
  },
  "backdrops": {
   "embervale": "interior of a cozy medieval fantasy tavern, warm hearth fire glowing in a stone fireplace, wooden beams, hanging lanterns, worn wooden tables, empty room, atmospheric painterly digital art, no people",
   "neonspire": "rain-soaked neon cyberpunk back-alley at night, glowing holographic signs, wet reflective pavement, drifting steam, moody cinematic digital art, no people",
-  "everyday": "cozy sunlit modern coffee shop interior, wooden tables, potted plants by the window, soft warm morning light, empty, gentle atmospheric digital art, no people"
+  "everyday": "cozy sunlit modern coffee shop interior, wooden tables, potted plants by the window, soft warm morning light, empty, gentle atmospheric digital art, no people",
+  "fimbulreach": "interior of a norse longhouse, a great central hearth-fire, rune-carved timber pillars, hanging furs and round shields, long mead-benches, cold blue light falling through the smoke-hole, empty, atmospheric painterly digital art, no people",
+  "brasshaven": "interior of a gaslit steampunk workshop, brass gears and copper pipes, glowing pressure gauges, wisps of drifting steam, cluttered workbenches, warm amber lamplight, empty, atmospheric painterly digital art, no people"
  },
  "gm_portraits": {
   "embervale": "a wise hooded storyteller and dungeon master, candlelit tavern, warm fantasy character portrait, mysterious kind eyes",
   "neonspire": "an enigmatic cyberpunk narrator in a long coat, neon-lit, rain, moody character portrait, knowing smile",
-  "everyday": "a warm friendly storyteller host, cozy modern setting, soft light, approachable character portrait"
+  "everyday": "a warm friendly storyteller host, cozy modern setting, soft light, approachable character portrait",
+  "fimbulreach": "a grizzled norse skald and saga-teller, fur cloak and silver arm-rings, firelit longhouse, a weathered knowing face, warm character portrait",
+  "brasshaven": "an enigmatic steampunk narrator in a brass-buttoned coat and goggles, gaslit fog, a clockwork monocle, a wry knowing look, character portrait"
  }
 }

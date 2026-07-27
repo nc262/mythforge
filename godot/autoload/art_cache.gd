@@ -369,7 +369,14 @@ func _pump() -> void:
 			_finish(key, false)
 			continue
 		DirAccess.make_dir_recursive_absolute("user://art")
-		img.save_png(path_for(key))
+		# Write, then rename. Killed mid-save, a truncated PNG would still satisfy
+		# has_art() — and request() answers "already painted" from that check, so
+		# the key would never repaint again. Under a temp name it just isn't there.
+		var tmp := path_for(key) + ".part"
+		if img.save_png(tmp) != OK:
+			_finish(key, false)
+			continue
+		DirAccess.rename_absolute(tmp, path_for(key))
 		_write_sidecar(key, job, r)  # A2: how it was made, for regeneration
 		_note_asset(key)             # A2: manifest + LRU budget
 		_tex_cache.erase(key)
@@ -489,13 +496,19 @@ func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
 			subject_style("char"), (extra + ", ") if extra != "" else "", world_flavor()], "1024x1024", true)
 
 
+## A1 — if the world's compile already baked this name (vendor wares are a
+## constant, Performance §7), never spend the player's GPU on it. That flood of
+## shop icons is what pushed a third of the narrator onto the CPU.
 func ensure_item_icon(nm: String) -> void:
+	if Compiler.named_icon(GameState.world_id(), nm) != null:
+		return
 	ensure("item-" + nm.to_lower().replace(" ", "-"),
 		"game inventory icon of a %s of %s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [nm, subject_style("item"), world_flavor()], "1024x1024")
 
 
-func item_tex(nm: String) -> ImageTexture:
-	return texture_for("item-" + nm.to_lower().replace(" ", "-"))
+func item_tex(nm: String) -> Texture2D:
+	var baked := Compiler.named_icon(GameState.world_id(), nm)
+	return baked if baked != null else texture_for("item-" + nm.to_lower().replace(" ", "-"))
 
 
 ## The right icon for an inventory item: a compiled catalogue item carries its
