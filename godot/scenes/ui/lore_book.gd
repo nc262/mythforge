@@ -299,7 +299,13 @@ func _entry(title: String, body: String, art_key := "", ensure_prompt := "", chi
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 		art.clip_contents = true
-		var tex := Art.round_tex(art_key, 150) if art_key.begins_with("npc-") or art_key.begins_with("beast-") else Art.texture_for(art_key)
+		# R6 BLANK-29/30, FUN-18 — ask the COMPILER first. A baked world already
+		# painted every beast and every face; this used to look only in the art
+		# cache, miss, and then commission the same portrait again at ~25 s on the
+		# player's GPU. The encyclopedia was blank and expensive at the same time.
+		var tex: Texture2D = Compiler.roster_art(GameState.world_id(), art_key)
+		if tex == null:
+			tex = Art.round_tex(art_key, 150) if art_key.begins_with("npc-") or art_key.begins_with("beast-") else Art.texture_for(art_key)
 		if tex != null:
 			art.texture = tex
 		elif ensure_prompt != "":

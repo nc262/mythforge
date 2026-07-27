@@ -907,6 +907,26 @@ func _on_event(d: Dictionary) -> void:
 
 
 func _on_done(_ok: bool) -> void:
+	# R6 STR-28 — the stream carries whether it ever CONNECTED, and this dropped
+	# it on the floor. A backend that is down produced the same message as a
+	# model that answered with nothing: "the storyteller loses the thread — the
+	# local mind may be busy." That is a wrong diagnosis pointed at the wrong
+	# component, and for a friend running the installer it is the difference
+	# between "wait a moment" and "your engine is not running". Retrying a dead
+	# socket also just burns the empty-retry budget for nothing.
+	if not _ok and _acc.strip_edges() == "":
+		_streaming = false
+		Art.hold = false
+		Mode.busy = false
+		_send_btn.disabled = false
+		_dismiss_thinking()
+		if _gm_rt != null:
+			_gm_rt.clear()
+			_gm_rt.append_text("[color=%s][i]The table is empty — Mythforge cannot reach its engine.[/i][/color]\n%s" % [
+				Ui.c("danger").to_html(false),
+				"[color=%s]Check that the Mythforge launcher is running, then strike again.[/color]" % Ui.c("ink_dim").to_html(false)])
+		_offer_retry()
+		return
 	# Language guard first: a short reply may never have hit the gate threshold.
 	if _lang_gate:
 		_open_language_gate()

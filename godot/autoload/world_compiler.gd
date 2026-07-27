@@ -1394,6 +1394,40 @@ func key_art(world_id: String) -> Texture2D:
 	return _load_tex("%s/art/key.png" % world_dir(world_id))
 
 
+## A baked roster portrait, by the key the UI already uses for it.
+##
+## R6 BLANK-29/30, BLANK-18, FUN-18/27 — the fourth appearance of this session's
+## root cause. Every baked world ships 5–9 creature portraits and 6 NPC
+## portraits, and the Lore Book — which calls itself an illustrated encyclopedia
+## — asked `Art.texture_for("beast-<slug>")`, the art CACHE, found nothing, and
+## then commissioned a FRESH ~25 s render on the player's GPU for a face that
+## was already painted and sitting in the package. So the encyclopedia was blank
+## AND it cost the narrator its card to stay blank.
+##
+## Takes the UI's own key ("beast-goreling", "npc-old-gus") so callers do not
+## have to learn a second vocabulary.
+func roster_art(world_id: String, key: String) -> Texture2D:
+	var sub := ""
+	var slug := ""
+	if key.begins_with("beast-"):
+		sub = "creatures"
+		slug = key.trim_prefix("beast-")
+	elif key.begins_with("creature-"):
+		sub = "creatures"
+		slug = key.trim_prefix("creature-")
+	elif key.begins_with("npc-"):
+		sub = "npc"
+		slug = key.trim_prefix("npc-")
+	if sub == "" or slug == "":
+		return null
+	var t := _load_tex("%s/art/%s/%s.png" % [world_dir(world_id), sub, slug], 320)
+	if t != null:
+		return t
+	# The book keys NPCs off the display name ("npc-old-gus"); the package files
+	# are named by the roster's own slug ("old_gus"). Try the underscore form.
+	return _load_tex("%s/art/%s/%s.png" % [world_dir(world_id), sub, slug.replace("-", "_")], 320)
+
+
 ## One of the world's six baked biome plates (see BIOMES), or null.
 func biome_art(world_id: String, index: int) -> Texture2D:
 	return _load_tex("%s/art/biome-%s-%d.png" % [

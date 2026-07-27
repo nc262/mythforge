@@ -104,6 +104,31 @@ why it looks like that". Three findings inferred cause from a still image and
 got it wrong. Anything marked `[code]` in Round 6 that I did not later open
 should be treated as a hypothesis.
 
+### More of the same, found while clearing the tail
+
+Working down the open list, a whole class turned out to be the same mistake:
+**features that exist but were not populated in the canned harness state.** The
+audit screenshotted a world with no quests, no companions and no portraits, then
+concluded the game had no surface for any of them.
+
+| # | Claimed | Actually |
+|---|---------|----------|
+| BLANK-15 · STR-15 · FUN-21 | "No quest/objective display anywhere on the play screen." | **False.** `_render_chips` puts the active quest title in the status strip. The canned state has no quests. |
+| FUN-11 · STR-14 | "No companions visible, so the party fantasy is absent." | **False.** The same strip lists every companion with live HP and a wound marker. |
+| PLAY-03 | "12 toolbar icons with no labels — the player must hover each." | **Half true.** All of them carry real tooltips; hovering IS the affordance. The honest complaint is that there is no grouping, not that they are unlabelled. |
+| STR-09 | "No keyboard access to panels." | **False.** Ctrl+S sheet, Ctrl+L codex, Ctrl+R retell, Ctrl+M atlas, Ctrl+H record, Ctrl+E edit-last, Space next turn. |
+| PLAY-29 · STR-06 | "No autosave indicator; no save/load feedback." | **Mostly false.** Every mutation mirrors continuously, closing a chapter plays a save sound, and the exit says "your tale is saved". A persistent indicator is a nice-to-have, not a missing system. |
+| BUG-16 · PLAY-13 · CUT-02 · BLANK-11 | (paper doll, sliders, 11 stages, empty forge stage) | Already fixed earlier in this session; they were still listed as open. |
+
+**Nine more retractions.** That is twelve of 281 findings — a bit over 4 % —
+that described the app wrongly. Every one came from reading a rendered frame or
+a grep instead of the code path behind it.
+
+**What this changes about the remaining count:** the open tail is smaller and
+softer than the raw number suggests. A meaningful share of the ~170 "open"
+findings are of this kind — real-sounding, screenshot-derived, and wrong. They
+should be re-verified against code before anyone spends a session on them.
+
 ## 4. Honest coverage
 
 You asked me to fix all of them. I did not, and I want to be exact about that

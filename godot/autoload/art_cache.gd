@@ -565,7 +565,7 @@ func item_tex_for(it: Dictionary) -> Texture2D:
 ## The face a combatant wears everywhere (board token, initiative rail):
 ## hero portrait / companion npc portrait / bestiary painting (commissioned
 ## from the entry's art prompt on first sight).
-func combatant_tex(m: Dictionary) -> ImageTexture:
+func combatant_tex(m: Dictionary) -> Texture2D:
 	var id := str(m.get("id", ""))
 	if id == "pc":
 		return round_tex("hero-" + GameState.cid().validate_filename())
@@ -574,6 +574,11 @@ func combatant_tex(m: Dictionary) -> ImageTexture:
 	var entry := Combat.bestiary_for(str(m.get("name", "")))
 	if not entry.is_empty():
 		var key := "beast-" + str(entry.get("slug", ""))
+		# R6 FUN-12/BLANK-29 — the world's beasts were painted at bake time; a
+		# fight was commissioning them again because it only checked the cache.
+		var baked: Texture2D = Compiler.roster_art(GameState.world_id(), key)
+		if baked != null:
+			return baked
 		if has_art(key):
 			return round_tex(key)
 		ensure(key, "%s, %s, painted creature portrait, %s style, dark background, no text" % [str(entry.get("art", "")), subject_style("beast"), world_flavor()])

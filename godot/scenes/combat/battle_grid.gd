@@ -186,7 +186,7 @@ func _gui_input(event: InputEvent) -> void:
 
 
 ## The art a combatant's token wears — one source with the initiative rail.
-func _token_art(m: Dictionary) -> ImageTexture:
+func _token_art(m: Dictionary) -> Texture2D:
 	return Art.combatant_tex(m)
 
 
