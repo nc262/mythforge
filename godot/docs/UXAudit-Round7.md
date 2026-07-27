@@ -65,10 +65,31 @@ Being explicit that fixing things moved the furniture:
 | R7-04 | **[code]** Lazy unpack means the *first* open of each world pays its own ~250 MB unpack, with no progress UI. Cheaper at boot, but the cost moved rather than vanished. | Medium |
 | R7-05 | **[shot]** "Chest" slot label is overlapped by the socket above it in the left column. | Low |
 
+## 3b. Round 6 findings that were WRONG
+
+Corrected after reading the code they accused. Three of the 281 were mine, not
+the app's — worth recording so nobody "fixes" working features:
+
+| # | Claimed | Actually |
+|---|---------|----------|
+| FUN-03 | "No dice are ever shown rolling — the core RPG ritual is invisible." | **False.** `game.gd::_animate_die` is wired to six call sites — checks, attacks, death saves, haggling, manual rolls. Dice roll, with sound. What Round 5's VIS-08 actually meant was narrower: the *forge's* ability-score roll printed a comma list. That one was real, and is now fixed (the six faces land in sequence, each labelled with the ability it becomes). |
+| LAT-08 | "One static line for the whole wait. No spinner, no elapsed timer." | **Mostly false.** `MythThinking` already draws an animated quill and rotates world-specific copy ("The Norns confer…", "Decrypting the next frame…"), with a reassurance past 20 s. I marked this `[shot]` off the play-screen frame — but that frame showed the *placeholder system line*, not a live wait, which the harness never streams. Only the elapsed counter was genuinely missing; added. |
+| BUG-22 | "The portrait pipeline exists but no portrait is shown even for a hero who has one." | **Unverified.** The letter avatar is the correct fallback for a hero without a portrait, which is exactly what the harness hero is. Downgraded to "needs checking against a forged hero". |
+
+The lesson for the method: `[shot]` means "I saw this frame", not "I understood
+why it looks like that". Three findings inferred cause from a still image and
+got it wrong. Anything marked `[code]` in Round 6 that I did not later open
+should be treated as a hypothesis.
+
 ## 4. Honest coverage
 
 You asked me to fix all of them. I did not, and I want to be exact about that
 rather than let a green harness imply otherwise:
+
+*(Updated after the second fix pass: **~70 of 281**, plus 3 findings retracted
+as wrong. Second pass closed the regressions the first one caused, the Adventure
+Forge's "SIT DOWN" ceremony screen, icon oversampling, the empty-pack state, the
+rules-lawyer copy, the forge dice moment, and the wait's elapsed counter.)*
 
 - **~50 of 281 are fixed**, chosen as the three root causes plus the Criticals
   that fell out of them. That was the highest-value use of the time by a wide

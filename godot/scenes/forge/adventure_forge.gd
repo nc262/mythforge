@@ -7,7 +7,13 @@ extends ForgeFlow
 
 signal adventure_ready(adv: Dictionary)
 
-const STAGES := ["The Table", "The Hero", "The Campaign", "The Party", "Difficulty", "House Rules", "The Preview"]
+## R6 CUT-03/CUT-05 — "The Table Is Set" is gone. It was a stage containing one
+## line ("A hero. A campaign. A table. Everything else is dice.") and a button
+## reading **SIT DOWN** — the Director's own example of the problem, verbatim:
+## you ask to play and the game asks you to take a seat first. Same defect as the
+## Character Forge's Cold Anvil, same treatment. Cold start to play is now ~14
+## screens instead of ~18.
+const STAGES := ["The Hero", "The Campaign", "The Party", "Difficulty", "House Rules", "The Preview"]
 const DIFFICULTIES := [
 	{"glyph": "hero", "title": "Story", "body": "foes soften — the tale leads", "mult": 0.75},
 	{"glyph": "hero", "title": "Adventurer", "body": "the intended fight", "mult": 1.0},
@@ -80,29 +86,17 @@ func _nav(back_to: int, fwd_text: String, fwd: Callable, back_fn := Callable()) 
 func _build_stage(i: int) -> void:
 	match i:
 		0:
-			_stage_welcome()
-		1:
 			_stage_hero()
-		2:
+		1:
 			_stage_campaign()
-		3:
+		2:
 			_stage_party()
-		4:
+		3:
 			_stage_difficulty()
-		5:
+		4:
 			_stage_house()
-		6:
+		5:
 			_stage_preview()
-
-
-func _stage_welcome() -> void:
-	_title_label("The Table Is Set")
-	var line := Label.new()
-	line.theme_type_variation = "HintLabel"
-	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	line.text = "A hero. A campaign. A table. Everything else is dice."
-	_stage_box.add_child(line)
-	_nav(-1, "SIT DOWN", func(): _enter_stage(1))
 
 
 func _stage_hero() -> void:
@@ -139,10 +133,10 @@ func _stage_hero() -> void:
 	cards.append(later)
 	flow.add_child(later)
 	_stage_box.add_child(flow)
-	_nav(0, "NEXT — THE CAMPAIGN", func():
+	_nav(-1, "NEXT — THE CAMPAIGN", func():   # first stage now — nothing behind it
 		if not (draft["hero"] is Dictionary) and str(draft["hero"]) != "later":
 			draft["hero"] = heroes[0] if not heroes.is_empty() else "later"
-		_enter_stage(2))
+		_enter_stage(1))
 
 
 func _hero_selected(hd: Dictionary) -> bool:
@@ -156,10 +150,10 @@ func _spawn_char_forge() -> void:
 		GameState.bank_hero(d)
 		_child_forge.queue_free()
 		draft["hero"] = d
-		_enter_stage(1))
+		_enter_stage(0))
 	_child_forge.closed.connect(func():
 		_child_forge.queue_free()
-		_enter_stage(1))
+		_enter_stage(0))
 	add_child(_child_forge)
 
 
@@ -191,15 +185,15 @@ func _stage_campaign_world() -> void:
 			_camp_world = world
 			for c in cards:
 				c.set_selected(c == card)
-			_enter_stage(2))
+			_enter_stage(1))
 		cards.append(card)
 		grid.add_child(card)
 	_stage_box.add_child(_scrolled(grid))
-	_nav(1, "NEXT — THE PARTY", func():
+	_nav(0, "NEXT — THE PARTY", func():
 		if draft["adv"].is_empty():
 			_status.text = "Choose a world — or forge one at the war table."
 			return
-		_enter_stage(3))
+		_enter_stage(2))
 
 
 ## Step two: which of that world's tales — or free roam within it?
@@ -225,12 +219,12 @@ func _stage_campaign_tale() -> void:
 	_stage_box.add_child(_scrolled(grid))
 	var to_worlds := func():
 		_camp_world = {}
-		_enter_stage(2)
+		_enter_stage(1)
 	var to_party := func():
 		if draft["adv"].is_empty():
 			_status.text = "Choose a tale — free roam counts."
 			return
-		_enter_stage(3)
+		_enter_stage(2)
 	_nav(-1, "NEXT — THE PARTY", to_party, to_worlds)
 
 
@@ -263,10 +257,10 @@ func _spawn_camp_forge() -> void:
 	_child_forge.campaign_begun.connect(func(adv):
 		_child_forge.queue_free()
 		draft["adv"] = adv
-		_enter_stage(3))  # the forge already set voice+rules; party next
+		_enter_stage(2))  # the forge already set voice+rules; party next
 	_child_forge.closed.connect(func():
 		_child_forge.queue_free()
-		_enter_stage(2))
+		_enter_stage(1))
 	add_child(_child_forge)
 
 
@@ -310,7 +304,7 @@ func _stage_party() -> void:
 	dim.text = "More chairs at the table — party multiplayer — is a future forging."
 	dim.modulate = Color(1, 1, 1, 0.6)
 	_stage_box.add_child(dim)
-	_nav(2, "NEXT — DIFFICULTY", func(): _enter_stage(4))
+	_nav(1, "NEXT — DIFFICULTY", func(): _enter_stage(3))
 
 
 func _stage_difficulty() -> void:
@@ -329,7 +323,7 @@ func _stage_difficulty() -> void:
 		cards.append(card)
 		row.add_child(card)
 	_stage_box.add_child(row)
-	_nav(3, "NEXT — HOUSE RULES", func(): _enter_stage(5))
+	_nav(2, "NEXT — HOUSE RULES", func(): _enter_stage(4))
 
 
 func _stage_house() -> void:
@@ -341,9 +335,9 @@ func _stage_house() -> void:
 	var hc := CenterContainer.new()
 	hc.add_child(house)
 	_stage_box.add_child(hc)
-	_nav(4, "NEXT — THE PREVIEW", func():
+	_nav(3, "NEXT — THE PREVIEW", func():
 		draft["house"] = house.text.strip_edges()
-		_enter_stage(6))
+		_enter_stage(5))
 
 
 func _stage_preview() -> void:
@@ -367,14 +361,14 @@ func _stage_preview() -> void:
 	var bc := CenterContainer.new()
 	bc.add_child(body)
 	_stage_box.add_child(bc)
-	_nav(5, "BEGIN THE ADVENTURE", _begin)
+	_nav(4, "BEGIN THE ADVENTURE", _begin)
 
 
 ## Seat the table's choices into the adventure's state, then play.
 func _begin() -> void:
 	var adv: Dictionary = draft["adv"]
 	if adv.is_empty():
-		_enter_stage(2)
+		_enter_stage(1)
 		return
 	# The chosen banked legend fills the adventure's Quenching; "later" leaves
 	# it empty so the hero is forged at the campfire when the tale opens.

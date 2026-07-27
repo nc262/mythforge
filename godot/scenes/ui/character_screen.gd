@@ -709,6 +709,9 @@ func _gear_socket(key: String) -> Control:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.add_theme_font_size_override("font_size", 10)
 	lbl.text = _slot_label(key)
+	# R7-05 — the column squeezed these captions when vertical space got tight and
+	# the socket below rode over "Chest". Reserve the line so it cannot collapse.
+	lbl.custom_minimum_size = Vector2(0, 15)
 	wrap.add_child(lbl)
 	return wrap
 

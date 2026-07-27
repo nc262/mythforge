@@ -202,7 +202,11 @@ func _ready() -> void:
 		_open_character_forge()  # a fresh adventure begins with a legend
 	else:
 		Mode.enter("Exploration")
-		_say_system("The tale of %s continues…" % str(GameState.character.get("name", "?")))
+		# R6 BUG-31/CUT-07 — this said "The tale of <name> continues…", which is
+		# the header two lines above it, restated. Name the PLACE instead: it is
+		# the one thing the player cannot already read on screen.
+		var _here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
+		_say_system(("You are at %s." % _here) if _here != "" else "The tale continues…", "compass")
 		_recap()
 	_msg.grab_focus()
 	# MIL §7 — the screen is genuinely built now; only now does the curtain lift.
@@ -570,7 +574,12 @@ func _say_system(text: String, glyph := "") -> void:
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if glyph == "":
-		_thread.add_child(l)
+		# R7-02 — GM and player lines sit on bubble panels, but system lines were
+		# bare labels. That was invisible while the play screen was an empty void;
+		# restoring the world's key art put small grey text straight onto a bright
+		# painting. A quiet plate keeps them legible without pretending to be a
+		# bubble. (Regression introduced by the R6 art fix — my own.)
+		_thread.add_child(_sys_plate(l))
 	else:
 		# a hand-drawn glyph leads the line — never an emoji
 		var row := HBoxContainer.new()
@@ -579,8 +588,25 @@ func _say_system(text: String, glyph := "") -> void:
 		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(MythIcon.new(MythIcon.resolve(glyph), 18, "gold_soft"))
 		row.add_child(l)
-		_thread.add_child(row)
+		_thread.add_child(_sys_plate(row))
 	_scroll_bottom()
+
+
+## A quiet backing plate for a system line, so it stays readable over the world's
+## painting without dressing up as a speech bubble. R7-02.
+func _sys_plate(inner: Control) -> Control:
+	var pc := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(Ui.c("night"), 0.55)
+	sb.set_corner_radius_all(Ui.RADIUS["s"])
+	sb.content_margin_left = Ui.SPACE["m"]
+	sb.content_margin_right = Ui.SPACE["m"]
+	sb.content_margin_top = Ui.SPACE["xs"]
+	sb.content_margin_bottom = Ui.SPACE["xs"]
+	pc.add_theme_stylebox_override("panel", sb)
+	pc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pc.add_child(inner)
+	return pc
 
 
 func _scroll_bottom() -> void:
@@ -2418,7 +2444,11 @@ func _open_character_screen(at := "", pulse := -1) -> void:
 	if not Mode.can_panels():
 		return
 	var rec := preload("res://scenes/ui/character_screen.gd").new()
-	MythEnvironment.mount(rec, "env-fireside", "dust", [Vector2(0.1, 0.2)])
+	# R7-03 — the Record is the densest data surface in the game (nine tabs,
+	# thirteen equipment wells, stat rows). At the environment's default veil the
+	# fireside painting competed with all of it for the eye. A forge screen is
+	# mostly empty and can carry a bright room; this one cannot.
+	MythEnvironment.mount(rec, "env-fireside", "dust", [Vector2(0.1, 0.2)]).scrim = 0.80
 	rec.pulse_level = pulse
 	if at != "":
 		rec._active = at

@@ -37,8 +37,13 @@ func _ready() -> void:
 	# Control laid over the play screen, so the toolbar, the input box and the
 	# tale's own title all showed through the "page" and two UIs shared the same
 	# pixels. An opaque backing also stops clicks falling through to the game.
-	Ui.panel_backing(self)
+	#
+	# ORDER MATTERS, and I got it wrong first time: both mount() and
+	# panel_backing() move themselves to child 0, so backing-then-mount buried the
+	# journal painting UNDERNEATH the opaque plate and the book went flat black.
+	# Mount the art first; the backing then settles beneath it.
 	MythEnvironment.mount(self, "env-journal", "dust", [Vector2(0.12, 0.86), Vector2(0.88, 0.86)])
+	Ui.panel_backing(self)
 	var margin := MarginContainer.new()
 	margin.set_anchors_preset(Control.PRESET_FULL_RECT)
 	for m in ["margin_left", "margin_right"]:

@@ -343,13 +343,47 @@ func _stage_nature() -> void:
 	_title_label("Your Nature")
 	if draft["rolled"].is_empty() and draft["assign"].is_empty():
 		_roll_destiny()
+	# R5 VIS-08 / R6 FUN-03 — the one place in the game where dice genuinely are
+	# NOT shown. Combat rolls animate (game.gd `_animate_die`), but the moment a
+	# hero's whole nature is decided printed "Destiny: 15, 14, 13, 10, 10, 9" as a
+	# comma list, with no roll and no ability names — so the player never met
+	# STR/DEX/CON until the sheet, after creation. The six numbers now land as
+	# faces, one after another, and each says what it will become.
+	var dice_row := HBoxContainer.new()
+	dice_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	dice_row.add_theme_constant_override("separation", Ui.SPACE["s"])
 	var dice_l := Label.new()
 	dice_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	dice_l.add_theme_color_override("font_color", Ui.c("gold_soft"))
+	dice_l.theme_type_variation = "HintLabel"
+	dice_l.text = "the best land where your class wants them"
 	var show_roll := func():
-		dice_l.text = "Destiny: %s   (best scores land where your class wants them)" % ", ".join(draft["rolled"].map(func(x): return str(x)))
+		for ch in dice_row.get_children():
+			ch.queue_free()
+		var order: Array = Rules.ABILITIES
+		for i in draft["rolled"].size():
+			var face := PanelContainer.new()
+			face.add_theme_stylebox_override("panel", Ui.sb_card())
+			var box := VBoxContainer.new()
+			box.add_theme_constant_override("separation", 0)
+			var v := Label.new()
+			v.text = str(draft["rolled"][i])
+			v.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			v.add_theme_font_size_override("font_size", 26)
+			v.add_theme_color_override("font_color", Ui.c("gold"))
+			var nm := Label.new()
+			nm.theme_type_variation = "HintLabel"
+			nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			nm.add_theme_font_size_override("font_size", 10)
+			nm.text = str(order[i]) if i < order.size() else ""
+			box.add_child(v)
+			box.add_child(nm)
+			face.add_child(box)
+			face.custom_minimum_size = Vector2(58, 58)
+			dice_row.add_child(face)
+			Ui.reveal(face, i * 0.07)   # they arrive as a roll, not as a list
 	if not draft["rolled"].is_empty():
 		show_roll.call()
+	_stage_box.add_child(dice_row)
 	_stage_box.add_child(dice_l)
 	var reroll := Button.new()
 	reroll.text = "Reroll destiny (4d6, drop lowest)"

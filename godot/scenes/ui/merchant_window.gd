@@ -116,7 +116,11 @@ func _ready() -> void:
 	haggle.icon = Ui.ico_tex("die")
 	haggle.expand_icon = true
 	haggle.add_theme_constant_override("icon_max_width", 20)
-	haggle.text = "Haggle with the keeper (Persuasion, DC 12)"
+	# R6 PLAY-05/CUT-18 — this read "Haggle with the keeper (Persuasion, DC 12)".
+	# The parenthetical is for a rules lawyer: it names the skill and the target
+	# number before the player has decided to try. The die icon already promises a
+	# roll; the outcome will say what it was.
+	haggle.text = "Haggle with the keeper"
 	haggle.pressed.connect(func():
 		if markup != 1.0:
 			return
@@ -198,6 +202,11 @@ func _refresh() -> void:
 			(" ×%d" % q) if q > 1 else "", Rules.sell_value(str(it.get("rarity", "common"))), GameState.currency()],
 			Art.item_tex(str(it.get("name", ""))))
 		_pack_meta.append(str(it.get("id", "")))
+	# R6 BLANK-07 — an empty pack was a large blank box with nothing in it, which
+	# reads as broken rather than empty. Say so, and say what to do about it.
+	if _pack.item_count == 0:
+		_pack.add_item("Your pack is empty — buy something, or come back with loot.", null, false)
+		_pack_meta.append(null)
 
 
 func _show_detail(item_name: String, line: String) -> void:

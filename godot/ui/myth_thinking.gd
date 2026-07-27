@@ -63,5 +63,10 @@ func _process(delta: float) -> void:
 	if want != _idx:
 		_idx = want
 		_label.text = str(_lines[_idx])
-	if _t > PATIENCE and not _label.text.begins_with("Still"):
-		_label.text = "Still composing — the local mind is slow tonight, but it is working."
+	# R6 LAT-08, the half of it that was real. The wait is already dressed (a
+	# drawing quill, the world's own rotating voice), but past the patience
+	# threshold "still working" and "wedged" look identical, and on this hardware
+	# a turn can genuinely run a minute. A ticking count is the difference between
+	# waiting and wondering — and it costs nothing.
+	if _t > PATIENCE:
+		_label.text = "Still composing — the local mind is slow tonight, but it is working.  (%ds)" % int(_t)

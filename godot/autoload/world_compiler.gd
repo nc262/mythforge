@@ -399,7 +399,7 @@ func icon_slug(nm: String) -> String:
 ## A baked icon for a plain item NAME (vendor wares, standard kit), or null if
 ## this world never baked one. The seam Art.item_tex falls back through.
 func named_icon(world_id: String, nm: String) -> Texture2D:
-	return _load_tex("%s/art/icons/%s.png" % [world_dir(world_id), icon_slug(nm)])
+	return _load_tex("%s/art/icons/%s.png" % [world_dir(world_id), icon_slug(nm)], ICON_PX)
 
 
 ## Request one image and wait for it to actually land (compile is sequential —
@@ -1346,13 +1346,15 @@ func part_art_path(world_id: String, form_id: String, material_id: String) -> St
 ## The material-true icon for a catalogue item, loaded from the active world's
 ## package and cached. Returns null if the item carries no art or the file isn't
 ## painted yet (caller falls back to a legacy generated icon).
+## The largest an item icon is ever drawn (a 96px socket on a hi-dpi pass).
+const ICON_PX := 256
 var _tex_cache := {}
 
 func item_texture(item: Dictionary) -> Texture2D:
 	var rel := str(item.get("art", ""))
 	if rel == "":
 		return null
-	return _load_tex("%s/%s" % [world_dir(GameState.world_id()), rel])
+	return _load_tex("%s/%s" % [world_dir(GameState.world_id()), rel], ICON_PX)
 
 
 ## Enchantment/treatment tints. Rarity is already a draw-time glow; treatments
@@ -1408,16 +1410,34 @@ func chart_art(world_id: String) -> Texture2D:
 
 
 ## Load a package image into a cached texture; null if absent/unreadable.
-func _load_tex(full: String) -> Texture2D:
-	if _tex_cache.has(full):
-		return _tex_cache[full]
+##
+## `max_px` downsamples on load. Item icons are baked at 1024² (the Director's
+## call, to stay future-proof) but drawn at 64–96 px in a socket and ~20 px in a
+## shop row. Handing the GPU a 1024² texture for a 20 px cell is worse on BOTH
+## counts the audit raised: it aliases into visual noise (R6 AAA-18/BLANK-26)
+## *and* it decodes and holds 4 MB per icon on the main thread (R6 LAT-25/26/27).
+## Mipmaps then make every intermediate size clean. The masters on disk are
+## untouched — this only changes what the renderer is asked to sample.
+func _load_tex(full: String, max_px := 0) -> Texture2D:
+	var ck := "%s@%d" % [full, max_px]
+	if _tex_cache.has(ck):
+		return _tex_cache[ck]
 	if not FileAccess.file_exists(full):
 		return null
 	var img := Image.load_from_file(full)
 	if img == null or img.is_empty():
 		return null
+	if max_px > 0 and maxi(img.get_width(), img.get_height()) > max_px:
+		var s := float(max_px) / float(maxi(img.get_width(), img.get_height()))
+		img.resize(maxi(1, int(img.get_width() * s)), maxi(1, int(img.get_height() * s)), Image.INTERPOLATE_LANCZOS)
+	img.generate_mipmaps()
 	var tex := ImageTexture.create_from_image(img)
-	_tex_cache[full] = tex
+	# R6 LAT-20: this cache had no ceiling, so a long session accumulated every
+	# icon it ever drew. Cheap FIFO trim — the cost of a miss is one decode.
+	if _tex_cache.size() > 220:
+		for k in _tex_cache.keys().slice(0, 60):
+			_tex_cache.erase(k)
+	_tex_cache[ck] = tex
 	return tex
 
 
