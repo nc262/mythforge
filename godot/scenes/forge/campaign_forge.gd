@@ -10,7 +10,13 @@ extends ForgeFlow
 
 signal campaign_begun(adv: Dictionary)
 
-const STAGES := ["The Table", "The Name", "Ruleset", "Theme", "The Voice", "Table Rules", "The Forging", "Dossier"]
+## R6 CUT-04/CUT-15 — "The War Table" is gone. One line ("A blank map. A quill.
+## Every legendary campaign began exactly here.") and a button reading **Take
+## your seat ›**. That is the third forge to open by asking the player to sit
+## down before doing the thing they clicked — after the Character Forge's Cold
+## Anvil and the Adventure Forge's SIT DOWN. Same defect, same treatment; the
+## forge opens on naming the campaign, which is a real decision.
+const STAGES := ["The Name", "Ruleset", "Theme", "The Voice", "Table Rules", "The Forging", "Dossier"]
 ## Theme cards → worldsmith pillar presets (SMITH_GUIDE field names) + an
 ## idea seasoning line. Free text fields — not limited to the chip lists.
 const THEMES := [
@@ -135,32 +141,19 @@ func _ledger() -> void:
 func _build_stage(i: int) -> void:
 	match i:
 		0:
-			_stage_welcome()
-		1:
 			_stage_name()
-		2:
+		1:
 			_stage_ruleset()
-		3:
+		2:
 			_stage_theme()
-		4:
+		3:
 			_stage_voice()
-		5:
+		4:
 			_stage_rules()
-		6:
+		5:
 			_stage_forging()
-		7:
+		6:
 			_stage_dossier()
-
-
-# ── Stage 0: the war table ───────────────────────────────────────────────────
-func _stage_welcome() -> void:
-	_title_label("The War Table")
-	var line := Label.new()
-	line.theme_type_variation = "HintLabel"
-	line.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	line.text = "A blank map. A quill. Every legendary campaign began exactly here."
-	_stage_box.add_child(line)
-	_nav(-1, "Take your seat ›", func(): _enter_stage(1))
 
 
 # ── Stage 1: the name ────────────────────────────────────────────────────────
@@ -175,9 +168,9 @@ func _stage_name() -> void:
 	_stage_box.add_child(ic)
 	var go := func():
 		draft["name"] = input.text.strip_edges()
-		_enter_stage(2)
+		_enter_stage(1)
 	input.text_submitted.connect(func(_t): go.call())
-	_nav(0, "Set it down ›", go)
+	_nav(-1, "Set it down ›", go)   # first stage now — nothing behind it
 
 
 # ── Stage 2: ruleset ─────────────────────────────────────────────────────────
@@ -196,7 +189,7 @@ func _stage_ruleset() -> void:
 		fc.modulate = Color(1, 1, 1, 0.45)
 		row.add_child(fc)
 	_stage_box.add_child(row)
-	_nav(1, "Continue ›", func(): _enter_stage(3))
+	_nav(0, "Continue ›", func(): _enter_stage(2))
 
 
 # ── Stage 3: theme ───────────────────────────────────────────────────────────
@@ -241,7 +234,7 @@ func _stage_theme() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	_nav(2, "Continue ›", func():
+	_nav(1, "Continue ›", func():
 		draft["idea"] = idea.text.strip_edges()
 		for k in pillar_inputs:
 			var v: String = pillar_inputs[k].text.strip_edges()
@@ -250,7 +243,7 @@ func _stage_theme() -> void:
 		if draft["theme"].is_empty() and draft["idea"] == "" and draft["fields"].is_empty():
 			_status.text = "Choose a theme — or open the pillars and write your own."
 			return
-		_enter_stage(4))
+		_enter_stage(3))
 
 
 # ── Stage 4: the GM's Voice (Session Zero, absorbed) ────────────────────────
@@ -305,7 +298,7 @@ func _stage_voice() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	_nav(3, "Continue ›", func():
+	_nav(2, "Continue ›", func():
 		if adv.content.visible:
 			for key in sliders:
 				draft["gm"][key] = int(sliders[key].value)
@@ -314,7 +307,7 @@ func _stage_voice() -> void:
 		if draft["gm"].is_empty():
 			draft["gm"] = VOICES[0]["knobs"].duplicate()
 			draft["gm"]["style"] = VOICES[0]["title"]
-		_enter_stage(5))
+		_enter_stage(4))
 
 
 # ── Stage 5: table rules — every lever engine-enforced ──────────────────────
@@ -356,13 +349,13 @@ func _stage_rules() -> void:
 	var hc := CenterContainer.new()
 	hc.add_child(house)
 	_stage_box.add_child(hc)
-	_nav(4, "To the forging ›", func():
+	_nav(3, "To the forging ›", func():
 		if not draft["rules"].has("difficulty"):
 			draft["rules"]["difficulty"] = 1.0
 		for key in checks:
 			draft["rules"][key] = checks[key].button_pressed
 		draft["rules"]["house"] = house.text.strip_edges()
-		_enter_stage(6))
+		_enter_stage(5))
 
 
 func _smith_guide() -> Array:
@@ -406,11 +399,11 @@ func _strike(refine: String) -> void:
 	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
 		_status.text = "The forge sputtered (%s) — strike again." % str(w.get("_status", 0))
 		_forged = {}
-		_enter_stage(3)
+		_enter_stage(2)
 		return
 	_status.text = ""
 	_forged = w
-	_enter_stage(6)
+	_enter_stage(5)
 
 
 func _show_take() -> void:
@@ -461,7 +454,7 @@ func _show_take() -> void:
 	var back := Button.new()
 	back.theme_type_variation = "GhostButton"
 	back.text = "‹ the rules"
-	back.pressed.connect(func(): _enter_stage(5))
+	back.pressed.connect(func(): _enter_stage(4))
 	row.add_child(back)
 	_stage_box.add_child(row)
 
@@ -564,7 +557,7 @@ func _run_sequence() -> void:
 	var onward := Button.new()
 	onward.theme_type_variation = "AccentButton"
 	onward.text = "To the Dossier ›"
-	onward.pressed.connect(func(): _enter_stage(7))
+	onward.pressed.connect(func(): _enter_stage(6))
 	var oc := CenterContainer.new()
 	oc.add_child(onward)
 	_stage_box.add_child(onward if false else oc)
@@ -622,7 +615,7 @@ func _stage_dossier() -> void:
 	reroll.text = "↻ Re-strike the opening"
 	reroll.pressed.connect(func():
 		_story = {}
-		_enter_stage(6))
+		_enter_stage(5))
 	row.add_child(reroll)
 	var begin := Button.new()
 	begin.theme_type_variation = "AccentButton"
