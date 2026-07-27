@@ -14,6 +14,8 @@ var _empty_retry := 0       # a silent reply gets one quiet second attempt
 const _GATE_MIN := 40       # visible chars to see before judging the language
 var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
+var _suggest: HFlowContainer = null   # contextual verbs above the input (R6 PLAY-04)
+var _suggest_plate: PanelContainer = null   # its backing, hidden with it
 var _conjuring := false
 var _gm_rt: RichTextLabel = null  # the bubble currently receiving tokens
 var _panel_mode := "sheet"  # what the right panel shows: sheet | codex
@@ -43,6 +45,11 @@ func _ready() -> void:
 	Api.sse_done.connect(_on_done)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
+	_build_suggestions()   # R6 PLAY-04 — verbs above the box, before the box is empty
+	# They depend on the mode (a fight has its own controls), and _render_sheet
+	# runs at boot BEFORE the mode settles on Exploration — so without this the
+	# row builds once, decides it is hidden, and never reconsiders.
+	Mode.changed.connect(func(_p, _n): _render_suggestions())
 	# The Sheet button opens THE MENU (the Record and its tabs) — the sidebar
 	# stays as the at-a-glance HUD, toggled with Ctrl+S.
 	var sheet_btn: Button = $Margin/Split/ChatBox/Input/SheetBtn
@@ -590,6 +597,80 @@ func _say_system(text: String, glyph := "") -> void:
 		row.add_child(l)
 		_thread.add_child(_sys_plate(row))
 	_scroll_bottom()
+
+
+## ── Suggested actions (R6 PLAY-04 / STR-02 / STR-03, all Critical) ──────────
+## The entire interaction model was one empty box captioned "What do you do?".
+## An experienced player fills it happily; a new one stares at it, and nothing on
+## screen tells them this is a game where "look behind the bar" is a legal move.
+## These are the smallest honest fix: a handful of verbs drawn from what is
+## ACTUALLY true right now — the place, its shop, a live quest, whoever travels
+## with you — that TYPE THEMSELVES INTO THE BOX rather than firing. The player
+## still writes the sentence and can edit it, so the freedom is intact and the
+## blank page is gone. They are suggestions, never a menu of the only options.
+func _build_suggestions() -> void:
+	_suggest = HFlowContainer.new()
+	_suggest.alignment = FlowContainer.ALIGNMENT_CENTER
+	_suggest.add_theme_constant_override("h_separation", Ui.SPACE["xs"])
+	_suggest.add_theme_constant_override("v_separation", Ui.SPACE["xs"])
+	# Same lesson as the system lines: ghost buttons over a bright painting are
+	# barely there. Give the row its own quiet plate so the verbs read.
+	var plate := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(Ui.c("night"), 0.55)
+	sb.set_corner_radius_all(Ui.RADIUS["s"])
+	sb.content_margin_left = Ui.SPACE["s"]
+	sb.content_margin_right = Ui.SPACE["s"]
+	sb.content_margin_top = 3
+	sb.content_margin_bottom = 3
+	plate.add_theme_stylebox_override("panel", sb)
+	plate.add_child(_suggest)
+	_suggest_plate = plate
+	var box: VBoxContainer = $Margin/Split/ChatBox
+	box.add_child(plate)
+	box.move_child(plate, $Margin/Split/ChatBox/Input.get_index())
+
+
+func _render_suggestions() -> void:
+	if _suggest == null or not is_instance_valid(_suggest):
+		return
+	for c in _suggest.get_children():
+		c.queue_free()
+	# Only in ordinary play: a fight has its own controls, and dialogue its own.
+	if _suggest_plate != null and is_instance_valid(_suggest_plate):
+		_suggest_plate.visible = Mode.state == "Exploration"
+	if Mode.state != "Exploration":
+		return
+	var world: Dictionary = GameState.state.get("world", {}) if GameState.state.get("world") is Dictionary else {}
+	var here := str(world.get("here", ""))
+	var acts: Array = []
+	acts.append(["Look around", "I look around, taking in the details."])
+	if here != "":
+		acts.append(["Search this place", "I search %s carefully for anything of interest." % here])
+		for l in Rules.world_locations(GameState.world_id()):
+			if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
+				acts.append(["Browse the wares", "I ask to see what the keeper has for sale."])
+				break
+	for q in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
+		if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			acts.append(["Ask about the task", "I ask around about %s." % str(q["title"])])
+			break
+	for cmp in GameState.sheet().get("companions", []):
+		if cmp is Dictionary and str(cmp.get("name", "")) != "":
+			acts.append(["Talk to %s" % str(cmp["name"]).split(" ")[0], "I turn to %s and speak with them." % str(cmp["name"])])
+			break
+	acts.append(["Press on", "I press on, and see where the road leads."])
+	for a in acts.slice(0, 5):
+		var b := Button.new()
+		b.theme_type_variation = "GhostButton"
+		b.text = str(a[0])
+		b.add_theme_font_size_override("font_size", 12)
+		b.tooltip_text = "Puts this in the box — edit it before you send."
+		b.pressed.connect(func():
+			_msg.text = str(a[1])
+			_msg.grab_focus()
+			_msg.caret_column = _msg.text.length())
+		_suggest.add_child(b)
 
 
 ## An ordinary drop, but the piece is SHOWN. R6 FUN-04/FUN-05: the bake put
@@ -2367,6 +2448,7 @@ func _apply_time_tint() -> void:
 ## The banner chips: time · weather · place · quest · party wounds.
 func _render_chips() -> void:
 	_apply_time_tint()
+	_render_suggestions()   # the verbs track the same state the chips do
 	var c: Dictionary = GameState.clock()
 	var bits: Array[String] = []
 	# R6 PLAY-01 / STR-04 — HP and purse led this row's absence: the two numbers
