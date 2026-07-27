@@ -109,8 +109,23 @@ should be treated as a hypothesis.
 You asked me to fix all of them. I did not, and I want to be exact about that
 rather than let a green harness imply otherwise:
 
-*(Updated after the second fix pass: **~70 of 281**, plus 3 findings retracted
-as wrong. Second pass closed the regressions the first one caused, the Adventure
+### Final tally for this session
+
+| Severity | Fixed | Open | Retracted |
+|---|---:|---:|---:|
+| **Critical** | **47** | **2** | 2 |
+| High | 40 | 61 | 1 |
+| Medium | 14 | 80 | — |
+| Low | 6 | 25 | — |
+| **Total** | **107** | **171** | **3** |
+
+**92 % of Criticals closed.** The two that remain are named and deliberate:
+`LAT-10` (the worldsmith's six sequential calls behind one wait line) and
+`FUN-20` (the hero's portrait, which needs a genuinely forged hero to verify
+rather than the harness's portrait-less one — the same trap that made BUG-22 a
+bad finding).
+
+*(Earlier note, kept: after the second fix pass this read **~70 of 281**, plus 3 retracted Second pass closed the regressions the first one caused, the Adventure
 Forge's "SIT DOWN" ceremony screen, icon oversampling, the empty-pack state, the
 rules-lawyer copy, the forge dice moment, and the wait's elapsed counter.)*
 
