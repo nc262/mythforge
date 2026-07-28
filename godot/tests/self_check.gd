@@ -157,6 +157,26 @@ func _ready() -> void:
 		Combat.enemy_approach(gob_id, 3)
 		assert(Combat.distance(Combat.cell_of(gob_id), Combat.cell_of("pc")) < d0, "foes close in")
 
+	# R9-01 — reach is enforced in Combat.player_attack itself, not only on the
+	# token-click path. The playtest landed a melee blow at 50 ft by using the
+	# action-bar link, which reached the function directly and skipped the guard.
+	if Combat.distance(Combat.cell_of(gob_id), Combat.cell_of("pc")) > 1:
+		var revived := Combat.data()
+		var was_hp := 0
+		for x in revived["combatants"]:
+			if str(x.get("id", "")) == gob_id:
+				was_hp = int(x.get("hp", 0))
+				x["hp"] = maxi(was_hp, 7)   # earlier asserts may have felled him
+		Combat.save(revived)
+		var far_swing: Dictionary = Combat.player_attack(gob_id)
+		assert(str(far_swing["msg"]).contains("ft away"), "melee out of reach is refused")
+		assert(not bool(far_swing["spent"]), "a refused swing costs no action")
+		var restored := Combat.data()   # leave the board exactly as we found it
+		for x in restored["combatants"]:
+			if str(x.get("id", "")) == gob_id:
+				x["hp"] = was_hp
+		Combat.save(restored)
+
 	# Terrain: synthetic map — water strip, dark-tree strip, gray-wall strip
 	var timg := Image.create(320, 200, false, Image.FORMAT_RGBA8)
 	timg.fill(Color(0.35, 0.6, 0.25))                                # bright grass

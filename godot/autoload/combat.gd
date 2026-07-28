@@ -186,6 +186,17 @@ func player_attack(target_id: String) -> Dictionary:
 			break
 	if foe.is_empty() or int(foe.get("hp", 0)) <= 0:
 		return {"msg": "", "fell": false, "won": false, "spent": true}
+	# R9-01 — reach. This guard already existed, but only on the token-click path
+	# (game.gd), so the action-bar "attack" link reached this function directly
+	# and landed a melee blow on a foe 50 ft away. A guard in the shared function
+	# covers every caller, including ones not written yet. Checked BEFORE the
+	# budget is spent: a swing you were never allowed to make costs nothing.
+	var reach_wpn := GameState.item_by_id(str(GameState.inv().get("equipped", {}).get("weapon", "")))
+	var reach_props := weapon_props(str(reach_wpn.get("name", "bare fists")) if not reach_wpn.is_empty() else "bare fists")
+	if not bool(reach_props["ranged"]) and not adjacent("pc", target_id):
+		return {"msg": "*The %s is %d ft away — move in, or ready a ranged weapon.*" % [
+			str(foe.get("name", "foe")), distance(cell_of("pc"), cell_of(target_id)) * FEET_PER_CELL],
+			"fell": false, "won": false, "spent": false}
 	var b := _budget(c)
 	if int(b.get("attacksLeft", 0)) <= 0:
 		return {"msg": "*Your action is spent — end your turn.*", "fell": false, "won": false, "spent": false}
