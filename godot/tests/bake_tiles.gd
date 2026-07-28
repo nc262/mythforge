@@ -9,6 +9,11 @@ extends Node
 ##   godot --path godot res://tests/bake_tiles.tscn -- <world> <variants>
 
 const OUT := "user://tiles"
+## A boulder is not a surface. Asking for "one large boulder, seamless tileable"
+## gave back a repeating pebble field — the tiling instruction won and turned the
+## object into wallpaper. These roles get the OPPOSITE prompt: one thing,
+## centred, whole, and explicitly not repeating.
+const OBJECTS := ["boulder", "wreck", "crates", "pillar", "statue", "table", "brazier", "firepit", "chasm"]
 const ALL_WORLDS := ["fimbulreach", "embervale", "brasshaven", "neonspire", "saltmarsh-reach", "everyday"]
 
 ## What each role should look like from directly overhead. Kept deliberately
@@ -36,34 +41,48 @@ const LOOK := {
 	"reeds": "dense marsh reeds",
 	"bog": "peat bog with dark standing water",
 	# impassable fills
-	"boulder": "one large rounded boulder filling the square",
+	"boulder": "large weathered granite boulder",
 	"outcrop": "bare fractured rock",
-	"chasm": "a black open fissure dropping into darkness",
+	"chasm": "jagged fissure opening into darkness",
 	"deep_water": "deep dark cold water",
 	"thicket": "dense dark evergreen foliage from above",
-	"wreck": "a splintered wooden wreck",
+	"wreck": "splintered wooden boat wreck",
 	# cover objects
-	"crates": "stacked wooden crates and barrels",
-	"pillar": "the top of a stone column",
-	"statue": "a weathered stone statue seen from above",
-	"table": "a heavy wooden table from above",
-	"brazier": "an iron brazier of burning coals",
+	"crates": "stack of wooden crates and a barrel",
+	"pillar": "broken stone column",
+	"statue": "weathered stone statue on a plinth",
+	"table": "heavy wooden trestle table",
+	"brazier": "iron brazier of burning coals",
 	"debris": "a heap of scattered debris",
 	# features
 	"stairs": "worn stone steps",
 	"bridge": "weathered plank bridge decking",
 	"shore_edge": "wet shingle where water meets land",
-	"firepit": "a ring of stones round a burning fire",
+	"firepit": "ring of stones round a burning campfire",
 
 }
 
 
 func _prompt(role: String, world: String, v: int) -> String:
+	var flavour := Art.world_flavor()
+	if role in OBJECTS:
+		# Lead with the CAMERA and the isolation, not the subject. "a single
+		# boulder ... no horizon" produced a scenic landscape photograph with a
+		# sky: the negatives sat at the tail and lost to the noun at the head.
+		# Naming it a game asset shot orthographically from above is what makes
+		# it an asset rather than a picture of a place.
+		return ("top-down orthographic game asset sprite, camera directly overhead "
+			+ "pointing straight down, single isolated %s centred on a plain flat "
+			+ "dark grey background, entire object inside the frame, %s style, "
+			+ "flat even studio light, no cast shadow, no ground, no landscape, "
+			+ "no horizon, no sky, no scenery, no perspective, not a photograph, "
+			+ "no repetition, no other objects, no text, variation %d") % [
+				str(LOOK[role]), flavour, v]
 	return ("seamless tileable top-down overhead texture of %s, %s, "
 		+ "photographed straight down, flat even ambient light, no shadows cast, "
 		+ "no horizon, no sky, no objects, no creatures, no grid, no text, "
 		+ "uniform detail across the whole square, variation %d") % [
-			str(LOOK[role]), Art.world_flavor_for(world) if Art.has_method("world_flavor_for") else Art.world_flavor(), v]
+			str(LOOK[role]), flavour, v]
 
 
 func _ready() -> void:
