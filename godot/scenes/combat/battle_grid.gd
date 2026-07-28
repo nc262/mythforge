@@ -9,6 +9,7 @@ signal cell_clicked(cell: Array)
 signal token_clicked(id: String)
 
 var map_key := ""  # Art cache key of the underlay ("" = scrimmed scene art)
+const TILE_VARIANTS := 4   # how many painted variants a role may have
 var _hover := [-1, -1]
 var _disp := {}        # id -> displayed pixel center (eases toward the square)
 var _hp_seen := {}     # id -> last hp, for damage/heal feedback
@@ -206,7 +207,12 @@ func _draw() -> void:
 			for y in Combat.MAP_ROWS:
 				var role := str(laid.get("%d,%d" % [x, y], ""))
 				var r := Rect2(Vector2(x * cs.x, y * cs.y), cs)
-				var tile := Art.texture_for("tile-%s-%s" % [role, wid])
+				# Variants keep a snowfield from reading as wallpaper. Chosen by
+				# position so the same square always wears the same tile.
+				var v: int = 1 + (abs(hash("%s%d,%d" % [role, x, y])) % TILE_VARIANTS)
+				var tile := Art.texture_for("tile-%s-%s-%d" % [role, wid, v])
+				if tile == null:
+					tile = Art.texture_for("tile-%s-%s-1" % [role, wid])
 				if tile != null:
 					draw_texture_rect(tile, r, false, Color(0.94, 0.92, 0.96))
 				else:

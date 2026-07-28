@@ -16,6 +16,7 @@ func _ready() -> void:
 	Combat.enter("Goblin")
 	Combat.ensure_positions()
 	var world := "fimbulreach"
+	GameState.character["world_id"] = world
 	for stencil in Combat.STENCILS:
 		var c := Combat.data()
 		c.erase("cells")

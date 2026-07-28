@@ -335,8 +335,17 @@ func offhand_followup(target_id: String, budget: Dictionary) -> Dictionary:
 ## Nudge a spawn seat off walls and occupied squares (reinforcements land
 ## after terrain bakes; original seating happens before it and stays put).
 func _free_seat(cell: Array, pos: Dictionary) -> Array:
-	for dy in MAP_ROWS:
-		var cand := [int(cell[0]), (int(cell[1]) + dy) % MAP_ROWS]
+	# R10 — search the whole board in rings, not just this column. A column-only
+	# scan strands a combatant on rock whenever its own column is solid, which
+	# is most of them in a cave.
+	var ring: Array = [[0, 0]]
+	for r in range(1, maxi(MAP_COLS, MAP_ROWS)):
+		for d in range(-r, r + 1):
+			ring.append_array([[d, -r], [d, r], [-r, d], [r, d]])
+	for off in ring:
+		var cand := [int(cell[0]) + int(off[0]), int(cell[1]) + int(off[1])]
+		if cand[0] < 0 or cand[0] >= MAP_COLS or cand[1] < 0 or cand[1] >= MAP_ROWS:
+			continue
 		if _impassable(cand):
 			continue
 		var taken := false
