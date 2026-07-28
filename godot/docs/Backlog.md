@@ -44,6 +44,25 @@ clipped off-screen since Round 5), three "take your seat" ceremony screens
 polish (copy, spacing, hover states, per-screen empty states), plus a known
 share that are of the wrong-finding class above.
 
+### Open from the R8 real-exe playtest (2026-07-28)
+
+Driving the shipped exe by hand found continuity bugs that three rounds of
+auditing and both harnesses missed — see [Playtest-R8.md](Playtest-R8.md).
+
+| # | Item | P | Effort |
+|---|------|---|--------|
+| R8-01 | **No CONTINUE ADVENTURE on the title** after a played session — the save exists but the Hall offers no way back; the player must re-walk the Adventure Forge | P1 | S |
+| R8-02 | **A banked hero's portrait does not follow them into a new adventure** — the seat keys off `hero-<cid>` and re-commissions a face the game already owns | P1 | S |
+| R8-03 | Opening turn still **60+ s** with the GPU freed and the reply cap live | P1 | M |
+| R8-04 | Quenching summary line is low-contrast grey over bright forge art | P3 | S |
+| R8-05 | `MythPortrait` has no empty state (empty ring while unpainted); `MythPlate` got one this session | P3 | S |
+
+**The bulk of the Director's playtest ask is still untested** and R8 says so
+explicitly: days 2–3, combat end to end (initiative, AC, crits, death saves,
+line of sight, cover), map plausibility, and the action-legality questions
+(*is there someone to sell to? is an enemy adjacent? is that spell learned?*).
+That list is a coverage gap, not a clean bill of health.
+
 ---
 
 # Backlog — the earlier deep dive (2026-07-18, updated 2026-07-22)
