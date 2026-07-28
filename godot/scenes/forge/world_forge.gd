@@ -31,6 +31,10 @@ const THEMES := [
 
 const Card := preload("res://ui/myth_choice_card.gd")
 const Fold := preload("res://ui/myth_fold.gd")
+## Preloaded rather than referenced by class_name: a brand-new global class is
+## not registered until Godot reimports, so the harness saw the forge fail to
+## parse. preload works the moment the file exists.
+const ForgeWait := preload("res://ui/myth_forge_wait.gd")
 
 var draft := {"name": "", "idea": "", "theme": {}, "fields": {}}
 var _forged: Dictionary = {}   # the smith's latest take, pre-seal
@@ -177,11 +181,10 @@ func _strike(refine: String) -> void:
 	_clear_stage()
 	_title_label("The Forging")
 	_busy = true
-	var wait := Label.new()
-	wait.theme_type_variation = "HintLabel"
-	wait.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	wait.text = "The smith works — the world takes shape (about a minute)…"
-	_stage_box.add_child(wait)
+	# R6 LAT-10 / R5 VIS-09 — six sequential LLM calls, two to three minutes, and
+	# the player used to get one static grey line that also under-promised at
+	# "about a minute". The smith narrates the work now, and counts the seconds.
+	_stage_box.add_child(ForgeWait.new())
 	var t: Dictionary = draft["theme"]
 	var idea := str(draft["idea"])
 	if idea == "":

@@ -111,6 +111,7 @@ func _ready() -> void:
 	Chronicle.reset()
 	# The campaign name already carries the world — never show the raw world_id.
 	$Margin/Split/ChatBox/Header.text = "✦ %s" % str(GameState.character.get("name", "?"))
+	_seat_the_hero()
 	Sfx.music(WorldSkin.music_for_id(GameState.world_id()))
 	# The world's key art is the room you sit in from the first breath.
 	#
@@ -597,6 +598,34 @@ func _say_system(text: String, glyph := "") -> void:
 		row.add_child(l)
 		_thread.add_child(_sys_plate(row))
 	_scroll_bottom()
+
+
+## R6 FUN-20 — the hero the player invented was never on screen while they
+## played them. The forge spends ten stages on a face, a voice and a history,
+## the portrait is commissioned and cached, and then the whole adventure showed
+## the campaign's NAME and nothing else; the only way to see your own character
+## was to open a modal. Seat them at the top of the tale, beside the title, and
+## repaint when the portrait lands (a freshly forged hero has none for ~25 s).
+func _seat_the_hero() -> void:
+	if not GameState.is_dm():
+		return   # a companion chat has its own face already
+	var header: Label = $Margin/Split/ChatBox/Header
+	var box: VBoxContainer = $Margin/Split/ChatBox
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", Ui.SPACE["s"])
+	box.add_child(row)
+	box.move_child(row, header.get_index())
+	var key := "hero-" + GameState.cid().validate_filename()
+	var face := MythPortrait.new(38, "gold", false)
+	face.set_portrait(Art.round_tex(key, 38), str(GameState.sheet().get("name", "?")).left(1).to_upper())
+	face.tooltip_text = "%s — open the Record" % str(GameState.sheet().get("name", "your hero"))
+	row.add_child(face)
+	header.reparent(row)
+	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	Art.art_ready.connect(func(k):
+		if str(k) == key and is_instance_valid(face):
+			face.set_portrait(Art.round_tex(key, 38), "")
+			Ui.pulse(face))
 
 
 ## ── Suggested actions (R6 PLAY-04 / STR-02 / STR-03, all Critical) ──────────
