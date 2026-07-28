@@ -194,8 +194,46 @@ func _draw() -> void:
 	draw_set_transform(_shake, 0.0, Vector2.ONE)  # the whole field shudders
 	var cs := _cell_size()
 	# ── The battlefield itself: painted underlay, framed and scrimmed ──
-	var under := Art.texture_for(map_key) if map_key != "" else null
-	if under == null:
+	# R10 — a laid battlefield draws itself cell by cell. Each square knows its
+	# own role, so the mechanical layer and the picture cannot drift apart the
+	# way a sampled painting always did. `tile-<role>-<world>` art replaces the
+	# flat tint as the bake lands; until then the tint IS the map, and it is
+	# legible, which is the whole point of proving the layout before the GPU.
+	var laid: Dictionary = Combat.data().get("cells", {}) if Combat.data().get("cells") is Dictionary else {}
+	if not laid.is_empty():
+		var wid := GameState.world_id()
+		for x in Combat.MAP_COLS:
+			for y in Combat.MAP_ROWS:
+				var role := str(laid.get("%d,%d" % [x, y], ""))
+				var r := Rect2(Vector2(x * cs.x, y * cs.y), cs)
+				var tile := Art.texture_for("tile-%s-%s" % [role, wid])
+				if tile != null:
+					draw_texture_rect(tile, r, false, Color(0.94, 0.92, 0.96))
+				else:
+					draw_rect(r, Color(Combat.ROLES.get(role, {}).get("tint", Color(0.18, 0.18, 0.2))))
+		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.06))
+		# The mechanical layer, stated rather than implied. Whether a square can
+		# be entered is the single most important fact on the board and it must
+		# never depend on telling one shade of grey from another — that was true
+		# of the flat tints and it will still be true once painted tiles land on
+		# top, so this overlay stays.
+		for x in Combat.MAP_COLS:
+			for y in Combat.MAP_ROWS:
+				var mr := Rect2(Vector2(x * cs.x, y * cs.y), cs)
+				if Combat._impassable([x, y]):
+					draw_rect(mr, Color(Ui.c("night"), 0.52))
+					draw_line(mr.position + Vector2(4, 4), mr.end - Vector2(4, 4), Color(Ui.c("ink_dim"), 0.5), 1.5)
+					draw_line(Vector2(mr.end.x - 4, mr.position.y + 4), Vector2(mr.position.x + 4, mr.end.y - 4), Color(Ui.c("ink_dim"), 0.5), 1.5)
+				elif Combat._difficult([x, y]):
+					var n := 3
+					for i in n:   # slow ground reads as a drag underfoot
+						var t := (i + 1.0) / (n + 1.0)
+						draw_line(mr.position + Vector2(mr.size.x * t, 0), mr.position + Vector2(0, mr.size.y * t),
+							Color(Ui.c("ink"), 0.16), 1.0)
+				if str(Combat.role_spec([x, y])["cover"]) != "none":
+					draw_circle(mr.position + mr.size * Vector2(0.86, 0.16), maxf(2.0, cs.x * 0.05), Color(0.45, 0.85, 0.45, 0.7))
+	var under := Art.texture_for(map_key) if map_key != "" and laid.is_empty() else null
+	if under == null and laid.is_empty():
 		under = Art.texture_for(GameState.world_id())
 	if under != null:
 		# Cover-fit the painting.
@@ -205,7 +243,7 @@ func _draw() -> void:
 		var offset := (Vector2(size.x, size.y) - draw_size) / 2.0
 		draw_texture_rect(under, Rect2(offset, draw_size), false, Color(0.92, 0.9, 0.95))
 		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.32))
-	else:
+	elif laid.is_empty():
 		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night2"), 0.7))
 	# Ornate board frame.
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.9), false, 3.0)
@@ -222,7 +260,36 @@ func _draw() -> void:
 		for key in Combat.reachable(pc_cell, int(budget["left"])):
 			var rxy := str(key).split(",")
 			draw_rect(Rect2(Vector2(int(rxy[0]) * cs.x, int(rxy[1]) * cs.y), cs), Color(Ui.c("gold"), 0.06))
-	# Terrain the engine recognizes, whispered onto the paint.
+	# R10 — borders. Walls are drawn ON the line between two squares, which is
+	# where they actually are. Procedural, not sprites: a wall is a thin strip
+	# with corner joins and generated art will never tile cleanly at that scale,
+	# while edges are exactly where a seam shows worst.
+	for key in Combat.edges():
+		var parts := str(key).split(",")
+		if parts.size() != 3:
+			continue
+		var ex := int(parts[0])
+		var ey := int(parts[1])
+		var horizontal: bool = str(parts[2]) == "N"
+		var a := Vector2(ex * cs.x, ey * cs.y)
+		var b := a + (Vector2(cs.x, 0) if horizontal else Vector2(0, cs.y))
+		var kind := str(Combat.edges()[key])
+		var spec: Dictionary = Combat.EDGE_KINDS.get(kind, {})
+		var solid: bool = not bool(spec.get("move", true))
+		var opaque: bool = not bool(spec.get("sight", true))
+		var col: Color = Ui.c("ink_dim") if solid else Color(Ui.c("gold"), 0.55)
+		if kind == "door_open":
+			col = Color(Ui.c("gold"), 0.75)
+		elif kind == "door_shut":
+			col = Ui.c("gold")
+		draw_line(a, b, Color(Ui.c("night"), 0.9), 7.0)   # a shadow so it reads on any tile
+		draw_line(a, b, col, 5.0 if solid else 3.0)
+		if not opaque and solid:                          # a window: you see, you do not pass
+			var mid := a.lerp(b, 0.5)
+			draw_line(a.lerp(mid, 0.55), b.lerp(mid, 0.55), Color(0.6, 0.85, 1.0, 0.85), 2.0)
+		if kind == "door_open":
+			draw_circle(a.lerp(b, 0.5), 3.0, Ui.c("gold"))
+	# Terrain the engine recognizes, whispered onto the paint (legacy sampler).
 	var terr: Dictionary = Combat.terrain()
 	for key in terr:
 		var kxy := str(key).split(",")

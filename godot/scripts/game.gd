@@ -1911,9 +1911,13 @@ func _render_combat() -> void:
 	if fighting:
 		Combat.ensure_positions()
 		var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
-		_battle_grid.map_key = Art.ensure_battle_map(here if here != "" else "a %s battlefield" % Art.world_flavor())
-		if Art.has_art(_battle_grid.map_key):
-			Combat.bake_terrain(Image.load_from_file(Art.path_for(_battle_grid.map_key)))
+		# R10 — the battlefield is LAID, not sampled. A stencil chosen from where
+		# the fiction says we are places ground, obstacles and walls; the world
+		# only decides which tiles dress it. Deterministic per fight, so a reload
+		# rebuilds the same field.
+		if Combat.data().get("cells") == null:
+			Combat.lay_battlefield(Combat.stencil_for(here), GameState.world_id(), int(c.get("round", 1)))
+		_battle_grid.map_key = ""
 	# The room darkens toward ember-red while steel is out — ONCE per state
 	# change. (This fired on every combat save: stacked tint tweens pumped
 	# the light and the music crossfade restarted constantly — the flicker.)

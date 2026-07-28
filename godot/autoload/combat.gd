@@ -337,7 +337,7 @@ func offhand_followup(target_id: String, budget: Dictionary) -> Dictionary:
 func _free_seat(cell: Array, pos: Dictionary) -> Array:
 	for dy in MAP_ROWS:
 		var cand := [int(cell[0]), (int(cell[1]) + dy) % MAP_ROWS]
-		if terrain_at(cand) == "block":
+		if _impassable(cand):
 			continue
 		var taken := false
 		for id in pos:
@@ -689,6 +689,62 @@ func bake_terrain(img: Image) -> void:
 	save(c)
 
 
+# ── R10: the tile roles a battlefield is built from ─────────────────────────
+## `move`: 1 normal · 2 difficult · 0 impassable. `los` false = fills the sight
+## line too (a pillar, a dense thicket). `tint` is the placeholder colour the
+## grid draws until the baked tile for this role+world exists — it is never the
+## shipping look, it is how we read the map before spending GPU hours.
+const ROLES := {
+	# open ground
+	"grass":      {"move": 1, "cover": "none", "los": true,  "tint": Color(0.58, 0.72, 0.47)},
+	"grass_wild": {"move": 1, "cover": "none", "los": true,  "tint": Color(0.63, 0.77, 0.49)},
+	"dirt":       {"move": 1, "cover": "none", "los": true,  "tint": Color(0.69, 0.58, 0.46)},
+	"sand":       {"move": 1, "cover": "none", "los": true,  "tint": Color(0.93, 0.84, 0.61)},
+	"snow":       {"move": 1, "cover": "none", "los": true,  "tint": Color(0.97, 0.97, 0.97)},
+	"ice":        {"move": 1, "cover": "none", "los": true,  "tint": Color(0.97, 0.97, 0.97)},
+	"stone_floor":{"move": 1, "cover": "none", "los": true,  "tint": Color(0.76, 0.74, 0.72)},
+	"wood_floor": {"move": 1, "cover": "none", "los": true,  "tint": Color(0.74, 0.58, 0.42)},
+	"cobble":     {"move": 1, "cover": "none", "los": true,  "tint": Color(0.69, 0.69, 0.67)},
+	"leaf_litter":{"move": 1, "cover": "none", "los": true,  "tint": Color(0.65, 0.58, 0.41)},
+	# difficult
+	"mud":        {"move": 2, "cover": "none", "los": true,  "tint": Color(0.61, 0.51, 0.39)},
+	"scree":      {"move": 2, "cover": "none", "los": true,  "tint": Color(0.79, 0.76, 0.70)},
+	"snowdrift":  {"move": 2, "cover": "none", "los": true,  "tint": Color(0.97, 0.97, 0.97)},
+	"undergrowth":{"move": 2, "cover": "half", "los": true,  "tint": Color(0.51, 0.69, 0.44)},
+	"shallows":   {"move": 2, "cover": "none", "los": true,  "tint": Color(0.58, 0.90, 0.97)},
+	"rubble":     {"move": 2, "cover": "half", "los": true,  "tint": Color(0.77, 0.72, 0.67)},
+	"reeds":      {"move": 2, "cover": "half", "los": true,  "tint": Color(0.69, 0.79, 0.51)},
+	"bog":        {"move": 2, "cover": "none", "los": true,  "tint": Color(0.55, 0.60, 0.46)},
+	# impassable fills
+	"boulder":    {"move": 0, "cover": "none", "los": false, "tint": Color(0.69, 0.67, 0.65)},
+	"outcrop":    {"move": 0, "cover": "none", "los": false, "tint": Color(0.63, 0.61, 0.60)},
+	"chasm":      {"move": 0, "cover": "none", "los": true,  "tint": Color(0.27, 0.27, 0.32)},
+	"deep_water": {"move": 0, "cover": "none", "los": true,  "tint": Color(0.39, 0.60, 0.83)},
+	"thicket":    {"move": 0, "cover": "none", "los": false, "tint": Color(0.39, 0.55, 0.37)},
+	"wreck":      {"move": 0, "cover": "none", "los": false, "tint": Color(0.67, 0.58, 0.51)},
+	# cover objects
+	"crates":     {"move": 0, "cover": "none", "los": false, "tint": Color(0.83, 0.65, 0.44)},
+	"pillar":     {"move": 0, "cover": "none", "los": false, "tint": Color(0.86, 0.84, 0.81)},
+	"statue":     {"move": 0, "cover": "none", "los": false, "tint": Color(0.79, 0.79, 0.76)},
+	"table":      {"move": 2, "cover": "half", "los": true,  "tint": Color(0.70, 0.55, 0.39)},
+	"brazier":    {"move": 0, "cover": "none", "los": true,  "tint": Color(0.97, 0.61, 0.37)},
+	"debris":     {"move": 2, "cover": "half", "los": true,  "tint": Color(0.69, 0.63, 0.58)},
+	# features
+	"stairs":     {"move": 1, "cover": "none", "los": true,  "tint": Color(0.83, 0.79, 0.74)},
+	"bridge":     {"move": 1, "cover": "none", "los": true,  "tint": Color(0.77, 0.61, 0.44)},
+	"shore_edge": {"move": 1, "cover": "none", "los": true,  "tint": Color(0.83, 0.77, 0.63)},
+	"firepit":    {"move": 0, "cover": "none", "los": true,  "tint": Color(0.77, 0.47, 0.34)},
+}
+
+
+func role_at(cell: Array) -> String:
+	return str(data().get("cells", {}).get("%d,%d" % [int(cell[0]), int(cell[1])], ""))
+
+
+func role_spec(cell: Array) -> Dictionary:
+	return ROLES.get(role_at(cell), {"move": 1, "cover": "none", "los": true, "tint": Color(0.2, 0.2, 0.22)})
+
+
 # ── R10: walls live on borders, not in squares ──────────────────────────────
 ## A wall is not a square you cannot stand in — it is a border you cannot cross.
 ## Modelling it as a cell fill eats a whole 5 ft square, makes rooms unbuildable
@@ -707,9 +763,10 @@ const EDGE_KINDS := {
 	"curtain":    {"move": true,  "sight": false, "cover": "none"},
 	"door_shut":  {"move": false, "sight": false, "cover": "none"},
 	"door_open":  {"move": true,  "sight": true,  "cover": "none"},
+	"cliff":      {"move": true,  "sight": true,  "cover": "half"},
 }
 ## Edges you can cross but not for free (vaulting a rail, scrambling a low wall).
-const EDGE_VAULT := ["low_wall", "railing", "fence"]
+const EDGE_VAULT := ["low_wall", "railing", "fence", "cliff"]
 
 
 func edges() -> Dictionary:
@@ -771,11 +828,37 @@ func _corner_open(a: Array, b: Array, what: String) -> bool:
 	return p1 or p2
 
 
+## Cell facts. A laid battlefield answers from its ROLE; a map still baked by
+## the old colour heuristic answers from its legacy kind, so both can coexist
+## while the tiles are poured.
+func _impassable(c: Array) -> bool:
+	var r := role_at(c)
+	if r != "":
+		return int(ROLES[r]["move"]) == 0
+	return terrain_at(c) == "block"
+
+
+func _difficult(c: Array) -> bool:
+	var r := role_at(c)
+	if r != "":
+		return int(ROLES[r]["move"]) == 2
+	return terrain_at(c) == "water"
+
+
+func _sees_through(c: Array) -> bool:
+	var r := role_at(c)
+	if r != "":
+		return bool(ROLES[r]["los"])
+	return terrain_at(c) != "block"
+
+
 ## Can a creature step from `a` to `b`? Destination passable, border passable,
 ## and (for diagonals) the corner not pinched between two walls.
 ## Replaces every `terrain_at(c) == "block"` movement test.
 func can_step(a: Array, b: Array) -> bool:
-	if terrain_at(b) == "block":
+	if int(b[0]) < 0 or int(b[0]) >= MAP_COLS or int(b[1]) < 0 or int(b[1]) >= MAP_ROWS:
+		return false
+	if _impassable(b):
 		return false
 	if int(a[0]) != int(b[0]) and int(a[1]) != int(b[1]):
 		return _corner_open(a, b, "move")
@@ -784,7 +867,7 @@ func can_step(a: Array, b: Array) -> bool:
 
 ## Movement cost of one step: difficult ground doubles, a vaulted border adds.
 func step_cost(a: Array, b: Array) -> int:
-	var cost := 2 if terrain_at(b) == "water" else 1
+	var cost := 2 if _difficult(b) else 1
 	if edge_between(a, b) in EDGE_VAULT:
 		cost += 1
 	return cost
@@ -813,7 +896,7 @@ func _los_pt(pa: Vector2, pb: Vector2, ca: Array, cb: Array) -> bool:
 		elif not _edge_allows(prev, cur, "sight"):
 			return false
 		# A pillar or dense thicket fills its square and the sight line with it.
-		if cur != ca and cur != cb and terrain_at(cur) == "block":
+		if cur != ca and cur != cb and not _sees_through(cur):
 			return false
 		prev = cur
 	return true
@@ -835,9 +918,204 @@ func cover_between(a: Array, b: Array) -> String:
 	return "half" if clear >= 2 else "three_quarters"
 
 
+# ── R10: laying the battlefield from a stencil ──────────────────────────────
+## A fight is built, not sampled. Each stencil is an archetype — a hall, a cave
+## mouth, a shore — that places ground, obstacles and BORDERS. The world only
+## decides which tiles dress it, so a cave in Fimbulreach and a cave in
+## Brasshaven share a shape and share nothing else. See docs/Terrain.md.
+const STENCILS := ["hall", "cave", "shore", "ridge", "street", "clearing"]
+
+## Which ground a world lays under each stencil. Falls back to the first entry.
+const WORLD_GROUND := {
+	"fimbulreach": {"open": "snow", "rough": "snowdrift", "floor": "wood_floor", "wall": "timber"},
+	"brasshaven": {"open": "cobble", "rough": "rubble", "floor": "stone_floor", "wall": "brass"},
+	"neonspire": {"open": "cobble", "rough": "debris", "floor": "stone_floor", "wall": "brass"},
+	"saltmarsh-reach": {"open": "mud", "rough": "reeds", "floor": "wood_floor", "wall": "timber"},
+	"everyday": {"open": "grass", "rough": "undergrowth", "floor": "wood_floor", "wall": "timber"},
+	"embervale": {"open": "grass", "rough": "undergrowth", "floor": "wood_floor", "wall": "timber"},
+}
+
+
+func _ground_for(world: String) -> Dictionary:
+	return WORLD_GROUND.get(world, WORLD_GROUND["embervale"])
+
+
+## Pick the stencil that matches where the fiction says we are.
+func stencil_for(place: String) -> String:
+	var p := place.to_lower()
+	for pair in [["hall", "hall|inn|tavern|keep|house|room|chamber|longhouse|mead"],
+			["cave", "cave|barrow|tomb|crypt|mine|tunnel|cellar|vault|deep"],
+			["shore", "shore|fjord|coast|beach|dock|harbou?r|river|lake|marsh"],
+			["ridge", "ridge|mountain|hill|cliff|pass|peak|crag|moor"],
+			["street", "street|market|square|town|city|quarter|road|bridge"]]:
+		if RegEx.create_from_string("(?i)" + str(pair[1])).search(p) != null:
+			return str(pair[0])
+	return "clearing"
+
+
+func _set_cell(t: Dictionary, x: int, y: int, role: String) -> void:
+	if x >= 0 and x < MAP_COLS and y >= 0 and y < MAP_ROWS:
+		t["%d,%d" % [x, y]] = role
+
+
+## Lay a battlefield: fills every cell with a role and hangs walls on borders.
+## Deterministic per (stencil, world, seed) so a reload rebuilds the same field.
+func lay_battlefield(stencil: String, world: String, seed_val := 0) -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("%s|%s|%d" % [stencil, world, seed_val])
+	var g := _ground_for(world)
+	var cells := {}
+	var edg := {}
+	for x in MAP_COLS:
+		for y in MAP_ROWS:
+			cells["%d,%d" % [x, y]] = str(g["open"])
+	match stencil:
+		"hall":
+			# A longhouse: four walls, a door on each long side, pillars down the
+			# middle, furniture to break the sight lines.
+			for x in MAP_COLS:
+				for y in MAP_ROWS:
+					cells["%d,%d" % [x, y]] = str(g["floor"])
+			for x in range(1, MAP_COLS - 1):
+				edg["%d,%d,N" % [x, 1]] = "wall"
+				edg["%d,%d,N" % [x, MAP_ROWS - 1]] = "wall"
+			for y in range(1, MAP_ROWS - 1):
+				edg["%d,%d,W" % [1, y]] = "wall"
+				edg["%d,%d,W" % [MAP_COLS - 1, y]] = "wall"
+			edg["%d,%d,N" % [4, 1]] = "door_shut"
+			edg["%d,%d,N" % [11, MAP_ROWS - 1]] = "door_open"
+			edg["%d,%d,W" % [1, 5]] = "window"
+			edg["%d,%d,W" % [MAP_COLS - 1, 4]] = "window"
+			for x in [4, 8, 12]:
+				_set_cell(cells, x, 3, "pillar")
+				_set_cell(cells, x, 6, "pillar")
+			_set_cell(cells, 7, 4, "firepit")
+			for i in 4:
+				_set_cell(cells, rng.randi_range(2, MAP_COLS - 3), rng.randi_range(2, MAP_ROWS - 3), "table")
+		"cave":
+			# Rock everywhere, then CARVE — two chambers joined by a passage, with
+			# a mouth to the west. Uniform noise reads as static; a cave has to
+			# have somewhere to stand and somewhere to come from.
+			for x in MAP_COLS:
+				for y in MAP_ROWS:
+					cells["%d,%d" % [x, y]] = "outcrop"
+			var rooms := [[2, 2, 5, 5], [9, 3, 5, 5]]
+			for r in rooms:
+				for x in range(int(r[0]), int(r[0]) + int(r[2])):
+					for y in range(int(r[1]), int(r[1]) + int(r[3])):
+						_set_cell(cells, x, y, "stone_floor")
+			for x in range(6, 10):                      # the passage between them
+				_set_cell(cells, x, 5, "stone_floor")
+				_set_cell(cells, x, 6, "stone_floor")
+			for x in range(0, 3):                       # the mouth, open to the west
+				_set_cell(cells, x, 4, "stone_floor")
+				_set_cell(cells, x, 5, "stone_floor")
+			# Dress it: fallen rock at the walls, a wet patch, one blocking spur.
+			for i in 6:
+				var bx: int = rng.randi_range(2, MAP_COLS - 3)
+				var by: int = rng.randi_range(2, MAP_ROWS - 3)
+				if str(cells.get("%d,%d" % [bx, by], "")) == "stone_floor":
+					cells["%d,%d" % [bx, by]] = "rubble" if rng.randf() < 0.6 else "boulder"
+			for i in 3:
+				var wx: int = rng.randi_range(10, MAP_COLS - 3)
+				var wy: int = rng.randi_range(4, MAP_ROWS - 3)
+				if str(cells.get("%d,%d" % [wx, wy], "")) == "stone_floor":
+					cells["%d,%d" % [wx, wy]] = str(g["rough"])
+		"shore":
+			var waterline := rng.randi_range(6, 7)
+			for x in MAP_COLS:
+				var wobble: int = waterline - int(rng.randf() < 0.35)
+				for y in MAP_ROWS:
+					if y > wobble + 1:
+						cells["%d,%d" % [x, y]] = "deep_water"
+					elif y > wobble:
+						cells["%d,%d" % [x, y]] = "shallows"
+					elif y == wobble:
+						cells["%d,%d" % [x, y]] = "shore_edge"
+					else:
+						cells["%d,%d" % [x, y]] = str(g["open"])
+			for i in 5:
+				_set_cell(cells, rng.randi_range(1, MAP_COLS - 2), rng.randi_range(0, 3), "boulder")
+			for x in range(6, 10):    # a jetty out over the water
+				_set_cell(cells, x, waterline + 1, "bridge")
+		"ridge":
+			for x in MAP_COLS:
+				for y in MAP_ROWS:
+					if y < 2 or (y < 3 and rng.randf() < 0.5):
+						cells["%d,%d" % [x, y]] = "outcrop"
+					elif rng.randf() < 0.16:
+						cells["%d,%d" % [x, y]] = "scree"
+					else:
+						cells["%d,%d" % [x, y]] = str(g["open"])
+			for x in range(2, MAP_COLS - 2):   # a drop you can descend but not climb
+				edg["%d,%d,N" % [x, 4]] = "cliff" if rng.randf() < 0.75 else ""
+			for i in 4:
+				_set_cell(cells, rng.randi_range(1, MAP_COLS - 2), rng.randi_range(5, MAP_ROWS - 2), "boulder")
+		"street":
+			for x in MAP_COLS:
+				for y in MAP_ROWS:
+					cells["%d,%d" % [x, y]] = str(g["open"])
+			# Buildings either side, a street down the middle.
+			for bx in [1, 6, 11]:
+				for x in range(bx, mini(bx + 3, MAP_COLS - 1)):
+					for y in [0, 1]:
+						cells["%d,%d" % [x, y]] = str(g["floor"])
+					edg["%d,%d,N" % [x, 2]] = "wall"
+				edg["%d,%d,W" % [bx, 0]] = "wall"
+				edg["%d,%d,W" % [bx, 1]] = "wall"
+			edg["%d,%d,N" % [7, 2]] = "door_open"
+			for i in 5:
+				_set_cell(cells, rng.randi_range(2, MAP_COLS - 3), rng.randi_range(4, MAP_ROWS - 2), "crates")
+			for i in 2:
+				_set_cell(cells, rng.randi_range(2, MAP_COLS - 3), rng.randi_range(4, MAP_ROWS - 2), "cart" if ROLES.has("cart") else "crates")
+		_:
+			# clearing — open ground, a treeline, scattered cover
+			for x in MAP_COLS:
+				for y in MAP_ROWS:
+					cells["%d,%d" % [x, y]] = str(g["open"])
+			for x in MAP_COLS:
+				if rng.randf() < 0.7:
+					cells["%d,0" % x] = "thicket"
+				if rng.randf() < 0.5:
+					cells["%d,%d" % [x, MAP_ROWS - 1]] = "thicket"
+			for i in 7:
+				_set_cell(cells, rng.randi_range(1, MAP_COLS - 2), rng.randi_range(1, MAP_ROWS - 2), str(g["rough"]))
+			for i in 3:
+				_set_cell(cells, rng.randi_range(2, MAP_COLS - 3), rng.randi_range(2, MAP_ROWS - 3), "boulder")
+	for k in edg.keys():
+		if str(edg[k]) == "":
+			edg.erase(k)
+	var c := data()
+	c["cells"] = cells
+	c["edges"] = edg
+	c["stencil"] = stencil
+	c.erase("terrain")   # the laid field replaces anything the old sampler left
+	save(c)
+	# Nobody starts inside a rock: shove any seated combatant to open ground.
+	var pos := positions()
+	var moved := false
+	for id in pos.keys():
+		if _impassable(pos[id]):
+			pos[id] = _free_seat(pos[id], pos)
+			moved = true
+	if moved:
+		save_positions(pos)
+
+
 ## True when the combatant stands in or beside foliage — ranged shots suffer.
 func in_cover(id: String) -> bool:
 	var cl := cell_of(id)
+	# R10 — a laid field answers from the square you stand in and the borders
+	# around it. The legacy sweep for a neighbouring "cover" cell stays for maps
+	# the old sampler baked.
+	if role_at(cl) != "":
+		if str(role_spec(cl)["cover"]) != "none":
+			return true
+		for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+			var kind := edge_between(cl, [int(cl[0]) + d[0], int(cl[1]) + d[1]])
+			if kind != "" and str(EDGE_KINDS.get(kind, {}).get("cover", "none")) != "none":
+				return true
+		return false
 	for d in [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]:
 		if terrain_at([int(cl[0]) + d[0], int(cl[1]) + d[1]]) == "cover":
 			return true
