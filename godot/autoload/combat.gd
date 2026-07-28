@@ -689,6 +689,152 @@ func bake_terrain(img: Image) -> void:
 	save(c)
 
 
+# ── R10: walls live on borders, not in squares ──────────────────────────────
+## A wall is not a square you cannot stand in — it is a border you cannot cross.
+## Modelling it as a cell fill eats a whole 5 ft square, makes rooms unbuildable
+## and makes corners meaningless. See docs/Terrain.md.
+##
+## Edges are stored on the NORTH and WEST side of a cell only, so every border
+## has exactly one owner and there is no duplicate to keep in sync.
+## Keys: "x,y,N" and "x,y,W".
+const EDGE_KINDS := {
+	"wall":       {"move": false, "sight": false, "cover": "none"},
+	"low_wall":   {"move": true,  "sight": true,  "cover": "half"},
+	"railing":    {"move": true,  "sight": true,  "cover": "half"},
+	"fence":      {"move": true,  "sight": true,  "cover": "half"},
+	"window":     {"move": false, "sight": true,  "cover": "three_quarters"},
+	"arrow_slit": {"move": false, "sight": true,  "cover": "three_quarters"},
+	"curtain":    {"move": true,  "sight": false, "cover": "none"},
+	"door_shut":  {"move": false, "sight": false, "cover": "none"},
+	"door_open":  {"move": true,  "sight": true,  "cover": "none"},
+}
+## Edges you can cross but not for free (vaulting a rail, scrambling a low wall).
+const EDGE_VAULT := ["low_wall", "railing", "fence"]
+
+
+func edges() -> Dictionary:
+	var e = data().get("edges", {})
+	return e if e is Dictionary else {}
+
+
+## The edge key shared by two orthogonally adjacent cells, or "" if they are not
+## orthogonal neighbours (diagonals cross no single border — see _corner_open).
+func edge_key(a: Array, b: Array) -> String:
+	var ax := int(a[0])
+	var ay := int(a[1])
+	var bx := int(b[0])
+	var by := int(b[1])
+	if ax == bx and by == ay - 1:
+		return "%d,%d,N" % [ax, ay]        # b is north of a → a's north edge
+	if ax == bx and by == ay + 1:
+		return "%d,%d,N" % [bx, by]        # a is north of b → b's north edge
+	if ay == by and bx == ax - 1:
+		return "%d,%d,W" % [ax, ay]        # b is west of a → a's west edge
+	if ay == by and bx == ax + 1:
+		return "%d,%d,W" % [bx, by]
+	return ""
+
+
+func edge_between(a: Array, b: Array) -> String:
+	var k := edge_key(a, b)
+	return str(edges().get(k, "")) if k != "" else ""
+
+
+func set_edge(a: Array, b: Array, kind: String) -> void:
+	var k := edge_key(a, b)
+	if k == "":
+		return
+	var c := data()
+	var e: Dictionary = c.get("edges", {})
+	if kind == "" or kind == "open":
+		e.erase(k)
+	else:
+		e[k] = kind
+	c["edges"] = e
+	save(c)
+
+
+func _edge_allows(a: Array, b: Array, what: String) -> bool:
+	var kind := edge_between(a, b)
+	if kind == "":
+		return true
+	return bool(EDGE_KINDS.get(kind, {}).get(what, true))
+
+
+## A diagonal step cuts a corner. 5e forbids it when BOTH orthogonal borders of
+## that corner are shut — otherwise walls leak diagonally at every corner.
+func _corner_open(a: Array, b: Array, what: String) -> bool:
+	var via1 := [int(b[0]), int(a[1])]
+	var via2 := [int(a[0]), int(b[1])]
+	var p1: bool = _edge_allows(a, via1, what) and _edge_allows(via1, b, what)
+	var p2: bool = _edge_allows(a, via2, what) and _edge_allows(via2, b, what)
+	return p1 or p2
+
+
+## Can a creature step from `a` to `b`? Destination passable, border passable,
+## and (for diagonals) the corner not pinched between two walls.
+## Replaces every `terrain_at(c) == "block"` movement test.
+func can_step(a: Array, b: Array) -> bool:
+	if terrain_at(b) == "block":
+		return false
+	if int(a[0]) != int(b[0]) and int(a[1]) != int(b[1]):
+		return _corner_open(a, b, "move")
+	return _edge_allows(a, b, "move")
+
+
+## Movement cost of one step: difficult ground doubles, a vaulted border adds.
+func step_cost(a: Array, b: Array) -> int:
+	var cost := 2 if terrain_at(b) == "water" else 1
+	if edge_between(a, b) in EDGE_VAULT:
+		cost += 1
+	return cost
+
+
+## Line of sight. Walks the segment between cell centres and stops at the first
+## border or filled square that blocks it. Endpoints are exempt: standing in
+## rubble gives you cover, it does not blind you.
+func has_los(a: Array, b: Array) -> bool:
+	return _los_pt(Vector2(int(a[0]) + 0.5, int(a[1]) + 0.5),
+		Vector2(int(b[0]) + 0.5, int(b[1]) + 0.5), a, b)
+
+
+func _los_pt(pa: Vector2, pb: Vector2, ca: Array, cb: Array) -> bool:
+	var steps := int(maxf(8.0, pa.distance_to(pb) * 12.0))
+	var prev := [int(floor(pa.x)), int(floor(pa.y))]
+	for i in range(1, steps + 1):
+		var p := pa.lerp(pb, float(i) / float(steps))
+		var cur := [int(floor(p.x)), int(floor(p.y))]
+		if cur == prev:
+			continue
+		var diagonal: bool = cur[0] != prev[0] and cur[1] != prev[1]
+		if diagonal:
+			if not _corner_open(prev, cur, "sight"):
+				return false
+		elif not _edge_allows(prev, cur, "sight"):
+			return false
+		# A pillar or dense thicket fills its square and the sight line with it.
+		if cur != ca and cur != cb and terrain_at(cur) == "block":
+			return false
+		prev = cur
+	return true
+
+
+## 5e's real cover rule, corner to corner: trace from the attacker to each
+## corner of the target's square. All four clear → none, most blocked →
+## three-quarters. Replaces "am I standing next to a bush".
+func cover_between(a: Array, b: Array) -> String:
+	if not has_los(a, b):
+		return "blocked"
+	var from := Vector2(int(a[0]) + 0.5, int(a[1]) + 0.5)
+	var clear := 0
+	for c in [Vector2(0.05, 0.05), Vector2(0.95, 0.05), Vector2(0.05, 0.95), Vector2(0.95, 0.95)]:
+		if _los_pt(from, Vector2(int(b[0]) + c.x, int(b[1]) + c.y), a, b):
+			clear += 1
+	if clear >= 4:
+		return "none"
+	return "half" if clear >= 2 else "three_quarters"
+
+
 ## True when the combatant stands in or beside foliage — ranged shots suffer.
 func in_cover(id: String) -> bool:
 	var cl := cell_of(id)
@@ -746,8 +892,19 @@ func distance(a: Array, b: Array) -> int:
 	return maxi(absi(int(a[0]) - int(b[0])), absi(int(a[1]) - int(b[1])))
 
 
+## "Next to" must mean REACHABLE, not merely neighbouring. Two cells either side
+## of a wall are not adjacent — no melee, no opportunity attack. Pure Chebyshev
+## distance would let a hero stab straight through a barrack wall. (R10)
 func adjacent(id_a: String, id_b: String) -> bool:
-	return distance(cell_of(id_a), cell_of(id_b)) <= 1
+	var a := cell_of(id_a)
+	var b := cell_of(id_b)
+	if distance(a, b) > 1:
+		return false
+	if a == b:
+		return true
+	if int(a[0]) != int(b[0]) and int(a[1]) != int(b[1]):
+		return _corner_open(a, b, "move")
+	return _edge_allows(a, b, "move")
 
 
 ## Hero speed in cells per round (heritage speed, 30 ft default).
@@ -763,24 +920,57 @@ func move_budget(c: Dictionary) -> Dictionary:
 	return c["_move"]
 
 
+## Every cell reachable from `from` within `budget`, mapped to what it costs to
+## get there. A flood that obeys borders and difficult ground.
+##
+## R10 — this replaces three separate `distance() <= left` tests (move_pc, the
+## grid's reachable-square glow, and the enemy's approach), every one of which
+## measured straight through walls. Reachability is a path question; Chebyshev
+## distance cannot answer it.
+func reachable(from: Array, budget: int) -> Dictionary:
+	var seen := {"%d,%d" % [int(from[0]), int(from[1])]: 0}
+	var frontier: Array = [[int(from[0]), int(from[1])]]
+	var blocked := {}
+	for id in positions():
+		var p: Array = positions()[id]
+		blocked["%d,%d" % [int(p[0]), int(p[1])]] = true
+	while not frontier.is_empty():
+		var cur: Array = frontier.pop_front()
+		var spent: int = seen["%d,%d" % [int(cur[0]), int(cur[1])]]
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				if dx == 0 and dy == 0:
+					continue
+				var nxt := [int(cur[0]) + dx, int(cur[1]) + dy]
+				if nxt[0] < 0 or nxt[0] >= MAP_COLS or nxt[1] < 0 or nxt[1] >= MAP_ROWS:
+					continue
+				if not can_step(cur, nxt):
+					continue
+				var k := "%d,%d" % [nxt[0], nxt[1]]
+				var cost: int = spent + step_cost(cur, nxt)
+				if cost > budget or (seen.has(k) and int(seen[k]) <= cost):
+					continue
+				seen[k] = cost
+				if not blocked.has(k):   # you may pass THROUGH nobody, so stop here
+					frontier.append(nxt)
+	seen.erase("%d,%d" % [int(from[0]), int(from[1])])
+	for k in blocked:
+		seen.erase(k)
+	return seen
+
+
 ## Move the hero if the cell is free and within budget. → true on success.
 func move_pc(to: Array) -> bool:
 	var c := data()
 	var pos := positions()
 	if int(to[0]) < 0 or int(to[0]) >= MAP_COLS or int(to[1]) < 0 or int(to[1]) >= MAP_ROWS:
 		return false
-	for id in pos:
-		if int(pos[id][0]) == int(to[0]) and int(pos[id][1]) == int(to[1]):
-			return false
-	if terrain_at(to) == "block":
-		return false
 	var budget := move_budget(c)
-	var cost := distance(cell_of("pc"), to)
-	if terrain_at(to) == "water":
-		cost *= 2  # ponytail: destination-based difficult terrain; per-step path costs later
-	if cost > int(budget["left"]):
-		return false
-	budget["left"] = int(budget["left"]) - cost
+	var routes := reachable(cell_of("pc"), int(budget["left"]))
+	var key := "%d,%d" % [int(to[0]), int(to[1])]
+	if not routes.has(key):
+		return false          # occupied, walled off, or further than the legs allow
+	budget["left"] = int(budget["left"]) - int(routes[key])
 	save(c)
 	pos["pc"] = [int(to[0]), int(to[1])]
 	save_positions(pos)
@@ -801,7 +991,9 @@ func enemy_approach(enemy_id: String, cells := 6) -> int:
 		var stepped := false
 		# Prefer the diagonal; sidestep along one axis around walls and bodies.
 		for step in [[int(e[0]) + dx, int(e[1]) + dy], [int(e[0]) + dx, int(e[1])], [int(e[0]), int(e[1]) + dy]]:
-			if (step[0] == int(e[0]) and step[1] == int(e[1])) or terrain_at(step) == "block":
+			# R10 — ask the border, not just the destination square. A greedy
+			# stepper that only checks `terrain_at` walks straight through walls.
+			if (step[0] == int(e[0]) and step[1] == int(e[1])) or not can_step(e, step):
 				continue
 			var taken := false
 			for id in pos:

@@ -217,10 +217,11 @@ func _draw() -> void:
 	var my_turn: bool = str(Combat.current(c).get("id", "")) == "pc"
 	# Reachable squares glow faint gold on your turn.
 	if my_turn and int(budget.get("left", 0)) > 0:
-		for x in Combat.MAP_COLS:
-			for y in Combat.MAP_ROWS:
-				if Combat.terrain_at([x, y]) != "block" and Combat.distance(pc_cell, [x, y]) <= int(budget["left"]):
-					draw_rect(Rect2(Vector2(x * cs.x, y * cs.y), cs), Color(Ui.c("gold"), 0.06))
+		# R10 — glow what you can actually WALK to. The old test was Chebyshev
+		# distance, which lit squares on the far side of a wall.
+		for key in Combat.reachable(pc_cell, int(budget["left"])):
+			var rxy := str(key).split(",")
+			draw_rect(Rect2(Vector2(int(rxy[0]) * cs.x, int(rxy[1]) * cs.y), cs), Color(Ui.c("gold"), 0.06))
 	# Terrain the engine recognizes, whispered onto the paint.
 	var terr: Dictionary = Combat.terrain()
 	for key in terr:

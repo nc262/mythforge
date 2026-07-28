@@ -189,6 +189,57 @@ func _ready() -> void:
 	assert(Combat.terrain_at([14, 9]) == "block", "gray reads as wall")
 	assert(Combat.terrain_at([6, 5]) == "", "open grass stays open")
 	assert(not Combat.move_pc([14, 9]), "walls refuse entry")
+
+	# ── R10: walls are borders, not squares ──────────────────────────────────
+	# Park the hero in open ground and wall off his eastern neighbour.
+	var epos := Combat.positions()
+	epos["pc"] = [3, 3]
+	Combat.save_positions(epos)
+	assert(Combat.can_step([3, 3], [4, 3]), "open border is passable")
+	assert(Combat.has_los([3, 3], [6, 3]), "open ground sees across")
+	Combat.set_edge([3, 3], [4, 3], "wall")
+	assert(not Combat.can_step([3, 3], [4, 3]), "a wall on the border stops the step")
+	assert(not Combat.has_los([3, 3], [6, 3]), "a wall on the border stops the eye")
+	assert(Combat.terrain_at([4, 3]) == "", "the square beyond a wall is still open ground")
+	# Corner-cutting: one wall leaves a diagonal open, two pinch it shut.
+	assert(Combat.can_step([3, 3], [4, 2]), "one wall still leaves a way round the corner")
+	Combat.set_edge([3, 3], [3, 2], "wall")
+	assert(not Combat.can_step([3, 3], [4, 2]), "two walls pinch the corner shut")
+	# A window stops the body but not the eye; a curtain does the reverse.
+	Combat.set_edge([3, 3], [4, 3], "window")
+	assert(not Combat.can_step([3, 3], [4, 3]), "you cannot walk through a window")
+	assert(Combat.has_los([3, 3], [6, 3]), "you can see through a window")
+	Combat.set_edge([3, 3], [4, 3], "curtain")
+	assert(Combat.can_step([3, 3], [4, 3]), "you can push through a curtain")
+	assert(not Combat.has_los([3, 3], [6, 3]), "you cannot see through a curtain")
+	# A door is stateful.
+	Combat.set_edge([3, 3], [4, 3], "door_shut")
+	assert(not Combat.can_step([3, 3], [4, 3]), "a shut door is a wall")
+	Combat.set_edge([3, 3], [4, 3], "door_open")
+	assert(Combat.can_step([3, 3], [4, 3]), "an open door is a doorway")
+	# Vaulting a rail costs extra; open ground does not.
+	Combat.set_edge([3, 3], [4, 3], "railing")
+	assert(Combat.step_cost([3, 3], [4, 3]) == Combat.step_cost([3, 3], [3, 4]) + 1, "vaulting costs")
+	# Reachability is a PATH question — a walled cell is unreachable however near.
+	Combat.set_edge([3, 3], [4, 3], "")
+	Combat.set_edge([3, 3], [3, 2], "")
+	for wy in Combat.MAP_ROWS:      # a full north-south wall down column 4/5
+		Combat.set_edge([4, wy], [5, wy], "wall")
+	var routes := Combat.reachable([3, 3], 6)
+	assert(routes.has("4,3"), "near side of the wall is reachable")
+	assert(not routes.has("5,3"), "far side of the wall is not, though it is 2 cells away")
+	assert(Combat.distance([3, 3], [5, 3]) == 2, "...and Chebyshev distance still says 2, which is the bug")
+	# Adjacency must mean REACHABLE: no stabbing through a wall.
+	var apos := Combat.positions()
+	apos["pc"] = [4, 3]
+	apos[gob_id] = [5, 3]
+	Combat.save_positions(apos)
+	assert(Combat.distance([4, 3], [5, 3]) == 1, "the two stand a square apart")
+	assert(not Combat.adjacent("pc", gob_id), "a wall between them is not adjacency")
+	assert(Combat.cover_between([4, 3], [7, 3]) == "blocked", "a wall is total cover")
+	for wy in Combat.MAP_ROWS:
+		Combat.set_edge([4, wy], [5, wy], "")
+	assert(Combat.adjacent("pc", gob_id), "with the wall gone they are adjacent again")
 	# Water costs double: fresh round, teleport beside the shore, wade in
 	for i in Combat.order(Combat.data()).size():
 		Combat.next_turn()
@@ -197,7 +248,13 @@ func _ready() -> void:
 	Combat.save_positions(pos_t)
 	var left0 := int(Combat.move_budget(Combat.data()).get("left", 0))
 	assert(Combat.move_pc([4, 9]), "wading is legal")
-	assert(int(Combat.move_budget(Combat.data()).get("left", 0)) == left0 - 4, "water doubles the cost")
+	# R10 — cost is now per STEP, not per destination. [6,9]→[5,9] is dry ground
+	# (1) and [5,9]→[4,9] enters the shallows (2), so wading two squares to the
+	# water's edge costs 3, not 4. The old model doubled the WHOLE distance
+	# whenever the destination happened to be wet, which charged you double for
+	# crossing dry land. (The previous code said as much: "destination-based
+	# difficult terrain; per-step path costs later".)
+	assert(int(Combat.move_budget(Combat.data()).get("left", 0)) == left0 - 3, "only the wet steps cost double")
 	assert(Combat.in_cover("pc") == false)
 	pos_t = Combat.positions()
 	pos_t["pc"] = [8, 8]
