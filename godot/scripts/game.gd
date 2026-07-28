@@ -509,7 +509,11 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 			(looks + (", " if looks != "" and brush != "" else "") + brush).strip_edges())
 	_build_dice_menu()
 	_render_sheet()
-	_say_system("%s the %s %s steps into the tale — HP %d, %d gold." % [nm, race, cls, int(s["hpMax"]), int(s["gold"])], "anvil")
+	# The world names its own coin (Fimbulreach counts silver, Neon Spire creds);
+	# this said "gold" regardless, so the opening line contradicted the purse chip
+	# two rows above it. Caught by playing a Norse world, not by a harness.
+	_say_system("%s the %s %s steps into the tale — HP %d, %d %s." % [
+		nm, race, cls, int(s["hpMax"]), int(s["gold"]), GameState.currency()], "anvil")
 	# The Campaign Forge already chose the GM's voice? Skip Session Zero and
 	# open the tale directly with the forged tone in force.
 	if GameState.state.get("gm") is Dictionary and not GameState.state.get("gm", {}).is_empty():

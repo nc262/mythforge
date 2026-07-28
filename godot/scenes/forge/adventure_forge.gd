@@ -121,7 +121,11 @@ func _stage_hero() -> void:
 				c.set_selected(c == card))
 		cards.append(card)
 		flow.add_child(card)
-	var forge_card := Card.new({"glyph": "anvil", "title": "Forge a Hero now", "body": "walk the anvil's eleven runes"})
+	# Counts the rail, rather than hard-coding it — the copy said "eleven runes"
+	# and was wrong the moment the Cold Anvil was deleted (caught by playing it,
+	# not by either harness).
+	var forge_card := Card.new({"glyph": "anvil", "title": "Forge a Hero now",
+		"body": "walk the anvil's %d runes" % preload("res://scenes/forge/character_forge.gd").STAGES.size()})
 	forge_card.pressed.connect(_spawn_char_forge)
 	flow.add_child(forge_card)
 	var later := Card.new({"glyph": "die", "title": "The tale provides", "body": "forge at the campfire when the story opens"})
