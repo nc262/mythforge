@@ -155,3 +155,30 @@ and dresses the fiction. Narration, not adjudication.
 5. Delete `bake_terrain()` and the colour heuristic.
 
 Steps 1–3 cost no GPU and are where the risk actually lives.
+
+## What the bake taught us
+
+Two prompt shapes, not one. Surfaces want *"seamless tileable top-down overhead
+texture of X"*. Objects want the opposite — asking for "one boulder, seamless
+tileable" returns a pebble field, because the tiling instruction wins and turns
+the object into wallpaper.
+
+Objects then failed twice more before working:
+
+- *"a single boulder … no horizon, no sky"* returned a **landscape photograph**,
+  mountains and sea included. The negatives sat at the tail and lost to the noun
+  at the head. Leading with the camera fixed it: *"top-down orthographic game
+  asset sprite, camera directly overhead pointing straight down, single isolated
+  X centred on a plain flat dark grey background"*.
+- **Tall objects still failed.** A statue came back as a wall plaque with a face;
+  a column came back as five scattered blocks; a table came back as decking that
+  reads as the `bridge` role. Overhead, a tall thing has no top face worth
+  seeing, so the model either tilts it upright or multiplies it to fill the
+  square. The squat objects — boulder, brazier, firepit, chasm, crates — had no
+  such trouble. **Rule: a top-down object tile must describe something squat or
+  fallen.** `pillar`, `statue` and `table` are now toppled.
+
+All three failures reported success in the log. The only thing that told them
+apart was opening the PNG — and at 64 px, the cell size that actually ships,
+some 1024 px "failures" read fine and one apparent success (`table`) read as the
+wrong role entirely. **Judge tiles at cell size, not at bake size.**

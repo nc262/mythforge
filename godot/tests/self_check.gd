@@ -177,18 +177,38 @@ func _ready() -> void:
 				x["hp"] = was_hp
 		Combat.save(restored)
 
-	# Terrain: synthetic map — water strip, dark-tree strip, gray-wall strip
-	var timg := Image.create(320, 200, false, Image.FORMAT_RGBA8)
-	timg.fill(Color(0.35, 0.6, 0.25))                                # bright grass
-	timg.fill_rect(Rect2i(0, 160, 100, 40), Color(0.2, 0.4, 0.9))    # water: cols 0-4, rows 8-9
-	timg.fill_rect(Rect2i(160, 160, 40, 40), Color(0.15, 0.3, 0.12)) # trees: cols 8-9, rows 8-9
-	timg.fill_rect(Rect2i(220, 160, 100, 40), Color(0.5, 0.5, 0.5))  # wall: cols 11-15, rows 8-9
-	Combat.bake_terrain(timg)
-	assert(Combat.terrain_at([1, 9]) == "water", "blue reads as water")
-	assert(Combat.terrain_at([8, 9]) == "cover", "dark green reads as cover")
-	assert(Combat.terrain_at([14, 9]) == "block", "gray reads as wall")
-	assert(Combat.terrain_at([6, 5]) == "", "open grass stays open")
-	assert(not Combat.move_pc([14, 9]), "walls refuse entry")
+	# Terrain: the engine lays the field. Every square gets a role, the same
+	# (stencil, world, seed) lays the same field twice, and a role means what
+	# ROLES says it means.
+	Combat.lay_battlefield("shore", "fimbulreach", 7)
+	var every_cell_laid := true
+	for x in Combat.MAP_COLS:
+		for y in Combat.MAP_ROWS:
+			if Combat.role_at([x, y]) == "":
+				every_cell_laid = false
+	assert(every_cell_laid, "a laid battlefield leaves no square without a role")
+	var first_lay: Dictionary = Combat.data().get("cells", {}).duplicate()
+	Combat.lay_battlefield("shore", "fimbulreach", 7)
+	assert(Combat.data().get("cells", {}) == first_lay, "the same seed lays the same field")
+
+	# Hand-place three roles and check the mechanics read them, not a colour.
+	var tc := Combat.data()
+	var tcells: Dictionary = tc["cells"]
+	tcells["1,9"] = "shallows"     # difficult
+	tcells["8,9"] = "thicket"      # impassable and sight-blocking
+	tcells["14,9"] = "crates"      # cover
+	tcells["6,5"] = "snow"         # plain open ground
+	Combat.save(tc)
+	assert(Combat._difficult([1, 9]), "shallows are difficult ground")
+	assert(Combat._impassable([8, 9]), "a thicket is impassable")
+	assert(not Combat._sees_through([8, 9]), "a thicket fills the sight line too")
+	assert(not Combat._impassable([6, 5]) and not Combat._difficult([6, 5]), "snow is open ground")
+	assert(not Combat.move_pc([8, 9]), "impassable squares refuse entry")
+
+	# The border tests below want plain ground, so clear the laid field.
+	var bare := Combat.data()
+	bare.erase("cells")
+	Combat.save(bare)
 
 	# ── R10: walls are borders, not squares ──────────────────────────────────
 	# Park the hero in open ground and wall off his eastern neighbour.
@@ -200,7 +220,7 @@ func _ready() -> void:
 	Combat.set_edge([3, 3], [4, 3], "wall")
 	assert(not Combat.can_step([3, 3], [4, 3]), "a wall on the border stops the step")
 	assert(not Combat.has_los([3, 3], [6, 3]), "a wall on the border stops the eye")
-	assert(Combat.terrain_at([4, 3]) == "", "the square beyond a wall is still open ground")
+	assert(not Combat._impassable([4, 3]), "the square beyond a wall is still open ground")
 	# Corner-cutting: one wall leaves a diagonal open, two pinch it shut.
 	assert(Combat.can_step([3, 3], [4, 2]), "one wall still leaves a way round the corner")
 	Combat.set_edge([3, 3], [3, 2], "wall")

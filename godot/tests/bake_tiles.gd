@@ -49,9 +49,14 @@ const LOOK := {
 	"wreck": "splintered wooden boat wreck",
 	# cover objects
 	"crates": "stack of wooden crates and a barrel",
-	"pillar": "broken stone column",
-	"statue": "weathered stone statue on a plinth",
-	"table": "heavy wooden trestle table",
+	# Tall things have no top face worth seeing. Asked for a standing column from
+	# directly above, the model either tilted it upright (a statue came back as a
+	# wall plaque, complete with a face) or multiplied it to fill the square (a
+	# table came back as decking, which reads as the bridge role). Squat objects
+	# — boulder, brazier, firepit — had no such trouble. So these lie down.
+	"pillar": "toppled stone column lying in broken sections",
+	"statue": "toppled stone statue lying flat among rubble",
+	"table": "overturned wooden table lying on its side",
 	"brazier": "iron brazier of burning coals",
 	"debris": "a heap of scattered debris",
 	# features

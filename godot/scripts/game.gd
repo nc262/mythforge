@@ -82,9 +82,6 @@ func _ready() -> void:
 	_battle_grid.cell_clicked.connect(_on_grid_move)
 	_battle_grid.token_clicked.connect(_on_grid_token)
 	Combat.changed.connect(_render_combat)
-	Art.art_ready.connect(func(k):
-		if Combat.active() and str(k) == str(_battle_grid.map_key):
-			Combat.bake_terrain(Image.load_from_file(Art.path_for(str(k)))))
 	GameState.leveled_up.connect(_level_up_ceremony)
 	_init_rail = HBoxContainer.new()
 	_init_rail.name = "InitRail"
@@ -1138,8 +1135,6 @@ func _apply_world_tags(tags: Array) -> void:
 					_say_system("The Lore Book records a new entry: %s." % lt)
 			"npc":
 				GameState.record_npc(a)  # a structured Character Resource (A4)
-			"terrain":
-				Combat.set_terrain_spec(a)  # the GM lays the battlefield
 			"relate":
 				GameState.relate(str(a.get("name", "")), int(str(a.get("bond", a.get("delta", "0"))).replace("+", "")), str(a.get("note", "")))
 			"time":
@@ -1835,10 +1830,12 @@ func _on_grid_move(cell: Array) -> void:
 	if Combat.move_pc(cell):
 		var left := int(Combat.move_budget(Combat.data()).get("left", 0))
 		_say_system("You move — %d ft of movement left." % (left * Combat.FEET_PER_CELL))
-	elif Combat.terrain_at(cell) == "block":
+	elif Combat._impassable(cell):
 		_say_system("Something solid stands there — no way through.")
 	else:
-		_say_system("Too far, or the square is taken.")
+		# A wall on the border refuses a square that looks open, so this can no
+		# longer claim "too far" and be sure of it.
+		_say_system("No way through from here — blocked, taken, or out of reach.")
 
 
 ## Click a foe's token: attack if you can reach it (melee adjacency or ranged).

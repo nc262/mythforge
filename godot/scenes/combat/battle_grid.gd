@@ -295,20 +295,9 @@ func _draw() -> void:
 			draw_line(a.lerp(mid, 0.55), b.lerp(mid, 0.55), Color(0.6, 0.85, 1.0, 0.85), 2.0)
 		if kind == "door_open":
 			draw_circle(a.lerp(b, 0.5), 3.0, Ui.c("gold"))
-	# Terrain the engine recognizes, whispered onto the paint (legacy sampler).
-	var terr: Dictionary = Combat.terrain()
-	for key in terr:
-		var kxy := str(key).split(",")
-		var tr := Rect2(Vector2(int(kxy[0]) * cs.x, int(kxy[1]) * cs.y), cs)
-		match str(terr[key]):
-			"block":
-				draw_rect(tr, Color(Ui.c("night"), 0.30))
-				draw_line(tr.position + Vector2(3, 3), tr.end - Vector2(3, 3), Color(Ui.c("danger"), 0.28), 1.0)
-				draw_line(Vector2(tr.end.x - 3, tr.position.y + 3), Vector2(tr.position.x + 3, tr.end.y - 3), Color(Ui.c("danger"), 0.28), 1.0)
-			"water":
-				draw_rect(tr, Color(0.3, 0.65, 0.95, 0.12))
-			"cover":
-				draw_circle(tr.position + Vector2(cs.x, cs.y) * 0.85, 3.0, Color(0.45, 0.8, 0.4, 0.65))
+	# (The legacy sampler's overlay lived here. The role overlay above says the
+	# same things from the laid field, so this was drawing a second, disagreeing
+	# opinion on top of the first — those red squares that matched nothing.)
 	# Whisper-thin grid — the painting shows through.
 	var grid_col := Color(Ui.c("ink"), 0.07)
 	for x in Combat.MAP_COLS + 1:

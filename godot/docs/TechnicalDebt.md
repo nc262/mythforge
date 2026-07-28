@@ -21,7 +21,8 @@ Deliberate shortcuts, each with its ceiling and upgrade path. (Grep
 Paying debt follows the same workflow as features: plan → document → land
 with a check. New shortcuts must add a row here in the same commit.
 
-- **Terrain sampler is a color heuristic** (combat.gd bake_terrain): misreads are possible on unusual palettes; flood guard drops any kind covering >45% of the board. Upgrade path: commission an LLM terrain layout alongside each battle map.
+- ~~**Terrain sampler is a color heuristic** (combat.gd bake_terrain)~~ — **paid, R10.** Deleted along with the `[[terrain]]` GM tag. `lay_battlefield()` builds the field from roles and the painting follows the field, so there is nothing left to misread. See [Terrain.md](Terrain.md).
+- **Object tiles carry an opaque dark-grey background**: a boulder tile pasted into a snowfield brings its own grey square. Squat objects that generated their own ground fringe (firepit, chasm) blend; the rest do not. Upgrade path: composite the object over the cell's ground role at draw time, or key the flat background out at bake time.
 - **Mode drift self-heal** (game.gd _can_fight): combat clicks force-enter Combat if a fight is active but the FSM drifted (RCA: fight started from Dialogue state locked every combat action, silently). Real fix is declaring Combat as a legal target from every in-game state.
 - **world_map still carries its own pan/zoom** (predates MythCamera): duplicate of ui/myth_camera.gd. Upgrade: adopt MythCamera in world_map.gd next time that file is touched.
 - **Both forges duplicate the ~60-line stage scaffold** (rail/title/nav/clear): extract a ForgeFlow base when a third staged experience appears.

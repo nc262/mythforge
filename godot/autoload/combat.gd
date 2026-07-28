@@ -620,82 +620,15 @@ const MAP_ROWS := 10
 const FEET_PER_CELL := 5
 
 
-# ── Terrain: the battle map's paint made mechanical ─────────────────────────
-## Cell kinds sampled from the generated map painting: "block" (buildings and
-## walls — impassable), "water" (difficult — double move cost), "cover"
-## (trees/foliage — +2 AC against ranged attacks and spells).
-## ponytail: color-heuristic sampling with a flood guard; upgrade path is an
-## LLM-authored terrain layout commissioned alongside the map.
-
-func terrain() -> Dictionary:
-	return data().get("terrain", {})
-
-
-func terrain_at(cell: Array) -> String:
-	return str(terrain().get("%d,%d" % [int(cell[0]), int(cell[1])], ""))
-
-
-## LLM-authored terrain: the GM lays the battlefield with [[terrain]] —
-## "block=3,4;5,2 water=8,8;9,8 cover=2,7". Authored cells override the
-## color-heuristic bake (they arrive first and bake_terrain won't re-bake).
-func set_terrain_spec(a: Dictionary) -> void:
-	var c := data()
-	if not bool(c.get("active", false)):
-		return
-	var t: Dictionary = c.get("terrain", {})
-	for kind in ["block", "water", "cover"]:
-		for pair in str(a.get(kind, "")).split(";", false):
-			var xy := pair.strip_edges().split(",")
-			if xy.size() == 2 and str(xy[0]).strip_edges().is_valid_int() and str(xy[1]).strip_edges().is_valid_int():
-				t["%d,%d" % [clampi(int(xy[0]), 0, MAP_COLS - 1), clampi(int(xy[1]), 0, MAP_ROWS - 1)]] = kind
-	# Occupied squares stay passable — the GM can't wall someone in place.
-	for p in positions().values():
-		t.erase("%d,%d" % [int(p[0]), int(p[1])])
-	c["terrain"] = t
-	save(c)
-
-
-## Sample the battle-map painting into the terrain grid. Bakes once per fight;
-## cells someone already stands on stay passable.
-func bake_terrain(img: Image) -> void:
-	var c := data()
-	if not bool(c.get("active", false)) or c.has("terrain") or img == null or img.is_empty():
-		return
-	img.convert(Image.FORMAT_RGBA8)
-	var cw := img.get_width() / float(MAP_COLS)
-	var ch := img.get_height() / float(MAP_ROWS)
-	var t := {}
-	var counts := {"block": 0, "water": 0, "cover": 0}
-	for x in MAP_COLS:
-		for y in MAP_ROWS:
-			var avg := Color(0, 0, 0)
-			for i in 9:  # 3×3 sample points per cell
-				avg += img.get_pixelv(Vector2i(
-					mini(img.get_width() - 1, int((x + 0.25 + 0.25 * (i % 3)) * cw)),
-					mini(img.get_height() - 1, int((y + 0.25 + 0.25 * int(i / 3.0)) * ch))))
-			avg /= 9.0
-			var luma := avg.get_luminance()
-			var kind := ""
-			if avg.b > avg.r * 1.12 and avg.b > avg.g * 1.04 and avg.s > 0.1:
-				kind = "water"
-			elif avg.g > avg.r * 1.06 and avg.g > avg.b * 1.15 and luma < 0.42:
-				kind = "cover"
-			elif avg.s < 0.14 and luma > 0.2 and luma < 0.78:
-				kind = "block"
-			if kind != "":
-				t["%d,%d" % [x, y]] = kind
-				counts[kind] += 1
-	# Flood guard: a kind claiming near half the board is the sampler lying.
-	for kind in counts:
-		if counts[kind] > int(MAP_COLS * MAP_ROWS * 0.45):
-			for k in t.keys():
-				if t[k] == kind:
-					t.erase(k)
-	# Occupied squares stay passable — nobody spawns inside a wall.
-	for p in positions().values():
-		t.erase("%d,%d" % [int(p[0]), int(p[1])])
-	c["terrain"] = t
-	save(c)
+# ── Terrain ─────────────────────────────────────────────────────────────────
+## Gone: `bake_terrain()` read the battle-map painting and guessed a cell kind
+## from its average colour. It could not work. A 3×3 colour average cannot tell
+## a snowfield from a stone wall, and the sampler stretched the whole image over
+## 16×10 while the renderer drew it cover-fit — so the mechanics described a
+## part of the picture that was never on screen. `lay_battlefield()` builds the
+## field from roles instead, and the painting follows the field.
+##
+## Gone with it: the `[[terrain]]` GM tag. The engine lays the ground now.
 
 
 # ── R10: the tile roles a battlefield is built from ─────────────────────────
@@ -837,28 +770,21 @@ func _corner_open(a: Array, b: Array, what: String) -> bool:
 	return p1 or p2
 
 
-## Cell facts. A laid battlefield answers from its ROLE; a map still baked by
-## the old colour heuristic answers from its legacy kind, so both can coexist
-## while the tiles are poured.
+## Cell facts, answered from the laid role. An unlaid cell — a fight saved
+## before R10 — is open ground: passable, plain, and see-through.
 func _impassable(c: Array) -> bool:
 	var r := role_at(c)
-	if r != "":
-		return int(ROLES[r]["move"]) == 0
-	return terrain_at(c) == "block"
+	return r != "" and int(ROLES[r]["move"]) == 0
 
 
 func _difficult(c: Array) -> bool:
 	var r := role_at(c)
-	if r != "":
-		return int(ROLES[r]["move"]) == 2
-	return terrain_at(c) == "water"
+	return r != "" and int(ROLES[r]["move"]) == 2
 
 
 func _sees_through(c: Array) -> bool:
 	var r := role_at(c)
-	if r != "":
-		return bool(ROLES[r]["los"])
-	return terrain_at(c) != "block"
+	return r == "" or bool(ROLES[r]["los"])
 
 
 ## Can a creature step from `a` to `b`? Destination passable, border passable,
@@ -1114,19 +1040,12 @@ func lay_battlefield(stencil: String, world: String, seed_val := 0) -> void:
 ## True when the combatant stands in or beside foliage — ranged shots suffer.
 func in_cover(id: String) -> bool:
 	var cl := cell_of(id)
-	# R10 — a laid field answers from the square you stand in and the borders
-	# around it. The legacy sweep for a neighbouring "cover" cell stays for maps
-	# the old sampler baked.
-	if role_at(cl) != "":
-		if str(role_spec(cl)["cover"]) != "none":
-			return true
-		for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
-			var kind := edge_between(cl, [int(cl[0]) + d[0], int(cl[1]) + d[1]])
-			if kind != "" and str(EDGE_KINDS.get(kind, {}).get("cover", "none")) != "none":
-				return true
-		return false
-	for d in [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]:
-		if terrain_at([int(cl[0]) + d[0], int(cl[1]) + d[1]]) == "cover":
+	# The square you stand in, and the borders around it.
+	if role_at(cl) != "" and str(role_spec(cl)["cover"]) != "none":
+		return true
+	for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+		var kind := edge_between(cl, [int(cl[0]) + d[0], int(cl[1]) + d[1]])
+		if kind != "" and str(EDGE_KINDS.get(kind, {}).get("cover", "none")) != "none":
 			return true
 	return false
 
