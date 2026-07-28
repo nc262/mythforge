@@ -182,3 +182,32 @@ All three failures reported success in the log. The only thing that told them
 apart was opening the PNG — and at 64 px, the cell size that actually ships,
 some 1024 px "failures" read fine and one apparent success (`table`) read as the
 wrong role entirely. **Judge tiles at cell size, not at bake size.**
+
+## RCA: the pour that could never finish
+
+The full pour ran for hours and stalled at ~434 tiles of 816. It was not slow —
+it was producing a tile every 17 s the whole time. It was being eaten.
+
+`art_cache.gd` is an LRU with a 700 MB budget. 816 tiles at ~1.6 MB is ~1.3 GB,
+so once the directory hit 700 MB every finished tile evicted an older one. Net
+growth went to zero and `has_art()` kept going false for evicted keys, so the
+wait loop could never reach 816. It would have run to its 6-hour timeout.
+
+Two things made this hard to see:
+
+- **The obvious metric lied.** Counting files showed +1 in three minutes, which
+  reads as "slow GPU". Counting *writes* in the same window showed 10. Growth
+  and production are different measurements, and only the second one was true.
+- **An early count was wrong in the other direction.** `grep -c '^tile-'` counts
+  the `.json` sidecars too, so 782 "tiles" was really 417 PNGs. That inflated
+  figure is why the pour looked nearly done when it was barely half.
+
+Collateral: before reaching equilibrium the pour evicted **every other painting
+in the game** — hero portraits, battle maps, item art. Eviction deletes the
+sidecar as well as the PNG, so regenerated art comes back with a fresh seed and
+a different face. That art is not recoverable.
+
+Fix: tiles are a fixed library that must be present all at once, which is the
+opposite of what an LRU is for. They now live in `user://tiles/`, outside the
+manifest and the budget, and are downsampled to 256 px on save — ~3x a grid cell
+and under 100 MB for the full set, against 1.3 GB at the raw 1024.

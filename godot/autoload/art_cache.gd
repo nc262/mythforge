@@ -47,12 +47,34 @@ var _manifest := {}
 var _manifest_loaded := false
 
 
+## Terrain tiles are a shipped asset library, not per-playthrough art, so they
+## live outside the LRU entirely.
+##
+## RCA (R10): the tile pour queued 753 tiles at ~1.6 MB each — ~1.3 GB against a
+## 700 MB budget. Every finished tile evicted an older one, so the pour ran for
+## hours at 17 s/tile with net zero growth and could never finish. Before it
+## reached that equilibrium it had evicted *every other painting in the game*:
+## hero portraits, battle maps, item art, all of it. LRU is right for art a
+## playthrough accumulates; it is wrong for a fixed library that must all be
+## present at once.
+const TILE_DIR := "user://tiles"
+const TILE_PX := 256
+
+
+func _is_tile(key: String) -> bool:
+	return key.begins_with("tile-")
+
+
+func _dir_for(key: String) -> String:
+	return TILE_DIR if _is_tile(key) else "user://art"
+
+
 func path_for(key: String) -> String:
-	return "user://art/%s.png" % key.validate_filename()
+	return "%s/%s.png" % [_dir_for(key), key.validate_filename()]
 
 
 func _meta_path(key: String) -> String:
-	return "user://art/%s.json" % key.validate_filename()
+	return "%s/%s.json" % [_dir_for(key), key.validate_filename()]
 
 
 func _load_manifest() -> void:
@@ -92,6 +114,8 @@ func _file_size(p: String) -> int:
 
 ## Record a freshly-generated asset in the manifest, then enforce the budget.
 func _note_asset(key: String) -> void:
+	if _is_tile(key):
+		return   # library asset — never evicted, never counted against the budget
 	_load_manifest()
 	_manifest[key] = {"size": _file_size(path_for(key)), "used": Time.get_unix_time_from_system()}
 	_save_manifest()
@@ -408,7 +432,12 @@ func _pump() -> void:
 		if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
 			_finish(key, false)
 			continue
-		DirAccess.make_dir_recursive_absolute("user://art")
+		# A tile is drawn into a ~75 px grid cell; SDXL hands back 1024. Keeping
+		# that is 13x oversampling and 1.3 GB of shipped assets for the full set.
+		# 256 is still ~3x the cell and brings the library under 100 MB.
+		if _is_tile(key) and img.get_width() > TILE_PX:
+			img.resize(TILE_PX, TILE_PX, Image.INTERPOLATE_LANCZOS)
+		DirAccess.make_dir_recursive_absolute(_dir_for(key))
 		# Write, then rename. Killed mid-save, a truncated PNG would still satisfy
 		# has_art() — and request() answers "already painted" from that check, so
 		# the key would never repaint again. Under a temp name it just isn't there.
