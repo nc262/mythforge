@@ -109,6 +109,12 @@ func _ready() -> void:
 	assert(Tags.detect_combat_start("Roll for initiative!") == "Enemy")
 	assert(Tags.detect_combat_start("An opportunity attack strikes at you") == "")
 	assert(Tags.detect_combat_start("You walk into the tavern.") == "")
+	# R8-07 — the player declaring an attack must open a fight. `figure` is on the
+	# GM-prose blacklist on purpose; a player naming it is intent, not a false hit.
+	assert(Tags.detect_player_attack("I draw my blade and attack the hooded figure.") == "Hooded Figure")
+	assert(Tags.detect_player_attack("I tear down the veils and charge the thing lurking in the corridor.") == "Thing")
+	assert(Tags.detect_player_attack("I look around, taking in the details.") == "")
+	assert(Tags.detect_player_attack("I ask the keeper about the road north.") == "")
 	# Tag: combat-start foes parse via check_from_tags path
 	var ct := Tags.parse('[[combat-start foes="goblin x3, goblin boss"]]')
 	assert(ct["tags"][0]["name"] == "combat-start" and str(ct["tags"][0]["attrs"]["foes"]).contains("x3"))

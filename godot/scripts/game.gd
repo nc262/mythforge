@@ -780,6 +780,14 @@ func _send(raw: String) -> void:
 	if not GameState.is_dm():
 		_stream(msg)  # companions get your words, not a rules envelope
 		return
+	# R8-07 — a fight the PLAYER starts is still a fight. Combat used to open only
+	# when the GM's own prose happened to match an attack verb, so declaring an
+	# attack got you narration and one loose d20 while the board never appeared.
+	# Open it here, before the GM answers, so it narrates into a live round.
+	if not Combat.active():
+		var declared := Tags.detect_player_attack(msg)
+		if declared != "":
+			_start_combat(declared)
 	_turns_since_tick += 1
 	if _turns_since_tick >= 3 and not Combat.active():
 		_turns_since_tick = 0

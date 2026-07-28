@@ -70,26 +70,26 @@ which controls actually work.
 | R8-33 | **The Cast never records who you've met.** Björn Salt-Tongue, Ingrid the Völva and the hooded figure all appeared across four days; none were captured. The web UI has this panel; the Godot client does not populate one | P1 | M |
 | R8-34 | **The portrait and the gear paper-doll are different people.** The round portrait and the full-body doll are separate diffusion renders with no shared seed or identity anchor, so the hero's face changes between two views of the same character. Compounds R8-24/R8-02 — three portrait defects from one habit: deriving the hero's likeness at the point of use instead of carrying one identity | P1 | L |
 | R8-31 | **The minimap is not a map** — reads as a random frozen pond: no key points, no labels, and **no marker for where the player is**; plus a grey panel over the mid-section sitting on top of the transcript (see R8-12). Decoration that costs legibility | P1 | M |
-| R8-07 | **The player cannot start a fight.** Combat triggers only on the GM's own prose (`tag_parser.gd:92`); three deliberate attacks in 14 turns produced narration and one d20, never initiative. `_foe_bad_re` also blacklists `figure`/`shape`/`form`, so the GM's usual name for an unrevealed enemy can never become a combatant. **This blocks the entire tactical layer** — grid, line of sight, cover, adjacency, death saves — from ever being reached | **P0** | L |
+| ~~R8-07~~ | ~~**The player cannot start a fight.**~~ — **fixed**: `Tags.detect_player_attack()` opens combat on the player's own declaration, before the GM answers, so it narrates into a live round. Deliberately skips `_foe_bad_re` (which blocks `figure`/`shape`/`form`) — that list guards against the GM's *incidental* nouns; "I attack X" is intent. Four assertions in `self_check.gd`. Old text: Combat triggers only on the GM's own prose (`tag_parser.gd:92`); three deliberate attacks in 14 turns produced narration and one d20, never initiative. `_foe_bad_re` also blacklists `figure`/`shape`/`form`, so the GM's usual name for an unrevealed enemy can never become a combatant. **This blocks the entire tactical layer** — grid, line of sight, cover, adjacency, death saves — from ever being reached | **P0** | L |
 | ~~R8-08~~ | ~~Short rest fires **at full HP** and silently burns the Hit Die~~ — **fixed**: third branch in `GameState.short_rest()`; unhurt, the hour passes and features recharge but the dice stay in hand. New assertion in `tests/playthrough.gd` | ✅ | S |
 | ~~R8-09~~ | ~~**Send while a turn is in flight is silently discarded**~~ — **fixed**: keeps the text, shakes the field, deny cue, and says *"The table is still speaking — your words are held, not lost."* | ✅ | S |
 | R8-10 | **Location continuity breaks across a long rest** — camped at the barrow-mound, woke in the mead-hall guest room with no travel | P1 | M |
 | R8-27 | **Turn latency 45–100 s**, measured five times. Still the dominant cost of play | P1 | L |
-| R8-28 | **No XP is ever awarded** — `0/100` after 14 turns, an attack and a quest start. Level-up is unreachable by play | P1 | M |
+| R8-28 | **No XP is ever awarded.** Traced: `award_xp` has exactly two callers — a `<xp>` tag from the GM, and `combat.gd:845` on foes slain. With combat unreachable (R8-07) the only reliable source never fired. **Fixing R8-07 should restore the main path**; whether checks/quests should also grant XP is a design call, not a bug | P1 | S |
 | R8-11 | Raw parser tags leak into prose — `[[Perception`, `[Active Perception]` rendered verbatim | P2 | S |
 | R8-12 | The minimap overlays the transcript and hides the left of every line it reaches | P2 | S |
 | R8-13 | The scene backdrop never changes — one plate across 4 days, 3 weather states, 4 locations | P2 | M |
 | R8-14 | The Atlas is decoration, not a map — no names, legend, compass, scale, roads or POIs; one unlabelled dot; a fjord drawn as scattered lakes | P2 | L |
-| R8-15 | **Sell offered with no buyer** — "Sell — 3 silver" inside a sealed barrow | P2 | S |
+| ~~R8-15~~ | ~~**Sell offered with no buyer**~~ — **fixed**: new `GameState.shop_here()` reuses the gate the shop system already had; the price still shows (worth knowing) but the item is disabled with "No one here is buying". Old text: — "Sell — 3 silver" inside a sealed barrow | P2 | S |
 | R8-16 | A level-1 Fighter has **no class features** — Powers shows only the Human heritage trait, mislabelled as a class feature and duplicated on Story | P2 | M |
 | R8-17 | Starting equipment is one weapon — no armour, shield, pack or rations | P2 | M |
 | R8-20 | Destiny labels overlap their nodes; four nodes all named "Gift of Growth" | P2 | S |
 | ~~R8-24~~ | ~~Play-screen hero ring stays empty while the same portrait renders on the sheet~~ — **fixed** with ~~R8-02~~: six readers rebuilt `"hero-" + cid`; new `Art.hero_key()` asks the hero for the key they were painted with, and `ensure_hero_portrait` returns early when that art exists, so an adventure no longer re-commissions a face we already own | ✅ | S |
 | R8-25 | Sleeping in a hostile place has no consequence — two rests in an opened barrow, hostile figure watching, nothing happened | P2 | M |
 | R8-26 | The GM invents consequences that never happened ("vitality lost in battle", no battle fought) | P2 | M |
-| R8-18 | "Armour Class 12 · 1 worn" counts a wielded weapon as worn | P3 | S |
+| ~~R8-18~~ | ~~"Armour Class 12 · 1 worn" counts a wielded weapon as worn~~ — **fixed**: hands hold, only the body wears | P3 | S |
 | R8-19 | Item icon contradicts the item — a "Shortblade" drawn as a cruciform arming sword | P3 | S |
-| R8-21 | Full HP renders as an alarm-red bar | P3 | S |
+| ~~R8-21~~ | ~~Full HP renders as an alarm-red bar~~ — **fixed**: `MythGauge.grade_by_fill` walks danger→gold with the fraction, so colour and value cannot disagree | P3 | S |
 | R8-22 | Skills / Powers / Story leave ~700px empty below a cramped top block | P3 | S |
 | R8-23 | Item context menu spawns clipped at the window edge and does not flip | P3 | S |
 | R8-29 | Time divider printed for the first long rest only | P4 | S |

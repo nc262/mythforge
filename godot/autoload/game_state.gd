@@ -848,6 +848,22 @@ func advance_time(steps := 1) -> Dictionary:
 	return c
 
 
+## Is there anyone HERE to trade with?
+##
+## R8-15 — the pack offered "Sell — 3 silver" inside a sealed barrow four days'
+## walk from the nearest keeper. The shop system already gates on a location
+## carrying a `shop`; the sell affordance simply never asked.
+func shop_here() -> bool:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var here := str(world.get("here", ""))
+	if here == "":
+		return false
+	for l in Rules.world_locations(world_id()):
+		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
+			return true
+	return false
+
+
 func clock_text() -> String:
 	var c := clock()
 	var wx := (", under " + str(c["wx"]["name"])) if c.get("wx") is Dictionary else ""

@@ -96,6 +96,40 @@ var _foe_adj_re := RegEx.create_from_string("(?i)^(?:sudden|nearby|massive|huge|
 var _foe_bad_re := RegEx.create_from_string("(?i)\\b(?:spell|strain|attack|attempt|effort|roll|save|check|throw|note|failure|failed|aid|magic|blow|strike|swing|turn|round|damage|scene|story|moment|option|chance|way|plan|idea|question|opportunity|reaction|advantage|disadvantage|initiative|inspiration|perception|surprise|condition|action|bonus|movement|challenge|threat|danger|risk|memory|thought|feeling|instinct|your|my|this|that|these|those|to|will|would|could|can|you|i|we|as|and|but|with|into|from|near|upon|while|when|where|here|there|is|are|was|were|has|have|had|air|wind|door|gate|voice|silence|tension|figure|shape|sound|noise|smell|shiver|chill|storm|world|ground|floor|shaft|entrance|wall|ceiling|corridor|chamber|doorway|realization)\\b")
 
 
+## The PLAYER declaring violence is also a combat start.
+##
+## R8-07 — `detect_combat_start` only ever listens to the GM, so nothing the
+## player typed could open a fight. In the R8 playtest three deliberate attacks
+## ("I attack the hooded figure", "I charge the thing in the corridor") produced
+## narration and a lone d20 and never once rolled initiative, which put the whole
+## tactical layer — board, line of sight, cover, adjacency — out of reach.
+##
+## Deliberately does NOT apply `_foe_bad_re`. That blacklist exists to stop the
+## GM's *incidental* nouns ("an opportunity attack", "a sudden chill") becoming
+## combatants; it also blocks `figure`, `shape` and `form`, which are exactly
+## what a player calls a foe they cannot see yet. "I attack X" is a declaration
+## of intent, not a guess about prose — take the player at their word.
+var _player_atk_re := RegEx.create_from_string(
+	"(?i)\\bI\\s+(?:\\w+\\s+){0,6}?(?:attack|strike|stab|slash|swing at|lunge at|charge|shoot|loose an arrow at|fire at)\\s+(?:at\\s+)?(?:the|a|an|my|his|her|its|their)?\\s*([a-z][a-z' -]{2,32})")
+
+
+func detect_player_attack(text: String) -> String:
+	if text == "":
+		return ""
+	var m := _player_atk_re.search(text)
+	if m == null:
+		return ""
+	var who := _foe_adj_re.sub(m.get_string(1).strip_edges(), "").strip_edges()
+	# Trailing clause ("the figure lurking in the corridor") — keep the head noun.
+	for tail in [" lurking", " standing", " waiting", " that ", " who ", " which ", " with ", " in ", " near ", " by "]:
+		var cut := who.findn(tail)
+		if cut > 0:
+			who = who.substr(0, cut).strip_edges()
+	if who == "" or who.split(" ").size() > 4:
+		return "Enemy"
+	return who.capitalize()
+
+
 func detect_combat_start(text: String) -> String:
 	if text == "":
 		return ""

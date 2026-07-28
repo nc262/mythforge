@@ -223,6 +223,7 @@ func _hero_panel() -> Control:
 	var lvl := int(s.get("level", 1))
 	# MythGauge appends "v / m" itself — a bare caption, or HP prints twice.
 	var hp := MythGauge.new("HP", "danger")
+	hp.grade_by_fill = true   # R8-21 — full HP must not read as an alarm
 	hp.custom_minimum_size = Vector2(0, 20)
 	hp.set_value(float(s.get("hp", 10)), float(s.get("hpMax", 10)))
 	col.add_child(hp)
@@ -519,9 +520,13 @@ func _refill_gear() -> void:
 	var bc := CenterContainer.new()
 	bc.add_child(bottom)
 	_gear_host.add_child(bc)
+	# R8-18 — this counted a wielded blade as "worn", so an unarmoured hero with
+	# one sword read "Armor Class 12 · 1 worn" while the Armour slot said "—".
+	# Hands hold; only the body wears.
+	var held := ["main", "off", "shield", "mainhand", "offhand"]
 	var worn := 0
 	for k in inv.get("equipped", {}):
-		if str(inv["equipped"][k]) != "":
+		if str(inv["equipped"][k]) != "" and not (str(k).to_lower() in held):
 			worn += 1
 	var stat := Label.new()
 	stat.theme_type_variation = "HintLabel"
@@ -653,7 +658,14 @@ func _pack_menu(p: Dictionary) -> void:
 	var menu := PopupMenu.new()
 	menu.add_item("Unequip" if worn else "Equip", 0)
 	menu.add_item("Inspect", 1)
+	# R8-15 — offering a sale with nobody to sell to. Show the price either way
+	# (it is useful to know what a thing is worth), but only let it happen where
+	# a keeper actually stands.
+	var buyer := GameState.shop_here()
 	menu.add_item("Sell — %d %s" % [Rules.sell_value(str(p.get("rarity", "common"))), GameState.currency()], 2)
+	if not buyer:
+		menu.set_item_disabled(2, true)
+		menu.set_item_tooltip(2, "No one here is buying — find a keeper first.")
 	if str(p.get("type", "gear")) == "gear":
 		menu.set_item_disabled(0, true)
 	menu.id_pressed.connect(func(id):
