@@ -529,7 +529,28 @@ func forget(key: String) -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(_meta_path(key)))
 
 
+## The key the hero's face ACTUALLY lives under.
+##
+## Six readers used to rebuild `"hero-" + cid` at the point of use. A hero banked
+## in one adventure and played in another owns art under the key they were
+## painted with, so the rebuilt key names a file that does not exist: the ring
+## renders empty and the game re-commissions a portrait it already owns.
+## (R8-02 / R8-24 — the same root cause as F-01. Ask the hero, don't guess.)
+func hero_key() -> String:
+	var stored := str(GameState.sheet().get("portrait_key", ""))
+	# `heroprev` is the forge's SHARED scratch key — a hero pinned to it would
+	# wear the next-forged hero's face. Never honour it.
+	if stored != "" and stored != "heroprev" and has_art(stored):
+		return stored
+	return "hero-" + GameState.cid().validate_filename()
+
+
 func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
+	# Already painted under a carried key? Then there is nothing to commission —
+	# this is what used to burn a GPU render per adventure for a face we own.
+	var stored := str(sheet.get("portrait_key", ""))
+	if stored != "" and stored != "heroprev" and has_art(stored):
+		return
 	ensure("hero-" + cid.validate_filename(),
 		"character portrait of %s, a %s %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
 			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")),
@@ -568,7 +589,7 @@ func item_tex_for(it: Dictionary) -> Texture2D:
 func combatant_tex(m: Dictionary) -> Texture2D:
 	var id := str(m.get("id", ""))
 	if id == "pc":
-		return round_tex("hero-" + GameState.cid().validate_filename())
+		return round_tex(hero_key())
 	if id.begins_with("cmp"):
 		return round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))
 	var entry := Combat.bestiary_for(str(m.get("name", "")))

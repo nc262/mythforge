@@ -141,6 +141,15 @@ func _ready() -> void:
 	GameState.apply_hp(-10)
 	var sr: Dictionary = GameState.short_rest()
 	_ok("short rest spends a Hit Die", int(GameState.sheet()["hitDiceUsed"]) == 1 and str(sr["note"]).contains("short rest"))
+	# R8-08 — resting unhurt must NOT burn a die. The playtest spent the hero's
+	# only Hit Die at 12/12 for nothing, and a level-1 hero owns exactly one.
+	var full := GameState.sheet()
+	full["hp"] = int(full["hpMax"])
+	GameState.set_sheet(full)
+	var spent_before := int(GameState.sheet()["hitDiceUsed"])
+	var sr_full: Dictionary = GameState.short_rest()
+	_ok("resting at full HP keeps the Hit Die",
+		int(GameState.sheet()["hitDiceUsed"]) == spent_before and str(sr_full["note"]).contains("keep your Hit Dice"))
 	var lr: Dictionary = GameState.long_rest()
 	var s_after := GameState.sheet()
 	var slots_back: bool = int(s_after["slots"]["1"]["used"]) == 0

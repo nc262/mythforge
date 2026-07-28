@@ -83,19 +83,42 @@ Measured, not inferred:
 - Restore the window and Destiny works, Atlas works, **Chronicle and The Table
   still do not.** The dead span shrinks with the window but never closes.
 
-**Root cause:** the sheet's content is laid out wider than its `AcceptDialog`
-window, so the rightmost tabs render outside the window's input rect —
-drawn, but unclickable. `min_size = Vector2i(1280, 820)`
-([:50](../scenes/ui/character_screen.gd#L50)) against a nine-tab rail.
+**Root cause: still unknown — and my first answer was wrong.**
 
-This is a **known-recurring bug that was declared fixed and is not.** The comment
-at [:89–93](../scenes/ui/character_screen.gd#L89) records the same diagnosis —
-"nine fixed 126px tabs ran the rail to 1166px and pushed Chronicle/The Table past
-the window edge, mouse-unreachable" — and the mitigation applied (font 14,
-tighter padding) only *narrowed* the overflow. Shrinking the type treats the
-symptom; the rail still isn't constrained to the window.
+I originally recorded this as "content laid out wider than the window, so the
+rightmost tabs render outside the input rect", by analogy with the comment at
+[:89–93](../scenes/ui/character_screen.gd#L89). I then wrote an in-engine probe
+to confirm it, and **the probe disproved it.** What was ruled out:
 
-**Cost:** chapter close, the chronicle, and the tone knobs are dead content.
+- **Geometry is clean.** Every tab sits inside the window. The rail spans
+  x 390…1250 in a 1272-wide dialog; overflow is **0.0 px**, at both the default
+  size and maximised (2560×2054 → viewport 1280×1027, dialog 1272×1019).
+- **Nothing covers them.** Walking the tree at each tab's centre returns the
+  identical ancestor chain for Gear, Destiny and Chronicle — MarginContainer →
+  HBox → VBox → rail → Button — with no overlay and no extra `MOUSE_FILTER_STOP`
+  control in the way. `MythEnvironment` is `MOUSE_FILTER_IGNORE`.
+- **It does not reproduce in a probe scene.** The failure needs the real running
+  game; a freshly-instantiated sheet behaves.
+
+What the measurements *do* pin down: the dead zone begins **exactly at a tab's
+left edge** in both window sizes — logical x = 870 (Destiny) maximised, x = 1062
+(Chronicle) restored — and the live span of the rail *shrinks* as the window
+*grows* (480 px live maximised vs 672 px restored, in the same 1280-wide
+viewport). A geometric overflow cannot produce that inversion.
+
+**Not fixed.** I will not ship a speculative fix for this; the probe already
+caught one confident wrong answer and a second would be worse than none. The
+next step is an in-game probe against the live scene (warp the cursor along the
+rail and log `gui_get_hovered_control()` from inside a real session), not more
+static reading.
+
+**Cost meanwhile:** chapter close, the chronicle and the tone knobs are dead
+content via the rail. They remain reachable from the **More** menu, which opens
+the sheet directly on a page (`_open_character_screen("Chronicle")`,
+[game.gd:1593](../scripts/game.gd#L1593)) — a workaround, not a fix.
+
+**Harness note.** `click_driver` prints *"every station clickable, nothing
+covered or lost"* on this exact build. It walks stations, not tab rails.
 
 ### R8-07 — the player cannot start a fight
 
@@ -153,6 +176,32 @@ could not reach combat at all. The tactical layer exists in the codebase
 | R8-28 | **No XP is ever awarded.** Still `0 / 100` after fourteen turns including an attack, a quest start and four days. Level-up is therefore unreachable by play. | Med |
 | R8-29 | The first long rest printed a "Dusk, day 1" time divider; later ones printed none. | Low |
 | R8-30 | Each long rest consumes a full dawn-to-dawn day, so two rests took Day 2 → Day 4 and Day 3's daylight never existed. There is no way to rest without losing a day. | Low |
+
+## 4b. Director's own observations (2026-07-28)
+
+Watching the session back, the Director added four. All are real and none were
+in my list as stated:
+
+| # | Finding | Sev |
+|---|---------|-----|
+| R8-31 | **The minimap is not a map.** It reads as a random frozen pond: no key points, no labels, and — the part I missed — **no marker for where the player is**. Add to that the darker grey panel over the mid-section that sits on top of the transcript (R8-12). Together these make it decoration that actively costs legibility. | **High** |
+| R8-32 | **There is still a second, working game UI at `localhost:7000`** — and in several respects it is *better* than the Godot client. From the Director's screenshots it has: **Continue** on the title (R8-01, already solved there), **Cast — who you've met**, **Chronicle**, **Party — play with friends**, **Trade at The Ember & Oak** (a real merchant entry point — R8-15), a drag-to-arrange pack with **Load 7.5/23** and slot count, an inline dice tray (d20…d4, `+ mod`, `Check`), **Combat**, **Map**, **Lore**, **Tune the GM**, **Scene backdrop**, **Campaign memory**, **Private notes**, **Save a snapshot**. **We are maintaining two front-ends and the older one is ahead on features.** This needs an explicit decision — port, retire, or declare the web UI the product — not drift. | **P0 decision** |
+| R8-33 | **The Cast never updates with who you've met.** Björn Salt-Tongue, Ingrid the Völva and the hooded figure all appeared in play over four days; none were recorded. The web UI has a "Cast — who you've met" panel; the Godot client does not populate one. | **High** |
+| R8-34 | **The portrait and the gear paper-doll are different people.** The round portrait and the full-body doll render are commissioned from separate prompts with no shared seed or identity anchor, so the hero's face changes between the two views of the same character. | **High** |
+
+R8-34 compounds R8-24 and R8-02: three separate portrait defects, all from the
+same habit of **deriving the hero's likeness at the point of use** instead of
+carrying one identity. R8-24/R8-02 are fixed below; R8-34 is not — matching two
+diffusion renders needs a shared seed and a locked identity prompt, which is a
+real piece of work, not a lookup change.
+
+## 4c. Fixed in this pass
+
+| # | Fix |
+|---|-----|
+| R8-08 | **Short rest no longer burns a Hit Die at full HP.** `GameState.short_rest()` now has a third branch: unhurt, the hour still passes and features still recharge, but the dice stay in hand. A level-1 hero owns exactly one. Covered by a new assertion in `tests/playthrough.gd`. |
+| R8-09 | **Send while a turn is in flight no longer fails silently.** It keeps your text, shakes the field, plays the deny cue and says so: *"The table is still speaking — your words are held, not lost."* |
+| R8-24 / R8-02 | **One answer for the hero's face.** Six readers rebuilt `"hero-" + cid` at the point of use; a hero banked in one adventure and played in another owns art under the key they were *painted* with, so the rebuilt key named a file that does not exist — empty ring, and a fresh GPU render of a portrait already owned. New `Art.hero_key()` asks the hero. `ensure_hero_portrait` now returns early when the carried art exists, so an adventure no longer re-commissions a face we have. |
 
 ## 5. Still not tested — and why
 

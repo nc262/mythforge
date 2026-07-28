@@ -619,7 +619,10 @@ func _seat_the_hero() -> void:
 	row.add_theme_constant_override("separation", Ui.SPACE["s"])
 	box.add_child(row)
 	box.move_child(row, header.get_index())
-	var key := "hero-" + GameState.cid().validate_filename()
+	# R8-24 — the ring rendered empty while the SAME face rendered fine on the
+	# Record, because this rebuilt `hero-<cid>` instead of asking for the key the
+	# hero carries. Art.hero_key() is the one answer.
+	var key := Art.hero_key()
 	var face := MythPortrait.new(38, "gold", false)
 	face.set_portrait(Art.round_tex(key, 38), str(GameState.sheet().get("name", "?")).left(1).to_upper())
 	face.tooltip_text = "%s — open the Record" % str(GameState.sheet().get("name", "your hero"))
@@ -757,6 +760,14 @@ func _scroll_bottom() -> void:
 # ── Sending / streaming ──────────────────────────────────────────────────────
 func _send(raw: String) -> void:
 	if not Mode.can("send_message"):
+		# R8-09 — this used to return in silence. The typed words stayed in the
+		# box, nothing moved, and the player believed they had acted; I lost a
+		# whole action to it mid-playtest. Refusing is fine — refusing quietly
+		# is not. Keep the text, say why, and don't pretend.
+		if raw.strip_edges() != "":
+			Ui.shake(_msg)
+			Sfx.ui("deny")
+			_say_system("The table is still speaking — your words are held, not lost.")
 		return
 	var msg := raw.strip_edges()
 	if msg == "":
@@ -1275,7 +1286,7 @@ func _level_up_ceremony(from_level: int, to_level: int) -> void:
 		var rite := MythCeremony.play(self, {
 			"title": "Level %d" % lvl,
 			"line": ("You gain %s." % ", ".join(gains)) if not gains.is_empty() else "%s grows stronger." % str(s.get("name", "the hero")),
-			"art": Art.round_tex("hero-" + GameState.cid().validate_filename(), 256),
+			"art": Art.round_tex(Art.hero_key(), 256),
 			"sound": "levelup",
 			"weight": "major",
 		})
@@ -2228,7 +2239,7 @@ func _render_sheet() -> void:
 	lines.append("")
 	lines.append("[center][url=record]Open the Record ›[/url][/center]")
 	# Same content → don't clear/rebuild (a needless repaint is a visible blink).
-	var face := Art.round_tex("hero-" + GameState.cid().validate_filename(), 148)
+	var face := Art.round_tex(Art.hero_key(), 148)
 	var sig := "\n".join(lines) + "|" + str(face)
 	if sig == _sheet_sig:
 		return

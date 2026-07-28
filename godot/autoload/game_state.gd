@@ -864,20 +864,29 @@ func short_rest() -> Dictionary:
 	var con := Rules.ability_mod(int(s["abilities"].get("CON", 10)))
 	var heal := 0
 	var note: String
-	if used < pool:
+	var why := ""
+	if int(s.get("hp", 0)) >= int(s["hpMax"]):
+		# R8-08 — the rest fired at 12/12, reported "recover 4 HP, now 12/12" and
+		# left the pool at 0/1. A Hit Die is the only healing a level-1 hero owns;
+		# never spend one for nothing. Resting unhurt is still a rest — the hour
+		# passes, features recharge — it just costs no dice.
+		note = "*You take an hour's rest. Unhurt already, you keep your Hit Dice — %d/%d still in hand.*" % [pool - used, pool]
+		why = " though I am unhurt and spend no Hit Dice"
+	elif used < pool:
 		var die := int(s.get("hitDie", 8))
 		heal = maxi(1, randi_range(1, die) + con)
 		s["hp"] = mini(int(s["hpMax"]), int(s.get("hp", 0)) + heal)
 		s["hitDiceUsed"] = used + 1
 		note = "*You take a short rest — spend a Hit Die (d%d%+d CON) and recover **%d HP**, now %d/%d. Hit Dice left: %d/%d.*" % [
 			die, con, heal, int(s["hp"]), int(s["hpMax"]), pool - int(s["hitDiceUsed"]), pool]
+		why = ", recovering %d HP" % heal
 	else:
 		note = "*You rest an hour, but you're out of Hit Dice (%d/%d spent) — a long rest is what you need to heal.*" % [pool, pool]
+		why = " but I am out of Hit Dice"
 	set_sheet(s)
 	_recharge_features("short")
 	advance_time(1)
-	var gm := "[I take a short rest%s. Briefly narrate the pause, then continue.]" % [
-		(", recovering %d HP" % heal) if heal > 0 else " but I am out of Hit Dice"]
+	var gm := "[I take a short rest%s. Briefly narrate the pause, then continue.]" % why
 	return {"note": note, "gm": gm}
 
 

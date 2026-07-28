@@ -201,7 +201,7 @@ func _hero_panel() -> Control:
 	col.custom_minimum_size = Vector2(310, 0)
 	col.add_theme_constant_override("separation", Ui.SPACE["m"])
 	var portrait := MythPortrait.new(180, "gold", true)
-	portrait.set_portrait(Art.round_tex("hero-" + GameState.cid().validate_filename()), str(s.get("name", "?")).left(1))
+	portrait.set_portrait(Art.round_tex(Art.hero_key()), str(s.get("name", "?")).left(1))
 	var pc := CenterContainer.new()
 	pc.add_child(portrait)
 	col.add_child(pc)
