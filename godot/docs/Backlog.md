@@ -57,11 +57,52 @@ auditing and both harnesses missed — see [Playtest-R8.md](Playtest-R8.md).
 | R8-04 | Quenching summary line is low-contrast grey over bright forge art | P3 | S |
 | R8-05 | `MythPortrait` has no empty state (empty ring while unpainted); `MythPlate` got one this session | P3 | S |
 
-**The bulk of the Director's playtest ask is still untested** and R8 says so
-explicitly: days 2–3, combat end to end (initiative, AC, crits, death saves,
-line of sight, cover), map plausibility, and the action-legality questions
-(*is there someone to sell to? is an enemy adjacent? is that spell learned?*).
-That list is a coverage gap, not a clean bill of health.
+**Session 2 (same save, played to Dawn Day 4 — past the three-day ask).** The
+rules engine came out clean: every modifier, DC, save, skill bonus, crit-miss
+and rest computation checked correct against the sheet (Playtest-R8 §2). What
+failed is everything *around* the rules — which actions the game offers, and
+which controls actually work.
+
+| # | Item | P | Effort |
+|---|------|---|--------|
+| R8-06 | **Four of nine character-sheet tabs cannot be clicked.** Chronicle and The Table are dead at every window size; maximized, Destiny and Atlas die too. Hover proves no mouse event arrives. The rail is laid out wider than its `AcceptDialog`, so the rightmost tabs render outside the window's input rect. **The comment at character_screen.gd:89 shows this exact bug was diagnosed before and only narrowed** — smaller type treated the symptom; constrain the rail to the window. Kills chapter close, the chronicle and the tone knobs | **P0** | M |
+| R8-07 | **The player cannot start a fight.** Combat triggers only on the GM's own prose (`tag_parser.gd:92`); three deliberate attacks in 14 turns produced narration and one d20, never initiative. `_foe_bad_re` also blacklists `figure`/`shape`/`form`, so the GM's usual name for an unrevealed enemy can never become a combatant. **This blocks the entire tactical layer** — grid, line of sight, cover, adjacency, death saves — from ever being reached | **P0** | L |
+| R8-08 | Short rest fires **at full HP** and silently burns the Hit Die (12/12 → "recover 4 HP, now 12/12", dice 1→0). At 0 dice the button stays enabled, prints nothing, still spends a GM turn | P1 | S |
+| R8-09 | **Send while a turn is in flight is silently discarded** — text stays in the box, no feedback, the player believes they acted | P1 | S |
+| R8-10 | **Location continuity breaks across a long rest** — camped at the barrow-mound, woke in the mead-hall guest room with no travel | P1 | M |
+| R8-27 | **Turn latency 45–100 s**, measured five times. Still the dominant cost of play | P1 | L |
+| R8-28 | **No XP is ever awarded** — `0/100` after 14 turns, an attack and a quest start. Level-up is unreachable by play | P1 | M |
+| R8-11 | Raw parser tags leak into prose — `[[Perception`, `[Active Perception]` rendered verbatim | P2 | S |
+| R8-12 | The minimap overlays the transcript and hides the left of every line it reaches | P2 | S |
+| R8-13 | The scene backdrop never changes — one plate across 4 days, 3 weather states, 4 locations | P2 | M |
+| R8-14 | The Atlas is decoration, not a map — no names, legend, compass, scale, roads or POIs; one unlabelled dot; a fjord drawn as scattered lakes | P2 | L |
+| R8-15 | **Sell offered with no buyer** — "Sell — 3 silver" inside a sealed barrow | P2 | S |
+| R8-16 | A level-1 Fighter has **no class features** — Powers shows only the Human heritage trait, mislabelled as a class feature and duplicated on Story | P2 | M |
+| R8-17 | Starting equipment is one weapon — no armour, shield, pack or rations | P2 | M |
+| R8-20 | Destiny labels overlap their nodes; four nodes all named "Gift of Growth" | P2 | S |
+| R8-24 | Play-screen hero ring stays empty while the **same portrait renders on the sheet** — the sheet's lookup is right, the ring's is not | P2 | S |
+| R8-25 | Sleeping in a hostile place has no consequence — two rests in an opened barrow, hostile figure watching, nothing happened | P2 | M |
+| R8-26 | The GM invents consequences that never happened ("vitality lost in battle", no battle fought) | P2 | M |
+| R8-18 | "Armour Class 12 · 1 worn" counts a wielded weapon as worn | P3 | S |
+| R8-19 | Item icon contradicts the item — a "Shortblade" drawn as a cruciform arming sword | P3 | S |
+| R8-21 | Full HP renders as an alarm-red bar | P3 | S |
+| R8-22 | Skills / Powers / Story leave ~700px empty below a cramped top block | P3 | S |
+| R8-23 | Item context menu spawns clipped at the window edge and does not flip | P3 | S |
+| R8-29 | Time divider printed for the first long rest only | P4 | S |
+| R8-30 | Each long rest costs a full dawn-to-dawn day; no way to rest without losing one | P4 | M |
+
+**Still untested, and why** — the tactical layer (blocked by R8-07), spells
+(needs a caster), merchants (never met one), level-up (blocked by R8-28),
+chapter close / chronicle / tone knobs (blocked by R8-06), companions, the Lore
+Book filling, equip/unequip (only one item ever existed). That list is a
+coverage gap, not a clean bill of health.
+
+**Method note.** R8-06 is the sharpest lesson available: the tab rail draws
+correctly, screenshots beautifully, and passes any visual audit — while four of
+its nine buttons have never worked. The harnesses assert screens are
+*reachable*; the audits assert they *look right*. Nothing asserts a drawn
+control is **clickable** or an offered action is **legal**. Both new P0s and
+three of the four new P1s live in exactly that blind spot.
 
 ---
 
