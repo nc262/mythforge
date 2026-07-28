@@ -205,10 +205,23 @@ func _ready() -> void:
 	assert(not Combat._impassable([6, 5]) and not Combat._difficult([6, 5]), "snow is open ground")
 	assert(not Combat.move_pc([8, 9]), "impassable squares refuse entry")
 
-	# The border tests below want plain ground, so clear the laid field.
-	var bare := Combat.data()
-	bare.erase("cells")
-	Combat.save(bare)
+	# Everything below wants a known field, not a stencil: open ground to test
+	# borders on, a wet strip in the south-west to wade into, and a stand of
+	# undergrowth to hide in (passable, half cover — you cannot stand inside a
+	# thicket, which is what the old "cover" terrain kind let you do).
+	var flat := Combat.data()
+	var fc := {}
+	for x in Combat.MAP_COLS:
+		for y in Combat.MAP_ROWS:
+			fc["%d,%d" % [x, y]] = "snow"
+	for x in 5:                      # cols 0-4, rows 8-9
+		fc["%d,8" % x] = "shallows"
+		fc["%d,9" % x] = "shallows"
+	for x in [8, 9]:                 # cols 8-9, rows 8-9
+		fc["%d,8" % x] = "undergrowth"
+		fc["%d,9" % x] = "undergrowth"
+	flat["cells"] = fc
+	Combat.save(flat)
 
 	# ── R10: walls are borders, not squares ──────────────────────────────────
 	# Park the hero in open ground and wall off his eastern neighbour.
@@ -279,7 +292,7 @@ func _ready() -> void:
 	pos_t = Combat.positions()
 	pos_t["pc"] = [8, 8]
 	Combat.save_positions(pos_t)
-	assert(Combat.in_cover("pc"), "standing in the trees grants cover")
+	assert(Combat.in_cover("pc"), "standing in the undergrowth grants cover")
 
 	# Combat casting: engine-resolved, slot-enforced, one action a round
 	GameState.state["sheet"]["cls"] = "Wizard"

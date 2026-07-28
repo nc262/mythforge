@@ -209,5 +209,12 @@ a different face. That art is not recoverable.
 
 Fix: tiles are a fixed library that must be present all at once, which is the
 opposite of what an LRU is for. They now live in `user://tiles/`, outside the
-manifest and the budget, and are downsampled to 256 px on save — ~3x a grid cell
-and under 100 MB for the full set, against 1.3 GB at the raw 1024.
+manifest and the budget. That fix is independent of tile size — it works at any
+resolution, because tiles no longer count against the budget at all.
+
+Tiles are kept at the model's native 1024, ~1.3 GB for the full set. An earlier
+pass downsampled them to 256 ("~3x a grid cell, under 100 MB") and that was a
+false economy: disk is the cheapest thing in this stack, a 4K fullscreen cell is
+~150 px so the headroom is worth having, and resizing is a one-way door — the
+detail only comes back with another GPU pour. The 395 tiles shrunk during that
+pass were re-poured at full resolution.

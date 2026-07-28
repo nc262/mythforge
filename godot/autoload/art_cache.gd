@@ -57,8 +57,11 @@ var _manifest_loaded := false
 ## hero portraits, battle maps, item art, all of it. LRU is right for art a
 ## playthrough accumulates; it is wrong for a fixed library that must all be
 ## present at once.
+## Tiles are stored at whatever the model produced (1024). Downsampling them to
+## "just enough for a grid cell" was a false economy: it saves ~1.2 GB on a
+## machine where disk is the cheapest thing in the stack, and it is a one-way
+## door — the detail cannot come back without another GPU pour. Keep the pixels.
 const TILE_DIR := "user://tiles"
-const TILE_PX := 256
 
 
 func _is_tile(key: String) -> bool:
@@ -432,11 +435,6 @@ func _pump() -> void:
 		if img.load_png_from_buffer(bytes) != OK and img.load_jpg_from_buffer(bytes) != OK:
 			_finish(key, false)
 			continue
-		# A tile is drawn into a ~75 px grid cell; SDXL hands back 1024. Keeping
-		# that is 13x oversampling and 1.3 GB of shipped assets for the full set.
-		# 256 is still ~3x the cell and brings the library under 100 MB.
-		if _is_tile(key) and img.get_width() > TILE_PX:
-			img.resize(TILE_PX, TILE_PX, Image.INTERPOLATE_LANCZOS)
 		DirAccess.make_dir_recursive_absolute(_dir_for(key))
 		# Write, then rename. Killed mid-save, a truncated PNG would still satisfy
 		# has_art() — and request() answers "already painted" from that check, so

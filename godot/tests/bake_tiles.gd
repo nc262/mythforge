@@ -8,7 +8,9 @@ extends Node
 ##
 ##   godot --path godot res://tests/bake_tiles.tscn -- <world> <variants>
 
-const OUT := "user://tiles"
+## Seam sheets are diagnostics, not assets — keep them out of user://tiles,
+## which is now the shipped tile library.
+const OUT := "user://tile_seams"
 ## A boulder is not a surface. Asking for "one large boulder, seamless tileable"
 ## gave back a repeating pebble field — the tiling instruction won and turned the
 ## object into wallpaper. These roles get the OPPOSITE prompt: one thing,
