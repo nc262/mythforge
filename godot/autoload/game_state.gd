@@ -34,6 +34,28 @@ var pending_hero: Dictionary = {}   # a banked hero chosen to fill the next adve
 const HERO_ROSTER := "user://heroes.json"
 
 
+## The art key a banked hero's face actually lives under.
+##
+## Director caught this from a screenshot: the roster cards in the Adventure
+## Forge showed a flag glyph and no portrait, for heroes that demonstrably HAVE
+## portraits (the same face renders in play). The cards were asking for
+## "hero-<id>" — "hero-corin vale" — while the file on disk is
+## "hero-dm-fimbulreach-freeroam", which the roster records correctly in
+## `portrait_key` and nobody read. `bank_hero` tries to copy the art to the
+## id-shaped key and, when that copy fails, honestly leaves the original key in
+## place; the readers then ignored it. Ask here, not at each call site.
+func hero_portrait_key(h: Dictionary) -> String:
+	var stored := str(h.get("portrait_key", ""))
+	if stored != "" and stored != "heroprev" and Art.has_art(stored):
+		return stored   # the real file, wherever it ended up
+	var by_id := "hero-" + str(h.get("id", "")).validate_filename()
+	if Art.has_art(by_id):
+		return by_id
+	# "heroprev" is the forge's SHARED scratch key — the next forging overwrites
+	# it, so a hero pinned to it would wear a stranger's face. Better no face.
+	return ""
+
+
 func banked_heroes() -> Array:
 	var arr: Array = []
 	if FileAccess.file_exists(HERO_ROSTER):
@@ -61,8 +83,16 @@ func bank_hero(d: Dictionary) -> void:
 	if str(h.get("id", "")) == "":
 		h["id"] = str(h["name"]).validate_filename().to_lower()
 	var own := "hero-" + str(h["id"]).validate_filename()
-	if Art.copy(str(h.get("portrait_key", "")), own):
+	# Prefer the hero's OWN pinned key, but only claim it if the copy really
+	# happened — the previous code left `portrait_key` pointing at the source on
+	# failure, which was honest, and then every reader ignored the field anyway
+	# (see hero_portrait_key). If the copy fails we keep the working key rather
+	# than a dangling one.
+	var src := hero_portrait_key(h)
+	if src != "" and Art.copy(src, own):
 		h["portrait_key"] = own
+	elif src != "":
+		h["portrait_key"] = src
 	_write_roster(_roster_upsert(banked_heroes(), h))
 
 

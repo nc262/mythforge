@@ -111,7 +111,7 @@ func _stage_hero() -> void:
 	for h in heroes:
 		var hd: Dictionary = h
 		var card := Card.new({"glyph": "banner",
-			"art": Art.texture_for("hero-" + str(hd.get("id", "")).validate_filename()),
+			"art": Art.texture_for(GameState.hero_portrait_key(hd)),
 			"title": str(hd.get("name", "The legend")),
 			"body": "%s %s" % [str(hd.get("race", "")), str(hd.get("cls", ""))], "foot": "your roster"})
 		card.set_selected(_hero_selected(hd))

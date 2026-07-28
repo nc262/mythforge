@@ -1,4 +1,52 @@
-# Backlog — the full deep dive (2026-07-18, updated 2026-07-22)
+# Backlog — the full deep dive (2026-07-18, updated 2026-07-28)
+
+## 0. Resolved 2026-07-27/28 — The Great Bake, then UX Rounds 6 & 7
+
+**The bake shipped.** Six worlds poured, verified and zipped: the original four
+plus **fimbulreach** (Norse) and **brasshaven** (steampunk), added because no
+built-in world covered those families. ~1 800 images, 7 390 catalogue entries,
+~11 h of GPU. Every world verified at **0 truncated PNGs, 0 catalogue entries
+with a missing icon**. Details and measurements in [AssetBake.md](AssetBake.md).
+
+| Item | Now |
+|---|---|
+| B1–B7 (the whole bake plan) | ✅ done; B4 proven by killing it mid-pour and restarting |
+| B2 — the seed's ask | ✅ 10 materials + 10 treatments, 4/4 worlds, verified LIVE against the 8B |
+| B6 — vendor stock icons | ✅ baked into `art/icons/`; the exact jobs that starved the narrator |
+| Two new worlds (Norse, steampunk) | ✅ full records, casts, campaigns, locations, backdrops, GM portraits |
+| Ship weight | ✅ **decided**: zips are release assets, `godot/baked/*.zip` gitignored |
+| `v1.0.0` release | ✅ published (private repo), 7 assets, byte-verified |
+| One-click installer | ✅ built in [`installer/`](../../installer/) — **not yet validated on a clean machine** |
+
+**UX Rounds 6 & 7** ([R6](UXAudit-Round6.md) · [R7](UXAudit-Round7.md)):
+281 findings from a windowed click-walkthrough, then two fix passes.
+**107 fixed, 51 of 51 Criticals closed, 12 findings retracted as wrong.**
+
+Four instances of ONE root-cause bug drove most of it: the play screen, the
+minimap, the Atlas, the menu and the Lore Book all asked the **art cache** for
+art the bake had written into the **world package**. That single wrong lookup was
+hiding an 11-hour bake from the player and making the game re-render, at ~25 s a
+piece on their GPU, images it already had.
+
+Also closed: the panel contract (stock dialog chrome, OS title bars, the exit
+clipped off-screen since Round 5), three "take your seat" ceremony screens
+(cold start to play **~18 → ~13 screens**), the ComfyUI VRAM lever (**7.4 GB →
+0.5 GB**, measured), and reply length as a player-facing GM knob.
+
+> **Method note that matters more than the count:** 12 of 281 findings described
+> the app *wrongly* — features that existed but were unpopulated in the canned
+> harness state (quests, companions, tooltips, keyboard shortcuts, dice, save
+> feedback). `[shot]` means "I saw this frame", not "I understood why". Treat
+> any remaining screenshot-derived finding as a hypothesis until the code path
+> is read.
+
+**Still open from R6/R7:** ~160 findings, almost all Medium/Low mechanical
+polish (copy, spacing, hover states, per-screen empty states), plus a known
+share that are of the wrong-finding class above.
+
+---
+
+# Backlog — the earlier deep dive (2026-07-18, updated 2026-07-22)
 
 One consolidated view of everything outstanding, pulled from FeatureMatrix,
 Roadmap, TechnicalDebt, KnownIssues, FutureIdeas, and this session's sprint.
