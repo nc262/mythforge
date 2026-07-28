@@ -95,6 +95,28 @@ which controls actually work.
 | R8-29 | Time divider printed for the first long rest only | P4 | S |
 | R8-30 | Each long rest costs a full dawn-to-dawn day; no way to rest without losing one | P4 | M |
 
+### R9 — combat, driven for real (2026-07-28)
+
+The R8-07 fix works: declaring an attack opens the board. The engine underneath
+is the healthiest system in the game — initiative, rounds, enemy AI movement,
+action economy, movement budgeting and damage all verified by hand (see
+[Playtest-R8.md](Playtest-R8.md) §R9). Two defects stop it being playable.
+
+| # | Item | P | Effort |
+|---|------|---|--------|
+| R9-01 | **Attacks are not range-checked** — a melee blow landed on a foe ~50 ft away without moving. The game checks distance for *movement* ("Too far, or the square is taken") and ignores it for *attacks*. Directly the Director's "is the enemy next to you" question | **P0** | M |
+| R9-04 | **Every combat action costs a full GM turn (~90 s)** — a three-round fight is ~10 minutes of waiting. Latency is annoying in exploration; in combat it is fatal | **P0** | L |
+| R9-03 | **Phantom combat — introduced by the R8-07 fix.** The board opens on the player's declaration without confirming a foe is present; the GM narrated "no sign of them nearby" and "you strike at the unseen foe" while the tracker showed a 16/16 Ice Jotun. Fix by letting the GM's reply confirm the encounter, or restricting the trigger to combatants actually staged — **not** by widening the regex | **P1** | M |
+| R9-02 | **Line of sight almost certainly unenforced** — unproven directly, but the 50-ft hit crossed open water and no LOS/cover language exists in the combat UI. Verify against a wall | **P1** | M |
+| R9-05 | **The minimap covers the combat action bar** — "End turn" renders as "nd turn ›". R8-12 hid text; this hides controls | **P1** | S |
+| R9-07 | **The four-day session was never persisted** — no CONTINUE *and* Chronicles empty. R8-01 is not a missing button; the save was never written | **P1** | M |
+| R9-06 | Equipped weapon contradicts the kit — Quenching said Longsword, combat swung a Korvul Black Iron Hammer | P2 | S |
+| R9-08 | Ability scores render as floats — `destiny: 15.0, 12.0, 11.0…` | P2 | S |
+| R9-09 | Forge card text clipped in three places | P2 | S |
+| R9-10 | Choosing a banked hero still routes through The Quenching — a forge step where nothing is forged | P2 | S |
+| R9-11 | The "choose a world" hint prints ~250 px below the button that refused | P3 | S |
+| R9-12 | The Party stage is one toggle on a full screen; all four Difficulty cards use the same sword glyph | P3 | S |
+
 **Still untested, and why** — the tactical layer (blocked by R8-07), spells
 (needs a caster), merchants (never met one), level-up (blocked by R8-28),
 chapter close / chronicle / tone knobs (blocked by R8-06), companions, the Lore

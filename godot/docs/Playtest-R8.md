@@ -232,3 +232,69 @@ asserts that an offered action is **legal**, or that a drawn control is
 **clickable**. R8-06 is the sharpest example: the tab rail is drawn correctly,
 screenshots beautifully, passes any visual audit — and four of its nine buttons
 have never worked. It took hovering the cursor to see it.
+
+---
+
+# Playtest R9 — combat, driven for real (2026-07-28)
+
+New tale: **Fimbulwinter Comes** in Fimbulreach, hero **Sister Maren** (Human
+Cleric), grit set to Brutal. One question: does the R8-07 fix actually open a
+fight, and does the tactical layer hold up once it does.
+
+## 1. The fix works
+
+Typing *"I draw my longsword and attack the ice-jotun."* produced
+**`Combat — Ice Jotun!`**, an initiative rail, and a painted battle grid. That
+layer had never once been reachable in play. It is now.
+
+## 2. Combat mechanics that hold up
+
+Each verified by doing it:
+
+| Mechanic | Evidence |
+|---|---|
+| **Battle grid with real terrain** | Painted ice/water/snow/trees, hatched squares marking blocked cells |
+| **Initiative rail** | Both combatants, portraits, turn order |
+| **Round counter** | *"Round 2 — your turn: move on the board, attack, or cast."* |
+| **Enemy AI acts and moves** | *"The Ice Jotun closes in — 25 ft nearer"* — and the token really moved ~7 squares |
+| **Action economy** | A second action refused: *"Your action is spent — end your turn."* |
+| **Movement budget** | 30 ft, then *"You move — 10 ft of movement left"*, and the chip agreed |
+| **Movement legality** | A far/blocked square: *"Too far, or the square is taken."* |
+| **Damage applied** | `d20 16 +3 = 19 → 5 damage (11/16 left)`; the bar went 16 → 11 |
+| **Spells real and gated** | Cleric **Bless** and **Guiding Bolt**, `Slots L1 2/2` tracked |
+| **R8-09 fix, live** | Clicking mid-turn gave *"The GM is mid-tale — wait for the words to settle"* instead of silence |
+
+## 3. What combat gets wrong
+
+| # | Finding | Sev |
+|---|---------|-----|
+| R9-01 | **Attacks are not range-checked.** A melee hammer blow landed on a foe roughly **50 ft away**, without moving, for full damage. The tell is the inconsistency: the game *does* check distance for **movement** ("Too far, or the square is taken") and ignores it entirely for **attacks**. The Director's question — *is the enemy next to you for close combat* — answered: nothing asks. | **Critical** |
+| R9-02 | **Line of sight is almost certainly unenforced.** Not proven directly, but the 50-ft melee hit crossed open water and terrain without objection, and no LOS or cover language appears anywhere in the combat UI. Unverified-but-likely until someone tests a wall. | **High** |
+| R9-03 | **Phantom combat — a defect I introduced with the R8-07 fix.** It opens the board on the player's declaration *without confirming the foe is present*. The GM said so itself: *"no sign of them nearby"*, *"you strike at the unseen foe"*, and Ingrid asked *"What sorcery have you invoked?"* — all while the tracker showed a healthy 16/16 Ice Jotun. State and fiction disagree. **Fix direction:** let the GM's reply confirm the encounter, or restrict the trigger to combatants actually staged. Do not simply widen the regex. | **High** |
+| R9-04 | **Every combat action costs a full GM turn (~90 s).** Attack, cast and end-turn each round-trip the model. A three-round fight is roughly ten minutes of waiting. Latency is annoying in exploration; in combat it is fatal. | **Critical** |
+| R9-05 | **The minimap covers the combat action bar.** "End turn" reads as "nd turn ›", the first spell as "…nce". R8-12 logged it hiding *text*; in combat it hides **controls**. | **High** |
+| R9-06 | **The equipped weapon contradicts the kit.** The Quenching listed *Longsword, Oak Shield, Traveler's Leathers*; combat swung a *Korvul Black Iron Hammer*. | Med |
+
+## 4. Found on the way in
+
+| # | Finding | Sev |
+|---|---------|-----|
+| R9-07 | **The four-day session was never persisted.** No CONTINUE on the title *and* Chronicles reads "No chronicles yet". R8-01 is not a missing button — the save was never written. | **High** |
+| R9-08 | **Ability scores render as floats**: `destiny: 15.0, 12.0, 11.0, 11.0, 10.0, 7.0`. | Med |
+| R9-09 | **Forge card text clipped** in three places: "hedge-magic, and quiet adventu", "The Barrow-Wight's Oa" (running into the next card), and the house-rules placeholder "(or leave the table's r". | Med |
+| R9-10 | Choosing a banked hero still routes through **The Quenching** — a forge step in a path where nothing is being forged. | Med |
+| R9-11 | The "choose a world" hint prints ~250 px below both the cards and the button that refused it. | Low |
+| R9-12 | **The Party stage is one toggle on a full screen**; all four Difficulty cards use the identical sword glyph. | Low |
+
+## 5. Verdict
+
+The combat engine is in better shape than the rest of the game: initiative,
+rounds, enemy AI movement, action economy, movement budgeting and damage all
+work, and the board is genuinely handsome. Two things stop it being playable —
+**nothing checks whether you can reach what you are hitting** (R9-01), and
+**every action costs a minute and a half** (R9-04).
+
+One honest note: R9-03 is mine. The fix that made combat reachable also made it
+possible to fight someone who is not there — the same class of bug as everything
+else in this report, an action offered that the world cannot honour. It should
+be fixed before this trigger reaches anyone else.
