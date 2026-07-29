@@ -29,6 +29,9 @@ const SIZE := 1024
 
 ## Set true to render a ladder of camera distances instead of the real sheet.
 const CALIBRATE := false
+## Set true to render one mesh under each poured world material instead.
+const MATERIAL_PASS := true
+const MAT_SCALES := [0.25]
 ## Chosen by looking at that ladder, not derived: 5.0 was tight on the helmet,
 ## 8.0 had drifted to half-body. Units are multiples of head size.
 const PORTRAIT_DIST := 6.5
@@ -44,10 +47,37 @@ uniform vec4 albedo_col : source_color = vec4(1.0);
 uniform int bands = 3;
 uniform float rim_amount = 0.55;
 uniform vec4 rim_col : source_color = vec4(1.0, 0.86, 0.62, 1.0);
+// 0 = sample by UV (the model's own atlas). 1 = TRIPLANAR, sampling by object
+// position instead. Swapping a poured tileable material in through the UVs
+// produced garbage: this knight's atlas is a handful of flat colour patches, so
+// a high-frequency texture arrives stretched and scrambled. Triplanar ignores
+// UVs entirely, which is what lets ONE material drop onto ANY mesh — the whole
+// premise of pouring materials rather than per-item textures.
+uniform bool triplanar = false;
+uniform float tri_scale = 2.2;
+varying vec3 tri_pos;
+varying vec3 tri_nrm;
+
+void vertex() {
+	tri_pos = VERTEX * tri_scale;
+	tri_nrm = NORMAL;
+}
+
+vec3 tri_sample(sampler2D t, vec3 p, vec3 n) {
+	// Weight the three projections by how much the surface faces each axis;
+	// pow sharpens the blend so flat faces read as one clean projection.
+	vec3 w = pow(abs(n), vec3(4.0));
+	w /= max(w.x + w.y + w.z, 0.0001);
+	return texture(t, p.yz).rgb * w.x
+		 + texture(t, p.xz).rgb * w.y
+		 + texture(t, p.xy).rgb * w.z;
+}
 
 void fragment() {
-	vec4 c = texture(albedo_tex, UV) * albedo_col;
-	ALBEDO = c.rgb;
+	vec3 c = triplanar
+		? tri_sample(albedo_tex, tri_pos, normalize(tri_nrm))
+		: texture(albedo_tex, UV).rgb;
+	ALBEDO = c * albedo_col.rgb;
 	SPECULAR = 0.1;
 	ROUGHNESS = 0.85;
 }
@@ -74,12 +104,57 @@ var _anim: AnimationPlayer
 var _originals: Dictionary = {}   # MeshInstance3D -> Array[Material]
 
 
+## Poured by scripts/pour_materials.py. Proving the compose model in 3D: one
+## mesh, one texture per world, and the cross product costs nothing at render
+## time. In 2D the same coverage means regenerating the item per material.
+const WORLD_MATS := {
+	"embervale": "res://spike3d/materials/embervale-subtle.png",
+	"saltmarsh": "res://spike3d/materials/saltmarsh-subtle.png",
+	"neonspire": "res://spike3d/materials/neonspire-subtle.png",
+}
+
+
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
-	for tag in MODELS:
-		await _run_model(tag, MODELS[tag])
+	if MATERIAL_PASS:
+		await _run_materials()
+	else:
+		for tag in MODELS:
+			await _run_model(tag, MODELS[tag])
 	print("SPIKE: wrote to ", ProjectSettings.globalize_path(OUT))
 	get_tree().quit()
+
+
+## One mesh, one pose, N world materials — the whole point in a single sheet.
+func _run_materials() -> void:
+	_build(MODELS["knight"])
+	await get_tree().process_frame
+	if _root == null:
+		return
+	_pose(_first_matching(["Idle"]))
+	await RenderingServer.frame_post_draw
+	# Scale is in OBJECT units, so it depends on how big the mesh is — there is no
+	# universal value. At 2.2 the material tiled so often across a 1.5-unit
+	# character that it read as decorative pattern rather than surface. Rendering
+	# a ladder and picking by eye beats guessing, which has now cost two passes.
+	for world in WORLD_MATS:
+		var tex: Texture2D = load(WORLD_MATS[world])
+		for sc in MAT_SCALES:
+			_apply("toon")
+			# Override ONLY the albedo. Banding, rim and outline are untouched, so
+			# what changes between these renders is the material and nothing else.
+			for mi in _originals:
+				for i in (_originals[mi] as Array).size():
+					var m = (mi as MeshInstance3D).get_surface_override_material(i)
+					if m is ShaderMaterial:
+						m.set_shader_parameter("albedo_tex", tex)
+						m.set_shader_parameter("albedo_col", Color.WHITE)
+						m.set_shader_parameter("triplanar", true)
+						m.set_shader_parameter("tri_scale", sc)
+			await RenderingServer.frame_post_draw
+			_frame_token()
+			await _shoot("mat_%s_s%0.2f" % [world, sc])
+	_teardown()
 
 
 func _teardown() -> void:
