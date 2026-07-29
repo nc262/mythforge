@@ -106,6 +106,20 @@ func stream(message: String, system_prompt := "") -> bool:
 	if _busy or not _ensure_nodes(system_prompt):
 		return false
 	_busy = true
+	# Each turn is STATELESS, and deliberately so.
+	#
+	# NobodyWhoChat keeps a conversation, but this game's context does not live
+	# in one: `Composer.envelope()` rebuilds the whole situation every turn —
+	# sheet, scene, clock, inventory, cast, quests, recalled beats — and
+	# Chronicle owns long-term memory. Letting the chat ALSO accumulate history
+	# means sending all of that twice and growing without bound.
+	#
+	# Measured: turn 2 cost MORE than turn 1 (51.7s against 41.6s) on a warm
+	# model, which is backwards, because the second envelope pushed the
+	# conversation past the 4096-token context and it began re-processing.
+	# Clearing first makes every turn cost what the first one did.
+	if _chat.has_method("reset_context"):
+		_chat.call("reset_context")
 	# `ask` is the current name; `say` is deprecated upstream and warns on every
 	# turn. Fall back for older builds of the extension rather than requiring one.
 	_chat.call("ask" if _chat.has_method("ask") else "say", message)

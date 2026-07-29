@@ -228,13 +228,25 @@ stack stops holding the GPU, which is exactly what Stage 4 (stable-diffusion.cpp
 in-process, no ComfyUI, no ZLUDA) is for. Stage 4 is not the last stage by
 value; it is the one that makes Stage 2 pay.
 
-**2. There is still a ~2x gap to Ollama on a free card** (28.5s vs 12.7s), and
-it is NOT explained yet. Ruled out: the integrated GPU — forcing
-`GGML_VK_VISIBLE_DEVICES=0` made it *slower*, so device 0 was already selected.
-Remaining suspects, in order: Ollama using ROCm/HIP rather than Vulkan for this
-workload; NobodyWho defaulting `n_ctx` to 4096 and re-processing the envelope
-each turn where Ollama keeps a KV cache across a session; and the doubled BOS
-token the tokenizer warns about on every call.
+**2. Part of the gap to Ollama was ours, and it is closed.** The clue was that
+turn 2 cost MORE than turn 1 on a warm model, which is backwards.
+`NobodyWhoChat` keeps a conversation — but this game's context does not live in
+one. `Composer.envelope()` rebuilds the entire situation every turn and
+Chronicle owns long-term memory, so letting the chat accumulate history sent all
+of that twice and grew without bound until it passed the 4096-token context and
+began re-processing. Calling `reset_context()` before each turn makes every turn
+cost what the first one did:
+
+| | turn 1 | turn 2 | turn 3 |
+|---|---|---|---|
+| conversational (before) | 41.6s | 51.7s | — *growing* |
+| stateless (after), free card | 24.4s | 22.0s | **19.3s** |
+
+A ~1.5x gap to Ollama remains (19.3s against 12.7s) and is still unexplained.
+Ruled out: the integrated GPU — forcing `GGML_VK_VISIBLE_DEVICES=0` made it
+*slower*, so device 0 was already selected. Remaining suspects: Ollama using
+ROCm/HIP rather than Vulkan for this workload, and the doubled BOS token the
+tokenizer warns about on every call.
 
 Until that is closed, the honest position is: **the local path is correct,
 private, and serverless, but not yet faster.** It should not be switched on by
