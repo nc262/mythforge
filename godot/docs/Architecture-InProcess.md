@@ -242,11 +242,26 @@ cost what the first one did:
 | conversational (before) | 41.6s | 51.7s | — *growing* |
 | stateless (after), free card | 24.4s | 22.0s | **19.3s** |
 
-A ~1.5x gap to Ollama remains (19.3s against 12.7s) and is still unexplained.
-Ruled out: the integrated GPU — forcing `GGML_VK_VISIBLE_DEVICES=0` made it
-*slower*, so device 0 was already selected. Remaining suspects: Ollama using
-ROCm/HIP rather than Vulkan for this workload, and the doubled BOS token the
-tokenizer warns about on every call.
+A ~1.5x gap to Ollama remains (19.3s against 12.7s). Two suspects were chased
+and both are dead ends:
+
+- **The integrated GPU.** Forcing `GGML_VK_VISIBLE_DEVICES=0` made it *slower*,
+  so device 0 was already selected.
+- **The doubled BOS token.** Real — the Ollama blob has no
+  `tokenizer.ggml.add_bos_token` metadata, so llama.cpp defaults to true and the
+  chat template adds a second. But it is ONE token in ~1,900: 0.05%. It cannot
+  be worth 1.5x, and saying so is cheaper than measuring it.
+
+**The comparison itself is now the problem.** Asked mid-session, Ollama reported
+`size=5.9GB size_vram=0.7GB` — the model almost entirely in system RAM — while
+still turning in 44 tok/s. Both runtimes are competing for a card whose free
+VRAM changes with whatever else is resident, so neither number is a property of
+the runtime; they are properties of the machine at that instant. A clean
+comparison needs the GPU to itself.
+
+Which points back at the same conclusion the VRAM measurement already reached,
+and is the honest reason to stop chasing this one: **the variable worth removing
+is ComfyUI, not the last 1.5x.**
 
 Until that is closed, the honest position is: **the local path is correct,
 private, and serverless, but not yet faster.** It should not be switched on by
