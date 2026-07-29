@@ -288,6 +288,33 @@ func _ready() -> void:
 	assert(Combat.distance([4, 3], [5, 3]) == 1, "the two stand a square apart")
 	assert(not Combat.adjacent("pc", gob_id), "a wall between them is not adjacency")
 	assert(Combat.cover_between([4, 3], [7, 3]) == "blocked", "a wall is total cover")
+	# R9-02 — and the ATTACK must actually ask. cover_between was correct and
+	# asserted here for a whole round while player_attack never called it, so an
+	# arrow crossed a wall as happily as open air. Assert the caller, not just
+	# the rule.
+	# The goblin died in the fight above, and a dead target short-circuits
+	# player_attack before any guard runs — so stand him up for the test, then
+	# put him back exactly as he was.
+	var wall_dat := Combat.data()
+	var gob_hp := 0
+	for x in wall_dat["combatants"]:
+		if str(x.get("id", "")) == gob_id:
+			gob_hp = int(x.get("hp", 0))
+			x["hp"] = 7
+	Combat.save(wall_dat)
+	var blind := Combat.player_attack(gob_id)
+	assert(not bool(blind["spent"]), "an attack through a wall costs no action")
+	assert(str(blind["msg"]) != "", "...and says why rather than failing silently")
+	var wall_back := Combat.data()
+	for x in wall_back["combatants"]:
+		if str(x.get("id", "")) == gob_id:
+			x["hp"] = gob_hp
+	Combat.save(wall_back)
+	# With a melee weapon the REACH guard answers first, and its message is the
+	# better one ("move in"). The sight gate is what catches the ranged case, so
+	# prove that separately, straight against the rule the attack now consults.
+	assert(Combat.cover_between(Combat.cell_of("pc"), Combat.cell_of(gob_id)) == "blocked",
+		"the attack's own sight test sees the wall between them")
 	for wy in Combat.MAP_ROWS:
 		Combat.set_edge([4, wy], [5, wy], "")
 	assert(Combat.adjacent("pc", gob_id), "with the wall gone they are adjacent again")

@@ -197,6 +197,15 @@ func player_attack(target_id: String) -> Dictionary:
 		return {"msg": "*The %s is %d ft away — move in, or ready a ranged weapon.*" % [
 			str(foe.get("name", "foe")), distance(cell_of("pc"), cell_of(target_id)) * FEET_PER_CELL],
 			"fell": false, "won": false, "spent": false}
+	# R9-02 — you cannot hit what you cannot see. `cover_between` implements 5e's
+	# corner-to-corner rule, it is correct, and `self_check` has been asserting it
+	# every run — and nothing ever called it, so an arrow crossed a wall as
+	# happily as open air. Third time this session that the logic existed and one
+	# caller simply did not ask (R9-01 reach, R11-01 the whole attack).
+	# Refused before the budget is spent: a shot you were never allowed costs nothing.
+	if cover_between(cell_of("pc"), cell_of(target_id)) == "blocked":
+		return {"msg": "*No line to the %s — something solid stands between you.*" % str(foe.get("name", "foe")),
+			"fell": false, "won": false, "spent": false}
 	var b := _budget(c)
 	if int(b.get("attacksLeft", 0)) <= 0:
 		return {"msg": "*Your action is spent — end your turn.*", "fell": false, "won": false, "spent": false}
@@ -223,9 +232,16 @@ func player_attack(target_id: String) -> Dictionary:
 	var fumble := roll == 1
 	var target_ac := int(foe["ac"]) if foe.get("ac") != null else 12
 	var vs_ac := (" vs AC %d" % int(foe["ac"])) if foe.get("ac") != null else ""
-	if props["ranged"] and in_cover(target_id):
-		target_ac += 2
-		vs_ac += " (+2 cover)"
+	# Cover, by the real rule rather than "am I standing near a bush" — and it
+	# applies to any attack, not only ranged ones. `in_cover` asked whether the
+	# TARGET was near something; 5e asks what stands between the two of you.
+	match cover_between(cell_of("pc"), cell_of(target_id)):
+		"three_quarters":
+			target_ac += 5
+			vs_ac += " (+5 cover)"
+		"half":
+			target_ac += 2
+			vs_ac += " (+2 cover)"
 	if not crit and (fumble or total < target_ac):
 		save(c)
 		var miss := {"msg": "*You attack the %s with your %s — d20 %d %+d = **%d**%s%s%s → a miss.*" % [
