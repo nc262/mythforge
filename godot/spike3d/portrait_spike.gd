@@ -15,7 +15,15 @@ extends Node
 ##
 ## Writes PNGs to user://spike3d/ and quits.
 
-const MODEL := "res://spike3d/models/Knight.glb"
+## Two rigs on purpose. The first pass used only the chibi knight and could not
+## separate "3D looks wrong against painted worlds" from "THIS MODEL's anatomy
+## looks wrong against painted worlds" — a large head is not a property of 3D.
+## The Quaternius mannequin is realistically proportioned and untextured, which
+## isolates the question: proportion, with no colour to argue about.
+const MODELS := {
+	"knight": "res://spike3d/models/Knight.glb",
+	"mannequin": "res://spike3d/models/AnimationLibrary_Godot_Standard.gltf",
+}
 const OUT := "user://spike3d"
 const SIZE := 1024
 
@@ -68,11 +76,39 @@ var _originals: Dictionary = {}   # MeshInstance3D -> Array[Material]
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
-	_build()
+	for tag in MODELS:
+		await _run_model(tag, MODELS[tag])
+	print("SPIKE: wrote to ", ProjectSettings.globalize_path(OUT))
+	get_tree().quit()
+
+
+func _teardown() -> void:
+	if _vp != null and is_instance_valid(_vp):
+		_vp.queue_free()
+	_vp = null
+	_root = null
+	_anim = null
+	_cam = null
+	_originals.clear()
+
+
+## Animation names differ between rigs — KayKit says "Idle", Quaternius says
+## "Idle_Loop" — so poses are looked up by intent, not by literal name.
+func _first_matching(wants: Array) -> String:
+	if _anim == null:
+		return ""
+	for w in wants:
+		for a in _anim.get_animation_list():
+			if a.findn(w) >= 0:
+				return a
+	return ""
+
+
+func _run_model(tag: String, path: String) -> void:
+	_build(path)
 	await get_tree().process_frame
 	if _root == null:
-		push_error("SPIKE: model failed to load")
-		get_tree().quit(1)
+		push_error("SPIKE: %s failed to load (%s)" % [tag, path])
 		return
 
 	var poses := _pick_poses()
@@ -80,16 +116,16 @@ func _ready() -> void:
 	if CALIBRATE:
 		# Calibrate on an UPRIGHT pose. The first ladder ran on Death_A and every
 		# rung looked broken for a reason that had nothing to do with distance.
-		_pose("Idle")
+		_pose(_first_matching(["Idle_Loop", "Idle"]))
 		await RenderingServer.frame_post_draw
 		_apply("toon")
 		for m in [5.0, 6.5, 8.0, 10.0, 13.0]:
 			_frame_portrait(m)
-			await _shoot("cal_%0.1f" % m)
-		get_tree().quit()
+			await _shoot("%s_cal_%0.1f" % [tag, m])
+		_teardown()
 		return
-	print("SPIKE: animations found = %d, using %s" % [
-		(_anim.get_animation_list().size() if _anim else 0), str(poses)])
+	print("SPIKE[%s]: %d animations, using %s" % [
+		tag, (_anim.get_animation_list().size() if _anim else 0), str(poses)])
 
 	# Portrait framing (head and shoulders) and token framing (whole figure,
 	# looked down on) — the two surfaces this game actually shows.
@@ -97,20 +133,19 @@ func _ready() -> void:
 			{"n": "token", "fn": Callable(self, "_frame_token")}]:
 		for treat in ["pbr", "toon"]:
 			_apply(treat)
-			for p in poses:
+			for pi in poses.size():
+				var p: String = poses[pi]
 				_pose(p)
 				# The skeleton must settle BEFORE the camera is placed — framing
 				# reads bone positions, and a Death pose puts the head somewhere
 				# an unposed rig never predicts.
 				await RenderingServer.frame_post_draw
 				shot["fn"].call()
-				await _shoot("%s_%s_%s" % [shot["n"], treat, p.to_lower().replace(" ", "_")])
-
-	print("SPIKE: wrote to ", ProjectSettings.globalize_path(OUT))
-	get_tree().quit()
+				await _shoot("%s_%s_%s_p%d" % [tag, shot["n"], treat, pi])
+	_teardown()
 
 
-func _build() -> void:
+func _build(model_path: String) -> void:
 	_vp = SubViewport.new()
 	_vp.size = Vector2i(SIZE, SIZE)
 	_vp.transparent_bg = true          # composite over painted 2D later
@@ -118,7 +153,7 @@ func _build() -> void:
 	_vp.msaa_3d = Viewport.MSAA_4X      # low-poly silhouettes alias badly without it
 	add_child(_vp)
 
-	var packed: PackedScene = load(MODEL)
+	var packed: PackedScene = load(model_path)
 	if packed == null:
 		return
 	_root = packed.instantiate()
@@ -175,8 +210,34 @@ func _cache_materials(n: Node) -> void:
 		_cache_materials(c)
 
 
+## Inverted-hull outline: the same mesh drawn back-faces-only, pushed out along
+## its normals, unshaded black. It sits BEHIND the real mesh, so all that
+## survives is a dark edge around the silhouette and the interior creases.
+##
+## This is the single change that makes the toon pass read as drawn rather than
+## rendered — flat banding alone still looks like a shaded model, because what
+## the eye reads as "illustration" is the line, not the shading.
+const OUTLINE := """
+shader_type spatial;
+render_mode cull_front, unshaded, shadows_disabled;
+uniform float thickness = 0.012;
+uniform vec4 line : source_color = vec4(0.05, 0.04, 0.07, 1.0);
+void vertex() {
+	// Scale thickness by view distance so the line stays even in width whether
+	// the camera is framing a head or a whole figure.
+	float d = length((MODELVIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
+	VERTEX += normalize(NORMAL) * thickness * d;
+}
+void fragment() { ALBEDO = line.rgb; }
+"""
+
+
 func _apply(treatment: String) -> void:
 	for mi in _originals:
+		# Outlines are child nodes, so they are torn down rather than overridden.
+		for c in (mi as Node).get_children():
+			if c is MeshInstance3D and c.name.begins_with("__outline"):
+				c.queue_free()
 		var mats: Array = _originals[mi]
 		for i in mats.size():
 			if treatment == "pbr":
@@ -193,6 +254,28 @@ func _apply(treatment: String) -> void:
 				sm.set_shader_parameter("albedo_tex", src.albedo_texture)
 				sm.set_shader_parameter("albedo_col", src.albedo_color)
 			mi.set_surface_override_material(i, sm)
+		if treatment == "toon":
+			_add_outline(mi)
+
+
+func _add_outline(mi: MeshInstance3D) -> void:
+	var hull := MeshInstance3D.new()
+	hull.name = "__outline"
+	hull.mesh = mi.mesh
+	var osh := Shader.new()
+	osh.code = OUTLINE
+	var om := ShaderMaterial.new()
+	om.shader = osh
+	hull.material_override = om
+	# Parent FIRST. `get_path_to` resolves against the tree, so computing the
+	# skeleton path before the node is in it throws "share no common ancestor"
+	# and leaves the outline unskinned — a black ghost standing in the bind pose
+	# beside the animated character.
+	mi.add_child(hull)
+	var skel: Node = mi.get_node_or_null(mi.skeleton)
+	if skel != null:
+		hull.skeleton = hull.get_path_to(skel)
+		hull.skin = mi.skin
 
 
 ## Deliberately DISSIMILAR poses. The first cut of this matched "Idle" three
@@ -204,7 +287,10 @@ func _pick_poses() -> Array:
 		return []
 	var all := _anim.get_animation_list()
 	print("SPIKE: available animations:\n  ", ", ".join(PackedStringArray(all)))
-	var want := ["Death", "Attack", "Spellcast", "Cheer", "Sit", "Run", "Block", "Idle"]
+	# Intents, not names, and deliberately covering both rigs' vocabularies:
+	# KayKit says "Death_A" / "Cheer", Quaternius says "Death01" / "Dance_Loop".
+	var want := ["Death", "Attack", "Punch", "Spellcast", "Cheer", "Dance",
+			"Torch", "Sit", "Run", "Jog", "Block", "Idle"]
 	var out: Array = []
 	for w in want:
 		if out.size() >= 4:
@@ -232,24 +318,32 @@ func _pose(anim_name: String) -> void:
 ## Prefer BONE positions over mesh AABBs. A skinned mesh reports its bind-pose
 ## box, so a character lying down in a Death pose still measures as standing —
 ## which framed the token shot off-centre until this was fixed.
+## The UNION of posed bone positions and mesh AABBs.
+##
+## Neither alone is correct. Bones track the pose but sit inside the silhouette,
+## so the knight's sword and shield — which reach well beyond any bone — were
+## cropped out of every token. Mesh AABBs cover held props but report the BIND
+## pose, so a character lying down still measures as standing. The union tracks
+## the pose AND contains the gear; it is loose rather than tight, which for
+## framing is the safe direction to be wrong in.
 func _bounds() -> AABB:
+	var box := AABB()
+	var have := false
 	var skel := _find_skel(_root)
 	if skel != null and skel.get_bone_count() > 0:
-		var box := AABB(skel.global_transform * skel.get_bone_global_pose(0).origin, Vector3.ZERO)
+		box = AABB(skel.global_transform * skel.get_bone_global_pose(0).origin, Vector3.ZERO)
+		have = true
 		for i in skel.get_bone_count():
 			box = box.expand(skel.global_transform * skel.get_bone_global_pose(i).origin)
-		# Bones sit inside the silhouette; pad so armour and weapons are not clipped.
-		return box.grow(maxf(box.size.y * 0.12, 0.05))
-	var mbox := AABB()
-	var first := true
+		box = box.grow(maxf(box.size.y * 0.12, 0.05))
 	for mi in _originals:
 		var b: AABB = (mi as MeshInstance3D).global_transform * (mi as MeshInstance3D).get_aabb()
-		if first:
-			mbox = b
-			first = false
+		if not have:
+			box = b
+			have = true
 		else:
-			mbox = mbox.merge(b)
-	return mbox
+			box = box.merge(b)
+	return box
 
 
 ## Find the head by asking the SKELETON, not by guessing a fraction of the
