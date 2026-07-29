@@ -515,6 +515,16 @@ func _ready() -> void:
 	if not LocalGM.available():
 		assert(LocalGM.why_unavailable() != "", "an unusable narrator says why")
 		assert(not LocalGM.stream("hello", ""), "an unusable narrator refuses rather than hanging the turn")
+	# A local turn has no session, so the world framing must travel with it. If
+	# this comes back empty the GM keeps the tag protocol and the live sheet but
+	# loses the world, its cast and its voice — which is most of what makes it
+	# this game's narrator rather than a generic assistant.
+	var keep_world = GameState.character.get("world_id", "")
+	GameState.character["world_id"] = "fimbulreach"
+	var sysp := Composer.system_prompt()
+	assert(sysp.contains("Fimbulreach"), "the local narrator is told which world it runs")
+	assert(sysp.contains("CRAFT:") and sysp.contains("VOICE:"), "...and how to narrate it")
+	GameState.character["world_id"] = keep_world
 
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

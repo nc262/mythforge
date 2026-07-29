@@ -310,12 +310,12 @@ func stream_chat(message: String, session_id: String) -> void:
 	# extension AND a GGUF are both present; otherwise this is a no-op and the
 	# turn goes to the server exactly as it always has. It answers the same two
 	# signals, so nothing downstream knows the difference.
-	# `message` is already the full envelope (Composer.envelope): world, sheet,
-	# scene and the player's line. The remote path leans on the SESSION carrying
-	# a preset system prompt on top of that; the local path has no session, so
-	# that framing has to move into the envelope before this is switched on for
-	# real. Passing "" is honest about what is wired today.
-	if LocalGM.available() and LocalGM.stream(message, ""):
+	# `message` is the full per-turn envelope; `system_prompt()` is the framing a
+	# remote turn gets from its SESSION (composed once at the forge and prepended
+	# by the server). A local narrator has neither, so it is handed both — built
+	# by the same `compose_world_gm` the forges call, so the two paths cannot
+	# drift apart.
+	if LocalGM.available() and LocalGM.stream(message, Composer.system_prompt()):
 		return
 	var client := HTTPClient.new()
 	if client.connect_to_host(HOST, PORT) != OK:

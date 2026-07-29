@@ -171,6 +171,39 @@ func compose_world_gm(world: Dictionary, story: Dictionary = {}) -> String:
 	return "\n".join(parts.filter(func(p): return str(p) != ""))
 
 
+## The same persona prompt, resolved for the adventure being played.
+##
+## Remote turns get this from the SESSION: it was composed once by
+## `compose_world_gm` at the forge, sent as the persona's `personality`, and the
+## server prepends it to every message. A local narrator has no session and no
+## server, so it has to be handed the same thing per turn — otherwise the GM
+## keeps the tag protocol and live state but loses the world, its cast, the
+## campaign, and its voice, which is most of what makes it this game's GM.
+##
+## Built from the same function the forges call, so the two paths cannot drift.
+func system_prompt() -> String:
+	var wid := GameState.world_id()
+	if wid == "":
+		return ""
+	var world := {}
+	for w in Rules.builtin_worlds() + GameState.global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == wid:
+			world = w
+			break
+	if world.is_empty():
+		return ""
+	# The tale, when this adventure is one rather than free roam. Adventure ids
+	# are "dm-<world>-<story-slug>", which is how the Hall names them too.
+	var story := {}
+	var slug := GameState.cid().trim_prefix("dm-").trim_prefix(wid + "-")
+	if slug != "" and slug != "freeroam":
+		for s in world.get("stories", []):
+			if s is Dictionary and str(s.get("title", "")).to_lower().replace(" ", "-").begins_with(slug.left(12)):
+				story = s
+				break
+	return compose_world_gm(world, story)
+
+
 func sheet_summary(s: Dictionary) -> String:
 	if s.is_empty():
 		return ""
