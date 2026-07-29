@@ -19,7 +19,12 @@ import urllib.request
 import zipfile
 
 REPO = "leejet/stable-diffusion.cpp"
-DEFAULT_DEST = r"C:\Users\cptahabb\Documents\Code\stable-diffusion.cpp"
+# Sibling of the repo, matching where the supervisor and installer look for it.
+# Was hardcoded to one developer's home directory, which is fine for a spike and
+# wrong the moment install.ps1 calls it.
+DEFAULT_DEST = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "stable-diffusion.cpp")
 
 
 def main() -> None:

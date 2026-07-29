@@ -1,8 +1,8 @@
 """Mythforge service supervisor — one process that IS the app's backend life.
 
 The game exe launches this at boot; it starts every service Mythforge needs
-(Ollama, Chroma, ComfyUI, the image bridge, the FastAPI backend) and — the
-whole point — guarantees they DIE when the game closes, however it closes.
+(Ollama, the image engine, the FastAPI backend) and — the whole point —
+guarantees they DIE when the game closes, however it closes.
 
 The guarantee is a Windows **Job Object** with KILL_ON_JOB_CLOSE: every service
 we start is assigned to the job, and the moment this supervisor's handle to
@@ -132,10 +132,32 @@ def log(msg):
 
 
 # ── The service graph ─────────────────────────────────────────────────────
-def comfy_dir():
-    for c in (SIB / "ComfyUI-Zluda", SIB / "ComfyUI"):
-        if c.exists():
-            return c
+def image_engine():
+    """(exe, checkpoint) for stable-diffusion.cpp, or None if either is missing.
+
+    This replaced ComfyUI + an OpenAI-shaped bridge: two services, a CUDA shim
+    and a Python env, for the one endpoint sd-server serves natively. The
+    checkpoint is still looked for in the ComfyUI tree because that is where the
+    .safetensors already lives on a box that used to run it — the install is
+    left alone, this just reads the file.
+    """
+    exe = SIB / "stable-diffusion.cpp" / "sd-server.exe"
+    if not exe.exists():
+        return None
+    # Name the checkpoint we actually tuned for. A bare sorted()[0] over this
+    # directory picks animagine-xl-3.1 on this box — six checkpoints live there
+    # and alphabetical order is not a preference. Falling back to "any" is still
+    # right for a fresh install that has only one.
+    want = "DreamShaperXL_Turbo_v2_1.safetensors"
+    for ck in (exe.parent / "models", SIB / "ComfyUI-Zluda" / "models" / "checkpoints",
+               SIB / "ComfyUI" / "models" / "checkpoints"):
+        if not ck.is_dir():
+            continue
+        if (ck / want).exists():
+            return exe, ck / want
+        found = sorted(ck.glob("*.safetensors"))
+        if found:
+            return exe, found[0]
     return None
 
 
@@ -155,23 +177,22 @@ def services():
     `optional` services never block the game (art can warm up behind play)."""
     py = backend_python()
     ollama = Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "Ollama" / "ollama.exe"
-    cd = comfy_dir()
+    ie = image_engine()
     # mythforge cut ChromaDB (batch 2), so the current backend needs only
-    # Ollama + ComfyUI/bridge + itself. No chroma service.
+    # Ollama + the image engine + itself. No chroma service.
     svc = [
         {"name": "ollama", "url": "http://127.0.0.1:11434/api/tags", "timeout": 40,
          "cmd": [str(ollama) if ollama.exists() else "ollama", "serve"], "cwd": str(REPO),
          "optional": False},
     ]
-    if cd:
-        svc.append({"name": "comfyui", "url": "http://127.0.0.1:8188/system_stats",
-                    "timeout": 600, "shell": str(cd / "_run-comfy.bat"), "cwd": str(cd),
-                    "optional": True})   # kernel compile can take minutes; never blocks play
-        bridge = REPO / "scripts" / "comfyui_openai_bridge.py"
-        if bridge.exists():
-            svc.append({"name": "bridge", "url": "http://127.0.0.1:8101/health", "timeout": 30,
-                        "cmd": [py, str(bridge), "--comfy"], "cwd": str(REPO), "optional": True,
-                        "after": "comfyui"})
+    if ie:
+        exe, ckpt = ie
+        # 120 s, not the 600 ComfyUI needed: there are no ZLUDA kernels to
+        # compile, so this is just a ~6.5 GB checkpoint read (measured ~25 s).
+        svc.append({"name": "image-engine", "url": "http://127.0.0.1:8189/v1/models",
+                    "timeout": 120, "optional": True, "cwd": str(exe.parent),
+                    "cmd": [str(exe), "-m", str(ckpt), "--listen-port", "8189",
+                            "--diffusion-fa"]})
     svc.append({"name": "backend", "url": "http://127.0.0.1:7000/api/version", "timeout": 90,
                 "cmd": [py, "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"],
                 "cwd": str(REPO), "optional": False})
@@ -180,8 +201,6 @@ def services():
 
 def spawn(svc, job):
     env = dict(os.environ)
-    if svc["name"] == "comfyui":
-        env["TORCH_BACKENDS_CUDNN_ENABLED"] = "0"    # ZLUDA can't find a cuDNN conv engine
     if svc["name"] == "backend":
         # Single-player desktop game: no login. The client goes straight to the
         # menu (Api.auth_ok honours this). A host sharing a server sets it "true".

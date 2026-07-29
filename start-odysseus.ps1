@@ -46,9 +46,9 @@ Write-Host "✅ Chroma ready" -ForegroundColor Green
 # -----------------------------
 # Start Image Stack
 # -----------------------------
-Write-Host "🖼️ Starting image stack..." -ForegroundColor Yellow
+Write-Host "🖼️ Starting image engine..." -ForegroundColor Yellow
 
-& "$PSScriptRoot\scripts\start-image-stack.ps1"
+& "$PSScriptRoot\scripts\start-image-sdcpp.ps1"
 
 # -----------------------------
 # Start API (UVICORN)

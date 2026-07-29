@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""Register the local ComfyUI image bridge as an Odysseus image provider and
-select it as the default image model. Idempotent — safe to re-run.
+"""Register the local image engine as an Odysseus image provider and select it
+as the default image model. Idempotent — safe to re-run.
 
 Run with the Odysseus venv from the repo root:
     venv\\Scripts\\python.exe scripts\\wire_image_provider.py
@@ -12,9 +12,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-BRIDGE_BASE_URL = "http://localhost:8101/v1"
+BRIDGE_BASE_URL = "http://localhost:8189/v1"
 CKPT = "DreamShaperXL_Turbo_v2_1.safetensors"
-ENDPOINT_NAME = "Local ComfyUI (ZLUDA)"
+ENDPOINT_NAME = "Local stable-diffusion.cpp (Vulkan)"
 
 from core.database import SessionLocal, ModelEndpoint
 from src.settings import load_settings, save_settings

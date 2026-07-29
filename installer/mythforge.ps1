@@ -78,7 +78,7 @@ try {
     #    run every time rather than track first-run state.
     foreach ($ep in @(
         @{ url = 'http://127.0.0.1:11434/v1'; type = 'llm';   name = 'Ollama (local)' },
-        @{ url = 'http://127.0.0.1:8101/v1';  type = 'image'; name = 'ComfyUI (local)' })) {
+        @{ url = 'http://127.0.0.1:8189/v1';  type = 'image'; name = 'stable-diffusion.cpp (local)' })) {
         try {
             Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:7000/api/model-endpoints' -Body @{
                 base_url = $ep.url; model_type = $ep.type; endpoint_kind = 'local'; name = $ep.name; skip_probe = 'true'
@@ -87,15 +87,15 @@ try {
         } catch { Log "WARN: could not seed $($ep.type) endpoint: $_" }
     }
 
-    # 4. Image stack — best-effort, non-blocking. If there's no GPU or ComfyUI
+    # 4. Image engine — best-effort, non-blocking. If there's no GPU or sd-server
     #    isn't installed, the game still plays; pre-baked worlds carry their art.
-    $imgStack = Join-Path $Root 'scripts\start-image-stack.ps1'
-    if ((Test-Path $imgStack) -and -not (Port-Live 8101)) {
-        Log 'starting image stack (background; first run compiles kernels)…'
+    $imgStack = Join-Path $Root 'scripts\start-image-sdcpp.ps1'
+    if ((Test-Path $imgStack) -and -not (Port-Live 8189)) {
+        Log 'starting image engine (background; ~25 s to read the checkpoint)…'
         Start-Bg 'powershell' "-NoProfile -ExecutionPolicy Bypass -File `"$imgStack`"" $Root | Out-Null
-        # Do NOT wait — the game opens now; art fills in when the bridge answers.
-    } elseif (Port-Live 8101) { Log 'image stack already running' }
-    else { Log 'no image stack installed — playing with pre-baked art only' }
+        # Do NOT wait — the game opens now; art fills in when the engine answers.
+    } elseif (Port-Live 8189) { Log 'image engine already running' }
+    else { Log 'no image engine installed — playing with pre-baked art only' }
 
     # 5. The game. Block here until the player quits.
     if (-not (Test-Path $Client)) { throw "game client missing at $Client — re-run the installer." }

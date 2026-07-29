@@ -6,13 +6,13 @@
 // `cmd` with no args, which opens an idle interactive shell (reported "online")
 // instead of running the .cmd — so the service never actually starts.
 //
-// The image stack (ComfyUI + bridge) can't be plain pm2 apps: ComfyUI's ZLUDA
-// console must stay hidden (a visible window can catch CTRL_CLOSE and abort it),
-// so it's launched hidden by scripts/start-image-stack.ps1. To make it auto-heal
-// (previously a crash left image gen dead), pm2 runs image-stack-watchdog.mjs —
-// a tiny no-GPU process that relaunches that hidden launcher whenever :8188 or
-// :8101 go dark. So the stack is now managed (auto-restart) without the window
-// fragility of running ComfyUI directly under pm2.
+// The image engine is a plain pm2 app now. It used to be two hidden processes
+// (ComfyUI + an OpenAI-shaped bridge) supervised at arm's length by
+// scripts/image-stack-watchdog.mjs, because ComfyUI's ZLUDA console had to stay
+// hidden — a visible window can catch CTRL_CLOSE and abort ZLUDA — which ruled
+// out running it under pm2 directly. sd-server is one native Vulkan binary with
+// no CUDA shim and therefore no console fragility, so pm2 supervises it itself
+// and the port-polling watchdog is deleted rather than repointed.
 const cwd = __dirname;
 
 module.exports = {
@@ -21,19 +21,28 @@ module.exports = {
     // servers that consumed it (see src/builtin_mcp.py), so nothing needs it.
     //
     // env: this repo's backend shares the odysseus checkout's DATA_DIR (the
-    // account, model config and saved worlds live there), and ComfyUI/ZLUDA
-    // needs cuDNN off (it can't find a cuDNN conv engine — see WorldCompiler.md).
-    // The shipped exe uses its own data dir via the supervisor; this is the DEV
-    // canonical runtime only.
+    // account, model config and saved worlds live there). The shipped exe uses
+    // its own data dir via the supervisor; this is the DEV canonical runtime only.
     { name: "odysseus-api", script: "run-api.py", interpreter: "python", cwd,
       env: {
         ODYSSEUS_DATA_DIR: "C:\\Users\\cptahabb\\Documents\\Code\\odysseus\\data",
-        TORCH_BACKENDS_CUDNN_ENABLED: "0",
         // Mythforge is a single-player desktop game — no login. AUTH_ENABLED=false
         // disables the auth middleware so the client goes straight to the menu.
         // Set to "true" only if hosting a shared server for friends (see README).
         AUTH_ENABLED: "false"
       } },
-    { name: "image-stack", script: "scripts/image-stack-watchdog.mjs", cwd, autorestart: true, restart_delay: 5000 }
+    // stable-diffusion.cpp on Vulkan. interpreter "none" because this is a native
+    // exe, not a script. --diffusion-fa is flash attention in the diffusion model:
+    // measured on an RX 7900 GRE it is the difference between comfortable and
+    // tight VRAM at SDXL 1024. The checkpoint still lives in the ComfyUI tree —
+    // that install is left alone for other projects; this just reads the file.
+    { name: "image-engine", cwd, interpreter: "none",
+      script: "C:\\Users\\cptahabb\\Documents\\Code\\stable-diffusion.cpp\\sd-server.exe",
+      args: [
+        "-m", "C:\\Users\\cptahabb\\Documents\\Code\\ComfyUI-Zluda\\models\\checkpoints\\DreamShaperXL_Turbo_v2_1.safetensors",
+        "--listen-port", "8189",
+        "--diffusion-fa"
+      ],
+      autorestart: true, restart_delay: 5000 }
   ]
 }

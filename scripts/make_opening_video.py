@@ -8,6 +8,12 @@ Usage:  python -X utf8 scripts/make_opening_video.py
 Needs:  ComfyUI at :8188 with Wan 2.2 TI2V-5B + umt5-xxl + wan2.2 VAE,
         pip install imageio-ffmpeg pillow requests.
 Output: godot/assets/video/opening.ogv (+ per-shot mp4 masters in build/)
+
+ComfyUI is NO LONGER part of the Mythforge stack (the image engine is
+stable-diffusion.cpp on Vulkan, :8189) and nothing starts it for you — start it
+by hand before running this. sd.cpp does not do video, so this remains a
+ComfyUI job; the .ogv it produces is committed and shipped, so this script is
+only needed to REGENERATE the opening, never to play it.
 """
 import json, os, shutil, subprocess, sys, time, urllib.request
 

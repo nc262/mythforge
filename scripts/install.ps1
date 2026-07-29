@@ -61,73 +61,36 @@ ollama pull llama3.2:3b     # fast helper (quests, codex, worldsmith)
 ollama pull all-minilm      # ~45 MB — embeddings for pinpoint campaign memory
 Ok 'Models ready'
 
-# ── 5. Image generation (per GPU) ────────────────────────────────────────────
-# Custom nodes the art pipeline REQUIRES — not optional extras.
-#   InSPyReNet Rembg (matting). The World Compiler composes item art: material
-#   recolour, rarity treatments, per-region materials. Every one of those needs
-#   a real alpha channel. Measured: asking the model for "a plain black
-#   background" yields a usable cut-out only ~60% of the time; a matting model
-#   is ~100%. Without this, loot can only be regenerated, never varied.
-function Install-MythforgeComfyNodes([string]$comfyDir, [string]$py) {
-  $nodes = Join-Path $comfyDir 'custom_nodes'
-  New-Item -ItemType Directory -Force $nodes | Out-Null
-  $rembg = Join-Path $nodes 'ComfyUI-Inspyrenet-Rembg'
-  if (-not (Test-Path $rembg)) {
-    Step 'Installing the matting node (InSPyReNet — clean cut-outs for item art)'
-    git clone --depth 1 https://github.com/john-mnz/ComfyUI-Inspyrenet-Rembg $rembg
-  }
-  if (Test-Path $py) {
-    & $py -m pip install "transparent-background>=1.2.4" -q
-    Ok 'Matting node ready — item art can be recoloured and re-treated'
-  } else {
-    Warn "ComfyUI python not found at $py"
-    Warn "  finish with: `"$py`" -m pip install transparent-background"
-  }
-}
+# ── 5. Image generation ──────────────────────────────────────────────────────
+# ONE path, whatever the card. This used to branch three ways — ComfyUI+CUDA for
+# NVIDIA, ComfyUI+ZLUDA for AMD, nothing otherwise — because ComfyUI wants CUDA
+# and ZLUDA is a CUDA shim. stable-diffusion.cpp runs on Vulkan, which both
+# vendors ship, so the branch collapses: a 36 MB native binary, no Python env,
+# no HIP SDK, no kernel compile, no Defender exclusion.
+#
+# Known regression, deliberately taken: the ComfyUI graph included an InSPyReNet
+# matting node, and the World Compiler used its alpha channel to recolour and
+# re-treat item art (measured ~100% clean cut-outs against ~60% from asking the
+# model for a black background). sd-server has no matting, so composed item
+# variants fall back to regenerating rather than recolouring. IP-Adapter
+# character references and regional prompting are gone with it.
+if ($imagePath -eq 'none') {
+  Step 'Art generation skipped — configuring text-only'
+  Warn 'The full game works (story, combat, worlds, lorebook); the shipped worlds carry pre-baked art.'
+} else {
+  Step 'Installing the image engine (stable-diffusion.cpp, Vulkan)'
+  $sdcpp = Join-Path $sib 'stable-diffusion.cpp'
+  python (Join-Path $PSScriptRoot 'fetch_sdcpp.py') --dest $sdcpp
+  if (Test-Path (Join-Path $sdcpp 'sd-server.exe')) { Ok 'Image engine installed (~106 MB)' }
+  else { Warn 'Image engine did not install — the game still plays with pre-baked art.' }
 
-switch ($imagePath) {
-  'comfyui-cuda' {
-    Step 'NVIDIA path: installing ComfyUI + CUDA'
-    $comfy = Join-Path $sib 'ComfyUI'
-    if (-not (Test-Path $comfy)) { git clone --depth 1 https://github.com/comfyanonymous/ComfyUI $comfy }
-    if (-not (Test-Path "$comfy\venv")) { python -m venv "$comfy\venv" }
-    & "$comfy\venv\Scripts\python.exe" -m pip install --upgrade pip -q
-    & "$comfy\venv\Scripts\python.exe" -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124 -q
-    & "$comfy\venv\Scripts\python.exe" -m pip install -r "$comfy\requirements.txt" -q
-    Ok 'ComfyUI (CUDA) installed'
-    Install-MythforgeComfyNodes $comfy "$comfy\venv\Scripts\python.exe"
-    $ckptDir = Join-Path $comfy 'models\checkpoints'
-    New-Item -ItemType Directory -Force $ckptDir | Out-Null
-    $ckpt = Join-Path $ckptDir 'DreamShaperXL_Turbo_v2_1.safetensors'
-    if (-not (Test-Path $ckpt) -and (Ask 'Download the SDXL art model now (~6.5 GB)?')) {
-      Step 'Downloading DreamShaperXL Turbo (CC-friendly SDXL checkpoint)'
-      curl.exe -L -o $ckpt 'https://huggingface.co/Lykon/dreamshaper-xl-v2-turbo/resolve/main/DreamShaperXL_Turbo_v2_1.safetensors'
-      Ok 'Art model ready'
-    }
-  }
-  'comfyui-zluda' {
-    Step 'AMD path: installing ComfyUI-ZLUDA (guided)'
-    $comfy = Join-Path $sib 'ComfyUI-Zluda'
-    if (-not (Test-Path $comfy)) { git clone --depth 1 https://github.com/patientx/ComfyUI-Zluda $comfy }
-    Ok 'ComfyUI-Zluda cloned'
-    Warn 'AMD needs two manual steps (once):'
-    Write-Host '    1. Install the AMD HIP SDK: https://www.amd.com/en/developer/resources/rocm-hub/hip-sdk.html'
-    Write-Host "    2. Run $comfy\install.bat, then (as admin) this repo's scripts\fix-zluda-elevated.ps1"
-    Write-Host '    First image generation compiles kernels — expect ~10 quiet minutes.'
-    Write-Host '    Then drop an SDXL checkpoint (e.g. DreamShaperXL_Turbo_v2_1.safetensors) into models\checkpoints.'
-    # The venv only exists after install.bat, so add the node if it's there and
-    # leave a clear instruction if it isn't yet.
-    $zpy = Join-Path $comfy 'venv\Scripts\python.exe'
-    if (Test-Path $zpy) {
-      Install-MythforgeComfyNodes $comfy $zpy
-    } else {
-      Warn '    3. After install.bat, re-run this installer (or scripts\install-comfy-nodes.ps1)'
-      Write-Host '       to add the matting node the item-art pipeline needs.'
-    }
-  }
-  default {
-    Step 'No capable GPU — configuring text-only'
-    Warn 'The full game works (story, combat, worlds, lorebook); generated art is disabled on this machine.'
+  $ckptDir = Join-Path $sdcpp 'models'
+  New-Item -ItemType Directory -Force $ckptDir | Out-Null
+  $ckpt = Join-Path $ckptDir 'DreamShaperXL_Turbo_v2_1.safetensors'
+  if (-not (Test-Path $ckpt) -and (Ask 'Download the SDXL art model now (~6.5 GB)?')) {
+    Step 'Downloading DreamShaperXL Turbo (CC-friendly SDXL checkpoint)'
+    curl.exe -L -o $ckpt 'https://huggingface.co/Lykon/dreamshaper-xl-v2-turbo/resolve/main/DreamShaperXL_Turbo_v2_1.safetensors'
+    Ok 'Art model ready'
   }
 }
 
@@ -137,7 +100,7 @@ Write-Host ''
 Write-Host '  To play:' -ForegroundColor Yellow
 Write-Host '    1.  .\start-odysseus.ps1          (the game server → http://localhost:7000)'
 if ($imagePath -ne 'none') {
-  Write-Host '    2.  .\start-image-stack.cmd       (the art engine — optional but pretty)'
+  Write-Host '    2.  pwsh scripts\start-image-sdcpp.ps1   (the art engine — optional but pretty)'
 }
 Write-Host '    3.  Open http://localhost:7000, create your account, press New Adventure.'
 Write-Host ''
