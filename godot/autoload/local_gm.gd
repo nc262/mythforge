@@ -81,6 +81,12 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	# a rename rather than a buffer.
 	_chat.connect("response_updated", _on_token)
 	_chat.connect("response_finished", _on_finished)
+	# Load the weights NOW rather than on the first turn. Without this the
+	# extension warns and does it lazily, which buries a ~4.6 GB model load
+	# inside the player's first sentence — the one turn where the game most
+	# needs to look alive.
+	if _chat.has_method("start_worker"):
+		_chat.call("start_worker")
 	return true
 
 
@@ -100,5 +106,7 @@ func stream(message: String, system_prompt := "") -> bool:
 	if _busy or not _ensure_nodes(system_prompt):
 		return false
 	_busy = true
-	_chat.call("say", message)
+	# `ask` is the current name; `say` is deprecated upstream and warns on every
+	# turn. Fall back for older builds of the extension rather than requiring one.
+	_chat.call("ask" if _chat.has_method("ask") else "say", message)
 	return true

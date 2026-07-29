@@ -1,0 +1,24 @@
+; NobodyWho — llama.cpp in-process, via Vulkan. See docs/Architecture-InProcess.md.
+;
+; Trimmed to Windows x86_64 only. The upstream release ships every platform in
+; one 1.09 GB zip (4.4 GB unpacked); this project builds for Windows, and Godot
+; only ever loads the entry matching the host, so the rest is weight in the repo
+; and in the export for no benefit. Re-add a platform's line and its binary when
+; there is a build target that needs it.
+;
+; Both Windows entries point at the RELEASE dll — that is upstream's own mapping,
+; not a mistake here, which is why the 179 MB debug build is not kept either.
+[configuration]
+entry_symbol = "gdext_rust_init"
+compatibility_minimum = 4.5
+reloadable = true
+
+[libraries]
+windows.debug.x86_64 =   "res://addons/nobodywho/libnobodywho-godot-x86_64-pc-windows-msvc-release.dll"
+windows.release.x86_64 = "res://addons/nobodywho/libnobodywho-godot-x86_64-pc-windows-msvc-release.dll"
+
+[icons]
+NobodyWhoModel =         "res://addons/nobodywho/icon.svg"
+NobodyWhoChat =          "res://addons/nobodywho/icon.svg"
+NobodyWhoEmbedding =     "res://addons/nobodywho/icon.svg"
+NobodyWhoCrossEncoder =  "res://addons/nobodywho/icon.svg"

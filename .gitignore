@@ -110,3 +110,13 @@ tools/rcedit-x64.exe
 # the build path needs them from a clone. Rebuild any of them locally with
 # tests/bake_worlds.tscn + scripts/bake_zip.py — see docs/AssetBake.md.
 godot/baked/*.zip
+
+# NobodyWho GDExtension binaries (docs/Architecture-InProcess.md).
+# 145 MB — over GitHub's 100 MB per-file hard limit, so it CANNOT be committed
+# even if we wanted to. Same treatment as godot/baked/*.zip: a release asset,
+# fetched by scripts/fetch_nobodywho.py. The manifest and icon stay tracked, so
+# the addon's shape is in git even when its binary is not.
+godot/addons/nobodywho/*.dll
+godot/addons/nobodywho/*.so
+godot/addons/nobodywho/*.dylib
+godot/addons/nobodywho/*.pdb
