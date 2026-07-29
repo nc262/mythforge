@@ -185,6 +185,9 @@ func _ready() -> void:
 	# adventure title ("Free Roam" read as "ree Roam"). It belongs where nothing
 	# else lives — bottom-left, above the input row, anchored to the corner it
 	# actually occupies.
+	# R11-03 — and it is hidden outright in combat. It sits over the composer,
+	# the dice tray and the action bar (End turn read as "nd turn"), and a chart
+	# of the region answers nothing a player needs while a fight is on the table.
 	var mini := preload("res://scenes/ui/mini_map.gd").new()
 	mini.open_atlas.connect(func(): _open_character_screen("Atlas"))
 	mini.anchor_top = 1.0
@@ -194,6 +197,7 @@ func _ready() -> void:
 	mini.offset_right = 204
 	mini.offset_bottom = -72
 	add_child(mini)
+	_mini_map = mini
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
@@ -1647,6 +1651,7 @@ func _on_sheet_action(meta) -> void:
 
 # ── Combat actions ───────────────────────────────────────────────────────────
 var _init_rail: HBoxContainer       # the initiative rail: faces in turn order
+var _mini_map: Control              # the corner chart — hidden while a fight is on
 var _rail_turn_id := ""             # whose chip pulsed last
 var _rail_chips := {}               # id → MythPortrait, reused across renders
 var _rail_ids: Array = []           # roster signature; rebuild only when it changes
@@ -1902,6 +1907,16 @@ func _render_combat() -> void:
 	var fighting := bool(c.get("active", false))
 	_combat_panel.visible = fighting
 	_battle_grid.visible = fighting
+	if _mini_map != null:
+		_mini_map.visible = not fighting   # R11-03
+	# The living backdrop is the location painting at 0.45, breathing on a Ken
+	# Burns loop. Behind a battle board it is a drifting green wash under the
+	# composer and the action bar — the "random green blob". During a fight the
+	# BOARD is the scene, so the backdrop steps back and holds still.
+	if _scene_art != null and _scene_art.texture != null:
+		var want := 0.10 if fighting else 0.45
+		if not is_equal_approx(_scene_art.modulate.a, want):
+			create_tween().tween_property(_scene_art, "modulate:a", want, Ui.TIME["slow"])
 	if _init_rail != null and not fighting:
 		_init_rail.visible = false
 		_rail_ids = []  # next fight rebuilds its own roster of chips

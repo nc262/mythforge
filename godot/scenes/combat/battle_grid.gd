@@ -28,6 +28,12 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	Combat.changed.connect(_on_combat_changed)
 	Art.art_ready.connect(func(_k): queue_redraw())
+	# The movement overlay keys off the hover cell, so the cursor leaving the
+	# board has to put it away — otherwise "only while choosing" becomes "always,
+	# after the first time you touched it".
+	mouse_exited.connect(func():
+		_hover = [-1, -1]
+		queue_redraw())
 	custom_minimum_size = Vector2(Combat.MAP_COLS * 40, Combat.MAP_ROWS * 40)
 
 
@@ -46,7 +52,9 @@ func _on_combat_changed() -> void:
 		var id := str(m.get("id", ""))
 		var hp := int(m.get("hp", 0))
 		if _hp_seen.has(id) and hp != int(_hp_seen[id]) and not Ui.reduce_motion:
-			var at: Vector2 = _disp.get(id, _cell_center(Combat.cell_of(id)))
+			# _disp and _cell_center are BOARD space; these spawn child controls,
+			# which are control space — so the centred board's origin comes back.
+			var at: Vector2 = _disp.get(id, _cell_center(Combat.cell_of(id))) + _origin()
 			var delta := hp - int(_hp_seen[id])
 			Ui.rise_text(self, ("%+d" if delta > 0 else "%d") % delta,
 				Ui.c("gold") if delta > 0 else Ui.c("danger"), at + Vector2(-12, -34))
@@ -120,13 +128,30 @@ func _shudder() -> void:
 	tw.tween_callback(func(): _shake = Vector2.ZERO)
 
 
+## R11-02 — ONE cell size, both axes. Dividing width and height independently
+## drew 5-ft squares as 75x40 rectangles: every baked tile stretched to double
+## width, and a Chebyshev grid — where a diagonal step costs what an orthogonal
+## one costs — drawn in a shape where it visibly does not.
 func _cell_size() -> Vector2:
-	return Vector2(size.x / Combat.MAP_COLS, size.y / Combat.MAP_ROWS)
+	var s := minf(size.x / Combat.MAP_COLS, size.y / Combat.MAP_ROWS)
+	return Vector2(s, s)
+
+
+func _board_size() -> Vector2:
+	var cs := _cell_size()
+	return Vector2(cs.x * Combat.MAP_COLS, cs.y * Combat.MAP_ROWS)
+
+
+## Square cells rarely fill the control, so the board is centred in it. `_draw`
+## applies this once as a transform; everything inside it works in board space.
+func _origin() -> Vector2:
+	return ((size - _board_size()) * 0.5).floor()
 
 
 func _cell_at(p: Vector2) -> Array:
 	var cs := _cell_size()
-	return [clampi(int(p.x / cs.x), 0, Combat.MAP_COLS - 1), clampi(int(p.y / cs.y), 0, Combat.MAP_ROWS - 1)]
+	var b := p - _origin()
+	return [clampi(int(b.x / cs.x), 0, Combat.MAP_COLS - 1), clampi(int(b.y / cs.y), 0, Combat.MAP_ROWS - 1)]
 
 
 ## Pad cursor (controller): the d-pad steers the hover cell; accept clicks it —
@@ -192,8 +217,10 @@ func _token_art(m: Dictionary) -> Texture2D:
 
 
 func _draw() -> void:
-	draw_set_transform(_shake, 0.0, Vector2.ONE)  # the whole field shudders
+	# The origin rides in the transform so every cell rect below is board space.
+	draw_set_transform(_shake + _origin(), 0.0, Vector2.ONE)  # the whole field shudders
 	var cs := _cell_size()
+	var board := _board_size()
 	# ── The battlefield itself: painted underlay, framed and scrimmed ──
 	# R10 — a laid battlefield draws itself cell by cell. Each square knows its
 	# own role, so the mechanical layer and the picture cannot drift apart the
@@ -224,55 +251,61 @@ func _draw() -> void:
 					draw_texture_rect(tile, r, false, Color(0.94, 0.92, 0.96))
 				else:
 					draw_rect(r, Color(Combat.ROLES.get(role, {}).get("tint", Color(0.18, 0.18, 0.2))))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.06))
-		# The mechanical layer, stated rather than implied. Whether a square can
-		# be entered is the single most important fact on the board and it must
-		# never depend on telling one shade of grey from another — that was true
-		# of the flat tints and it will still be true once painted tiles land on
-		# top, so this overlay stays.
-		for x in Combat.MAP_COLS:
-			for y in Combat.MAP_ROWS:
-				var mr := Rect2(Vector2(x * cs.x, y * cs.y), cs)
-				if Combat._impassable([x, y]):
-					draw_rect(mr, Color(Ui.c("night"), 0.52))
-					draw_line(mr.position + Vector2(4, 4), mr.end - Vector2(4, 4), Color(Ui.c("ink_dim"), 0.5), 1.5)
-					draw_line(Vector2(mr.end.x - 4, mr.position.y + 4), Vector2(mr.position.x + 4, mr.end.y - 4), Color(Ui.c("ink_dim"), 0.5), 1.5)
-				elif Combat._difficult([x, y]):
-					var n := 3
-					for i in n:   # slow ground reads as a drag underfoot
-						var t := (i + 1.0) / (n + 1.0)
-						draw_line(mr.position + Vector2(mr.size.x * t, 0), mr.position + Vector2(0, mr.size.y * t),
-							Color(Ui.c("ink"), 0.16), 1.0)
-				if str(Combat.role_spec([x, y])["cover"]) != "none":
-					draw_circle(mr.position + mr.size * Vector2(0.86, 0.16), maxf(2.0, cs.x * 0.05), Color(0.45, 0.85, 0.45, 0.7))
+		draw_rect(Rect2(Vector2.ZERO, board), Color(Ui.c("night"), 0.06))
+		# R11 — the permanent mechanical overlay lived here: hatching on every
+		# impassable square, drag-stripes on every difficult one, a cover pip on
+		# every third cell. It was defended as "stated rather than implied", but
+		# it stamped a diagram over four GPU-hours of painted terrain and never
+		# switched off. The VTT guidance is the other way round: bake the answer
+		# into the map, and the player never has to ask during combat. A boulder
+		# reads as impassable because it looks like a boulder.
+		#
+		# Reachability is a QUESTION, not a property of the ground, so it is
+		# answered while the player is asking it — see the movement overlay below.
 	var under := Art.texture_for(map_key) if map_key != "" and laid.is_empty() else null
 	if under == null and laid.is_empty():
 		under = Art.texture_for(GameState.world_id())
 	if under != null:
 		# Cover-fit the painting.
 		var tsize := Vector2(under.get_width(), under.get_height())
-		var scale := maxf(size.x / tsize.x, size.y / tsize.y)
+		var scale := maxf(board.x / tsize.x, board.y / tsize.y)
 		var draw_size := tsize * scale
-		var offset := (Vector2(size.x, size.y) - draw_size) / 2.0
+		var offset := (board - draw_size) / 2.0
 		draw_texture_rect(under, Rect2(offset, draw_size), false, Color(0.92, 0.9, 0.95))
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.32))
+		draw_rect(Rect2(Vector2.ZERO, board), Color(Ui.c("night"), 0.32))
 	elif laid.is_empty():
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night2"), 0.7))
+		draw_rect(Rect2(Vector2.ZERO, board), Color(Ui.c("night2"), 0.7))
 	# Ornate board frame.
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.9), false, 3.0)
-	draw_rect(Rect2(Vector2(2, 2), size - Vector2(4, 4)), Color(Ui.c("gold"), 0.55), false, 1.5)
+	draw_rect(Rect2(Vector2.ZERO, board), Color(Ui.c("night"), 0.9), false, 3.0)
+	draw_rect(Rect2(Vector2(2, 2), board - Vector2(4, 4)), Color(Ui.c("gold"), 0.55), false, 1.5)
 	var pos := Combat.positions()
 	var c := Combat.data()
 	var budget: Dictionary = Combat.move_budget(c) if bool(c.get("active", false)) else {"left": 0}
 	var pc_cell: Array = pos.get("pc", [0, 0])
 	var my_turn: bool = str(Combat.current(c).get("id", "")) == "pc"
-	# Reachable squares glow faint gold on your turn.
-	if my_turn and int(budget.get("left", 0)) > 0:
+	# ── The movement overlay: on while the player is choosing, off otherwise ──
+	# Shown only when it is your turn, you have movement left, AND the cursor is
+	# actually on the board (or dragging your token) — the moment you are asking
+	# "where can I go?". It is not the board's permanent clothing.
+	if my_turn and int(budget.get("left", 0)) > 0 and (_drag_pc or _hover[0] >= 0):
 		# R10 — glow what you can actually WALK to. The old test was Chebyshev
 		# distance, which lit squares on the far side of a wall.
-		for key in Combat.reachable(pc_cell, int(budget["left"])):
+		var reach := Combat.reachable(pc_cell, int(budget["left"]))
+		for key in reach:
 			var rxy := str(key).split(",")
-			draw_rect(Rect2(Vector2(int(rxy[0]) * cs.x, int(rxy[1]) * cs.y), cs), Color(Ui.c("gold"), 0.06))
+			draw_rect(Rect2(Vector2(int(rxy[0]) * cs.x, int(rxy[1]) * cs.y), cs), Color(Ui.c("gold"), 0.16))
+		# What refuses you, in light red — and only the squares near enough to be
+		# a real choice. Lighting up all 160 would be the old overlay again.
+		for key in reach:
+			var rxy := str(key).split(",")
+			for d in [[1, 0], [-1, 0], [0, 1], [0, -1]]:
+				var nx: int = int(rxy[0]) + d[0]
+				var ny: int = int(rxy[1]) + d[1]
+				if nx < 0 or nx >= Combat.MAP_COLS or ny < 0 or ny >= Combat.MAP_ROWS:
+					continue
+				if reach.has("%d,%d" % [nx, ny]) or not Combat._impassable([nx, ny]):
+					continue
+				draw_rect(Rect2(Vector2(nx * cs.x, ny * cs.y), cs), Color(Ui.c("danger"), 0.18))
 	# R10 — borders. Walls are drawn ON the line between two squares, which is
 	# where they actually are. Procedural, not sprites: a wall is a thin strip
 	# with corner joins and generated art will never tile cleanly at that scale,
@@ -302,15 +335,16 @@ func _draw() -> void:
 			draw_line(a.lerp(mid, 0.55), b.lerp(mid, 0.55), Color(0.6, 0.85, 1.0, 0.85), 2.0)
 		if kind == "door_open":
 			draw_circle(a.lerp(b, 0.5), 3.0, Ui.c("gold"))
-	# (The legacy sampler's overlay lived here. The role overlay above says the
-	# same things from the laid field, so this was drawing a second, disagreeing
-	# opinion on top of the first — those red squares that matched nothing.)
-	# Whisper-thin grid — the painting shows through.
-	var grid_col := Color(Ui.c("ink"), 0.07)
+	# The grid, at the VTT default. It was 0.07 — a third of this — on the theory
+	# that the painting should show through, which left the seams between tiles
+	# reading as accidents. Foundry ships 0.2, and it works for the reason the
+	# whisper did not: a visible grid gives the eye a REASON for the seams, so a
+	# tiled field reads as a board rather than as a patchwork.
+	var grid_col := Color(Ui.c("ink"), 0.2)
 	for x in Combat.MAP_COLS + 1:
-		draw_line(Vector2(x * cs.x, 0), Vector2(x * cs.x, size.y), grid_col)
+		draw_line(Vector2(x * cs.x, 0), Vector2(x * cs.x, board.y), grid_col)
 	for y in Combat.MAP_ROWS + 1:
-		draw_line(Vector2(0, y * cs.y), Vector2(size.x, y * cs.y), grid_col)
+		draw_line(Vector2(0, y * cs.y), Vector2(board.x, y * cs.y), grid_col)
 	if _hover[0] >= 0:
 		draw_rect(Rect2(Vector2(_hover[0] * cs.x, _hover[1] * cs.y), cs), Color(Ui.c("gold"), 0.5), false, 2.0)
 	# ── Tokens: art discs ringed by their side, HP arc, name plate ──
@@ -362,7 +396,7 @@ func _draw() -> void:
 		var gr := minf(cs.x, cs.y) * 0.46
 		var ghost := Art.combatant_tex({"id": "pc"})
 		if ghost != null:
-			draw_texture_rect(ghost, Rect2(_drag_pt - Vector2(gr, gr), Vector2(gr * 2, gr * 2)), false, Color(1, 1, 1, 0.6))
+			draw_texture_rect(ghost, Rect2((_drag_pt - _origin()) - Vector2(gr, gr), Vector2(gr * 2, gr * 2)), false, Color(1, 1, 1, 0.6))
 		else:
-			draw_circle(_drag_pt, gr, Color(Ui.c("gold"), 0.4))
-		draw_arc(_drag_pt, gr, 0, TAU, 40, Color(Ui.c("gold"), 0.8), 2.0)
+			draw_circle(_drag_pt - _origin(), gr, Color(Ui.c("gold"), 0.4))
+		draw_arc(_drag_pt - _origin(), gr, 0, TAU, 40, Color(Ui.c("gold"), 0.8), 2.0)
