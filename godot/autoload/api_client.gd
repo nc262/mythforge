@@ -83,10 +83,10 @@ func worldsmith(payload: Dictionary) -> Dictionary:
 
 
 ## POST application/x-www-form-urlencoded (the backend's Form(...) endpoints).
-func call_form(path: String, fields: Dictionary) -> Dictionary:
+func call_form(path: String, fields: Dictionary, method := HTTPClient.METHOD_POST) -> Dictionary:
 	if test_mode:
 		return _test_response(path)
-	return await _request(HTTPClient.METHOD_POST, path,
+	return await _request(method, path,
 		_headers(["Content-Type: application/x-www-form-urlencoded"]), _urlencode(fields))
 
 
@@ -219,6 +219,33 @@ func auto_gm_model() -> Dictionary:
 	return best
 
 
+## A remembered session keeps whatever model it was BORN with, forever.
+##
+## `auto_gm_model()` runs only when a session is created, so a session made
+## while the account default was a 14B stayed pinned to it for the life of the
+## save — and Auto's whole job is to keep the narrator under 9B. Observed live:
+## qwen2.5:14b resident with 4.2 GB in VRAM (half of it spilled to CPU) and a
+## turn still composing at 143 s. The fast-ceiling logic was correct and simply
+## never got a second chance to apply.
+##
+## So the model is re-asserted every time a session is reopened. Cheap — one
+## PATCH per adventure load — against minutes a turn.
+func _reassert_gm_model(sid: String) -> void:
+	if test_mode:
+		return
+	var cfg := ConfigFile.new()
+	cfg.load(COOKIE_FILE)
+	var pick = JSON.parse_string(str(cfg.get_value("settings", "gm_model", "")))
+	if not (pick is Dictionary and str(pick.get("url", "")) != ""):
+		pick = await auto_gm_model()
+	if not (pick is Dictionary and str(pick.get("url", "")) != ""):
+		return
+	await call_form("/api/session/" + sid, {
+		"model": str(pick.get("model", "")),
+		"endpoint_url": str(pick.get("url", "")),
+	}, HTTPClient.METHOD_PATCH)
+
+
 ## Session per character, mirrored from the web client's _ensureSession:
 ## reuse a remembered session if /api/history/{sid} still 200s, else create one
 ## seeded with the caller's default chat endpoint (/api/default-chat).
@@ -231,6 +258,7 @@ func ensure_session(char_id: String, char_name: String) -> String:
 	if sid != "":
 		var r := await call_json(HTTPClient.METHOD_GET, "/api/history/" + sid)
 		if r.get("_status", 0) == 200:
+			await _reassert_gm_model(sid)
 			return sid
 	# The chosen GM model (Settings) beats the account default.
 	var cfg2 := ConfigFile.new()
