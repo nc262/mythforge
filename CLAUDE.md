@@ -17,42 +17,35 @@ It renders a single-page UI from `static/` and persists everything to `data/`
 `settings.json`). Chat/agent calls go to model endpoints in the `model_endpoints`
 table (`core/database.py`); locally that's **Ollama** (`localhost:11434`, GPU via
 ROCm). Image generation is OpenAI-API-shaped: `src/ai_interaction.do_generate_image`
-→ a registered image `ModelEndpoint` → our **bridge** (`scripts/comfyui_openai_bridge.py`,
-`:8101`) → **ComfyUI-ZLUDA** (`:8188`, sibling repo `..\ComfyUI-Zluda`) running SDXL
-on the AMD RX 7900 GRE through ZLUDA. Personas are `user_templates` in `presets.json`
+→ a registered image `ModelEndpoint` → **stable-diffusion.cpp** (`:8189`) running
+SDXL on the AMD RX 7900 GRE through **Vulkan**. No CUDA, no ZLUDA, no Python. Personas are `user_templates` in `presets.json`
 sharing one canon ("World Bible"); continuity is the memory system. See
 [docs/architecture-review.md](docs/architecture-review.md).
 
 ## Hard rules / gotchas (don't relearn these)
-- **ComfyUI MUST launch via `zluda.exe`.** `scripts/start-image-stack.ps1` →
-  `..\ComfyUI-Zluda\_run-comfy.bat` does this. Launching plain `python main.py`
-  (e.g. **ComfyUI Manager's "Restart" button**) fails with
-  `cublas64_11.dll … WinError 126` — the ZLUDA stub can't resolve HIP deps without
-  the wrapper.
-- **ComfyUI auto-update is disabled on purpose.** `_run-comfy.bat` is pinned and does
-  NOT `git pull`. The stock `comfyui-n.bat` pulls upstream on every launch, which has
-  pulled an incompatible commit (`simple_vram_headroom` crash). To update ComfyUI:
-  `git pull` manually, then test.
-- **ZLUDA trips Windows Defender** (false positive on its DLLs/`nccl.dll`). A Defender
-  exclusion for `..\ComfyUI-Zluda` is required or the install silently breaks. See
-  `scripts/fix-zluda-elevated.ps1`.
-- **cuDNN must be OFF for SDXL on ZLUDA** or conv2d throws
-  `CUDNN_STATUS_EXECUTION_FAILED`. The bridge bakes a `CUDNNToggleAutoPassthrough`
-  node (enable_cudnn=False) into every workflow.
-- **`presets.json` is cached in memory at startup** (`PresetManager.__init__`).
-  Editing the file directly does nothing until Odysseus restarts, and a UI preset-save
-  will overwrite your file edit with the stale cache. Edit via the API/UI, or edit the
-  file then **restart Odysseus**.
-- **The companion model `gurubot/girl:latest` will not call tools.** It stays in
-  character but never emits a tool call, so personas don't auto-generate images in
-  chat. Image generation is driven explicitly (the bridge `character` param), not by
-  the model deciding to. A tool-capable model (e.g. `qwen2.5:14b`) calls tools but
-  breaks the persona voice — a known tradeoff.
-- **The affiliate-tag-style invariant here:** the real diffusion happens only in
-  ComfyUI; Odysseus never loads torch/CUDA itself. Its venv is CPU-only torch and that
-  is correct — don't "fix" it.
-- ComfyUI's venv must be **Python 3.11** (ZLUDA's triton/torch patches are cp311-only;
-  machine default `python` is 3.13).
+- **The image engine is `stable-diffusion.cpp` on Vulkan** (`scripts/start-image-sdcpp.ps1`,
+  `:8189`). One native binary, one `.safetensors` checkpoint, no Python. It serves
+  the OpenAI image API directly, so `scripts/comfyui_openai_bridge.py` is no
+  longer in the path either.
+- **ComfyUI and ZLUDA are no longer part of this stack.** ComfyUI is left
+  installed for other projects; it is simply not started, and nothing here talks
+  to it. Everything below used to be required and is now dead — kept only so the
+  next person understands why the tower existed and why it is gone:
+  - ~~ComfyUI MUST launch via `zluda.exe` or `cublas64_11.dll … WinError 126`~~
+  - ~~A Windows Defender exclusion for `..\ComfyUI-Zluda`, or the install silently breaks~~
+  - ~~cuDNN must be OFF for SDXL on ZLUDA or conv2d throws `CUDNN_STATUS_EXECUTION_FAILED`~~
+  - ~~ComfyUI's venv must be Python 3.11 (ZLUDA's patches are cp311-only)~~
+  - ~~ComfyUI auto-update disabled on purpose (upstream pulled an incompatible commit)~~
+
+  Every one of those existed for a single reason: **ComfyUI wants CUDA and this
+  is an AMD card.** ZLUDA is a CUDA shim, and all of that was scaffolding around
+  the mismatch. A Vulkan backend needs no CUDA, so the scaffolding had nothing
+  left to hold up. Measured: freeing the card of ComfyUI also took a GM turn
+  from ~52s to ~28s (docs/Architecture-InProcess.md).
+- **The invariant that still holds:** the app never loads torch/CUDA itself —
+  diffusion happens entirely in the image engine. Its venv is CPU-only torch and
+  that is correct; don't "fix" it. The engine changed underneath (sd.cpp instead
+  of ComfyUI); the separation did not.
 
 ## Workflow before changing anything
 DISCOVER → PLAN → CHALLENGE → EXECUTE → VERIFY → REVIEW → IMPROVE. Weigh architecture,
@@ -60,8 +53,8 @@ security, operational, and cost impact (the four review docs below).
 
 ## Verifying changes
 - App: restart `uvicorn`, hit `http://localhost:7000`. Presets only reload on restart.
-- Image stack: `pwsh scripts/start-image-stack.ps1`; `curl :8101/health` and
-  `:8101/v1/models`; ComfyUI UI at `:8188`.
+- Image stack: `pwsh scripts/start-image-sdcpp.ps1`; `curl :8189/v1/models`;
+  a browser WebUI is served at `:8189` for eyeballing prompts.
 - Personas / image trigger: `python scripts/test_persona_image.py <model> [persona|plain]`
   drives the real agent loop and reports whether `generate_image` fired.
 - See [docs/testing-strategy.md](docs/testing-strategy.md).
@@ -70,8 +63,9 @@ security, operational, and cost impact (the four review docs below).
 | Port | Service |
 |---|---|
 | `7000` | Odysseus app (uvicorn) |
-| `8188` | ComfyUI-ZLUDA (image engine) |
-| `8101` | OpenAI→ComfyUI bridge |
+| `8189` | stable-diffusion.cpp (image engine, Vulkan) |
+| ~~`8188`~~ | ~~ComfyUI-ZLUDA~~ — no longer part of this stack |
+| ~~`8101`~~ | ~~OpenAI→ComfyUI bridge~~ — sd.cpp speaks the API itself |
 | `11434` | Ollama (LLMs) |
 | `8100`/`8080`/`8091` | ChromaDB / SearXNG / ntfy (if used) |
 
