@@ -1691,7 +1691,7 @@ func _on_sheet_action(meta) -> void:
 
 # ── Combat actions ───────────────────────────────────────────────────────────
 var _init_rail: HBoxContainer       # the initiative rail: faces in turn order
-var _mini_map: Control              # the corner chart — hidden while a fight is on
+var _mini_map: Control              # the corner chart (it hides itself in combat)
 var _rail_turn_id := ""             # whose chip pulsed last
 var _rail_chips := {}               # id → MythPortrait, reused across renders
 var _rail_ids: Array = []           # roster signature; rebuild only when it changes
@@ -1947,8 +1947,9 @@ func _render_combat() -> void:
 	var fighting := bool(c.get("active", false))
 	_combat_panel.visible = fighting
 	_battle_grid.visible = fighting
-	if _mini_map != null:
-		_mini_map.visible = not fighting   # R11-03
+	# (R11-03's hide used to live here and never worked: mini_map's own _process
+	# reassigns `visible` every frame, so this was overwritten before the next
+	# draw. The chart hides itself now — see mini_map.gd.)
 	# The living backdrop is the location painting at 0.45, breathing on a Ken
 	# Burns loop. Behind a battle board it is a drifting green wash under the
 	# composer and the action bar — the "random green blob". During a fight the

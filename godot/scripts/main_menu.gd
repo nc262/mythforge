@@ -924,20 +924,24 @@ func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
 		_play(adv))
 
 
+## CONTINUE means continue. It did not.
+##
+## This read the remembered SERVER SESSION IDS and cross-referenced them against
+## PRESET TEMPLATES, then showed a picker whenever more than one matched — so
+## with several tales on the shelf the button never continued anything, and the
+## picker it opened was built from templates, which carry no play state. That is
+## why every card read "a new hero · Level 1 · Day 1" for a hero on day 6.
+##
+## It is the same defect the button's CAPTION was fixed for (playtest #1 RCA,
+## see _paint_continue): the index is the source of truth, and this handler was
+## never moved over. Sessions are a server concept and templates are a catalogue;
+## neither knows what the player has played.
+## The button names a specific tale — "CONTINUE — FREE ROAM", with Drao's level
+## and day underneath it. It should open THAT tale. Showing a picker instead was
+## the old behaviour and it made the caption a lie; choosing among many is what
+## CHRONICLES is for, and that screen already reads the index properly.
 func _continue_last() -> void:
-	# Several live adventures → the save-file screen; one → straight in.
-	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
-	var saved: Array = []
-	if cfg.has_section("sessions"):
-		for cid in cfg.get_section_keys("sessions"):
-			for t in _templates:
-				if str(t.get("id")) == cid and cid.begins_with("dm-"):
-					saved.append(t)
-	if saved.size() <= 1:
-		_play(_btn_continue.get_meta("char"))
-		return
-	_show_saves(saved)
+	_play(_btn_continue.get_meta("char"))
 
 
 ## Chronicles: every begun tale as an illustrated cover card — take up the
@@ -1070,7 +1074,13 @@ func _play(c: Dictionary) -> void:
 	Sfx.music(WorldSkin.music_for_id(str(c.get("world_id", ""))))  # sound arrives before picture
 	curtain.step(0.15, "Opening the way…")
 	GameState.session_id = await Api.ensure_session(str(c.get("id", "")), str(c.get("name", "")))
-	if GameState.session_id == "":
+	# A session is a SERVER concept: an id the backend hangs a model and a system
+	# prompt on. A narrator running inside this process has neither and needs
+	# neither, so failing to get one is not a reason to refuse the tale. Without
+	# this the local GM was reachable and the game still would not open a save —
+	# it asked a server for permission to start before ever reaching the code
+	# that no longer needs the server.
+	if GameState.session_id == "" and not LocalGM.available():
 		# The realm faltered — say so in the world's voice, and go back gently.
 		curtain.step(1.0, "The way will not open — no storyteller answered.")
 		MythLoading.lift()

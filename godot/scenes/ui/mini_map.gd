@@ -35,8 +35,13 @@ func _has_chart() -> bool:
 		or Art.has_art("chart-" + wid) or Art.has_art(wid)
 
 
+## R11-03, properly this time. game.gd set `_mini_map.visible = false` when a
+## fight began — and this line put it straight back, every frame, because
+## `visible` is reassigned here unconditionally. A caller cannot win an argument
+## with a _process that runs sixty times a second, so the rule belongs where the
+## assignment is: the chart hides itself during combat.
 func _process(delta: float) -> void:
-	visible = _has_chart()
+	visible = _has_chart() and not Combat.active()
 	if not visible:
 		return
 	_phase += delta
