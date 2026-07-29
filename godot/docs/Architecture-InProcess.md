@@ -200,3 +200,51 @@ Two rules earned the hard way:
    it.** For anything under `user://`, that means PowerShell, not Bash.
 2. **Absence of a print is not evidence.** Trace to a FILE the game writes; a
    file append cannot be swallowed by a logging policy.
+
+## Stage 2, measured — and the result that reshapes the roadmap
+
+The in-process narrator works. It is also, right now, **slower than the thing it
+replaces**, and the reason is the most useful thing found today.
+
+Same 8B model, same machine, comparable prompt (~1,200–1,560 tokens in,
+~340 out):
+
+| | VRAM free to the model | wall per turn |
+|---|---|---|
+| In-process (NobodyWho / Vulkan), ComfyUI resident | **5,800 MiB** | 41.6s then 51.7s |
+| In-process, ComfyUI stopped | **15,557 MiB** | **24.4s then 28.5s** |
+| Ollama, comparable prompt | — | **12.7s** (1,208 tok prompt in 1.2s; 340 out at 44 tok/s) |
+
+Two things fall out of that.
+
+**1. VRAM headroom is the dominant cost, and it is measured now, not asserted.**
+Simply taking ComfyUI off the card takes a turn from ~52s to ~28s — a 1.8x
+speedup with no code change. `Performance.md` §1 already said idle ComfyUI holds
+~7.4 GB; this is what that costs a narrator sharing the card.
+
+**This couples Stage 2 and Stage 4.** Moving the GM in-process does not resolve
+the contention — it inherits it. The narrator will not be fast until the image
+stack stops holding the GPU, which is exactly what Stage 4 (stable-diffusion.cpp
+in-process, no ComfyUI, no ZLUDA) is for. Stage 4 is not the last stage by
+value; it is the one that makes Stage 2 pay.
+
+**2. There is still a ~2x gap to Ollama on a free card** (28.5s vs 12.7s), and
+it is NOT explained yet. Ruled out: the integrated GPU — forcing
+`GGML_VK_VISIBLE_DEVICES=0` made it *slower*, so device 0 was already selected.
+Remaining suspects, in order: Ollama using ROCm/HIP rather than Vulkan for this
+workload; NobodyWho defaulting `n_ctx` to 4096 and re-processing the envelope
+each turn where Ollama keeps a KV cache across a session; and the doubled BOS
+token the tokenizer warns about on every call.
+
+Until that is closed, the honest position is: **the local path is correct,
+private, and serverless, but not yet faster.** It should not be switched on by
+default on the strength of architecture alone.
+
+### Method note
+
+The first number measured was "8 tok/s", derived from wall-clock divided by
+output tokens. That conflates model load, prompt processing and generation, and
+it flattered nothing — it was simply the wrong measurement. The comparison only
+became meaningful once Ollama was given a prompt of the same weight; its
+headline 87 tok/s came from a 16-token prompt and was never comparable to a
+1,560-token envelope.
