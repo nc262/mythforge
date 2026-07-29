@@ -14,6 +14,7 @@ var _empty_retry := 0       # a silent reply gets one quiet second attempt
 const _GATE_MIN := 40       # visible chars to see before judging the language
 var _pending_check := {}
 var _last_player_msg := ""  # the visible player line, paired into memory beats
+var _last_scene := ""       # the GM's last prose — the scene the player can see
 var _suggest: HFlowContainer = null   # contextual verbs above the input (R6 PLAY-04)
 var _suggest_plate: PanelContainer = null   # its backing, hidden with it
 var _conjuring := false
@@ -798,9 +799,18 @@ func _send(raw: String) -> void:
 	# when the GM's own prose happened to match an attack verb, so declaring an
 	# attack got you narration and one loose d20 while the board never appeared.
 	# Open it here, before the GM answers, so it narrates into a live round.
+	# R9-03 — but only against someone who is ACTUALLY THERE. Opening on the
+	# declaration alone staged whatever the player named: "I attack the ice
+	# jotun" with no jotun in the scene produced a 16/16 Ice Jotun on the tracker
+	# while the GM answered "there is no sign of them nearby". A fight against
+	# nothing, and my own regression from the R8-07 fix.
+	#
+	# The scene the player is looking at is the last thing the GM said, so that is
+	# what the target must appear in. Deliberately NOT a wider regex — the trigger
+	# was never too narrow, it was too credulous.
 	if not Combat.active():
 		var declared := Tags.detect_player_attack(msg)
-		if declared != "":
+		if declared != "" and _foe_is_present(declared):
 			_start_combat(declared)
 	_turns_since_tick += 1
 	if _turns_since_tick >= 3 and not Combat.active():
@@ -1041,6 +1051,7 @@ func _on_done(_ok: bool) -> void:
 	var parsed: Dictionary = Tags.parse(_acc)
 	_apply_world_tags(parsed["tags"])          # state — the deterministic domain
 	_apply_presentation_tags(parsed["tags"])   # presentation only — never state
+	_last_scene = str(parsed["clean"])
 	Chronicle.record(_last_player_msg, str(parsed["clean"]))
 	# NOTE: "\b" in a GDScript literal is a backspace char, not a regex word
 	# boundary — the pattern must be "\\bTHE END\\b" or completion never fires.
@@ -2739,3 +2750,28 @@ func _md(s: String) -> String:
 		for i in parts.size():
 			out += ("[b]%s[/b]" % parts[i]) if i % 2 == 1 else parts[i]
 	return out
+
+
+## R9-03 — is this foe actually in the scene?
+##
+## The player may name anything; the game may only stage what the story has put
+## in front of them. The scene is the GM's last prose, so the target has to
+## appear there — by full name, or by a distinctive word of it ("Jenkins" for
+## "Samuel Jenkins", "jotun" for "Ice Jotun"). Short words are ignored, or "the"
+## would match every scene ever written.
+##
+## An unrecognised target is not refused, it is simply not STAGED: the message
+## still goes to the GM, who is free to answer with a real encounter and open
+## the fight properly. The old behaviour built the foe out of the player's
+## sentence and then let the GM contradict it.
+func _foe_is_present(who: String) -> bool:
+	if _last_scene.strip_edges() == "":
+		return false
+	var hay := _last_scene.to_lower()
+	var name := who.to_lower().strip_edges()
+	if name != "" and hay.contains(name):
+		return true
+	for word in name.split(" ", false):
+		if word.length() >= 4 and hay.contains(word):
+			return true
+	return false
