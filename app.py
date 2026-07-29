@@ -394,7 +394,41 @@ if AUTH_ENABLED:
     app.add_middleware(AuthMiddleware)
     logger.info("Auth middleware enabled (AUTH_ENABLED=true)")
 else:
-    logger.info("Auth middleware disabled (set AUTH_ENABLED=true to enable)")
+    # Auth off still needs an IDENTITY. Turning the login wall off removed the
+    # middleware entirely, so `request.state.current_user` was never set and
+    # `get_current_user()` returned None for every request. Everything that keys
+    # data by user then filed it under the dict key None — which json.dump
+    # writes as the string "null" — while every save the player already had sat
+    # under their real username, unreachable.
+    #
+    # That is what "no CONTINUE, empty Chronicles" actually was (R8-01 / R9-07 /
+    # R12-01): not a lost save, an orphaned one. The Hall was reading a
+    # different person's shelf.
+    #
+    # So resolve the session cookie for IDENTITY without gating on it, and fall
+    # back to the single configured account. No login is required, nothing is
+    # refused — the request just knows whose game it is.
+    @app.middleware("http")
+    async def _identify_without_gating(request: Request, call_next):
+        if getattr(request.state, "current_user", None) is None:
+            who = None
+            try:
+                who = auth_manager.get_username_for_token(request.cookies.get(SESSION_COOKIE))
+            except Exception:
+                who = None
+            if not who:
+                try:
+                    users = auth_manager.list_users() or []
+                    if len(users) == 1:
+                        who = users[0].get("username")
+                except Exception:
+                    who = None
+            request.state.current_user = who or "local"
+            request.state.api_token = False
+        return await call_next(request)
+
+    logger.info("Auth middleware disabled (set AUTH_ENABLED=true to enable); "
+                "identity still resolved from the session cookie")
 
 # ========= STATIC FILES =========
 os.makedirs(STATIC_DIR, exist_ok=True)
