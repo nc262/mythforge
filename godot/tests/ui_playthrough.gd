@@ -15,6 +15,7 @@ func _ready() -> void:
 	Ui.apply("")
 	Ui.reduce_motion = true  # instant tweens/dice so the headless run is deterministic
 	Api.test_mode = true
+	GameState.reset_test_saves()   # a harness starts from nothing
 	_seed()
 	await _boot_game()
 	await _turn("loot", "I pry the old chest open.",

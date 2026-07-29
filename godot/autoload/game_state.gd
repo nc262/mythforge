@@ -271,6 +271,23 @@ func save_dir() -> String:
 	return TEST_SAVE_DIR if Api.test_mode else SAVE_DIR
 
 
+## A harness must start from nothing. Saves persisting between runs is how three
+## checks began failing the moment persistence became real: the canned seed was
+## being overwritten by whatever the PREVIOUS run left behind, so the run under
+## test was never the run that was set up. Called by the harnesses at boot.
+func reset_test_saves() -> void:
+	if not Api.test_mode:
+		push_warning("reset_test_saves refused: not in test_mode")
+		return
+	var d := DirAccess.open(TEST_SAVE_DIR)
+	if d != null:
+		for f in d.get_files():
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(TEST_SAVE_DIR + "/" + f))
+	_index_cache = []
+	_global_cache = null
+	state = {}
+
+
 func _save_path(for_cid: String) -> String:
 	return "%s/%s.json" % [save_dir(), for_cid.validate_filename()]
 

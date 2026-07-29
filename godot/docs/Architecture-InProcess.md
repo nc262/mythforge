@@ -170,3 +170,33 @@ Kept for balance, because none of this is free:
 - [llama.cpp Vulkan outperforms ROCm — ROCm issue #4883](https://github.com/ROCm/ROCm/issues/4883)
 - [CUDA vs Vulkan for llama.cpp](https://llmrequirements.com/cuda-vs-vulkan-llama-cpp)
 - [llama.cpp vs vLLM — Red Hat Developer](https://developers.redhat.com/articles/2026/06/15/llamacpp-vs-vllm-choosing-right-local-llm-inference-engine)
+
+## Field note: my own tooling was lying to me
+
+Worth recording, because it cost most of an afternoon and produced two confident
+wrong diagnoses.
+
+The agent's Bash tool runs against a **virtualised view of `%APPDATA%`**. Writes
+land in a sandbox overlay: `ls` sees them, the shipped game does not. PowerShell
+sees the real disk. So:
+
+- `scripts/migrate_saves_local.py`, run through Bash, wrote eleven saves that
+  existed only for the tool that wrote them. The game read an empty folder and
+  correctly showed no CONTINUE.
+- Probing `load_index()` through the same tool returned 11 records — from the
+  sandbox — which "confirmed" the code was fine and pointed the investigation at
+  the exported build instead.
+
+And separately: **a release export does not route `print()` into the log file.**
+An instrumented run came back completely blank, including a probe placed before
+code that demonstrably ran. I read that silence as "never executed" and rewrote
+`_refresh()` on the strength of it. The rewrite was a good change on its own
+merits — the Hall should not wait on the network to show local saves — but the
+reasoning behind it was wrong.
+
+Two rules earned the hard way:
+
+1. **Verify filesystem state with the same kind of process that will consume
+   it.** For anything under `user://`, that means PowerShell, not Bash.
+2. **Absence of a print is not evidence.** Trace to a FILE the game writes; a
+   file append cannot be swallowed by a logging policy.

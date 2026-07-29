@@ -38,6 +38,7 @@ func _ready() -> void:
 	Ui.reduce_motion = true
 	if OS.get_environment("MF_LIVE") != "1":
 		Api.test_mode = true
+		GameState.reset_test_saves()   # a harness starts from nothing
 		_seed()
 	await _boot_game()
 	# ── Station: the play screen ──
