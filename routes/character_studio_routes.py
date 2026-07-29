@@ -343,13 +343,24 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
     # The client treats the server as the source of truth on load and pushes
     # each save back here. Writes are serialized (read-modify-write the whole
     # file) so concurrent kind-saves can't clobber each other.
-    # "adventures" is the Hall's resume index — the record CONTINUE is built
-    # from. The Godot client has been writing it since the Hall was built and
-    # every write was refused with 400 "unknown state kind", silently, because
-    # the client fires and forgets. That is the whole of "no CONTINUE and
-    # Chronicles empty" (R8-01 / R9-07 / R12-01, reported three times): the save
-    # was never lost, it was never accepted.
-    _WS_KINDS = {"mem", "codex", "quests", "combat", "sheet", "gm", "notes", "bmap", "inv", "clock", "world", "rel", "cworlds", "cstories", "artstyle", "adventures"}
+    # This list is a CONTRACT with the Godot client, and it had silently drifted
+    # out of step with it. Anything the client saves under a kind missing here is
+    # refused with 400 "unknown state kind" — and the client fires and forgets,
+    # so the feature simply never persists and nothing ever says why.
+    #
+    # Three separate playtest findings turned out to be this one bug:
+    #   "adventures" — the Hall's resume index. No CONTINUE, empty Chronicles
+    #                  (R8-01 / R9-07 / R12-01, reported three times).
+    #   "cast"       — who you have met and your bond with them. "The Cast never
+    #                  records who you've met" (R8-33).
+    #   "lore"       — the Lore Book's entries.
+    # In every case the save was never lost; it was never accepted.
+    #
+    # Note "rel" below: the server has accepted it all along and the client has
+    # never written it. That is the shape of the drift — one side renamed, the
+    # other did not. Anything added here must match a `save_kind(...)` call in
+    # game_state.gd, and vice versa.
+    _WS_KINDS = {"mem", "codex", "quests", "combat", "sheet", "gm", "notes", "bmap", "inv", "clock", "world", "rel", "cworlds", "cstories", "artstyle", "adventures", "cast", "lore"}
 
     def _world_state_path():
         return os.path.join(os.path.dirname(preset_manager.presets_file), "studio_world_state.json")

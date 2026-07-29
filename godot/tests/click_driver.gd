@@ -47,6 +47,7 @@ func _ready() -> void:
 	await _settle(10)
 	var menu: Node = _find_dialog("character_screen.gd")
 	await _must(menu != null, "Sheet button click did not open THE MENU (click eaten?)")
+	await _probe_tab_reachability(menu)
 	for tab in menu.TABS:
 		await _click(menu._tabs[tab])
 		await _settle(6)
@@ -282,3 +283,35 @@ func _boot_game() -> void:
 			break
 	await _must(Mode.state == "Exploration", "boot never reached Exploration (state=%s)" % Mode.state)
 	print("  boot: real game scene up (%s)" % ("LIVE backend" if not Api.test_mode else "canned backend"))
+
+
+## R8-06 / R12-03 — is each tab actually REACHABLE BY A MOUSE?
+##
+## This harness clicks `menu._tabs[tab]` directly, which bypasses hit-testing
+## entirely — so every tab "passed" while four of them were dead in the shipped
+## game. What a mouse does instead is ask which control is topmost at a point.
+## This reproduces that: for each tab's centre, walk every Control in the window
+## and report the last one in draw order whose rect contains the point and whose
+## mouse_filter is not IGNORE. That control is who gets the click.
+func _probe_tab_reachability(menu: Node) -> void:
+	var win := menu.get_viewport()
+	print("── tab reachability (window %s) ──" % str(win.get_visible_rect().size))
+	for tab in menu.TABS:
+		var b: Control = menu._tabs[tab]
+		var pt: Vector2 = b.get_global_rect().get_center()
+		var hits: Array = []
+		_hit_walk(menu.get_tree().root, pt, hits)
+		var top: String = str(hits[-1]) if not hits.is_empty() else "<nothing>"
+		var owned := not hits.is_empty() and (hits[-1] == b or b.is_ancestor_of(hits[-1]))
+		print("   %-11s rect=%s  →  %s%s" % [
+			tab, str(b.get_global_rect()), top, "" if owned else "   ** NOT THE TAB **"])
+
+
+func _hit_walk(n: Node, pt: Vector2, out: Array) -> void:
+	if n is Control:
+		var c := n as Control
+		if c.is_visible_in_tree() and c.mouse_filter != Control.MOUSE_FILTER_IGNORE \
+				and c.get_global_rect().has_point(pt):
+			out.append(c)
+	for k in n.get_children():
+		_hit_walk(k, pt, out)

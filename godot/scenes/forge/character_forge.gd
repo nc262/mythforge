@@ -582,7 +582,10 @@ func _stage_quenching() -> void:
 	var epithet := Label.new()
 	epithet.theme_type_variation = "HintLabel"
 	epithet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	var nature := ("destiny: " + ", ".join(draft["rolled"].map(func(x): return str(x)))) if not draft["rolled"].is_empty() \
+	# R9-08 — these came back through JSON as floats, so a 15 printed as "15.0"
+	# and the whole line read "destiny: 15.0, 14.0, 13.0, 10.0, 10.0, 9.0". An
+	# ability score is a whole number; round on the way to the eye, not in the data.
+	var nature := ("destiny: " + ", ".join(draft["rolled"].map(func(x): return str(int(round(float(x))))))) if not draft["rolled"].is_empty() \
 		else "the standard array, by hand"
 	epithet.text = "%s %s · %s · %s · kit: %s" % [str(draft["race"]), str(draft["cls"]), str(draft["bg"]), nature,
 		", ".join(draft["kit"])]

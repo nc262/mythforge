@@ -210,8 +210,17 @@ func _stage_campaign_tale() -> void:
 		var story: Dictionary = st if st is Dictionary else {}
 		var title := str(story.get("title", "")) if not story.is_empty() else "Free Roam"
 		var adv := {"id": Rules.adventure_id(wid, story), "name": title, "world_id": wid, "world": _camp_world, "story": story}
+		# R11-06 — "wander it as you please" was the DEFAULT for a missing hook, so
+		# every authored tale wore Free Roam's subtitle and all three cards read
+		# identically. Only free roam is free roam; an authored tale says what it
+		# is, or says nothing, but never claims to be the other thing.
+		var blurb := "wander it as you please"
+		if not story.is_empty():
+			blurb = str(story.get("hook", story.get("premise", story.get("blurb", "")))).strip_edges()
+			if blurb == "":
+				blurb = "a tale of %s" % str(_camp_world.get("name", "this world"))
 		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
-			"body": str(story.get("hook", "wander it as you please")).left(60),
+			"body": blurb.left(60),
 			"foot": str(_camp_world.get("name", ""))})
 		card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))
 		card.pressed.connect(func():
@@ -358,8 +367,15 @@ func _stage_preview() -> void:
 	body.bbcode_enabled = true
 	body.fit_content = true
 	body.custom_minimum_size = Vector2(620, 0)
-	body.append_text("[center][b]%s[/b][/center]\n\n[b]The hero:[/b] %s\n[b]The table:[/b] %s difficulty · companions %s%s" % [
-		str(draft["adv"].get("name", "the tale")).replace("[", "[lb]"), hero_line, diff_name,
+	# R11-05 — the preview listed tale, hero and table but never the WORLD, so a
+	# player who had just chosen Saltmarsh Reach was never shown it back before
+	# committing. It is the largest choice on the sheet; it belongs first.
+	var world_name := str(draft["adv"].get("world", {}).get("name", "")) \
+		if draft["adv"].get("world") is Dictionary else ""
+	if world_name == "":
+		world_name = str(draft["adv"].get("world_id", "")).capitalize()
+	body.append_text("[center][b]%s[/b][/center]\n\n[b]The world:[/b] %s\n[b]The hero:[/b] %s\n[b]The table:[/b] %s difficulty · companions %s%s" % [
+		str(draft["adv"].get("name", "the tale")).replace("[", "[lb]"), world_name, hero_line, diff_name,
 		"welcome" if bool(draft["companions"]) else "barred",
 		("\n[b]House rules:[/b] " + str(draft["house"]).replace("[", "[lb]")) if str(draft["house"]) != "" else ""])
 	var bc := CenterContainer.new()
