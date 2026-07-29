@@ -117,6 +117,18 @@ action economy, movement budgeting and damage all verified by hand (see
 | R9-11 | The "choose a world" hint prints ~250 px below the button that refused | P3 | S |
 | R9-12 | The Party stage is one toggle on a full screen; all four Difficulty cards use the same sword glyph | P3 | S |
 
+## R11 — the baked board, played ([Playtest-R11.md](Playtest-R11.md))
+
+| id | finding | pri | size |
+|----|---------|-----|------|
+| R11-01 | **The GM adjudicates fights, not the engine — the root cause of R9-01.** The GM narrates "make an attack roll"; `tag_parser._atk_re` turns that into a *generic check*, which has no reach, no target, no AC, no damage and no action economy. Observed: a **natural-20 critical hit** on a foe **55 ft away**, neither combatant moved, target left **17/17**, action never spent. `Combat.player_attack()` is correct and `self_check` proves its reach guard every run — it is simply never called. Re-fixing the guard changes nothing | **P0** | L |
+| R11-02 | The grid draws 5-ft squares as ~75x40 px **rectangles** — every baked tile stretched 2:1, and a Chebyshev grid drawn where a diagonal is not an orthogonal | P1 | S |
+| R11-03 | The board is clipped by the composer, and the minimap is drawn **over** both the board and the action bar — `End turn ›` renders `nd turn ›`, HP readouts half-hidden. R9-05 confirmed, and it covers controls, not just text | P1 | S |
+| R11-04 | Terrain patches have hard rectangular edges — undergrowth is a sharp green rectangle on the dirt with no transition | P2 | M |
+| R11-05 | The Preview never names the world — tale, hero and difficulty only | P3 | S |
+| R11-06 | All three tales share the Free Roam subtitle "wander it as you please" | P3 | S |
+| ~~R10~~ | ~~Battle terrain overlay does not match the map art~~ — **fixed and verified in play.** Tiles come from the world package; cover dots and impassable hatching sit on exactly the squares that carry the art | ✅ | — |
+
 **Still untested, and why** — the tactical layer (blocked by R8-07), spells
 (needs a caster), merchants (never met one), level-up (blocked by R8-28),
 chapter close / chronicle / tone knobs (blocked by R8-06), companions, the Lore
