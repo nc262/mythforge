@@ -131,19 +131,23 @@ async def test_genuine_recent_volume_still_throttled():
 # save_upload() counts each file against upload_rate_limit, which was 5 while
 # the composer allows MAX_FILES=10. ──────────────────────────────────────────
 
-def _max_files_from_frontend() -> int:
-    src = (_REPO / "static/js/fileHandler.js").read_text(encoding="utf-8")
-    m = re.search(r"MAX_FILES\s*=\s*(\d+)", src)
-    assert m, "MAX_FILES not found in fileHandler.js"
-    return int(m.group(1))
+# This used to read MAX_FILES straight out of static/js/fileHandler.js, so the
+# server cap was checked against the real client cap rather than a copy. The web
+# UI is deleted, so there is no frontend to read — the constant is inlined and
+# the test keeps its point: the per-minute file cap must exceed a single batch.
+#
+# Weaker than it was, and deliberately not deleted: a rate limit that rejects one
+# legitimate multi-file attach (issue #1346) is still worth a guard. If a Godot
+# client ever batches uploads, point this at ITS constant.
+FRONTEND_MAX_FILES = 10
 
 
 def test_rate_limit_accommodates_a_full_batch():
-    # The per-minute file cap must comfortably exceed the frontend batch cap,
+    # The per-minute file cap must comfortably exceed the client batch cap,
     # or a single legitimate multi-file attach trips it (issue #1346).
     h = UploadHandler.__new__(UploadHandler)
     UploadHandler.__init__(h, base_dir="/tmp", upload_dir="/tmp/_odysseus_test_uploads_cfg")
-    assert h.upload_rate_limit >= _max_files_from_frontend()
+    assert h.upload_rate_limit >= FRONTEND_MAX_FILES
 
 
 def test_six_file_batch_is_not_rate_limited(tmp_path):

@@ -128,6 +128,82 @@ action economy, movement budgeting and damage all verified by hand (see
 | ~~R11-05~~ | ~~The Preview never names the world — tale, hero and difficulty only~~ — **fixed**: the Preview now names the world | ✅ | — |
 | ~~R11-06~~ | ~~All three tales share the Free Roam subtitle "wander it as you please"~~ — **fixed**: only free roam wears the free-roam blurb | ✅ | — |
 
+## DEAD CODE — the Odysseus carcass (measured 2026-07-29, half done)
+
+This kept getting deferred behind gameplay work and was nearly missed again.
+Numbers are **measured**, not estimated: tracked `.gd/.py/.js/.css/.html/.ts`
+lines, excluding `godot/baked/` and `godot/art/`.
+
+### Done in this pass — the browser UI
+
+| | before | after |
+|---|---|---|
+| **total** | 347,294 | **145,010** |
+| `static/` (both web front ends) | 201,617 (58.1%) | **0** |
+| `godot/` (the actual game) | 22,692 (6.5%) | 22,692 (**15.6%**) |
+
+`static/` held **two** front ends: `index.html` (the upstream Odysseus workspace
+— email, notes, calendar, documents) and `mythforge.html`, a browser build of the
+game, which is the second front end the in-process move exists to remove. 193
+files, 162 of them `.js`. Twelve page routes went with it.
+
+Safe because the Godot client calls `/api/*` and nothing else, and every sound it
+plays is `res://assets/sfx/*.wav` inside the exe. Verified by grep before
+deleting, then by booting the trimmed backend and checking every endpoint the
+client actually calls (all 200/400-validation; the twelve UI routes 404).
+
+**47 backend test files went with it** (~4.5k lines, 218 tests) — they read
+`static/js/*.js` off disk and asserted on its source text, so their subject no
+longer exists. Two were kept because they test live Python and only *mention*
+`static/` in a docstring; one (`test_upload_multifile.py`) had a single assertion
+that parsed `MAX_FILES` out of `fileHandler.js`, now inlined with a comment
+saying so, because the rate-limit guard it protects is still worth having.
+
+Method note worth repeating: `grep "static/"` found 44 of them. Five more used
+`_REPO / "static" / "js" / ...` path joins and were caught only by diffing
+`pytest --collect-only` against HEAD. **A string search is not a dependency
+check.** Baseline for that diff: **33 collection errors already existed on HEAD**
+— dead tests for routes cut in earlier passes (`memory_routes`,
+`research_*`, `vault`, `shell`, device-flow). Those are part of this carcass too
+and are not yet cleaned; the count is 32 now only because one of them happened to
+test the module deleted here.
+
+### Still to do — the backend, and it needs TRACING not guessing
+
+69% of what remains is backend: `backend-lib` 58,391 (40.3%) + `backend-tests`
+41,916 (28.9%). Some is load-bearing — the client still needs this process for
+image generation and as the narrator fallback when NobodyWho is unavailable
+(Architecture-InProcess.md, Stage 5). Much is not.
+
+The endpoints the Godot client provably calls are only these:
+
+    /api/auth/{login,logout,status}   /api/chat_stream   /api/default-chat
+    /api/characters/studio/*          /api/models        /api/presets/templates
+    /api/session*  /api/history/*  /api/version  /api/stt/transcribe
+
+**Do not delete by eyeball.** `routes/` is almost entirely live (only
+`__init__.py` is truly unreferenced; `chat_helpers`/`gallery_helpers`/
+`device_flow` are imported by sibling routes, not `app.py`). `src/` is where the
+weight is, and importer counts lie: `research_handler` has 2 importers but
+`research_routes` was cut, so those importers may themselves be unreachable. The
+job is a reachability trace from the live route set above, then delete the
+complement, then delete the tests that only covered it.
+
+Known-dead already found: `src/email_thread_parser.py` (0 importers) — removed.
+`src/tool_index.py` still retries **ChromaDB every 30 s** on boot, and ChromaDB
+was cut in batch 2; that whole path is dead weight still burning a timer.
+
+Also: `characterStudio.js` existed **twice** (`static/js/` and `static/`, 8,402
+and 8,299 lines) — gone with `static/`, but a sign the extraction was never
+finished rather than merely paused.
+
+### Not touched on purpose
+
+`/api/shutdown` is called by nothing (it was a web-UI button), but it is an API
+endpoint, not a page. Removing API surface belongs to the Stage 5 trace, not to a
+"delete the browser UI" pass — keeping the two separate is what makes either one
+reviewable.
+
 ## R12 — Director's pass on the shipped build (2026-07-29)
 
 Reported from playing the exe. **Priority is set by what blocks testing**, not by

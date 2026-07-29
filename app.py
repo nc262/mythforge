@@ -430,27 +430,29 @@ else:
     logger.info("Auth middleware disabled (set AUTH_ENABLED=true to enable); "
                 "identity still resolved from the session cookie")
 
-# ========= STATIC FILES =========
-os.makedirs(STATIC_DIR, exist_ok=True)
-
-
-class _RevalidatingStatic(StaticFiles):
-    """Serve static assets normally, but force the browser to REVALIDATE
-    source files (.js/.css/.html) on every load instead of serving a stale
-    copy from disk cache. The app ships raw ES modules with no build step or
-    versioned URLs, so browsers were caching modules across deploys — a code
-    change wouldn't appear without a manual hard-refresh. `no-cache` keeps the
-    cached bytes but requires a conditional request; unchanged files still
-    return a cheap 304 (ETag/Last-Modified are preserved)."""
-
-    async def get_response(self, path, scope):
-        resp = await super().get_response(path, scope)
-        if path.endswith((".js", ".css", ".html")):
-            resp.headers["Cache-Control"] = "no-cache"
-        return resp
-
-
-app.mount("/static", _RevalidatingStatic(directory="static"), name="static")
+# ========= NO STATIC FILES, AND NO BROWSER UI =========
+#
+# `static/` is gone: 201,617 lines (158k JS, 39k CSS, 4k HTML) serving two
+# browser front ends this project does not want.
+#
+#   static/index.html      the upstream Odysseus workspace — email, notes,
+#                          calendar, documents. None of it is this game.
+#   static/mythforge.html  a BROWSER BUILD OF THE GAME, which is the second
+#                          front end the whole in-process move exists to delete.
+#
+# The Godot client never referenced any of it: it calls `/api/*` and nothing
+# else, and every sound it plays is `res://assets/sfx/*.wav` inside the exe.
+# Verified before deleting, not assumed.
+#
+# What survives is a HEADLESS API. That is deliberate and temporary — the client
+# still needs this process for image generation and as the narrator fallback
+# when NobodyWho is unavailable (see godot/docs/Architecture-InProcess.md,
+# Stage 5). Retiring it entirely is a separate, dependency-traced job; deleting
+# the UI is not, which is why it goes first.
+#
+# The StaticFiles mount went with the directory. It could not simply be left:
+# StaticFiles raises at startup if its directory is missing, so the mount and
+# the files are one change or the app does not boot.
 
 # ========= GENERATED IMAGES =========
 @app.get("/api/generated-image/{filename}")
@@ -792,41 +794,26 @@ logger.info("Webhook & API token routes initialized")
 
 # ========= ROUTES (kept in app.py) =========
 
-def _serve_html_with_nonce(request: Request, file_path: str) -> HTMLResponse:
-    """Read an HTML file and inject the CSP nonce into inline <script> tags."""
-    with open(file_path, "r", encoding="utf-8") as f:
-        html = f.read()
-    nonce = getattr(request.state, "csp_nonce", "")
-    html = html.replace("{{CSP_NONCE}}", nonce)
-    return HTMLResponse(html)
+# _serve_html_with_nonce() lived here. It read an HTML file and substituted the
+# CSP nonce into inline <script> tags; with no HTML left to serve it had no
+# callers. core/middleware.py still sets request.state.csp_nonce and still sends
+# the CSP header — that protects the API responses and costs nothing.
 
 @app.get("/")
-async def serve_index(request: Request):
-    """The root IS the game now. The legacy workspace SPA stays reachable only
-    at /workspace (escape hatch for the email/notes/calendar tools)."""
-    p = abs_join(BASE_DIR, "static/mythforge.html")
-    if os.path.exists(p):
-        return _serve_html_with_nonce(request, p)
-    return await serve_workspace(request)
+async def serve_index():
+    """There is no browser UI. This process is an API for the Godot client.
 
-@app.get("/workspace")
-async def serve_workspace(request: Request):
-    static_path = abs_join(BASE_DIR, "static/index.html")
-    if os.path.exists(static_path):
-        return _serve_html_with_nonce(request, static_path)
-    root_path = abs_join(BASE_DIR, "index.html")
-    if os.path.exists(root_path):
-        return _serve_html_with_nonce(request, root_path)
-    raise HTTPException(404, "index.html not found")
-
-@app.get("/mythforge")
-async def serve_mythforge(request: Request):
-    """Standalone Mythforge entry page — loads only the studio + its shared deps,
-    not the full Odysseus SPA. See EXTRACTION.md §4.A."""
-    p = abs_join(BASE_DIR, "static/mythforge.html")
-    if os.path.exists(p):
-        return _serve_html_with_nonce(request, p)
-    raise HTTPException(404, "mythforge.html not found")
+    `/` used to serve static/mythforge.html (a browser build of the game) and
+    `/workspace` served the upstream Odysseus SPA. Both are deleted — a second
+    front end was the thing being removed, not a feature to keep an escape hatch
+    for. Answer plainly instead of 404ing, so anyone who opens :7000 in a browser
+    learns what this port is rather than thinking it is broken.
+    """
+    return JSONResponse({
+        "service": "mythforge-api",
+        "ui": "none — the game is the Godot client, not a web page",
+        "docs": "/docs",
+    })
 
 @app.post("/api/shutdown")
 async def shutdown_server(request: Request):
@@ -858,56 +845,16 @@ async def shutdown_server(request: Request):
     threading.Thread(target=_stop, daemon=True).start()
     return {"ok": True, "stopping": True, "via": "pm2" if (pm_managed and pm_name) else "signal"}
 
-@app.get("/notes")
-async def serve_notes(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/calendar")
-async def serve_calendar(request: Request):
-    return await serve_workspace(request)
-
-# Per-tool deep-link routes — all serve the same SPA, the JS auto-opens
-# the matching modal based on window.location.pathname. Each route also
-# gets a unique favicon + page title via inline script in index.html so
-# bookmarks render with tool-specific icons.
-@app.get("/cookbook")
-async def serve_cookbook(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/email")
-async def serve_email(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/memory")
-async def serve_memory(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/gallery")
-async def serve_gallery(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/studio")
-async def serve_studio(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/tasks")
-async def serve_tasks(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/library")
-async def serve_library(request: Request):
-    return await serve_workspace(request)
-
-@app.get("/backgrounds")
-async def serve_backgrounds(request: Request):
-    """Sandbox page for prototyping background effects. No auth required."""
-    return _serve_html_with_nonce(request, abs_join(BASE_DIR, "static/backgrounds.html"))
-
-@app.get("/login")
-async def serve_login(request: Request):
-    if not AUTH_ENABLED:
-        return RedirectResponse(url="/", status_code=302)
-    return _serve_html_with_nonce(request, abs_join(BASE_DIR, "static/login.html"))
+# The SPA deep-link routes are gone with the SPA: /notes /calendar /cookbook
+# /email /memory /gallery /studio /tasks /library all returned the same
+# static/index.html and let its JS pick a modal from window.location.pathname.
+# Plus /mythforge (the browser build of the game) and /backgrounds (an effects
+# sandbox). Twelve routes serving two front ends nobody should be opening.
+#
+# /login went too. With AUTH_ENABLED=false — the single-player default — it only
+# ever redirected to "/". Hosting for friends still works: the Godot client does
+# its own login against /api/auth/login, which is untouched. What no longer
+# exists is a BROWSER login page, and there is no browser client left to need one.
 
 @app.get("/api/version")
 async def get_version():
