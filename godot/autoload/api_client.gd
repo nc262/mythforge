@@ -306,6 +306,17 @@ func stream_chat(message: String, session_id: String) -> void:
 		await get_tree().process_frame
 		sse_done.emit(true)
 		return
+	# Stage 2 — the narrator, in-process. Chosen only when the NobodyWho
+	# extension AND a GGUF are both present; otherwise this is a no-op and the
+	# turn goes to the server exactly as it always has. It answers the same two
+	# signals, so nothing downstream knows the difference.
+	# `message` is already the full envelope (Composer.envelope): world, sheet,
+	# scene and the player's line. The remote path leans on the SESSION carrying
+	# a preset system prompt on top of that; the local path has no session, so
+	# that framing has to move into the envelope before this is switched on for
+	# real. Passing "" is honest about what is wired today.
+	if LocalGM.available() and LocalGM.stream(message, ""):
+		return
 	var client := HTTPClient.new()
 	if client.connect_to_host(HOST, PORT) != OK:
 		sse_done.emit(false)

@@ -505,5 +505,16 @@ func _ready() -> void:
 	GameState.character = keep_char
 	GameState.state = {}
 
+	# Stage 2 — the in-process narrator must be INERT until it is genuinely
+	# usable. Both halves are required: the GDExtension (so the class exists at
+	# all) and a GGUF on disk. If `available()` ever returns true with one of
+	# them missing, every GM turn silently stops reaching a narrator.
+	assert(LocalGM.available() == (ClassDB.class_exists("NobodyWhoChat")
+		and ClassDB.class_exists("NobodyWhoModel") and LocalGM.model_file() != ""),
+		"LocalGM is available exactly when the extension AND a model are present")
+	if not LocalGM.available():
+		assert(LocalGM.why_unavailable() != "", "an unusable narrator says why")
+		assert(not LocalGM.stream("hello", ""), "an unusable narrator refuses rather than hanging the turn")
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
