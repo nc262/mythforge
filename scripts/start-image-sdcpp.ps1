@@ -37,9 +37,14 @@ $log = Join-Path $env:TEMP "sd-server.log"
 Remove-Item $log, "$log.err" -ErrorAction SilentlyContinue
 
 # --diffusion-fa: flash attention in the diffusion model. Measured on an RX 7900
-# GRE this is the difference between comfortable and tight VRAM at SDXL 1024.
+#   GRE this is the difference between comfortable and tight VRAM at SDXL 1024.
+# --vae-tiling: do NOT drop this. Untiled, decoding a single 1024x1024 latent
+#   asks for one Vulkan buffer past this device's limit, ggml logs "Failed to
+#   allocate pinned memory ... ErrorOutOfDeviceMemory" and falls back to a slow
+#   path: decode alone was 36.2s of a 50.4s image. Tiled it is 3.1s, for a
+#   pixel-identical result at the same seed. 50.4s -> 19.9s per image.
 Start-Process -FilePath $Exe -WindowStyle Minimized `
-  -ArgumentList "-m","`"$Checkpoint`"","--listen-port","$Port","--diffusion-fa" `
+  -ArgumentList "-m","`"$Checkpoint`"","--listen-port","$Port","--diffusion-fa","--vae-tiling" `
   -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 
 Write-Host "loading $(Split-Path $Checkpoint -Leaf) (~6.5 GB)..." -ForegroundColor Cyan

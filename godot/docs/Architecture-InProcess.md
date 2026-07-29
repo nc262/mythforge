@@ -275,3 +275,95 @@ it flattered nothing — it was simply the wrong measurement. The comparison onl
 became meaningful once Ollama was given a prompt of the same weight; its
 headline 87 tok/s came from a 16-token prompt and was never comparable to a
 1,560-token envelope.
+
+## Resolved: ComfyUI removed, and the number re-taken
+
+The section above ends by naming the open variable — *"the variable worth
+removing is ComfyUI, not the last 1.5x"* — and says the local path is
+**"correct, private, and serverless, but not yet faster."** ComfyUI is now gone
+(the engine is stable-diffusion.cpp on Vulkan) and `tests/bench_gm.tscn` was
+re-run twice on the same envelope (4,871 chars + 1,383 system):
+
+| | turn 1 | turn 2 | turn 3 |
+|---|---|---|---|
+| conversational, ComfyUI resident | 41.6s | 51.7s | — *growing* |
+| stateless, ComfyUI stopped by hand | 24.4s | 22.0s | 19.3s |
+| stateless, **ComfyUI removed** | **8.3–8.7s** | **4.3s** | **3.7s** |
+
+Reproducible to the tenth across both runs. That is **~5.2x** on the steady
+state against the last recorded figure, and it settles the comparison the doc
+gave up on: **3.7s against Ollama's 12.7s.** The local path is no longer "not
+yet faster" — it is now the fast one, and the prediction that removing ComfyUI
+was worth ~1.8x undershot by roughly 3x.
+
+**Why it beat the prediction.** The 1.8x estimate assumed the replacement would
+also sit on the card, just more cheaply — `sd.cpp holds 6.6 GB only while it is
+running`, as an earlier note in this repo put it. Measured, that is wrong: idle
+sd-server holds **118 MB** of dedicated VRAM with a 99 MB working set. It does
+not keep the checkpoint resident at all; it loads per request and gives the
+memory back. ComfyUI's ~7.4 GB idle was not the price of diffusion, it was the
+price of *ComfyUI*. So the narrator does not merely get a bigger share of the
+card between images — between images it gets essentially all of it.
+
+The corollary is that `ArtCache._yield_the_card()` is deleted rather than
+ported. It POSTed ComfyUI's `/free` to force an unload during a GM turn;
+sd-server 404s that and exposes no unload API, so it had become a request firing
+into nothing. There is no lever to replace it with and none is needed — there is
+no longer an idle tenant to evict. `hold` (pausing our own queue during a
+stream) still does real work and stays.
+
+### The image side got faster too, and for an unrelated reason
+
+Chasing why an image took ~50s exposed a genuine misconfiguration rather than a
+cost of the swap:
+
+```
+sampling completed, taking 14.14s          <- 20 steps, fine
+ggml_vulkan: Failed to allocate pinned memory
+  (Requested buffer size exceeds device buffer size limit: ErrorOutOfDeviceMemory)
+latent 1 decoded, taking 36.20s            <- the actual bill
+generate_image completed in 50.42s
+```
+
+Untiled, decoding one 1024x1024 latent asks for a single Vulkan buffer past this
+device's limit; ggml logs the failure and falls back to a slow path. **The
+sampling was never the problem — the VAE decode was 72% of the image.**
+`--vae-tiling` takes decode to **3.08s** and the image to **19.9s** cold /
+**17.2s** warm, and at a fixed seed the result is compositionally identical, so
+it costs nothing. It is now set in all three launch paths
+(`ecosystem.config.js`, `scripts/start-image-sdcpp.ps1`,
+`scripts/mythforge_supervisor.py`) and should be treated as load-bearing, not
+tuning.
+
+One flag was tried and rejected. `--steps 8` — Turbo checkpoints advertise ~8 —
+does halve sampling (11.4s per image), but at 8 steps the same prompt and seed
+rendered the subject tiny and near-black where 20 filled the frame. Paying ~6s
+for a usable image is the right trade. Worth knowing either way: **sd-server
+ignores the `steps` field in the OpenAI-shaped request body** (a request asking
+for 8 ran 20/20 in the log), so steps are a launch flag or nothing.
+
+### Supervision, and why ComfyUI kept coming back
+
+Killing ComfyUI was not sufficient — it returned twice, from two places outside
+anything this repo's code touches:
+
+1. pm2 app `image-stack` ran `scripts/image-stack-watchdog.mjs`, a 30-second
+   port poller that relaunched ComfyUI + the bridge whenever `:8188` or `:8101`
+   went dark. It even got one last relaunch in mid-teardown. Deleting the pm2
+   app is only half: `dump.pm2` still listed it, so the next `pm2 resurrect`
+   would have restored it. **`pm2 save` is part of the fix.**
+2. A logon entry, `odysseus-image-stack.vbs`, started the image stack from the
+   *older* `Code/odysseus` checkout at every sign-in. Nothing done in this
+   repository could have stopped it. Moved to `~/startup-disabled/`.
+
+The watchdog is deleted rather than repointed. It existed because ComfyUI's
+ZLUDA console had to stay hidden — a visible window can catch `CTRL_CLOSE` and
+abort it — which ruled out running it under pm2 directly. sd-server is one
+native binary with no console fragility, so pm2 supervises it as `image-engine`
+and the arm's-length poller has nothing left to do. Verified: `:8188` and
+`:8101` stayed dark for 120s after teardown.
+
+**The general lesson, which cost real time twice in this project:** a process
+that reappears is being *supervised*, and the supervisor is usually not in the
+tree you are editing. Check pm2's saved dump and the Startup folder before
+concluding a kill worked.

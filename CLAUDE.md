@@ -40,8 +40,23 @@ sharing one canon ("World Bible"); continuity is the memory system. See
   Every one of those existed for a single reason: **ComfyUI wants CUDA and this
   is an AMD card.** ZLUDA is a CUDA shim, and all of that was scaffolding around
   the mismatch. A Vulkan backend needs no CUDA, so the scaffolding had nothing
-  left to hold up. Measured: freeing the card of ComfyUI also took a GM turn
-  from ~52s to ~28s (docs/Architecture-InProcess.md).
+  left to hold up. Measured after the swap: a GM turn went **19.3s → 3.7s**
+  steady state (~5.2x), because idle sd-server holds **118 MB** of VRAM where
+  ComfyUI held ~7.4 GB — it loads per request instead of staying resident
+  (godot/docs/Architecture-InProcess.md).
+- **`--vae-tiling` is load-bearing, not tuning.** Without it the VAE decode asks
+  for a Vulkan buffer past this device's limit, falls back to a slow path, and
+  eats 36.2s of a 50.4s image. Tiled: 3.1s decode, 19.9s image, pixel-identical
+  at the same seed. Set it in all three launch paths (`ecosystem.config.js`,
+  `scripts/start-image-sdcpp.ps1`, `scripts/mythforge_supervisor.py`). Also:
+  sd-server **ignores the `steps` field in the request body** — steps are a
+  launch flag or nothing.
+- **If ComfyUI comes back, something is supervising it.** Two things did: the
+  pm2 app `image-stack` (a port-poller that relaunched it; `pm2 save` is needed
+  or `dump.pm2` restores it) and a logon script `odysseus-image-stack.vbs`
+  pointing at the *older* `Code/odysseus` checkout — outside this repo entirely.
+  Both are disabled; check pm2's dump and the Startup folder before believing a
+  kill worked.
 - **The invariant that still holds:** the app never loads torch/CUDA itself —
   diffusion happens entirely in the image engine. Its venv is CPU-only torch and
   that is correct; don't "fix" it. The engine changed underneath (sd.cpp instead

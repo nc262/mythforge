@@ -189,10 +189,13 @@ def services():
         exe, ckpt = ie
         # 120 s, not the 600 ComfyUI needed: there are no ZLUDA kernels to
         # compile, so this is just a ~6.5 GB checkpoint read (measured ~25 s).
+        # --vae-tiling is load-bearing, not tuning: without it the VAE decode asks
+        # for a Vulkan buffer past the device limit, falls back to a slow path, and
+        # costs 36.2s of a 50.4s image. See ecosystem.config.js for the numbers.
         svc.append({"name": "image-engine", "url": "http://127.0.0.1:8189/v1/models",
                     "timeout": 120, "optional": True, "cwd": str(exe.parent),
                     "cmd": [str(exe), "-m", str(ckpt), "--listen-port", "8189",
-                            "--diffusion-fa"]})
+                            "--diffusion-fa", "--vae-tiling"]})
     svc.append({"name": "backend", "url": "http://127.0.0.1:7000/api/version", "timeout": 90,
                 "cmd": [py, "-m", "uvicorn", "app:app", "--host", "0.0.0.0", "--port", "7000"],
                 "cwd": str(REPO), "optional": False})
