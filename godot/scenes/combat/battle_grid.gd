@@ -210,7 +210,14 @@ func _draw() -> void:
 				# Variants keep a snowfield from reading as wallpaper. Chosen by
 				# position so the same square always wears the same tile.
 				var v: int = 1 + (abs(hash("%s%d,%d" % [role, x, y])) % TILE_VARIANTS)
-				var tile := Art.texture_for("tile-%s-%s-%d" % [role, wid, v])
+				# The package first, always — a default world ships its terrain
+				# painted, and must never spend the player's GPU redrawing it.
+				# The cache is only the fallback for a world compiled at runtime.
+				var tile := Compiler.tile_art(wid, role, v)
+				if tile == null:
+					tile = Compiler.tile_art(wid, role, 1)
+				if tile == null:
+					tile = Art.texture_for("tile-%s-%s-%d" % [role, wid, v])
 				if tile == null:
 					tile = Art.texture_for("tile-%s-%s-1" % [role, wid])
 				if tile != null:

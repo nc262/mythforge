@@ -187,6 +187,17 @@ func _ready() -> void:
 			if Combat.role_at([x, y]) == "":
 				every_cell_laid = false
 	assert(every_cell_laid, "a laid battlefield leaves no square without a role")
+	# Every world's default ground must be walkable at full speed, and every role
+	# it names must exist. "mud" as saltmarsh's open ground made 90% of a clearing
+	# difficult; a world id typo'd against world.json silently borrowed another
+	# world's ground (saltmarsh-reach -> embervale's grass).
+	for wid in Combat.WORLD_GROUND:
+		var ground: Dictionary = Combat.WORLD_GROUND[wid]
+		for slot in ["open", "rough", "floor"]:
+			assert(Combat.ROLES.has(str(ground[slot])),
+				"%s's %s ground is a real role" % [wid, slot])
+		assert(int(Combat.ROLES[str(ground["open"])]["move"]) == 1,
+			"%s's open ground is walkable at full speed" % wid)
 	var first_lay: Dictionary = Combat.data().get("cells", {}).duplicate()
 	Combat.lay_battlefield("shore", "fimbulreach", 7)
 	assert(Combat.data().get("cells", {}) == first_lay, "the same seed lays the same field")

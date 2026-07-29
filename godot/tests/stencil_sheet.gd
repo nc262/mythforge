@@ -15,8 +15,23 @@ func _ready() -> void:
 	# A fight must be live or the grid draws nothing.
 	Combat.enter("Goblin")
 	Combat.ensure_positions()
-	var world := "fimbulreach"
+	var argv := OS.get_cmdline_user_args()
+	var world := str(argv[0]) if argv.size() > 0 else "fimbulreach"
 	GameState.character["world_id"] = world
+	# Where does the paint come from? A default world must answer "package".
+	var from_pack := 0
+	var from_cache := 0
+	var missing := 0
+	for role in Combat.ROLES:
+		for v in range(1, 5):
+			if Compiler.tile_art(world, str(role), v) != null:
+				from_pack += 1
+			elif Art.has_art("tile-%s-%s-%d" % [role, world, v]):
+				from_cache += 1
+			else:
+				missing += 1
+	print("%s tiles — package %d, runtime cache %d, missing %d" % [
+		world, from_pack, from_cache, missing])
 	for stencil in Combat.STENCILS:
 		var c := Combat.data()
 		c.erase("cells")

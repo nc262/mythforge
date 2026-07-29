@@ -1406,6 +1406,20 @@ func key_art(world_id: String) -> Texture2D:
 ##
 ## Takes the UI's own key ("beast-goreling", "npc-old-gus") so callers do not
 ## have to learn a second vocabulary.
+## Terrain tiles ship inside the world package, like creatures and NPCs.
+##
+## They were briefly generated at play time into the global art cache instead —
+## which is the same mistake the beast lookup already carries an RCA for (see
+## `art_cache.beast_tex`: "the world's beasts were painted at bake time; a fight
+## was commissioning them again because it only checked the cache"). A default
+## world must arrive finished; runtime generation is for what the player invents.
+##
+## Package layout drops the world from the filename — it is implied by the
+## package: `art/tiles/<role>-<variant>.png`.
+func tile_art(world_id: String, role: String, variant: int) -> Texture2D:
+	return _load_tex("%s/art/tiles/%s-%d.png" % [world_dir(world_id), role, variant])
+
+
 func roster_art(world_id: String, key: String) -> Texture2D:
 	var sub := ""
 	var slug := ""

@@ -865,7 +865,14 @@ const WORLD_GROUND := {
 	"fimbulreach": {"open": "snow", "rough": "snowdrift", "floor": "wood_floor", "wall": "timber"},
 	"brasshaven": {"open": "cobble", "rough": "rubble", "floor": "stone_floor", "wall": "brass"},
 	"neonspire": {"open": "cobble", "rough": "debris", "floor": "stone_floor", "wall": "brass"},
-	"saltmarsh-reach": {"open": "mud", "rough": "reeds", "floor": "wood_floor", "wall": "timber"},
+	# The package id is "saltmarsh"; "Saltmarsh Reach" is only the display name.
+	# Keyed wrong, this fell through to embervale's default — a marsh of grass.
+	#
+	# `open` must be a move-1 role. It was "mud" (move 2), which made 90% of a
+	# clearing difficult and cut reachable-in-6 from 73 squares to 26: not
+	# flavour, just half speed everywhere. Tidal flat underfoot; the marsh comes
+	# from reeds, bog and shallows placed as patches.
+	"saltmarsh": {"open": "dirt", "rough": "reeds", "floor": "wood_floor", "wall": "timber"},
 	"everyday": {"open": "grass", "rough": "undergrowth", "floor": "wood_floor", "wall": "timber"},
 	"embervale": {"open": "grass", "rough": "undergrowth", "floor": "wood_floor", "wall": "timber"},
 }

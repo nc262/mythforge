@@ -16,7 +16,9 @@ const OUT := "user://tile_seams"
 ## object into wallpaper. These roles get the OPPOSITE prompt: one thing,
 ## centred, whole, and explicitly not repeating.
 const OBJECTS := ["boulder", "wreck", "crates", "pillar", "statue", "table", "brazier", "firepit", "chasm"]
-const ALL_WORLDS := ["fimbulreach", "embervale", "brasshaven", "neonspire", "saltmarsh-reach", "everyday"]
+## Package ids, not display names — these must match world.json `id` exactly or
+## the tiles are keyed to a world that does not exist at runtime.
+const ALL_WORLDS := ["fimbulreach", "embervale", "brasshaven", "neonspire", "saltmarsh", "everyday"]
 
 ## What each role should look like from directly overhead. Kept deliberately
 ## plain: a tile is a surface, not a scene. Anything with a horizon, a light
