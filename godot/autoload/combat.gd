@@ -220,7 +220,11 @@ func player_attack(target_id: String) -> Dictionary:
 	var abil_mod := dex if (props["ranged"] or (props["finesse"] and dex > strn)) else strn
 	var mod: int = abil_mod + Rules.prof_bonus(s) + int(wpn.get("atk", 0))
 	# Heavy weapons are unwieldy for Small heroes — swing at disadvantage.
-	var small: bool = RegEx.create_from_string("(?i)halfling|gnome|goblin|kobold|imp|sprite|fairy|pixie").search(str(s.get("race", ""))) != null
+	# Reads the heritage table now. This was a regex on the race NAME, so a world
+	# that reskinned Halfling silently turned them Medium and dropped the rule;
+	# the name pattern survives inside Rules.heritage_size() as the fallback for
+	# monsters and homebrew, which is all it was ever right for.
+	var small: bool = Rules.is_small(str(s.get("race", "")))
 	var roll := randi_range(1, 20)
 	var dv_tag := ""
 	if bool(props["heavy"]) and small:

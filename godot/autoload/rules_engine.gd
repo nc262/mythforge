@@ -104,6 +104,74 @@ func armor_ac_bonus(nm: String) -> int:
 	return 2
 
 
+## ── Heritage size and body ────────────────────────────────────────────────
+##
+## SIZE is a rules category; BODY is a render profile. Keeping them apart is the
+## point, and the Dwarf is why: mechanically **Medium** in 5e, but visibly short
+## and broad. Conflate them and you get either a Dwarf that plays as Small
+## (wrong rules) or one drawn at Human height (wrong look).
+
+## Fallback for anything with no heritage entry — monsters, homebrew, reskins.
+## This pattern used to be the ONLY test, inline in combat.gd, which meant a
+## world that renamed Halfling silently made them Medium and lost the
+## heavy-weapon rule. Data wins now; this only catches what the table has never
+## heard of.
+const SMALL_NAME_HINT := "(?i)halfling|gnome|goblin|kobold|imp|sprite|fairy|pixie|homunculus"
+
+const DEFAULT_BODY := {"height": 1.0, "girth": 1.0, "head": 1.0, "leg": 1.0, "arm": 1.0}
+
+
+func heritage(race: String) -> Dictionary:
+	var h = tables.get("heritages", {}).get(race, {})
+	return h if h is Dictionary else {}
+
+
+## "small" | "medium". Anything larger belongs to the bestiary, not a heritage.
+func heritage_size(race: String) -> String:
+	var sz := str(heritage(race).get("size", ""))
+	if sz != "":
+		return sz
+	return "small" if RegEx.create_from_string(SMALL_NAME_HINT).search(race) != null else "medium"
+
+
+func is_small(race: String) -> bool:
+	return heritage_size(race) == "small"
+
+
+## Bone-scale multipliers for the ONE shared skeleton. Race and sex are data
+## here, never separate geometry — equipment is skinned to the same bones, so it
+## follows the scaling for free. That is why nine heritages times two sexes does
+## not mean eighteen armour sets.
+func body_profile(race: String, sex := "") -> Dictionary:
+	var out := DEFAULT_BODY.duplicate()
+	var b = heritage(race).get("body", {})
+	if b is Dictionary:
+		for k in out:
+			out[k] = float(b.get(k, out[k]))
+	var sx = tables.get("body_sexes", {}).get(sex, {})
+	if sx is Dictionary and not sx.is_empty():
+		# Sex modifies the heritage profile rather than replacing it — a female
+		# dwarf is still short and broad.
+		out["height"] *= float(sx.get("height", 1.0))
+		out["girth"] *= float(sx.get("girth", 1.0))
+		out["shoulder"] = float(sx.get("shoulder", 1.0))
+		out["hip"] = float(sx.get("hip", 1.0))
+	return out
+
+
+## Which authored body an armour piece is fitted against. Equipment multiplies by
+## TIER, not by race — see godot/docs/CharacterRender.md.
+func body_tier(race: String) -> String:
+	return str(heritage(race).get("tier", "regular"))
+
+
+## Extra meshes parented to a bone (ears, horns, tail, snout). These do not
+## affect armour fitting — the one real exception is helm versus horns.
+func heritage_features(race: String) -> Array:
+	var f = heritage(race).get("features", [])
+	return f if f is Array else []
+
+
 ## Every worn slot the paper doll knows (key, label). Rings are two slots.
 const EQUIP_SLOTS := [
 	["head", "Head"], ["neck", "Neck"], ["cloak", "Cloak"], ["armor", "Chest"],

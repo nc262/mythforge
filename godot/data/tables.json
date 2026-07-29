@@ -580,7 +580,16 @@
    "traits": [
     "Versatile \u2014 a little better at everything"
    ],
-   "line": "adaptable and ambitious"
+   "line": "adaptable and ambitious",
+   "size": "medium",
+   "tier": "regular",
+   "body": {
+    "height": 1.0,
+    "girth": 1.0,
+    "head": 1.0,
+    "leg": 1.0,
+    "arm": 1.0
+   }
   },
   "Elf": {
    "abil": {
@@ -596,7 +605,19 @@
     "Fey Ancestry (advantage on saves vs charm; magic can\u2019t put you to sleep)",
     "Trance (a 4-hour rest suffices)"
    ],
-   "line": "graceful, long-lived, fey-touched"
+   "line": "graceful, long-lived, fey-touched",
+   "size": "medium",
+   "tier": "slim",
+   "body": {
+    "height": 1.02,
+    "girth": 0.93,
+    "head": 0.98,
+    "leg": 1.04,
+    "arm": 1.03
+   },
+   "features": [
+    "ears_long"
+   ]
   },
   "Dwarf": {
    "abil": {
@@ -608,7 +629,19 @@
     "Dwarven Resilience (advantage on saves vs poison; resistance to poison damage)",
     "Stonecunning"
    ],
-   "line": "hardy, stubborn, stone-wise"
+   "line": "hardy, stubborn, stone-wise",
+   "size": "medium",
+   "tier": "heavy",
+   "body": {
+    "height": 0.8,
+    "girth": 1.22,
+    "head": 1.06,
+    "leg": 0.82,
+    "arm": 0.9
+   },
+   "features": [
+    "beard_broad"
+   ]
   },
   "Halfling": {
    "abil": {
@@ -622,7 +655,19 @@
     "Brave (advantage on saves vs frightened)",
     "Nimble"
    ],
-   "line": "small, brave, and improbably lucky"
+   "line": "small, brave, and improbably lucky",
+   "size": "small",
+   "tier": "slim",
+   "body": {
+    "height": 0.64,
+    "girth": 0.98,
+    "head": 1.12,
+    "leg": 0.88,
+    "arm": 0.92
+   },
+   "features": [
+    "feet_bare"
+   ]
   },
   "Half-Orc": {
    "abil": {
@@ -636,7 +681,19 @@
     "Relentless Endurance (once per long rest, drop to 1 HP instead of 0)",
     "Savage Attacks (an extra weapon die on melee crits)"
    ],
-   "line": "powerful, fierce, and hard to put down"
+   "line": "powerful, fierce, and hard to put down",
+   "size": "medium",
+   "tier": "heavy",
+   "body": {
+    "height": 1.08,
+    "girth": 1.18,
+    "head": 1.02,
+    "leg": 1.02,
+    "arm": 1.06
+   },
+   "features": [
+    "tusks"
+   ]
   },
   "Tiefling": {
    "abil": {
@@ -649,7 +706,20 @@
     "Hellish Resistance (resistance to fire damage)",
     "Infernal Legacy"
    ],
-   "line": "infernal-blooded, charismatic, and distrusted"
+   "line": "infernal-blooded, charismatic, and distrusted",
+   "size": "medium",
+   "tier": "regular",
+   "body": {
+    "height": 1.01,
+    "girth": 1.0,
+    "head": 1.0,
+    "leg": 1.02,
+    "arm": 1.0
+   },
+   "features": [
+    "horns",
+    "tail"
+   ]
   },
   "Dragonborn": {
    "abil": {
@@ -662,7 +732,21 @@
     "Breath Weapon (a burst of elemental damage, once per rest)",
     "Draconic Resistance"
    ],
-   "line": "proud, draconic, and elemental"
+   "line": "proud, draconic, and elemental",
+   "size": "medium",
+   "tier": "heavy",
+   "body": {
+    "height": 1.1,
+    "girth": 1.14,
+    "head": 1.04,
+    "leg": 1.03,
+    "arm": 1.04
+   },
+   "features": [
+    "snout",
+    "tail",
+    "scales"
+   ]
   },
   "Gnome": {
    "abil": {
@@ -673,7 +757,19 @@
    "traits": [
     "Gnome Cunning (advantage on INT/WIS/CHA saves vs magic)"
    ],
-   "line": "clever, curious, and tiny"
+   "line": "clever, curious, and tiny",
+   "size": "small",
+   "tier": "slim",
+   "body": {
+    "height": 0.58,
+    "girth": 1.0,
+    "head": 1.16,
+    "leg": 0.84,
+    "arm": 0.9
+   },
+   "features": [
+    "ears_wide"
+   ]
   },
   "Half-Elf": {
    "abil": {
@@ -687,7 +783,19 @@
     "Fey Ancestry (advantage on saves vs charm; no magical sleep)",
     "a broad, versatile upbringing"
    ],
-   "line": "caught between two worlds \u2014 charming and adaptable"
+   "line": "caught between two worlds \u2014 charming and adaptable",
+   "size": "medium",
+   "tier": "regular",
+   "body": {
+    "height": 1.01,
+    "girth": 0.97,
+    "head": 0.99,
+    "leg": 1.02,
+    "arm": 1.01
+   },
+   "features": [
+    "ears_slight"
+   ]
   }
  },
  "condition_fx": {
@@ -1547,5 +1655,25 @@
    ],
    "rarity": "uncommon"
   }
- ]
+ ],
+ "body_sexes": {
+  "female": {
+   "height": 0.96,
+   "girth": 0.94,
+   "shoulder": 0.94,
+   "hip": 1.06
+  },
+  "male": {
+   "height": 1.0,
+   "girth": 1.0,
+   "shoulder": 1.0,
+   "hip": 1.0
+  },
+  "neutral": {
+   "height": 0.98,
+   "girth": 0.97,
+   "shoulder": 0.97,
+   "hip": 1.03
+  }
+ }
 }
