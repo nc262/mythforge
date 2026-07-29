@@ -197,6 +197,67 @@ Also: `characterStudio.js` existed **twice** (`static/js/` and `static/`, 8,402
 and 8,299 lines) — gone with `static/`, but a sign the extraction was never
 finished rather than merely paused.
 
+### The backend trace: attempted, REVERTED, and now tooled (2026-07-29)
+
+Two scripts exist for this now. **Read the warning in the first one before
+deleting anything.**
+
+`scripts/route_surface.py` — **trustworthy**. Imports the real app and enumerates
+`app.routes`, so prefixes are already applied. This answers the question that
+actually matters, and the answer is that *imported is not the same as used*:
+
+| router | paths the client calls |
+|---|---|
+| `character_studio_routes` | 30 / 31 |
+| `session_routes` | 12 / 19 |
+| `history_routes` | 10 / 11 |
+| `preset_routes` | 3 / 8 |
+| **`auth_routes`** | **3 / 27** |
+| **`model_routes`** | **2 / 19** |
+| **`chat_routes`** | **1 / 8** |
+
+193 routes across 18 modules; the client uses ~65 of them. Whole routers it never
+touches: `gallery_routes` (1,900 lines, 32 paths), `webhook_routes` (391),
+`upload_routes` (272), `api_token_routes` (188), `prefs_routes` (91),
+`tts_routes` (87), `emoji_routes`, `workspace_routes`. That is ~3k lines of
+router plus whatever only they import.
+
+**Removing a router is a SCOPE decision, not a dead-code finding.** Some back
+features the game may want (uploads, gallery, TTS). The way to do it is one
+router at a time: comment out the `include_router`, run the Godot harnesses and
+the backend suite, confirm, commit. Not in a batch.
+
+`scripts/trace_backend.py` — **advisory only**. Import-reachability, currently
+reporting **23 orphan modules / 5,832 lines (8.2% of backend)**.
+
+An 8,000-line deletion based on it was attempted this session and **reverted in
+full**. Its orphan list was wrong SEVEN times while being written — hardcoded
+package list missing `services/` (39 files), relative imports resolved against
+the wrong package, `from X import a` treating symbols as modules,
+subprocess-launched modules with no importer (`mcp_servers/image_gen_server.py`
+IS image generation), parent packages not closed over, route prefixes ignored,
+and ancestors marked live without tracing their own imports. Each wrong answer
+would have deleted working code. All seven are documented in the module
+docstring.
+
+**Method that actually holds**, learned by needing it repeatedly:
+
+* Record a baseline first: `pytest tests/ --continue-on-collection-errors
+  --tb=no -q`. The suite is **already red — 147 failed / 1938 passed / 41
+  errors** — so "tests fail" proves nothing on its own; only a DIFF against that
+  baseline does.
+* Collection passing is not the same as tests passing. The `static/` deletion
+  broke `test_app.py`'s "static directory should exist" assertion, which
+  collects fine and fails at runtime. A `--collect-only` diff cannot see it.
+* Deleting every `.py` in a package leaves an empty directory that Python treats
+  as a namespace package, so imports fail in a new way instead of cleanly.
+* Cascading collection errors that remove one test per round are a signal the
+  analysis is wrong, not that one more deletion is needed.
+
+Also still open: ~80 test files import route modules cut in earlier passes and
+cannot be collected at all. They are dead, but they are entangled with the above,
+so they should go with whichever pass actually lands.
+
 ### Not touched on purpose
 
 `/api/shutdown` is called by nothing (it was a web-UI button), but it is an API
