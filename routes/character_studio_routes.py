@@ -343,7 +343,13 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
     # The client treats the server as the source of truth on load and pushes
     # each save back here. Writes are serialized (read-modify-write the whole
     # file) so concurrent kind-saves can't clobber each other.
-    _WS_KINDS = {"mem", "codex", "quests", "combat", "sheet", "gm", "notes", "bmap", "inv", "clock", "world", "rel", "cworlds", "cstories", "artstyle"}
+    # "adventures" is the Hall's resume index — the record CONTINUE is built
+    # from. The Godot client has been writing it since the Hall was built and
+    # every write was refused with 400 "unknown state kind", silently, because
+    # the client fires and forgets. That is the whole of "no CONTINUE and
+    # Chronicles empty" (R8-01 / R9-07 / R12-01, reported three times): the save
+    # was never lost, it was never accepted.
+    _WS_KINDS = {"mem", "codex", "quests", "combat", "sheet", "gm", "notes", "bmap", "inv", "clock", "world", "rel", "cworlds", "cstories", "artstyle", "adventures"}
 
     def _world_state_path():
         return os.path.join(os.path.dirname(preset_manager.presets_file), "studio_world_state.json")

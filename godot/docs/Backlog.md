@@ -127,6 +127,26 @@ action economy, movement budgeting and damage all verified by hand (see
 | ~~R11-04~~ | ~~Terrain patches have hard rectangular edges — undergrowth is a sharp green rectangle on the dirt with no transition~~ | ✅ | — |
 | R11-05 | The Preview never names the world — tale, hero and difficulty only | P3 | S |
 | R11-06 | All three tales share the Free Roam subtitle "wander it as you please" | P3 | S |
+
+## R12 — Director's pass on the shipped build (2026-07-29)
+
+Reported from playing the exe. **Priority is set by what blocks testing**, not by
+severity in the abstract: the Director's note was *"I hate trying to test with
+all these known bugs still in the way."* A bug that makes the next bug harder to
+find is worth more than a worse bug that doesn't.
+
+| id | finding | pri | size |
+|----|---------|-----|------|
+| R12-01 | **The save still never persists — no CONTINUE, Chronicles empty.** Reported three times now (R8-01, R9-07, here). Every test session starts from the Forge and a played session cannot be resumed, so nothing downstream of "play for a while" can be tested at all. **This is the top of the list** | **P0** | M |
+| R12-02 | **A login prompt still flashes at startup.** `session.cfg` carries an `odysseus_session` auth cookie, so there is a live auth step in the path — and the 2026-07-22 entry below records login as *removed*. A regression, not a gap | **P0** | M |
+| R12-03 | **Four of nine character-sheet tabs are dead** (R8-06). Half the sheet cannot be inspected while testing anything else | **P0** | M |
+| R12-04 | The dragon cut-scene still plays on every start. Unskippable ceremony between the tester and the game | P1 | S |
+| R12-05 | **The minimap is decoration:** no points of interest, no marker for where the player is, and a grey rectangle floating over it (R8-31, R8-12) | P1 | M |
+| R12-06 | Sheet/Chronicles buttons are mislabelled against their icons — "Sheet" reads as a word while the Chronicles button wears the sheet glyph | P2 | S |
+| R12-07 | **The music is two or three pulsing notes.** Director's steer: use public-domain recordings (IMSLP, Musopen) rather than generating it | P2 | M |
+| R12-08 | The header ring beside the adventure title is empty — no portrait, and no initial either, because `MythPortrait` has no empty state (R8-05). The art-cache eviction exposed it | P2 | S |
+| ~~R12-09~~ | ~~**Turns time out waiting on the narrator** (143 s and climbing)~~ — **fixed**: not a slow narrator, the *wrong* narrator. `auto_gm_model()` caps the GM at 9B but runs only at session creation, and `ensure_session` reuses a remembered session id — so a session born under a 14B default stayed pinned to it forever. Measured live: qwen2.5:14b resident with 4.2 GB in VRAM (half spilled to CPU) while llama3.1:8b sat unused. The model is now re-asserted on every reopen via `PATCH /api/session` | ✅ | — |
+| ~~R12-10~~ | ~~Two bars at the top showing the same HP and gold~~ — **fixed**: the chips row states both permanently; the arrival line recited them again one row below. An arrival line now says who arrived | ✅ | — |
 | ~~R10~~ | ~~Battle terrain overlay does not match the map art~~ — **fixed and verified in play.** Tiles come from the world package; cover dots and impassable hatching sit on exactly the squares that carry the art | ✅ | — |
 
 **Still untested, and why** — the tactical layer (blocked by R8-07), spells
