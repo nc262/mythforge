@@ -115,6 +115,13 @@ func _ready() -> void:
 	assert(Tags.detect_player_attack("I tear down the veils and charge the thing lurking in the corridor.") == "Thing")
 	assert(Tags.detect_player_attack("I look around, taking in the details.") == "")
 	assert(Tags.detect_player_attack("I ask the keeper about the road north.") == "")
+	# R11-01 — the parser must still SEE an attack roll in GM prose. Suppressing
+	# it is game.gd's job (a generic d20 has no reach, target, AC or damage, so a
+	# natural 20 landed at 55 ft and left the foe on full HP); the parser reports
+	# what it read. If this ever returns {} the suppression has moved into the
+	# wrong layer and out-of-combat attack rolls will have gone silent too.
+	assert(str(Tags.detect_check("Make an attack roll against AC 14.").get("type", "")) == "attack",
+		"the parser still reports an attack roll")
 	# Tag: combat-start foes parse via check_from_tags path
 	var ct := Tags.parse('[[combat-start foes="goblin x3, goblin boss"]]')
 	assert(ct["tags"][0]["name"] == "combat-start" and str(ct["tags"][0]["attrs"]["foes"]).contains("x3"))

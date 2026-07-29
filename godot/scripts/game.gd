@@ -1319,6 +1319,22 @@ func _animate_die(sides: int, final_roll: int, caption: String) -> void:
 
 # ── Rolls ────────────────────────────────────────────────────────────────────
 func _set_check(check: Dictionary) -> void:
+	# R11-01 — while a fight is live, the ENGINE rolls attacks.
+	#
+	# The GM narrates "make an attack roll"; tag_parser reports an attack check,
+	# and this raised a generic d20 bar. A generic check has no target, no reach,
+	# no AC, no damage and no action economy — so a natural 20 landed on a foe
+	# 55 ft away and left him on full HP. Combat.player_attack() does all of
+	# that correctly and was simply never the code that ran.
+	#
+	# The parser is right to report what it saw; the decision belongs here,
+	# where the game knows a fight is on. Suppressed, not silently: the action
+	# bar's Attack is the affordance, so say so.
+	if not check.is_empty() and str(check.get("type", "")) == "attack" and Combat.active():
+		_pending_check = {}
+		_roll_bar.visible = false
+		_say_system("Choose your target on the board — the table keeps the tally now.")
+		return
 	_pending_check = check
 	_roll_bar.visible = not check.is_empty()
 	if check.is_empty():

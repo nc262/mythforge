@@ -630,6 +630,27 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 		if has_art(key):
 			return round_tex(key)
 		ensure(key, "%s, %s, painted creature portrait, %s style, dark background, no text" % [str(entry.get("art", "")), subject_style("beast"), world_flavor()])
+		return null
+	# R11 — a foe the STORY invented has no bestiary entry and no package art, so
+	# the board drew a letter in a circle: Samuel Jenkins, captain of pirates,
+	# rendered as a red disc with an S. This is precisely what runtime generation
+	# is for — the worlds ship pre-baked and the GPU is kept for what the player's
+	# own tale brings to the table.
+	var nm := str(m.get("name", ""))
+	if nm == "":
+		return null
+	var slug := nm.to_lower().replace(" ", "-").validate_filename()
+	# Someone the world already knows, who has turned hostile, keeps their face.
+	var known: Texture2D = Compiler.roster_art(GameState.world_id(), "npc-" + slug)
+	if known != null:
+		return known
+	if has_art("npc-" + slug):
+		return round_tex("npc-" + slug)
+	if has_art("foe-" + slug):
+		return round_tex("foe-" + slug)
+	ensure("foe-" + slug,
+		"character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [nm, subject_style("char")],
+		"1024x1024", true)
 	return null
 
 
