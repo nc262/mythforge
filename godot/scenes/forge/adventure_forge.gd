@@ -38,8 +38,7 @@ func _ready() -> void:
 
 
 func _load_personas() -> void:
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	_personas = g.get("state", {}).get("cpersonas", []) if g.get("state") is Dictionary and g["state"].get("cpersonas") is Array else []
+	_personas = GameState.global_get("cpersonas", [])
 
 
 func _stages() -> Array:
@@ -55,8 +54,7 @@ func _on_stage_entered(_i: int) -> void:
 
 
 func _load_worlds() -> void:
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var cw: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	var cw: Array = GameState.global_get("cworlds", [])
 	_worlds = Rules.builtin_worlds() + cw
 
 
@@ -406,8 +404,8 @@ func _begin() -> void:
 			"relationship": "Dungeon Master", "world_id": str(w.get("id", "")),
 		})
 	# The table's own rules override whatever rode in with the world.
-	var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + adv_id.uri_encode())
-	var world_kind: Dictionary = st.get("state", {}).get("world", {}) if st.get("state") is Dictionary and st["state"].get("world") is Dictionary else {}
+	var prior = GameState.kind_for(adv_id, "world")
+	var world_kind: Dictionary = prior if prior is Dictionary else {}
 	var rules: Dictionary = world_kind.get("rules") if world_kind.get("rules") is Dictionary else {}
 	rules["difficulty"] = float(draft["difficulty"])
 	rules["companions"] = bool(draft["companions"])
@@ -416,6 +414,6 @@ func _begin() -> void:
 	if str(draft["house"]) != "":
 		rules["house"] = str(draft["house"])
 	world_kind["rules"] = rules
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/world" % adv_id.uri_encode(), {"value": world_kind})
+	GameState.set_kind_for(adv_id, "world", world_kind)
 	Sfx.play("sting")
 	adventure_ready.emit({"id": adv_id, "name": adv.get("name", ""), "world_id": adv.get("world_id", "")})

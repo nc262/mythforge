@@ -310,10 +310,9 @@ func _seal() -> void:
 		world[k] = w.get(k)
 	world["skin_family"] = WorldSkin.family_of(world)  # freeze its visual language, travels with the world
 	WorldSkin.remember(world)
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var cworlds: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	var cworlds: Array = GameState.global_get("cworlds", [])
 	cworlds.append(world)
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
+	GameState.global_set("cworlds", cworlds)
 	_sealed = world
 	Art.ensure(wid, str(world.get("backdrop", "")))
 	# Compile the world's SEED — its Style Guide + Asset Language. Text only,

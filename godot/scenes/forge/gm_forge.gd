@@ -118,11 +118,10 @@ func _seal() -> void:
 	_busy = true
 	_status.text = "Pressing the seal…"
 	var persona := {"title": str(draft["title"]), "body": str(draft["line"]), "knobs": draft["knobs"].duplicate()}
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var cgms: Array = g.get("state", {}).get("cgms", []) if g.get("state") is Dictionary and g["state"].get("cgms") is Array else []
+	var cgms: Array = GameState.global_get("cgms", [])
 	cgms = cgms.filter(func(p): return str(p.get("title", "")) != persona["title"])
 	cgms.append(persona)
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cgms", {"value": cgms})
+	GameState.global_set("cgms", cgms)
 	_busy = false
 	_status.text = "%s takes their seat in the gallery — the Campaign Forge now offers this voice." % persona["title"]
 	_sealed = true

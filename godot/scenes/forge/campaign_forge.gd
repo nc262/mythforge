@@ -81,8 +81,7 @@ func _ready() -> void:
 
 
 func _load_cgms() -> void:
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	_cgms = g.get("state", {}).get("cgms", []) if g.get("state") is Dictionary and g["state"].get("cgms") is Array else []
+	_cgms = GameState.global_get("cgms", [])
 
 
 func _stages() -> Array:
@@ -474,10 +473,9 @@ func _seal() -> void:
 	# The table's choices ride with the world: every adventure begun in it
 	# is seeded with this voice and these rules (menu applies them on start).
 	world["forge_defaults"] = {"gm": draft["gm"], "rules": draft["rules"], "campaign": str(draft["name"])}
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var cworlds: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	var cworlds: Array = GameState.global_get("cworlds", [])
 	cworlds.append(world)
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": cworlds})
+	GameState.global_set("cworlds", cworlds)
 	_sealed_world = world
 	# Fire the World Compiler in the BACKGROUND (not awaited): its Style Guide,
 	# Asset Language, item catalogue, kits, creatures, NPCs and ~80 images take
@@ -647,12 +645,12 @@ func _begin_campaign() -> void:
 		"relationship": "Dungeon Master", "world_id": wid,
 	})
 	if draft["gm"] is Dictionary and not draft["gm"].is_empty():
-		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/gm" % adv_id.uri_encode(), {"value": draft["gm"]})
+		GameState.set_kind_for(adv_id, "gm", draft["gm"])
 	var world_kind := {"rules": draft["rules"]}
 	if _settlement != "":
 		world_kind["here"] = _settlement
 		world_kind["seen"] = [_settlement]
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/world" % adv_id.uri_encode(), {"value": world_kind})
+	GameState.set_kind_for(adv_id, "world", world_kind)
 	_busy = false
 	_status.text = ""
 	Sfx.play("sting")

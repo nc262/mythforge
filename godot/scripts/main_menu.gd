@@ -228,8 +228,8 @@ func _boot_cinematic() -> void:
 func _refresh() -> void:
 	$Title/Box/Status.text = "Reaching the realm…"
 	_templates = await Api.list_characters()
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	_cworlds = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	await GameState.import_global_once()   # first run: take the shelf off the backend, once
+	_cworlds = GameState.global_get("cworlds", [])
 	for w in _all_worlds():  # warm the World Skin cache so every world themes correctly in play
 		WorldSkin.remember(w)
 	$Title/Box/Status.text = ""
@@ -368,7 +368,7 @@ func _import_world() -> void:
 			world["id"] = "cw-%s-%04x" % [str(world["name"]).to_lower().replace(" ", "-").left(20), randi() % 65536]
 		world["custom"] = true
 		_cworlds.append(world)
-		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+		GameState.global_set("cworlds", _cworlds)
 		Art.ensure(str(world["id"]), str(world.get("backdrop", "")))
 		_show_detail(world))
 	dlg.canceled.connect(func(): dlg.queue_free())
@@ -506,7 +506,7 @@ func _show_detail(w: Dictionary) -> void:
 		unmake.text = "Unmake this world"
 		unmake.pressed.connect(func():
 			_cworlds = _cworlds.filter(func(cw): return str(cw.get("id", "")) != wid)
-			await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+			GameState.global_set("cworlds", _cworlds)
 			_show_worlds())
 		admin.add_child(exp)
 		admin.add_child(unmake)
@@ -832,7 +832,7 @@ func _open_campaign_forge(w: Dictionary) -> void:
 			var ws: Array = w.get("stories") if w.get("stories") is Array else []
 			ws.append(story)
 			w["stories"] = ws
-			await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cworlds", {"value": _cworlds})
+			GameState.global_set("cworlds", _cworlds)
 		_start_adventure(w, story))
 
 
@@ -873,9 +873,9 @@ func _seed_forge_defaults(w: Dictionary, adv_id: String) -> void:
 	if fd.is_empty():
 		return
 	if fd.get("gm") is Dictionary and not fd["gm"].is_empty():
-		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/gm" % adv_id.uri_encode(), {"value": fd["gm"]})
+		GameState.set_kind_for(adv_id, "gm", fd["gm"])
 	if fd.get("rules") is Dictionary and not fd["rules"].is_empty():
-		await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/%s/world" % adv_id.uri_encode(), {"value": {"rules": fd["rules"]}})
+		GameState.set_kind_for(adv_id, "world", {"rules": fd["rules"]})
 
 
 func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
@@ -900,9 +900,7 @@ func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
 		cfg.set_value("sessions", str(adv["id"]), null)
 		cfg.save(Api.COOKIE_FILE)
 		# Reset this adventure's world-state so the hero forge runs fresh.
-		for kind in ["sheet", "inv", "combat", "clock", "quests", "codex", "mem", "bmap", "gm", "world"]:
-			await Api.call_json(HTTPClient.METHOD_PUT,
-				"/api/characters/studio/state/%s/%s" % [str(adv["id"]).uri_encode(), kind], {"value": null})
+		GameState.wipe_adventure(str(adv["id"]))
 		# A forged world's voice and rules survive the reset.
 		await _seed_forge_defaults(_world_by_id(str(adv.get("world_id", ""))), str(adv["id"]))
 		_play(adv))
@@ -1010,10 +1008,9 @@ func _chronicle_card(t: Dictionary, last_id: String) -> Control:
 ## Fetch one chronicle's state and fill its caption. Called fire-and-forget so
 ## every card's fetch is in flight at once rather than serialized. (B1)
 func _fill_card_caption(cap: Label, cid: String, is_last: bool) -> void:
-	var st := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid.uri_encode())
+	var state = GameState.state_for(cid)
 	if not is_instance_valid(cap):
-		return  # the Chronicles view was closed before the fetch landed
-	var state = st.get("state") if st is Dictionary else null
+		return  # the Chronicles view was closed before the read landed
 	var sheet: Dictionary = state.get("sheet", {}) if state is Dictionary and state.get("sheet") is Dictionary else {}
 	var clock: Dictionary = state.get("clock", {}) if state is Dictionary and state.get("clock") is Dictionary else {}
 	var tail := "   ·   ✦ complete" if clock.get("done", false) else ("   ·   latest" if is_last else "")

@@ -843,8 +843,7 @@ func _fill_atlas() -> void:
 	var host: VBoxContainer = _pages["Atlas"]
 	var locs: Array = Rules.world_locations(GameState.world_id())
 	if locs.is_empty():
-		var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-		for w in g.get("state", {}).get("cworlds", []):
+		for w in GameState.global_get("cworlds", []):
 			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
 				locs = w.get("locations") if w.get("locations") is Array else []
 	if not is_instance_valid(host):

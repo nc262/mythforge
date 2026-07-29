@@ -129,8 +129,7 @@ func _load_world() -> void:
 		if str(w.get("id", "")) == wid:
 			_world = w
 			return
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var cw: Array = g.get("state", {}).get("cworlds", []) if g.get("state") is Dictionary and g["state"].get("cworlds") is Array else []
+	var cw: Array = GameState.global_get("cworlds", [])
 	for w in cw:
 		if w is Dictionary and str(w.get("id", "")) == wid:
 			_world = w

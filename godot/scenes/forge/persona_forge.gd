@@ -137,11 +137,10 @@ func _seal() -> void:
 	_busy = true
 	_status.text = "Sealing the bond…"
 	var p := {"name": str(draft["name"]), "role": str(draft["role"]), "desc": str(draft["desc"])}
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var arr: Array = g.get("state", {}).get("cpersonas", []) if g.get("state") is Dictionary and g["state"].get("cpersonas") is Array else []
+	var arr: Array = GameState.global_get("cpersonas", [])
 	arr = arr.filter(func(x): return str(x.get("name", "")) != p["name"])
 	arr.append(p)
-	await Api.call_json(HTTPClient.METHOD_PUT, "/api/characters/studio/state/_global/cpersonas", {"value": arr})
+	GameState.global_set("cpersonas", arr)
 	_busy = false
 	_status.text = "%s waits by the fire — choose them at the adventure table's Party stage." % p["name"]
 	_sealed = true

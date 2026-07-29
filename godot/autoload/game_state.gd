@@ -1,8 +1,14 @@
 extends Node
-## GameState — the selected adventure, its session, and the server-mirrored
-## world state (kinds: sheet, inv, clock, combat, …). Server is the source of
-## truth; every mutation saves back via PUT state/{cid}/{kind}. Formulas live
-## in Rules; this file owns state + the ported game procedures (rests, time).
+## GameState — the selected adventure and its world state (kinds: sheet, inv,
+## clock, combat, …). **A file on this machine is the source of truth**; every
+## mutation writes `user://saves/<cid>.json`. Formulas live in Rules; this file
+## owns state + the ported game procedures (rests, time).
+##
+## It used to be a server: each mutation was an HTTP PUT to
+## `state/{cid}/{kind}`, with a retrying queue in case "the network" blipped.
+## There is no network — game, server and save file all live on one desktop —
+## and the round trip bought nothing except three ways to lose data, all of
+## which happened. See docs/Architecture-InProcess.md.
 
 const DEFAULT_SHEET := {
 	"name": "", "cls": "Adventurer", "level": 1, "xp": 0, "hp": 10, "hpMax": 10,
@@ -138,11 +144,18 @@ func is_dm() -> bool:
 	return cid().begins_with("dm-")
 
 
+## Local file first. If there isn't one yet, import whatever the server holds
+## for this adventure ONCE and write it down — a player who has been saving to
+## the backend all along keeps every byte, and never touches it again after.
 func hydrate() -> void:
-	state = {}
+	state = _read_local(cid())
+	if not state.is_empty():
+		return
 	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid().uri_encode())
-	if r.get("_status", 0) == 200 and r.get("state") is Dictionary:
+	if r.get("_status", 0) == 200 and r.get("state") is Dictionary and not r["state"].is_empty():
 		state = r["state"]
+		_flush()
+		print("GameState: imported '%s' from the backend into %s" % [cid(), _save_path(cid())])
 
 
 # ── The Adventure Index (_global.adventures) ────────────────────────────────
@@ -165,12 +178,35 @@ func adventures() -> Array:
 
 
 ## Read the index (once per Hall visit). Newest first.
+## The Hall's shelf, local. This index is the single most load-bearing record in
+## the game — it is what CONTINUE is built from — and it was the one the server
+## refused outright, because "adventures" was missing from an allow-list nobody
+## thought to keep in step. It lives in a file now.
+## Index and shelf follow the same drawer as the saves.
+func _index_path() -> String:
+	return save_dir() + "/adventures.json"
+
+
 func load_index() -> Array:
-	var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var arr = g.get("state", {}).get(ADVENTURES, []) if g.get("state") is Dictionary else []
+	var arr = null
+	if FileAccess.file_exists(_index_path()):
+		arr = JSON.parse_string(FileAccess.get_file_as_string(_index_path()))
+	if not (arr is Array):
+		# First run on this machine: take whatever the backend has, once.
+		var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+		var from_server = g.get("state", {}).get(ADVENTURES, []) if g.get("state") is Dictionary else []
+		arr = from_server if from_server is Array else []
+		if not arr.is_empty():
+			_index_cache = arr
+			_save_index()
+			print("GameState: imported %d adventure record(s) from the backend" % arr.size())
 	_index_cache = arr if arr is Array else []
 	_index_cache.sort_custom(func(a, b): return int(a.get("updated_at", 0)) > int(b.get("updated_at", 0)))
 	return _index_cache
+
+
+func _save_index() -> void:
+	_write_json(_index_path(), _index_cache)
 
 
 ## Upsert this adventure's record and stamp it. Called when a tale opens and at
@@ -199,41 +235,164 @@ func remember_adventure(extra := {}) -> void:
 			out.append(a)
 	out.push_front(rec)
 	_index_cache = out
-	await Api.call_json(HTTPClient.METHOD_PUT,
-		"/api/characters/studio/state/_global/%s" % ADVENTURES, {"value": _index_cache})
+	_save_index()
 
 
-## Local state updates INSTANTLY (never blocks gameplay); persistence rides a
-## coalesced, retrying background queue so a transient network blip can't
-## silently lose a mutation (A5 — pays down the fire-and-forget-PUT debt).
-var _write_queue := {}   # kind → latest value (coalesced: last write wins)
-var _writing := false
+## ── Persistence: a file, on this machine ────────────────────────────────────
+##
+## This used to be an HTTP PUT per mutation, with a coalescing queue and a
+## three-attempt backoff, because "a transient network blip" could lose a write.
+## There is no network. The server, the game and the save file are all on one
+## desktop, and the round trip bought nothing except the ways it could fail:
+##
+##   - the server refused kinds it had never been told about (`adventures`,
+##     `cast`, `lore`) with a 400 the fire-and-forget client never surfaced, so
+##     three features silently never persisted;
+##   - turning the login wall off left `get_current_user()` returning None, and
+##     every save was filed under the key "null" while the player's own sat
+##     under their username — invisible, not lost.
+##
+## Both are distributed-systems bugs in a single-player game. A file cannot have
+## them. See docs/Architecture-InProcess.md.
+## The harness plays `dm-embervale-freeroam` — a REAL adventure id, because it is
+## meant to exercise the shipped scenes. While saves lived on a server that was
+## harmless (test_mode answered every call from a canned dictionary and nothing
+## was written). A file is not so forgiving: the first headless run overwrote a
+## live save, replacing Drao at day 6 with the harness's Testwyn.
+##
+## So test runs get their own drawer. The alternative — teaching every harness to
+## use fake ids — is a rule someone has to keep remembering, and this is one they
+## cannot forget.
+const SAVE_DIR := "user://saves"
+const TEST_SAVE_DIR := "user://saves_test"
+
+
+func save_dir() -> String:
+	return TEST_SAVE_DIR if Api.test_mode else SAVE_DIR
+
+
+func _save_path(for_cid: String) -> String:
+	return "%s/%s.json" % [save_dir(), for_cid.validate_filename()]
 
 
 func save_kind(kind: String, value) -> void:
 	state[kind] = value
-	_write_queue[kind] = value
-	if not _writing:
-		_writing = true
-		_drain_writes()
+	_flush()
 
 
-func _drain_writes() -> void:
-	while not _write_queue.is_empty():
-		var kind := str(_write_queue.keys()[0])
-		var value = _write_queue[kind]
-		_write_queue.erase(kind)
-		var saved := false
-		for attempt in 3:
-			var r := await Api.call_json(HTTPClient.METHOD_PUT,
-				"/api/characters/studio/state/%s/%s" % [cid().uri_encode(), kind], {"value": value})
-			if r.get("_status", 0) == 200:
-				saved = true
-				break
-			await get_tree().create_timer(0.4 * (attempt + 1)).timeout  # backoff before retry
-		if not saved:
-			push_warning("GameState: persist of '%s' failed after retries (kept in local state)" % kind)
-	_writing = false
+## Write, then rename — killed mid-save, a truncated JSON would replace a good
+## save with an unreadable one. Under a temp name it simply isn't there yet.
+func _flush() -> void:
+	if cid() == "":
+		return
+	_write_json(_save_path(cid()), state)
+
+
+## ── The shared shelf (`_global`) ─────────────────────────────────────────────
+## Custom worlds, GMs and personas are not owned by any one adventure, so they
+## lived under a `_global` pseudo-character on the server — and ten different
+## screens each did their own GET/PUT against it. That is exactly how the
+## state-kind contract drifted out of step in the first place: no single place
+## knew what was being written. One store, one door.
+func _global_path() -> String:
+	return save_dir() + "/_global.json"
+
+var _global_cache = null
+
+
+func global_all() -> Dictionary:
+	if _global_cache is Dictionary:
+		return _global_cache
+	var parsed = null
+	if FileAccess.file_exists(_global_path()):
+		parsed = JSON.parse_string(FileAccess.get_file_as_string(_global_path()))
+	_global_cache = parsed if parsed is Dictionary else {}
+	return _global_cache
+
+
+func global_get(key: String, default_value = []) -> Variant:
+	var v = global_all().get(key)
+	return v if v != null else default_value
+
+
+func global_set(key: String, value) -> void:
+	var g := global_all()
+	g[key] = value
+	_global_cache = g
+	_write_json(_global_path(), g)
+
+
+## Seed the shelf from the backend once, so a player who built custom worlds
+## before this change still has them. Called by the Hall on its first look.
+func import_global_once() -> void:
+	if FileAccess.file_exists(_global_path()):
+		return
+	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
+	var st = r.get("state") if r.get("state") is Dictionary else {}
+	if st is Dictionary and not st.is_empty():
+		_global_cache = st
+		_write_json(_global_path(), st)
+		print("GameState: imported the shared shelf (%s) from the backend" % ", ".join(st.keys()))
+
+
+## Another adventure's whole save, for captioning the Chronicles shelf.
+func state_for(adv_id: String) -> Dictionary:
+	return state if adv_id == cid() and not state.is_empty() else _read_local(adv_id)
+
+
+## Start this tale over. The old code PUT null into ten kinds one at a time and
+## hoped; a save is one file, so deleting it is the whole operation — and it
+## cannot half-succeed the way ten round trips could.
+func wipe_adventure(adv_id: String) -> void:
+	if adv_id == "":
+		return
+	var path := _save_path(adv_id)
+	if FileAccess.file_exists(path):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	if adv_id == cid():
+		state = {}
+
+
+## Read one kind out of ANOTHER adventure's save, without loading it as the
+## current one — the forges look at a tale's prior `world` before rewriting it.
+func kind_for(adv_id: String, kind: String) -> Variant:
+	if adv_id == cid() and state.has(kind):
+		return state[kind]
+	return _read_local(adv_id).get(kind)
+
+
+## Write one kind into ANOTHER adventure's save — the forges set up a tale's
+## `gm` and `world` before it is ever opened.
+func set_kind_for(adv_id: String, kind: String, value) -> void:
+	if adv_id == "":
+		return
+	var blob := _read_local(adv_id)
+	blob[kind] = value
+	_write_json(_save_path(adv_id), blob)
+	if adv_id == cid():
+		state[kind] = value
+
+
+func _write_json(path: String, value) -> void:
+	DirAccess.make_dir_recursive_absolute(save_dir())
+	var tmp := path + ".part"
+	var f := FileAccess.open(tmp, FileAccess.WRITE)
+	if f == null:
+		push_warning("GameState: cannot write %s" % path)
+		return
+	f.store_string(JSON.stringify(value))
+	f.close()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp),
+		ProjectSettings.globalize_path(path))
+
+
+func _read_local(for_cid: String) -> Dictionary:
+	var path := _save_path(for_cid)
+	if not FileAccess.file_exists(path):
+		return {}
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return parsed if parsed is Dictionary else {}
 
 
 func _merged(kind: String, defaults: Dictionary) -> Dictionary:

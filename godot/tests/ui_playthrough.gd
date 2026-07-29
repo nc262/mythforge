@@ -39,8 +39,28 @@ func _ready() -> void:
 	if is_instance_valid(_game):
 		_game.queue_free()
 	await get_tree().process_frame
-	print("PLAYTHROUGH OK")
-	get_tree().quit(0)
+	if _fails.is_empty():
+		print("PLAYTHROUGH OK")
+		get_tree().quit(0)
+		return
+	for f in _fails:
+		print("  FAIL: " + f)
+	print("PLAYTHROUGH FOUND %d FAILURE(S)" % _fails.size())
+	get_tree().quit(1)
+
+
+## Godot's assert() prints and unwinds the CURRENT function. Most of these checks
+## run inside their own coroutine, so a failure never reached _ready and the
+## harness printed PLAYTHROUGH OK over the top of three real failures — the one
+## thing a test must never do. Record instead, and fail the run at the end.
+var _fails: Array[String] = []
+
+
+func _ck(cond: bool, why := "") -> void:
+	if cond:
+		return
+	_fails.append(why if why != "" else "unnamed check")
+	push_error("PLAYTHROUGH check failed: " + (why if why != "" else "unnamed check"))
 
 
 func _seed() -> void:
@@ -67,8 +87,8 @@ func _boot_game() -> void:
 		await get_tree().process_frame
 		if Mode.state == "Exploration":
 			break
-	assert(Mode.state == "Exploration", "boot: never reached Exploration (state=%s)" % Mode.state)
-	assert(str(GameState.sheet().get("name", "")) == "Testwyn", "boot: seeded sheet not hydrated")
+	_ck(Mode.state == "Exploration", "boot: never reached Exploration (state=%s)" % Mode.state)
+	_ck(str(GameState.sheet().get("name", "")) == "Testwyn", "boot: seeded sheet not hydrated")
 	print("  boot: real game scene up, hero hydrated, Exploration")
 
 
@@ -81,7 +101,7 @@ func _turn(label: String, msg: String, reply: String, check: Callable) -> void:
 		await get_tree().process_frame
 		if not _game._streaming and check.call(true):
 			break
-	assert(check.call(false), "turn '%s': the tag effect never landed" % label)
+	_ck(check.call(false), "turn '%s': the tag effect never landed" % label)
 	print("  turn %s: ok" % label)
 
 
@@ -99,15 +119,15 @@ func _turn_equip() -> void:
 		await get_tree().process_frame
 		if not _game._streaming and _has_item("Longsword"):
 			break
-	assert(_has_item("Longsword"), "equip: the longsword was never looted")
+	_ck(_has_item("Longsword"), "equip: the longsword was never looted")
 	var sword_id := ""
 	for it in GameState.inv().get("items", []):
 		if str(it.get("name", "")) == "Longsword":
 			sword_id = str(it.get("id", ""))
 	var atk0 := Rules.attack_mod(GameState.sheet(), GameState.inv())
 	GameState.toggle_equip(sword_id)
-	assert(str(GameState.inv().get("equipped", {}).get("weapon", "")) == sword_id, "equip: sword not seated in the weapon slot")
-	assert(Rules.attack_mod(GameState.sheet(), GameState.inv()) >= atk0, "equip: attack modifier regressed")
+	_ck(str(GameState.inv().get("equipped", {}).get("weapon", "")) == sword_id, "equip: sword not seated in the weapon slot")
+	_ck(Rules.attack_mod(GameState.sheet(), GameState.inv()) >= atk0, "equip: attack modifier regressed")
 	print("  turn equip: ok (Longsword equipped)")
 
 
@@ -120,8 +140,8 @@ func _turn_levelup() -> void:
 		await get_tree().process_frame
 		if not _game._streaming and int(GameState.sheet().get("level", 1)) > lvl0:
 			break
-	assert(int(GameState.sheet().get("level", 1)) > lvl0, "levelup: never leveled (xp=%d)" % int(GameState.sheet().get("xp", 0)))
-	assert(int(GameState.sheet().get("hpMax", 0)) > 12, "levelup: hpMax did not grow")
+	_ck(int(GameState.sheet().get("level", 1)) > lvl0, "levelup: never leveled (xp=%d)" % int(GameState.sheet().get("xp", 0)))
+	_ck(int(GameState.sheet().get("hpMax", 0)) > 12, "levelup: hpMax did not grow")
 	print("  turn levelup: ok (now level %d, HP %d)" % [int(GameState.sheet().get("level", 1)), int(GameState.sheet().get("hpMax", 0))])
 
 
@@ -135,10 +155,10 @@ func _turn_damage_heal() -> void:
 		if not _game._streaming:
 			break
 	# [[damage]] arms the dice moment — the engine rolls when the player acts.
-	assert(str(_game._pending_check.get("type", "")) == "damage", "damage: tag did not arm a damage roll")
+	_ck(str(_game._pending_check.get("type", "")) == "damage", "damage: tag did not arm a damage roll")
 	await _game._roll_pending()  # resolve the roll (awaits the die), as clicking the roll bar would
 	await get_tree().process_frame
-	assert(int(GameState.sheet().get("hp", 0)) < hp0, "damage: the roll did not reduce HP (was %d)" % hp0)
+	_ck(int(GameState.sheet().get("hp", 0)) < hp0, "damage: the roll did not reduce HP (was %d)" % hp0)
 	var hp1 := int(GameState.sheet().get("hp", 0))
 	await _settle()  # the roll narrates a follow-up turn; let it finish before the next send
 	Api.test_replies = ["Warm light knits the wound closed. [[heal roll=1d6]]"]
@@ -147,10 +167,10 @@ func _turn_damage_heal() -> void:
 		await get_tree().process_frame
 		if not _game._streaming:
 			break
-	assert(bool(_game._pending_check.get("heal", false)), "heal: tag did not arm a heal roll")
+	_ck(bool(_game._pending_check.get("heal", false)), "heal: tag did not arm a heal roll")
 	await _game._roll_pending()
 	await get_tree().process_frame
-	assert(int(GameState.sheet().get("hp", 0)) > hp1, "heal: the roll did not restore HP (was %d)" % hp1)
+	_ck(int(GameState.sheet().get("hp", 0)) > hp1, "heal: the roll did not restore HP (was %d)" % hp1)
 	await _settle()  # the heal roll narrates too; settle before the next turn's send
 	print("  turn damage/heal: ok (%d → %d → %d)" % [hp0, hp1, int(GameState.sheet().get("hp", 0))])
 
@@ -160,11 +180,11 @@ func _turn_damage_heal() -> void:
 ## window (≤9B) is what keeps play playable, and the LARGEST model inside it
 ## wins so prose quality isn't thrown away for speed.
 func _check_gm_model_pick() -> void:
-	assert(Api.model_size_b("llama3.1:8b") == 8.0, "model_size_b: plain tag")
-	assert(Api.model_size_b("qwen2.5:14b") == 14.0, "model_size_b: 14b must read as 14, not 2.5")
-	assert(Api.model_size_b("deepseek-r1:32b") == 32.0, "model_size_b: 32b")
-	assert(Api.model_size_b("llama3.2:3b") == 3.0, "model_size_b: 3b")
-	assert(Api.model_size_b("some-mystery-model") == 999.0, "model_size_b: unknown must lose the race")
+	_ck(Api.model_size_b("llama3.1:8b") == 8.0, "model_size_b: plain tag")
+	_ck(Api.model_size_b("qwen2.5:14b") == 14.0, "model_size_b: 14b must read as 14, not 2.5")
+	_ck(Api.model_size_b("deepseek-r1:32b") == 32.0, "model_size_b: 32b")
+	_ck(Api.model_size_b("llama3.2:3b") == 3.0, "model_size_b: 3b")
+	_ck(Api.model_size_b("some-mystery-model") == 999.0, "model_size_b: unknown must lose the race")
 	# The real pick: 8b beats 3b (quality) and 14b/32b are out of the window.
 	var best := ""
 	var best_sz := 0.0
@@ -173,7 +193,7 @@ func _check_gm_model_pick() -> void:
 		if sz <= Api.GM_FAST_CEILING and sz > best_sz:
 			best_sz = sz
 			best = mid
-	assert(best == "llama3.1:8b", "auto GM pick: expected the largest ≤9B, got '%s'" % best)
+	_ck(best == "llama3.1:8b", "auto GM pick: expected the largest ≤9B, got '%s'" % best)
 	print("  gm model: Auto picks the largest model in the fast window (llama3.1:8b)")
 
 
@@ -196,26 +216,26 @@ func _check_every_slot_has_forms() -> void:
 			or (slot == "armor" and kinds.has("armor"))
 		if not covered:
 			missing.append(slot)
-	assert(missing.is_empty(), "slot forms: no shapes for %s — those slots render as empty diamonds" % str(missing))
+	_ck(missing.is_empty(), "slot forms: no shapes for %s — those slots render as empty diamonds" % str(missing))
 	print("  slot forms: all %d equip slots have shapes even with an empty seed" % Rules.EQUIP_SLOTS.size())
 	# C1/C2 — material chooses the form. A leather cuirass and a steel hood are
 	# incoherent; the catalogue must not contain either.
-	assert(Compiler._material_class("brine_iron") == "rigid", "class: brine_iron is rigid")
-	assert(Compiler._material_class("salt_leather") == "soft", "class: leather is soft")
-	assert(Compiler._material_class("chain") == "mail", "class: chain is mail")
-	assert(Compiler._material_class("whalebone") == "exotic", "class: bone is exotic")
-	assert(Compiler._material_class("zzz_unknown") == "any", "class: an unknown material must match everything, never empty the catalogue")
+	_ck(Compiler._material_class("brine_iron") == "rigid", "class: brine_iron is rigid")
+	_ck(Compiler._material_class("salt_leather") == "soft", "class: leather is soft")
+	_ck(Compiler._material_class("chain") == "mail", "class: chain is mail")
+	_ck(Compiler._material_class("whalebone") == "exotic", "class: bone is exotic")
+	_ck(Compiler._material_class("zzz_unknown") == "any", "class: an unknown material must match everything, never empty the catalogue")
 	var helm := {"classes": ["rigid"]}
 	var hood := {"classes": ["soft"]}
-	assert(Compiler._form_takes(helm, "rigid") and not Compiler._form_takes(helm, "soft"), "no leather helms")
-	assert(Compiler._form_takes(hood, "soft") and not Compiler._form_takes(hood, "rigid"), "no steel hoods")
-	assert(Compiler._form_takes(helm, "any"), "an unclassified material still fits")
-	assert(Compiler._form_takes({}, "soft"), "a form with no classes takes anything (the seed's own forms)")
+	_ck(Compiler._form_takes(helm, "rigid") and not Compiler._form_takes(helm, "soft"), "no leather helms")
+	_ck(Compiler._form_takes(hood, "soft") and not Compiler._form_takes(hood, "rigid"), "no steel hoods")
+	_ck(Compiler._form_takes(helm, "any"), "an unclassified material still fits")
+	_ck(Compiler._form_takes({}, "soft"), "a form with no classes takes anything (the seed's own forms)")
 	print("  material classes: form follows material — no leather cuirasses, no steel hoods")
 	# C5 — a declared class beats the keyword guess, so a world can invent a
 	# material whose name carries no known word.
-	assert(Compiler._class_of({"id": "sunmetal", "class": "rigid"}) == "rigid", "class: declared wins")
-	assert(Compiler._class_of({"id": "salt_leather"}) == "soft", "class: keywords still work undeclared")
+	_ck(Compiler._class_of({"id": "sunmetal", "class": "rigid"}) == "rigid", "class: declared wins")
+	_ck(Compiler._class_of({"id": "salt_leather"}) == "soft", "class: keywords still work undeclared")
 	# C4 — an armoury is not six swords. Every family must be represented, even
 	# when the seed returns nothing at all.
 	var fams := {}
@@ -225,17 +245,17 @@ func _check_every_slot_has_forms() -> void:
 			weapons += 1
 			fams[str(f.get("family", ""))] = true
 	for want in ["blade", "axe", "blunt", "polearm", "ranged", "thrown"]:
-		assert(fams.has(want), "weapon families: nothing to swing in the '%s' family" % want)
-	assert(weapons >= 25, "weapon families: only %d weapon forms — an armoury, not a rack of swords" % weapons)
+		_ck(fams.has(want), "weapon families: nothing to swing in the '%s' family" % want)
+	_ck(weapons >= 25, "weapon families: only %d weapon forms — an armoury, not a rack of swords" % weapons)
 	print("  weapon families: %d weapon forms across %d families" % [weapons, fams.size()])
 	# Enchantments must READ. Ten treatments over one baked shape have to look
 	# like ten things, or the combinatorics only exist on paper.
 	var flame := Compiler.treatment_modulate({"treatment": "flame_kissed"})
 	var frost := Compiler.treatment_modulate({"treatment": "rimebound"})
-	assert(flame != Color.WHITE and frost != Color.WHITE, "treatments: a known treatment must tint")
-	assert(flame != frost, "treatments: flame and frost must not look alike")
-	assert(Compiler.treatment_modulate({}) == Color.WHITE, "treatments: no treatment, no tint")
-	assert(Compiler.treatment_modulate({"treatment": "zzz_unknown"}) == Color.WHITE,
+	_ck(flame != Color.WHITE and frost != Color.WHITE, "treatments: a known treatment must tint")
+	_ck(flame != frost, "treatments: flame and frost must not look alike")
+	_ck(Compiler.treatment_modulate({}) == Color.WHITE, "treatments: no treatment, no tint")
+	_ck(Compiler.treatment_modulate({"treatment": "zzz_unknown"}) == Color.WHITE,
 		"treatments: an unrecognised treatment must look ordinary, never wrong")
 	print("  treatments: enchantments tint the icon (flame ≠ frost ≠ plain)")
 
@@ -247,10 +267,10 @@ func _check_adventure_ids() -> void:
 	var a := Rules.adventure_id("saltmarsh", {"title": "The Tide-Debt"})
 	var b := Rules.adventure_id("saltmarsh", {"title": "What the Nets Dragged Up"})
 	var free := Rules.adventure_id("saltmarsh", {})
-	assert(a != b, "adventure_id: two named tales collapsed onto one save slot (%s)" % a)
-	assert(a != free and b != free, "adventure_id: a named tale collided with Free Roam")
-	assert(free == "dm-saltmarsh-freeroam", "adventure_id: Free Roam must keep its id, got %s" % free)
-	assert(Rules.adventure_id("saltmarsh", {"slug": "tide"}) == "dm-saltmarsh-tide", "adventure_id: an explicit slug still wins")
+	_ck(a != b, "adventure_id: two named tales collapsed onto one save slot (%s)" % a)
+	_ck(a != free and b != free, "adventure_id: a named tale collided with Free Roam")
+	_ck(free == "dm-saltmarsh-freeroam", "adventure_id: Free Roam must keep its id, got %s" % free)
+	_ck(Rules.adventure_id("saltmarsh", {"slug": "tide"}) == "dm-saltmarsh-tide", "adventure_id: an explicit slug still wins")
 	print("  adventure ids: each tale gets its own save slot (%s / %s / %s)" % [a, b, free])
 
 
@@ -262,30 +282,30 @@ func _check_persistence() -> void:
 	GameState.bank_hero({"name": name, "race": "Human", "cls": "Fighter", "level": 3})
 	var banked: Array = GameState.banked_heroes().filter(func(h): return str(h.get("name", "")) == name)
 	GameState.unbank_hero(name)  # keep the run hermetic — don't leave a test hero in the roster
-	assert(not banked.is_empty(), "persistence: banked hero did not survive a fresh roster read (bug #8)")
+	_ck(not banked.is_empty(), "persistence: banked hero did not survive a fresh roster read (bug #8)")
 	# Identity — the roster's art key is "hero-<id>", and the forge's preview key
 	# is shared scratch. No id means a blank card and, later, a stranger's face.
-	assert(str(banked[0].get("id", "")) != "", "persistence: banked hero has no id — roster art can't resolve")
+	_ck(str(banked[0].get("id", "")) != "", "persistence: banked hero has no id — roster art can't resolve")
 	print("  persistence: forged hero survives a disk round-trip, with its own id")
 
 
 ## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no
 ## ability scores). Guard the monotonicity the resolution relies on.
 func _check_save_spells() -> void:
-	assert(Rules.foe_save_mod("minor") < Rules.foe_save_mod("standard"), "save: a minor foe should save worse than a standard one")
-	assert(Rules.foe_save_mod("boss") >= Rules.foe_save_mod("elite"), "save: a boss should save at least as well as an elite")
-	assert(Rules.foe_save_mod("elite") > Rules.foe_save_mod("tough"), "save: an elite should save better than a tough foe")
+	_ck(Rules.foe_save_mod("minor") < Rules.foe_save_mod("standard"), "save: a minor foe should save worse than a standard one")
+	_ck(Rules.foe_save_mod("boss") >= Rules.foe_save_mod("elite"), "save: a boss should save at least as well as an elite")
+	_ck(Rules.foe_save_mod("elite") > Rules.foe_save_mod("tough"), "save: an elite should save better than a tough foe")
 	print("  save spells: foe save mods scale with tier (minor→boss)")
 	# a companion's kit is inferred from role, not always Fighter
-	assert(str(GameState.infer_companion_kit("temple healer")["cls"]) == "Cleric", "companion: 'healer' should infer Cleric")
-	assert(str(GameState.infer_companion_kit("court wizard")["cls"]) == "Wizard", "companion: 'wizard' should infer Wizard")
-	assert(str(GameState.infer_companion_kit("sellsword")["cls"]) == "Fighter", "companion: unknown role falls back to Fighter")
+	_ck(str(GameState.infer_companion_kit("temple healer")["cls"]) == "Cleric", "companion: 'healer' should infer Cleric")
+	_ck(str(GameState.infer_companion_kit("court wizard")["cls"]) == "Wizard", "companion: 'wizard' should infer Wizard")
+	_ck(str(GameState.infer_companion_kit("sellsword")["cls"]) == "Fighter", "companion: unknown role falls back to Fighter")
 	print("  companions: kit inferred from role (healer→Cleric, mage→Wizard)")
 	# new class-feature actions apply and spend a use
 	var loh0 := GameState.feature_uses_left("Lay on Hands")
-	assert(GameState.use_feature("Bardic Inspiration") != "", "feature: Bardic Inspiration should apply")
-	assert(GameState.use_feature("Lay on Hands") != "", "feature: Lay on Hands should apply")
-	assert(GameState.feature_uses_left("Lay on Hands") == loh0 - 1, "feature: a use should be spent")
+	_ck(GameState.use_feature("Bardic Inspiration") != "", "feature: Bardic Inspiration should apply")
+	_ck(GameState.use_feature("Lay on Hands") != "", "feature: Lay on Hands should apply")
+	_ck(GameState.feature_uses_left("Lay on Hands") == loh0 - 1, "feature: a use should be spent")
 	print("  class features: Bardic Inspiration / Lay on Hands / Wild Shape wired")
 
 
@@ -293,23 +313,23 @@ func _check_save_spells() -> void:
 ## assert every derived number follows — classes, label, slots, casting stat.
 func _check_multiclass() -> void:
 	var s := GameState.sheet()
-	assert(Rules.sheet_classes(s).size() == 1 and int(Rules.sheet_classes(s)[0]["level"]) == int(s.get("level", 1)),
+	_ck(Rules.sheet_classes(s).size() == 1 and int(Rules.sheet_classes(s)[0]["level"]) == int(s.get("level", 1)),
 		"multiclass: legacy sheet should derive one class entry at total level")
-	assert(not Rules.can_multiclass_into(s, "Wizard"), "multiclass: INT 10 must not qualify for Wizard")
-	assert(GameState.redirect_level("Wizard") == "", "multiclass: redirect must refuse unmet prereqs")
+	_ck(not Rules.can_multiclass_into(s, "Wizard"), "multiclass: INT 10 must not qualify for Wizard")
+	_ck(GameState.redirect_level("Wizard") == "", "multiclass: redirect must refuse unmet prereqs")
 	s["abilities"]["INT"] = 13
 	GameState.set_sheet(s)
-	assert(GameState.redirect_level("Wizard") != "", "multiclass: redirect refused despite INT 13")
+	_ck(GameState.redirect_level("Wizard") != "", "multiclass: redirect refused despite INT 13")
 	var cl := Rules.sheet_classes(GameState.sheet())
-	assert(cl.size() == 2 and int(cl[0]["level"]) == 2 and str(cl[1]["cls"]) == "Wizard" and int(cl[1]["level"]) == 1,
+	_ck(cl.size() == 2 and int(cl[0]["level"]) == 2 and str(cl[1]["cls"]) == "Wizard" and int(cl[1]["level"]) == 1,
 		"multiclass: expected Fighter 2 / Wizard 1, got %s" % Rules.class_label(GameState.sheet()))
-	assert(Rules.class_label(GameState.sheet()) == "Fighter 2 / Wizard 1", "multiclass: label wrong")
-	assert(int(GameState.sheet().get("level", 0)) == 3, "multiclass: total level must stay 3")
-	assert(Rules.caster_level(GameState.sheet()) == 1, "multiclass: one wizard level = caster level 1")
-	assert(int(GameState.sheet().get("slots", {}).get("1", {}).get("max", 0)) > 0,
+	_ck(Rules.class_label(GameState.sheet()) == "Fighter 2 / Wizard 1", "multiclass: label wrong")
+	_ck(int(GameState.sheet().get("level", 0)) == 3, "multiclass: total level must stay 3")
+	_ck(Rules.caster_level(GameState.sheet()) == 1, "multiclass: one wizard level = caster level 1")
+	_ck(int(GameState.sheet().get("slots", {}).get("1", {}).get("max", 0)) > 0,
 		"multiclass: the first wizard level should open L1 slots")
-	assert(Rules.cast_ability(GameState.sheet()) == "INT", "multiclass: casting should lean on the wizard's INT")
-	assert(not Rules.learnable_spells(GameState.sheet()).is_empty(), "multiclass: wizard spells should be learnable now")
+	_ck(Rules.cast_ability(GameState.sheet()) == "INT", "multiclass: casting should lean on the wizard's INT")
+	_ck(not Rules.learnable_spells(GameState.sheet()).is_empty(), "multiclass: wizard spells should be learnable now")
 	print("  multiclass: Fighter 2 / Wizard 1 — slots, INT casting, prereqs, label all hold")
 
 
@@ -318,20 +338,20 @@ func _check_multiclass() -> void:
 ## emit the SAME signal a mouse click does.
 func _check_controller() -> void:
 	for a in ["mf_roll", "mf_end_turn", "mf_menu"]:
-		assert(InputMap.has_action(a), "pad: missing action %s" % a)
+		_ck(InputMap.has_action(a), "pad: missing action %s" % a)
 	for a2 in ["ui_accept", "ui_cancel", "ui_up", "ui_down", "ui_left", "ui_right"]:
 		var has_joy := false
 		for e in InputMap.action_get_events(a2):
 			if e is InputEventJoypadButton or e is InputEventJoypadMotion:
 				has_joy = true
-		assert(has_joy, "pad: %s has no joypad binding" % a2)
+		_ck(has_joy, "pad: %s has no joypad binding" % a2)
 	var got: Array = []
 	var catcher := func(c): got.append(c)
 	_game._battle_grid.cell_clicked.connect(catcher)
 	_game._battle_grid.pad_move(1, 0)
 	_game._battle_grid.pad_activate()
 	_game._battle_grid.cell_clicked.disconnect(catcher)
-	assert(not got.is_empty(), "pad: the grid cursor did not emit cell_clicked")
+	_ck(not got.is_empty(), "pad: the grid cursor did not emit cell_clicked")
 	print("  controller: mf_* actions live, ui_* pad-bound, grid cursor clicks cells")
 
 
@@ -341,10 +361,10 @@ func _check_controller() -> void:
 ## deltas used to vanish entirely for reduce-motion players).
 func _check_mil() -> void:
 	for group in ["TIME", "SCALE", "ALPHA", "MOTION", "DELAY", "MIX", "INTERACT"]:
-		assert(Ui.get(group) is Dictionary and not (Ui.get(group) as Dictionary).is_empty(),
+		_ck(Ui.get(group) is Dictionary and not (Ui.get(group) as Dictionary).is_empty(),
 			"MIL: token group %s missing" % group)
 	for snd in Sfx.UI_SOUNDS + Sfx.REWARD_SOUNDS + Sfx.CEREMONY_SOUNDS:
-		assert(ResourceLoader.exists("res://assets/sfx/%s.wav" % snd), "MIL: sound '%s' never synthesized" % snd)
+		_ck(ResourceLoader.exists("res://assets/sfx/%s.wav" % snd), "MIL: sound '%s' never synthesized" % snd)
 	Sfx.ui("ui_click")  # must not crash headless
 	var host := Control.new()
 	host.size = Vector2(400, 300)
@@ -352,12 +372,12 @@ func _check_mil() -> void:
 	var probe := Button.new()
 	probe.text = "probe"
 	host.add_child(probe)
-	assert(probe.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND,
+	_ck(probe.mouse_default_cursor_shape == Control.CURSOR_POINTING_HAND,
 		"MIL §3: a Button entering the tree must be auto-wired (cursor missing)")
 	# The systemic guarantee, checked where it matters most: the play screen's
 	# action bar was silent for the whole project until VS-1.
 	for b in _game.find_children("*", "Button", true, false):
-		assert(b.has_meta("_polished"), "MIL §3: '%s' on the play screen never got hover/click" % b.name)
+		_ck(b.has_meta("_polished"), "MIL §3: '%s' on the play screen never got hover/click" % b.name)
 	Ui.shake(probe)
 	var purse := Label.new()
 	host.add_child(purse)
@@ -365,7 +385,7 @@ func _check_mil() -> void:
 	Ui.rise_text(host, "+2 AC", Ui.c("gold"), Vector2(10, 10))
 	# The delta must still be on-screen after the frame — reduce_motion holds it.
 	var deltas := host.get_children().filter(func(n): return n is Label and str(n.text) == "+2 AC")
-	assert(not deltas.is_empty(), "MIL §16: rise_text dropped the delta (information lost)")
+	_ck(not deltas.is_empty(), "MIL §16: rise_text dropped the delta (information lost)")
 	Ui.fly_to(host, Ui.glow_tex(), Rect2(0, 0, 32, 32), Rect2(100, 100, 32, 32))
 	_check_no_hard_cuts()
 	await _check_compiler()   # awaited here — it does real async art requests
@@ -373,8 +393,8 @@ func _check_mil() -> void:
 		{"title": "Level 3", "line": "+7 HP", "weight": "light"})
 	for i in 4:
 		await get_tree().process_frame
-	assert(cer.get_script() != null, "MIL §13: ceremony script failed to load")
-	assert(is_instance_valid(cer), "MIL §13: ceremony vanished before its beats ran")
+	_ck(cer.get_script() != null, "MIL §13: ceremony script failed to load")
+	_ck(is_instance_valid(cer), "MIL §13: ceremony vanished before its beats ran")
 	cer.call("_finish")  # skip law: any input completes it
 	await get_tree().process_frame
 	host.queue_free()
@@ -399,7 +419,7 @@ func _check_no_hard_cuts() -> void:
 			if str(line).contains("change_scene_to_file") and not str(line).strip_edges().begins_with("#"):
 				cuts += 1
 		var allowed: int = int(CUT_ALLOWED.get(path, 0))
-		assert(cuts <= allowed, "MIL §12: %s has %d hard scene cut(s), %d allowed — use Ui.transition" % [path, cuts, allowed])
+		_ck(cuts <= allowed, "MIL §12: %s has %d hard scene cut(s), %d allowed — use Ui.transition" % [path, cuts, allowed])
 	print("  MIL: no hard scene cuts — every passage is a transition or a curtain")
 	_check_one_art_door()
 
@@ -416,12 +436,12 @@ func _check_one_art_door() -> void:
 			"res://scenes/forge/campaign_forge.gd", "res://scenes/forge/persona_forge.gd"]:
 		if FileAccess.get_file_as_string(path).contains("studio/generate"):
 			offenders.append(path)
-	assert(offenders.is_empty(),
+	_ck(offenders.is_empty(),
 		"Art Director: %s talks to /generate directly — every request goes through Art" % ", ".join(offenders))
 	# …and the subsystem really carries its contract.
 	for m in ["request", "cancel", "cancel_for", "status", "pending"]:
-		assert(Art.has_method(m), "Art Director: missing %s() from the contract" % m)
-	assert(Art.get("Lane") != null or true, "")
+		_ck(Art.has_method(m), "Art Director: missing %s() from the contract" % m)
+	_ck(Art.get("Lane") != null or true, "")
 	print("  Art Director: one door, contract intact (queue/lanes/cancel/status/routing)")
 
 
@@ -433,77 +453,77 @@ func _check_compiler() -> void:
 	var world := {"id": "cw-testrealm-abcd", "name": "Testrealm",
 		"kind": "grim frontier", "tagline": "the edge of the map", "lore": "A cold place."}
 	var pack: Dictionary = await Compiler.compile_seed(world)
-	assert(not pack.is_empty(), "compiler: seed produced no package")
+	_ck(not pack.is_empty(), "compiler: seed produced no package")
 	# In test_mode art generation returns nothing, so Tier B 'fails' fast and the
 	# world reaches PRESENTABLE without pixels — the compile must never wedge.
-	assert(str(pack.get("compile_state", "")) in [Compiler.SEEDED, Compiler.PRESENTABLE],
+	_ck(str(pack.get("compile_state", "")) in [Compiler.SEEDED, Compiler.PRESENTABLE],
 		"compiler: never reached a valid compile_state")
-	assert(pack.get("style") is Dictionary and str(pack["style"].get("prompt_anchor", "")) != "",
+	_ck(pack.get("style") is Dictionary and str(pack["style"].get("prompt_anchor", "")) != "",
 		"compiler: style guide has no prompt_anchor (drift defence missing)")
-	assert(pack.get("assets") is Dictionary and pack["assets"].get("materials") is Array
+	_ck(pack.get("assets") is Dictionary and pack["assets"].get("materials") is Array
 		and not (pack["assets"]["materials"] as Array).is_empty(),
 		"compiler: asset language has no materials to compose from")
 	# The anchor must actually reach an image prompt through the one door.
 	GameState.character = {"id": "dm-x", "world_id": "cw-testrealm-abcd"}
-	assert(Art.world_flavor() == Compiler.prompt_anchor("cw-testrealm-abcd"),
+	_ck(Art.world_flavor() == Compiler.prompt_anchor("cw-testrealm-abcd"),
 		"compiler: the Style Guide's anchor isn't feeding image prompts")
 	# Profiles exist and pin a checkpoint (the photograph fix).
 	for p in ["item", "scene", "showcase"]:
-		assert(Art.PROFILES.has(p) and str(Art.PROFILES[p].get("style", "")) != "",
+		_ck(Art.PROFILES.has(p) and str(Art.PROFILES[p].get("style", "")) != "",
 			"compiler: art profile '%s' missing its checkpoint" % p)
 	# Tier C: the item catalogue explodes the asset language into a browsable
 	# spine and rolls loot deterministically (runs even headless).
 	var cat := Compiler.catalogue_for("cw-testrealm-abcd")
-	assert(cat.size() > 0 and int(pack.get("catalogue_count", 0)) == cat.size(),
+	_ck(cat.size() > 0 and int(pack.get("catalogue_count", 0)) == cat.size(),
 		"compiler: item catalogue is empty or not counted in the pack")
 	var it0: Dictionary = cat[0]
 	for k in ["id", "name", "form", "material", "rarity", "value", "art", "tint"]:
-		assert(it0.has(k), "compiler: catalogue item missing '%s'" % k)
-	assert(str(it0["art"]).begins_with("art/parts/"),
+		_ck(it0.has(k), "compiler: catalogue item missing '%s'" % k)
+	_ck(str(it0["art"]).begins_with("art/parts/"),
 		"compiler: catalogue item art doesn't point at a base part")
 	var rng := RandomNumberGenerator.new(); rng.seed = 7
 	var loot := Compiler.roll_item("cw-testrealm-abcd", rng)
-	assert(not loot.is_empty() and str(loot.get("rarity", "")) != "",
+	_ck(not loot.is_empty() and str(loot.get("rarity", "")) != "",
 		"compiler: roll_item returned nothing rollable")
 	# S5: starting kits resolve to real catalogue records, so a new hero is armed.
 	var kit := Compiler.kit_for("cw-testrealm-abcd", "warrior")
-	assert(kit.size() > 0 and (kit[0] as Dictionary).has("id"),
+	_ck(kit.size() > 0 and (kit[0] as Dictionary).has("id"),
 		"compiler: warrior kit didn't resolve to catalogue items")
 	# S6: the world has bestiary-shaped creatures, and combat can stat one.
 	var beasts := Compiler.creatures_for("cw-testrealm-abcd")
-	assert(beasts.size() > 0 and (beasts[0] as Dictionary).has("tier"),
+	_ck(beasts.size() > 0 and (beasts[0] as Dictionary).has("tier"),
 		"compiler: world has no creatures")
-	assert(not Combat.stat_block(str((beasts[0] as Dictionary)["name"])).is_empty(),
+	_ck(not Combat.stat_block(str((beasts[0] as Dictionary)["name"])).is_empty(),
 		"compiler: a world creature didn't resolve to a combat stat block")
 	# S7: the world has a named cast with dispositions.
 	var folk := Compiler.npcs_for("cw-testrealm-abcd")
-	assert(folk.size() > 0 and (folk[0] as Dictionary).has("disposition"),
+	_ck(folk.size() > 0 and (folk[0] as Dictionary).has("disposition"),
 		"compiler: world has no named people")
 	# Id hygiene: the schema-placeholder suffixes small models echo are scrubbed.
-	assert(Compiler._clean_id("cutlass_form_id") == "cutlass"
+	_ck(Compiler._clean_id("cutlass_form_id") == "cutlass"
 		and Compiler._clean_id("Brine Iron_material_id") == "brine_iron"
 		and Compiler._clean_id("tide-worm") == "tide_worm",
 		"compiler: _clean_id didn't normalise ids")
 	# S9: tactical layouts are combat-shaped (terrain "x,y"→kind, cells in bounds).
 	var lays := Compiler.layouts_for("cw-testrealm-abcd")
-	assert(lays.size() >= 3, "compiler: too few tactical layouts")
+	_ck(lays.size() >= 3, "compiler: too few tactical layouts")
 	for lay in lays:
 		var terr = (lay as Dictionary).get("terrain", {})
-		assert(terr is Dictionary and not terr.is_empty(), "compiler: layout has no terrain")
+		_ck(terr is Dictionary and not terr.is_empty(), "compiler: layout has no terrain")
 		for key in terr:
 			var xy: PackedStringArray = str(key).split(",")
-			assert(xy.size() == 2 and int(xy[0]) >= 0 and int(xy[0]) < 16 and int(xy[1]) >= 0 and int(xy[1]) < 10,
+			_ck(xy.size() == 2 and int(xy[0]) >= 0 and int(xy[0]) < 16 and int(xy[1]) >= 0 and int(xy[1]) < 10,
 				"compiler: layout terrain cell out of the 16x10 grid")
-			assert(str(terr[key]) in ["block", "water", "cover"],
+			_ck(str(terr[key]) in ["block", "water", "cover"],
 				"compiler: layout terrain kind not in combat's vocabulary")
 	# Reforge: re-run a stage without a full recompile; logical ids stay stable.
 	var id_before := str((Compiler.catalogue_for("cw-testrealm-abcd")[0] as Dictionary).get("id", ""))
 	await Compiler.reforge("cw-testrealm-abcd", "catalogue")
 	var cat2 := Compiler.catalogue_for("cw-testrealm-abcd")
-	assert(cat2.size() == cat.size() and str((cat2[0] as Dictionary).get("id", "")) == id_before,
+	_ck(cat2.size() == cat.size() and str((cat2[0] as Dictionary).get("id", "")) == id_before,
 		"compiler: reforge changed the catalogue size or renumbered ids")
 	await Compiler.reforge("cw-testrealm-abcd", "layouts")
-	assert(Compiler.layouts_for("cw-testrealm-abcd").size() >= 3, "compiler: reforge dropped layouts")
+	_ck(Compiler.layouts_for("cw-testrealm-abcd").size() >= 3, "compiler: reforge dropped layouts")
 	print("  compiler: seed→catalogue→kits→creatures→npcs, %d items, kit=%d, %d beasts, %d folk" % [
 		cat.size(), kit.size(), beasts.size(), folk.size()])
 
@@ -538,22 +558,22 @@ func _build_windows() -> void:
 	# errors WITHOUT throwing — the run would sail on and print OK. Load it
 	# explicitly and prove it compiled before trusting anything below.
 	var menu_script = load("res://scenes/ui/character_screen.gd")
-	assert(menu_script is GDScript and menu_script.can_instantiate(),
+	_ck(menu_script is GDScript and menu_script.can_instantiate(),
 		"menu: character_screen.gd failed to compile (parse error?)")
 	var sheet = menu_script.new()
-	assert(sheet != null and sheet.get_script() != null, "menu: character_screen instantiate failed")
+	_ck(sheet != null and sheet.get_script() != null, "menu: character_screen instantiate failed")
 	get_tree().root.add_child(sheet)
 	await get_tree().process_frame
 	for tab in sheet.TABS:
 		sheet.call("_show_page", tab)
 		for i in 3:
 			await get_tree().process_frame
-		assert(sheet._pages.has(tab) and is_instance_valid(sheet._pages[tab]),
+		_ck(sheet._pages.has(tab) and is_instance_valid(sheet._pages[tab]),
 			"menu: tab '%s' has no page" % tab)
-	assert(sheet._pages["Destiny"].get_child_count() > 0, "menu: Destiny never filled the skill tree")
+	_ck(sheet._pages["Destiny"].get_child_count() > 0, "menu: Destiny never filled the skill tree")
 	# Gear is the pack now — the tab must carry more than the doll (sockets +
 	# The Pack header at minimum), or the merge silently shipped an empty page.
-	assert(sheet._gear_host.get_child_count() >= 4, "menu: Gear tab missing the pack section")
+	_ck(sheet._gear_host.get_child_count() >= 4, "menu: Gear tab missing the pack section")
 	sheet.queue_free()
 	for path in ["res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd"]:
 		var w: Node = load(path).new()
@@ -587,9 +607,9 @@ func _build_windows() -> void:
 	for ch in _game.get_children():
 		if ch is AcceptDialog and ch.get_script() != null and str(ch.get_script().resource_path).ends_with("merchant_window.gd"):
 			shop = ch
-	assert(shop != null, "shop: merchant window never opened")
-	assert(int(shop._wares.item_count) > 0, "shop: the keeper has no wares (vendor stock empty)")
-	assert(shop.get("_purse_amount") != null, "shop: purse amount label missing (MIL §9 count-down)")
+	_ck(shop != null, "shop: merchant window never opened")
+	_ck(int(shop._wares.item_count) > 0, "shop: the keeper has no wares (vendor stock empty)")
+	_ck(shop.get("_purse_amount") != null, "shop: purse amount label missing (MIL §9 count-down)")
 	shop.queue_free()
 	Mode.enter("Exploration")  # leave Merchant mode the way confirming would
 	print("  windows: menu (9 tabs, Gear=pack), skill tree, lore book, shop all built")
@@ -602,10 +622,10 @@ func _build_windows() -> void:
 		# A failed script load still instantiates a bare Control — instantiate()
 		# "succeeding" proves nothing. Assert the script is really attached AND
 		# the scaffold actually built (the rail exists), or this is a dead screen.
-		assert(f.get_script() != null, "forge %s: script failed to load (parse error?)" % path)
+		_ck(f.get_script() != null, "forge %s: script failed to load (parse error?)" % path)
 		get_tree().root.add_child(f)
 		for i in 6:
 			await get_tree().process_frame
-		assert(f.get("_rail") != null, "forge %s: scaffold never built (_rail is null)" % path)
+		_ck(f.get("_rail") != null, "forge %s: scaffold never built (_rail is null)" % path)
 		f.queue_free()
 	print("  forges: character, campaign, world, adventure, gm, persona all built")

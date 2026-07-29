@@ -488,15 +488,21 @@ func _ready() -> void:
 	GameState.state = {}
 	assert(Composer.scene_context().contains("not yet established"))
 
-	# A5 persistence: save_kind updates local state instantly + queues the write.
+	# Persistence: save_kind updates local state AND lands on disk, immediately.
+	# This used to assert that the write was QUEUED for a PUT — the save being on
+	# a server is what let three features silently never persist and what filed
+	# every save under "null" once auth was disabled. It is a file now, so the
+	# check is the one that actually matters: read it back.
+	var keep_char := GameState.character
+	GameState.character = {"id": "dm-selfcheck-persist"}
 	GameState.state = {}
-	GameState._writing = true  # hold the drain so no real PUT fires in this check
-	GameState._write_queue = {}
 	GameState.save_kind("unit_kind", {"v": 7})
-	assert(GameState.state.get("unit_kind") == {"v": 7})
-	assert(GameState._write_queue.get("unit_kind") == {"v": 7})
-	GameState._writing = false
-	GameState._write_queue = {}
+	assert(GameState.state.get("unit_kind") == {"v": 7}, "local state updates instantly")
+	assert(GameState.state_for("dm-selfcheck-persist").get("unit_kind") == {"v": 7},
+		"...and it is on disk before the next line runs")
+	GameState.wipe_adventure("dm-selfcheck-persist")
+	assert(GameState.state_for("dm-selfcheck-persist").is_empty(), "wiping a tale removes its save")
+	GameState.character = keep_char
 	GameState.state = {}
 
 	print("SELF-CHECK OK")
