@@ -153,8 +153,36 @@ and dresses the fiction. Narration, not adjudication.
 3. **One stencil, one world, ~12 roles** — the seam test. Look at it.
 4. Full bake across six worlds if the seams hold.
 5. Delete `bake_terrain()` and the colour heuristic.
+6. **Ship the tiles in the world package**, not the runtime cache.
 
 Steps 1–3 cost no GPU and are where the risk actually lives.
+
+## Where tiles live
+
+`worlds/<world>/art/tiles/<role>-<variant>.png` — 136 per world, beside
+`creatures/`, `npc/`, `maps/` and `icons/`, zipped by `scripts/bake_zip.py` and
+extracted on first run. The world is implied by the package, so it is not in the
+filename. `Compiler.tile_art()` resolves them; `battle_grid` asks the package
+first and falls back to the global art cache only for a world compiled at
+runtime.
+
+This is not a new idea — it is the rule the project already had, in
+`art_cache.gd`: *"the worlds ship pre-baked and runtime art is now reserved for
+what the player invents."* The tile system was written against the older
+generate-on-demand pattern and had to be brought in line. `art_cache.beast_tex`
+carries an RCA for the identical mistake with creatures.
+
+Cost: packages roughly double, ~250 → ~500 MB each, ~3 GB for the six.
+Deliberate. If that ever needs to come down, the lever is **WebP q90 inside the
+package** — measured 6.5x smaller at identical 1024 resolution — not shrinking
+the masters.
+
+**A world id is `world.json`'s `id`, never the display name.** "Saltmarsh Reach"
+is `saltmarsh`. Keyed as `saltmarsh-reach`, `WORLD_GROUND` silently fell through
+to embervale's default and 136 tiles were baked under a world that does not
+exist at runtime. `self_check` now asserts every `WORLD_GROUND` entry names real
+roles and that `open` is move-1 — the second half catching `open: "mud"`, which
+made 90% of a saltmarsh clearing difficult ground.
 
 ## What the bake taught us
 
