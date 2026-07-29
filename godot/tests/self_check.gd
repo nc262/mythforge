@@ -331,10 +331,19 @@ func _ready() -> void:
 	var sp2 := Combat.player_spell(bid, "Fire Bolt")
 	assert(not bool(sp2["spent"]), "casting spends the whole action")
 
+	# R8-28 — no XP was ever awarded in play. Never a bug in award_xp: `finish()`
+	# pays for the slain and always has, but it only runs when a fight ENDS. Until
+	# R8-07 the player could not start one; then until R11-01 the GM's dice path
+	# resolved attacks without ever applying damage, so nothing died and there was
+	# nothing to pay for. Both fixed — so assert the whole chain reaches the sheet,
+	# because "it should work now" is not evidence.
+	var xp_before := int(GameState.sheet().get("xp", 0))
 	var fin := Combat.finish()
 	assert(int(fin["xp"]) >= 25)
 	assert(not Combat.active())
 	assert(Combat.positions().is_empty(), "the board clears with the field")
+	assert(int(GameState.sheet()["xp"]) == xp_before + int(fin["xp"]),
+		"the XP a won fight pays actually lands on the sheet")
 	assert(int(GameState.sheet()["xp"]) > 300)  # victory XP landed
 
 	# Table rules (Campaign Forge C2): engine levers read from world.rules

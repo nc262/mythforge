@@ -302,7 +302,7 @@ func _probe_tab_reachability(menu: Node) -> void:
 		var hits: Array = []
 		_hit_walk(menu.get_tree().root, pt, hits)
 		var top: String = str(hits[-1]) if not hits.is_empty() else "<nothing>"
-		var owned := not hits.is_empty() and (hits[-1] == b or b.is_ancestor_of(hits[-1]))
+		var owned: bool = (not hits.is_empty()) and (hits[-1] == b or b.is_ancestor_of(hits[-1]))
 		print("   %-11s rect=%s  →  %s%s" % [
 			tab, str(b.get_global_rect()), top, "" if owned else "   ** NOT THE TAB **"])
 
