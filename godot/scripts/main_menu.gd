@@ -225,15 +225,33 @@ func _boot_cinematic() -> void:
 		Art.ensure(str(k), str(Art.CINE_PROMPTS[k]), "1344x768")
 
 
+## The Hall paints from DISK first, and only then talks to anything.
+##
+## It used to open with `await Api.list_characters()`, so every local thing on
+## this screen — the resume shelf, the hero count, the custom worlds — waited
+## behind a network round trip. With the backend slow or not answering, the
+## Hall simply never reached the code that shows CONTINUE: no error, no status,
+## just a title screen that quietly pretends you have never played.
+##
+## Saves are local now, so nothing here needs the network at all. The one call
+## that still does (preset templates, for the Campaign shelf) happens last, and
+## the screen is already complete before it starts.
 func _refresh() -> void:
-	$Title/Box/Status.text = "Reaching the realm…"
-	_templates = await Api.list_characters()
-	await GameState.import_global_once()   # first run: take the shelf off the backend, once
+	_refresh_hero_count()
+	_paint_continue()
 	_cworlds = GameState.global_get("cworlds", [])
 	for w in _all_worlds():  # warm the World Skin cache so every world themes correctly in play
 		WorldSkin.remember(w)
 	$Title/Box/Status.text = ""
-	_refresh_hero_count()
+	_templates = await Api.list_characters()
+	await GameState.import_global_once()   # first run only: seed the shelf, once
+	if _cworlds.is_empty():
+		_cworlds = GameState.global_get("cworlds", [])
+		for w in _all_worlds():
+			WorldSkin.remember(w)
+
+
+func _paint_continue() -> void:
 	# Continue: the newest record in the ADVENTURE INDEX. It used to match the
 	# last-played id against the preset-template list, which never contains a
 	# custom-world tale — so Continue died while the save sat safe on the
