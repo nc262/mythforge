@@ -10,6 +10,7 @@ signal token_clicked(id: String)
 
 var map_key := ""  # Art cache key of the underlay ("" = scrimmed scene art)
 const TILE_VARIANTS := 4   # how many painted variants a role may have
+const BoardPaint = preload("res://scenes/combat/board_paint.gd")
 var _hover := [-1, -1]
 var _disp := {}        # id -> displayed pixel center (eases toward the square)
 var _hp_seen := {}     # id -> last hp, for damage/heal feedback
@@ -211,6 +212,22 @@ func _gui_input(event: InputEvent) -> void:
 				token_clicked.emit("pc")  # a tap in place selects, as before
 
 
+var _painted: ImageTexture = null
+var _painted_for := ""
+
+
+## The composed field, rebuilt only when the field or the world actually changes
+## — a fight lasts minutes and the ground does not move under it.
+func _composite(laid: Dictionary) -> ImageTexture:
+	var wid := GameState.world_id()
+	var sig := "%s|%d|%s" % [wid, laid.size(), str(laid.hash())]
+	if sig == _painted_for:
+		return _painted
+	_painted_for = sig
+	_painted = BoardPaint.compose(wid, laid, Combat.MAP_COLS, Combat.MAP_ROWS, TILE_VARIANTS)
+	return _painted
+
+
 ## The art a combatant's token wears — one source with the initiative rail.
 func _token_art(m: Dictionary) -> Texture2D:
 	return Art.combatant_tex(m)
@@ -229,28 +246,19 @@ func _draw() -> void:
 	# legible, which is the whole point of proving the layout before the GPU.
 	var laid: Dictionary = Combat.data().get("cells", {}) if Combat.data().get("cells") is Dictionary else {}
 	if not laid.is_empty():
-		var wid := GameState.world_id()
-		for x in Combat.MAP_COLS:
-			for y in Combat.MAP_ROWS:
-				var role := str(laid.get("%d,%d" % [x, y], ""))
-				var r := Rect2(Vector2(x * cs.x, y * cs.y), cs)
-				# Variants keep a snowfield from reading as wallpaper. Chosen by
-				# position so the same square always wears the same tile.
-				var v: int = 1 + (abs(hash("%s%d,%d" % [role, x, y])) % TILE_VARIANTS)
-				# The package first, always — a default world ships its terrain
-				# painted, and must never spend the player's GPU redrawing it.
-				# The cache is only the fallback for a world compiled at runtime.
-				var tile := Compiler.tile_art(wid, role, v)
-				if tile == null:
-					tile = Compiler.tile_art(wid, role, 1)
-				if tile == null:
-					tile = Art.texture_for("tile-%s-%s-%d" % [role, wid, v])
-				if tile == null:
-					tile = Art.texture_for("tile-%s-%s-1" % [role, wid])
-				if tile != null:
-					draw_texture_rect(tile, r, false, Color(0.94, 0.92, 0.96))
-				else:
-					draw_rect(r, Color(Combat.ROLES.get(role, {}).get("tint", Color(0.18, 0.18, 0.2))))
+		# One composed image, built once per field (BoardPaint): dual-grid
+		# blending across material seams, object backgrounds keyed away, variant
+		# brightness levelled. Drawing it per cell is what made every boundary a
+		# hard rectangle — there are no transition tiles in the library to draw.
+		var painted := _composite(laid)
+		if painted != null:
+			draw_texture_rect(painted, Rect2(Vector2.ZERO, board), false, Color(0.94, 0.92, 0.96))
+		else:
+			for x in Combat.MAP_COLS:
+				for y in Combat.MAP_ROWS:
+					var role := str(laid.get("%d,%d" % [x, y], ""))
+					draw_rect(Rect2(Vector2(x * cs.x, y * cs.y), cs),
+						Color(Combat.ROLES.get(role, {}).get("tint", Color(0.18, 0.18, 0.2))))
 		draw_rect(Rect2(Vector2.ZERO, board), Color(Ui.c("night"), 0.06))
 		# R11 — the permanent mechanical overlay lived here: hatching on every
 		# impassable square, drag-stripes on every difficult one, a cover pip on
