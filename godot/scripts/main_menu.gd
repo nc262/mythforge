@@ -206,6 +206,15 @@ func _boot_cinematic() -> void:
 	if Engine.has_meta("mf_cine_played") or OS.get_environment("MF_SKIP_CINE") == "1":
 		return
 	Engine.set_meta("mf_cine_played", true)
+	# R12-04 — this was once per LAUNCH. A first impression can only happen once;
+	# every showing after that is a toll between the player and the game, and it
+	# is paid by the person testing the build most often. Remembered across runs.
+	var cfg := ConfigFile.new()
+	cfg.load(Api.COOKIE_FILE)
+	if bool(cfg.get_value("settings", "cine_seen", false)):
+		return
+	cfg.set_value("settings", "cine_seen", true)
+	cfg.save(Api.COOKIE_FILE)
 	_title.visible = false
 	var cine := preload("res://scenes/ui/cinematic.gd").new()
 	add_child(cine)

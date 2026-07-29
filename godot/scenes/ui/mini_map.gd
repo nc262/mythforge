@@ -10,6 +10,11 @@ var _phase := 0.0
 
 
 func _ready() -> void:
+	# The chart is drawn COVER-FIT, so it is always larger than this box on one
+	# axis and spilled outside the frame — a slab of map floating over the scene
+	# with a border round part of it. That is the "random rectangle on the
+	# minimap"; it was never a panel, it was this map escaping its box.
+	clip_contents = true
 	custom_minimum_size = Vector2(190, 124)
 	mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	tooltip_text = "The chart — click to open the Atlas (Ctrl+M)"
@@ -60,11 +65,26 @@ func _draw() -> void:
 	var here := str(world.get("here", ""))
 	var seen: Array = world.get("seen") if world.get("seen") is Array else []
 	var fog := bool(GameState.rule("fog", true))
-	for l in Rules.world_locations(GameState.world_id()):
+	# R12-05 — the chart had no dots and no you-are-here ring because it read the
+	# wrong list. `Rules.world_locations()` is the world package's STATIC gazetteer;
+	# the places the tale actually visits are recorded in `state.world.places`,
+	# with their own x/y. A save proves it: here = "Moonwhisper's Cottage", eight
+	# places recorded, and not one of them in the package list — so every entry
+	# failed the `nm == here` test and the map drew empty.
+	#
+	# `seen` is also never written (0 entries across every save on this machine),
+	# which under fog hid everything the `here` test did not already catch. The
+	# recorded places ARE the discovered ones — that is why they were recorded —
+	# so they count as seen.
+	var places: Array = world.get("places") if world.get("places") is Array else []
+	if places.is_empty():
+		places = Rules.world_locations(GameState.world_id())
+	for l in places:
 		if not (l is Dictionary):
 			continue
 		var nm := str(l.get("name", ""))
-		if fog and nm != here and not seen.has(nm):
+		var known: bool = seen.has(nm) or world.get("places") is Array
+		if fog and nm != here and not known:
 			continue
 		var p := Vector2(float(l.get("x", 50)) / 100.0 * size.x, float(l.get("y", 50)) / 100.0 * size.y)
 		if nm == here:

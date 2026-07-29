@@ -54,6 +54,7 @@ func _ready() -> void:
 	# stays as the at-a-glance HUD, toggled with Ctrl+S.
 	var sheet_btn: Button = $Margin/Split/ChatBox/Input/SheetBtn
 	sheet_btn.toggle_mode = false
+	sheet_btn.tooltip_text = "The Record — your character sheet and its pages"
 	sheet_btn.pressed.connect(func(): _open_character_screen())
 	$Margin/Split/ChatBox/Input/CodexBtn.toggled.connect(func(on):
 		_panel_mode = "codex" if on else "sheet"
@@ -244,7 +245,12 @@ func _seed_forged_party() -> void:
 ## emoji (docs/DesignSystem.md, MDL law). Each button keeps its tooltip.
 func _iconify_toolbar() -> void:
 	var input := $Margin/Split/ChatBox/Input
-	for pair in [["Retell", "retell"], ["Bag", "pack"], ["CodexBtn", "scroll"],
+	# R12-06 — SheetBtn was the one button this loop skipped, so it sat in a row
+	# of drawn glyphs wearing the word "Sheet" while CodexBtn wore the SCROLL,
+	# which is exactly what a character sheet looks like. The record gets the
+	# scroll; the cast-and-quests panel gets the company's banner.
+	for pair in [["Retell", "retell"], ["Bag", "pack"], ["SheetBtn", "scroll"],
+			["CodexBtn", "banner"],
 			["Dice", "die"], ["Scene", "easel"], ["Lore", "book"], ["Shop", "coins"],
 			["ShortRest", "moon"], ["LongRest", "tent"]]:
 		var btn: Button = input.get_node_or_null(str(pair[0]))
@@ -631,9 +637,15 @@ func _seat_the_hero() -> void:
 	row.add_child(face)
 	header.reparent(row)
 	header.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# R12-08 — this passed "" as the fallback glyph, on the assumption that art
+	# being READY means art being THERE. When round_tex comes back null anyway —
+	# the painting failed, or the LRU evicted it between the signal and the read —
+	# the ring got no texture and no letter, and drew as an empty circle. Keep the
+	# initial: it is what MythPortrait falls back to, and it is never wrong.
+	var initial := str(GameState.sheet().get("name", "?")).left(1).to_upper()
 	Art.art_ready.connect(func(k):
 		if str(k) == key and is_instance_valid(face):
-			face.set_portrait(Art.round_tex(key, 38), "")
+			face.set_portrait(Art.round_tex(key, 38), initial)
 			Ui.pulse(face))
 
 

@@ -85,41 +85,91 @@ WORLDS = {
     # The Embervale — warm D-minor folk hearth: soft triangle pad, low drone,
     # a slow gentle harp arpeggio.
     'embervale': dict(
-        root=146.83, pace=6.5, cycles=6,
-        prog=[[0, 3, 7, 14], [-2, 2, 7, 12], [0, 5, 8, 12], [-4, 3, 7, 10]],
+        root=146.83, pace=6.5, cycles=8,
+        prog=[[0, 3, 7, 14], [-2, 2, 7, 12], [0, 5, 8, 12], [-4, 3, 7, 10],
+              [-5, 2, 7, 11], [0, 3, 10, 15], [3, 7, 12, 19], [-2, 5, 9, 14]],
         harm=[(1, 0.5), (2, 0.22), (3, 0.12), (4, 0.05)],
         detune=6, sub=0.16, sub_mult=0.5,
         arp=dict(offs=[0, 7, 12, 15, 12, 7], step=0.62, decay=3.0,
                  harm=(1.0, 0.4, 0.15), oct=2, gain=0.14, wave='tri'),
+        mel=dict(step=0.78, oct=4, wave='tri', gain=0.105, rest=0.30, seed=11,
+                 lens=[1, 1, 2, 3], pass_=[2, 5], decay=3.6),
         bright=(0.55, 0.9), lvol=0.72),
     # Neon Spire — cold cyberpunk drift: analog saw fifths, sub pulse, sparse bell blips.
     'neonspire': dict(
-        root=110.0, pace=7.5, cycles=6,
-        prog=[[0, 7, 12, 19], [-2, 5, 10, 17], [0, 3, 10, 15], [-5, 2, 7, 14]],
+        root=110.0, pace=7.5, cycles=8,
+        prog=[[0, 7, 12, 19], [-2, 5, 10, 17], [0, 3, 10, 15], [-5, 2, 7, 14],
+              [-3, 4, 9, 16], [0, 7, 14, 19], [-7, 0, 7, 12], [-2, 3, 10, 17]],
         harm=[(1, 0.42), (2, 0.26), (3, 0.16), (5, 0.08), (7, 0.04)],
         detune=11, sub=0.2, sub_mult=0.5,
         arp=dict(offs=[24, 19, 24, 26], step=1.05, decay=4.5,
                  harm=(1.0, 0.5, 0.25, 0.12), oct=1, gain=0.1, wave='sin'),
+        mel=dict(step=1.0, oct=4, wave='sin', gain=0.085, rest=0.42, seed=23,
+                 lens=[2, 3, 4], pass_=[3, 10], decay=5.0),
         bright=(0.35, 0.75), lvol_sweep=True, lvol=0.7),
     # Everyday — mellow modern lofi ease: soft F-maj7 electric-piano tones, light pad.
     'everyday': dict(
-        root=174.61, pace=6.0, cycles=6,
-        prog=[[0, 4, 7, 11], [5, 9, 12, 16], [-3, 0, 4, 9], [2, 5, 9, 14]],
+        root=174.61, pace=6.0, cycles=8,
+        prog=[[0, 4, 7, 11], [5, 9, 12, 16], [-3, 0, 4, 9], [2, 5, 9, 14],
+              [-5, 0, 4, 9], [7, 11, 14, 18], [0, 5, 9, 12], [-1, 4, 7, 11]],
         harm=[(1, 0.46), (2, 0.2), (3, 0.09)],
         detune=4, sub=0.1, sub_mult=1.0,
         arp=dict(offs=[0, 4, 7, 11, 7, 4], step=0.7, decay=4.2,
                  harm=(1.0, 0.55, 0.2, 0.08), oct=1, gain=0.13, wave='epno'),
+        mel=dict(step=0.72, oct=4, wave='epno', gain=0.10, rest=0.34, seed=5,
+                 lens=[1, 2, 2, 3], pass_=[2, 9], decay=4.0),
         bright=(0.6, 0.95), lvol=0.72),
     # Combat — driving C-minor tension: pulsing low ostinato, tense staccato, faster.
     'combat': dict(
-        root=130.81, pace=3.4, cycles=8,
+        root=130.81, pace=3.4, cycles=12,
         prog=[[0, 3, 7, 12], [-1, 3, 6, 12], [0, 3, 8, 11], [1, 4, 7, 13]],
         harm=[(1, 0.4), (2, 0.28), (3, 0.18), (4, 0.1)],
         detune=8, sub=0.24, sub_mult=0.5,
         arp=dict(offs=[0, 0, 7, 0, 3, 0, 7, 10], step=0.2125, decay=7.0,
                  harm=(1.0, 0.6, 0.3), oct=1, gain=0.16, wave='saw'),
+        mel=dict(step=0.425, oct=2, wave='saw', gain=0.075, rest=0.5, seed=31,
+                 lens=[1, 1, 2], pass_=[1, 6], decay=3.0),
         bright=(0.3, 0.7), lvol=0.7),
+    # Fimbulreach — Norse iron and frost: bare fifths, a horn-like drone, sparse
+    # struck notes like ice under a boot. Modal, no third, so it never warms.
+    'fimbulreach': dict(
+        root=123.47, pace=7.0, cycles=8,
+        prog=[[0, 7, 12, 19], [-2, 5, 10, 17], [-5, 2, 7, 14], [0, 7, 15, 19],
+              [-7, 0, 7, 12], [-3, 4, 11, 16], [0, 5, 12, 17], [-2, 7, 10, 19]],
+        harm=[(1, 0.48), (2, 0.24), (3, 0.14), (4, 0.06)],
+        detune=9, sub=0.22, sub_mult=0.5,
+        arp=dict(offs=[0, 7, 12, 7], step=0.95, decay=3.4,
+                 harm=(1.0, 0.45, 0.18), oct=2, gain=0.12, wave='tri'),
+        mel=dict(step=0.95, oct=4, wave='tri', gain=0.09, rest=0.40, seed=17,
+                 lens=[2, 3, 4], pass_=[2, 7], decay=4.2),
+        bright=(0.4, 0.78), lvol=0.7),
+    # Brasshaven — steam and clockwork: a ticking ostinato, brass-bright harmonics,
+    # a major-ish lift under the soot.
+    'brasshaven': dict(
+        root=138.59, pace=5.5, cycles=8,
+        prog=[[0, 4, 7, 12], [-3, 2, 7, 11], [0, 5, 9, 14], [2, 7, 11, 16],
+              [-5, 0, 7, 12], [0, 4, 11, 16], [3, 7, 10, 15], [-1, 4, 9, 12]],
+        harm=[(1, 0.44), (2, 0.28), (3, 0.16), (5, 0.07)],
+        detune=7, sub=0.18, sub_mult=0.5,
+        arp=dict(offs=[0, 12, 7, 12, 4, 12], step=0.46, decay=5.5,
+                 harm=(1.0, 0.5, 0.22, 0.1), oct=2, gain=0.115, wave='saw'),
+        mel=dict(step=0.69, oct=4, wave='epno', gain=0.095, rest=0.32, seed=41,
+                 lens=[1, 2, 2, 3], pass_=[2, 9], decay=3.8),
+        bright=(0.5, 0.92), lvol=0.71),
+    # Saltmarsh Reach — tide and fog: slow swells, a low buoy note, damp air.
+    'saltmarsh': dict(
+        root=116.54, pace=8.0, cycles=8,
+        prog=[[0, 3, 7, 14], [-2, 3, 8, 12], [-4, 0, 7, 12], [0, 5, 10, 15],
+              [-5, 2, 9, 14], [0, 3, 12, 17], [-7, 3, 7, 10], [-2, 5, 8, 15]],
+        harm=[(1, 0.5), (2, 0.2), (3, 0.1)],
+        detune=8, sub=0.2, sub_mult=0.5,
+        arp=dict(offs=[0, 12, 7], step=1.6, decay=2.6,
+                 harm=(1.0, 0.35, 0.12), oct=1, gain=0.1, wave='sin'),
+        mel=dict(step=1.2, oct=4, wave='sin', gain=0.08, rest=0.45, seed=53,
+                 lens=[2, 3, 4], pass_=[2, 5], decay=4.6),
+        bright=(0.42, 0.82), lvol_sweep=True, lvol=0.7),
 }
+
 
 WAVES = {
     'sin': lambda ph: np.sin(ph),
@@ -162,6 +212,36 @@ def render(name, cfg):
         note = _note(freq, step * 2.2, sr, decay=ar['decay'], wave_fn=wf, harm=ar['harm'])
         _wrap_add(mix, note * ar['gain'], int(t * sr), sr)
         t += step; ci += 1
+    # ── Melody ──────────────────────────────────────────────────────────────
+    # The arpeggio is a fixed cycle of 4-8 offsets at ~0.6 s a step, so it comes
+    # round every few seconds and the ear hears "two or three pulsing notes"
+    # however long the loop actually is. A pad plus a metronome is not a tune.
+    #
+    # This lays a sparse melodic line over it: notes drawn from the CURRENT
+    # chord plus the mode's passing tones, in varied lengths, with rests — so
+    # phrases breathe and land differently against each chord. Seeded per world,
+    # so a rebuild produces the identical file (and it stays CC0 by construction:
+    # still no samples, still nothing downloaded).
+    mel = cfg.get('mel')
+    if mel:
+        rng = np.random.default_rng(mel.get('seed', 7))
+        wfm = WAVES[mel.get('wave', 'tri')]
+        root_mel = cfg['root'] * mel.get('oct', 4)
+        t = 0.0
+        while t < dur:
+            chord = chord_seq[int(t / cfg['pace']) % slices]
+            if rng.random() < mel.get('rest', 0.28):
+                t += mel['step'] * float(rng.choice([1, 2]))
+                continue
+            # Chord tones carry the harmony; passing tones keep it from chanting.
+            pool = list(chord) + [c + p for c in chord[:2] for p in mel.get('pass_', [2, 5])]
+            deg = int(rng.choice(pool))
+            length = mel['step'] * float(rng.choice(mel.get('lens', [1, 1, 2, 3])))
+            freq = root_mel * 2 ** (deg / 12.0)
+            note = _note(freq, length * 1.9, sr, decay=mel.get('decay', 3.4),
+                         wave_fn=wfm, harm=mel.get('harm', (1.0, 0.35, 0.12)))
+            _wrap_add(mix, note * mel.get('gain', 0.11), int(t * sr), sr)
+            t += length
     # slow overall volume swell for the sweepier worlds
     if cfg.get('lvol_sweep'):
         mix *= 0.75 + 0.25 * (0.5 + 0.5 * np.sin(2 * np.pi * np.arange(n) / n))
