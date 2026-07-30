@@ -36,20 +36,14 @@ def test_upload_limit_formatting_is_human_readable():
 
 
 def test_direct_upload_routes_use_bounded_reads():
+    # Down to one entry, and that is the point rather than a weakening: the
+    # invariant is "every route that reads an upload does so BOUNDED", and
+    # stt_routes is the only such route left. gallery/upload went in this pass;
+    # memory/calendar/email went in earlier ones. This test had decayed to
+    # asserting against four files that no longer exist.
     expectations = {
         "routes/stt_routes.py": [
             "read_upload_limited(file, STT_MAX_AUDIO_BYTES",
-        ],
-        # gallery_routes.py entry dropped with the gallery router (32 endpoints,
-        # none called by the game). Its upload paths went with it.
-        "routes/memory_routes.py": [
-            "read_upload_limited(file, MEMORY_IMPORT_MAX_BYTES",
-        ],
-        "routes/calendar_routes.py": [
-            "read_upload_limited(file, _ICS_MAX_BYTES",
-        ],
-        "routes/email_routes.py": [
-            "read_upload_limited(file, EMAIL_COMPOSE_UPLOAD_MAX_BYTES",
         ],
     }
 

@@ -572,19 +572,21 @@ webhook_manager = WebhookManager(api_key_manager=api_key_manager)
 auth_router = setup_auth_routes(auth_manager)
 app.include_router(auth_router)
 
-# Uploads
-from routes.upload_routes import setup_upload_routes
-upload_router, upload_cleanup_func = setup_upload_routes(upload_handler)
-app.include_router(upload_router)
+# [MYTHFORGE-CUT] upload_routes — 6 endpoints (/api/upload, /api/upload/cleanup,
+# /api/upload/stats...), none called by the Godot client. Director's call: "we
+# will build our own upload if needed down the road."
+#
+# NOTE `upload_handler` itself STAYS — chat_routes takes it (see below), and the
+# STT route does its own bounded read. Only the HTTP surface and its periodic
+# cleanup task are gone.
+upload_cleanup_func = None
 upload_cleanup_task = None
 
-# Emoji SVG proxy (same-origin, lazy-cached Twemoji) — lets the chat render
-# emojis as flat SVG instead of system color glyphs.
-from routes.emoji_routes import setup_emoji_routes
-app.include_router(setup_emoji_routes())
-
-from routes.workspace_routes import setup_workspace_routes
-app.include_router(setup_workspace_routes())
+# [MYTHFORGE-CUT] emoji_routes — a same-origin Twemoji SVG proxy so the WEB
+# chat could render flat emoji instead of system glyphs. Godot draws its own text.
+#
+# [MYTHFORGE-CUT] workspace_routes — 1 endpoint for the workspace SPA, which is
+# deleted.
 
 # Sessions
 from routes.session_routes import setup_session_routes
@@ -660,9 +662,9 @@ app.include_router(setup_model_routes(model_discovery))
 # [MYTHFORGE-CUT] from routes.chatgpt_subscription_routes import setup_chatgpt_subscription_routes
 # [MYTHFORGE-CUT] app.include_router(setup_chatgpt_subscription_routes())
 
-# TTS
-from routes.tts_routes import setup_tts_routes
-app.include_router(setup_tts_routes(tts_service))
+# [MYTHFORGE-CUT] tts_routes — 3 endpoints for browser speech playback. The
+# client has no TTS path today; if the GM ever speaks aloud it should synthesise
+# in-process like the narrator does, not fetch audio over HTTP.
 
 # STT
 from services.stt import get_stt_service
@@ -757,15 +759,14 @@ set_ai_memory_manager(memory_manager, memory_vector)
 set_ai_rag_manager(rag_manager, personal_docs_mgr)
 logger.info("AI interaction tools initialized (session, memory, RAG, UI control)")
 
-# Webhooks
-from routes.webhook_routes import setup_webhook_routes
-app.include_router(setup_webhook_routes(webhook_manager, auth_manager, session_manager, api_key_manager))
-
-# API Tokens
-from routes.api_token_routes import setup_api_token_routes
-app.include_router(setup_api_token_routes())
-
-logger.info("Webhook & API token routes initialized")
+# [MYTHFORGE-CUT] webhook_routes — 6 endpoints including the token-authenticated
+# POST /api/v1/chat sync-chat surface. That existed so external services could
+# drive the assistant; a single-player desktop game has no such caller, and it was
+# the fourth place the null-owner session leak showed up (see
+# tests/test_null_owner_gates.py).
+#
+# [MYTHFORGE-CUT] api_token_routes — 5 endpoints for minting API tokens for those
+# external callers. With no webhook surface there is nothing to authenticate.
 
 # Notes (Google Keep-style notes/todos)
 # [MYTHFORGE-CUT] from routes.note_routes import setup_note_routes

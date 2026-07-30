@@ -85,17 +85,15 @@ def test_vision_analysis_uses_owner_scoped_primary_and_fallback(monkeypatch, tmp
 
 
 def test_request_vision_call_sites_pass_owner():
+    """Every surviving vision/PDF call site must pass an owner.
+
+    Four of the six call sites this used to check are deleted — gallery, upload,
+    memory and document routers. The invariant is unchanged and still worth
+    pinning for what remains: an owner-less vision call resolves the wrong user's
+    model and leaks their endpoint credentials.
+    """
     chat_source = (ROOT / "src" / "chat_handler.py").read_text()
     processor_source = (ROOT / "src" / "document_processor.py").read_text()
-    upload_source = (ROOT / "routes" / "upload_routes.py").read_text()
-    document_source = (ROOT / "routes" / "document_routes.py").read_text()
-    # gallery_routes.py and memory_routes.py are both deleted — the gallery
-    # router in this pass, memory_routes with ChromaDB back in batch 2. Their
-    # call-site assertions go with them; the surviving ones below still hold.
 
     assert 'analyze_image_with_vl_result(file_info["path"], owner=owner)' in chat_source
-    assert "analyze_image_with_vl(path, owner=current_user)" in upload_source
     assert "_process_pdf(path, owner=owner)" in processor_source
-    assert "_process_pdf(pdf_path, owner=user)" in document_source
-    assert "_resolve_vl_model(vl_model, owner=user)" in document_source
-    # (gallery + memory call sites removed with their routers — see above)
