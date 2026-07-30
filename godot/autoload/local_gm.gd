@@ -72,18 +72,18 @@ signal _json_free
 signal _json_done(text: String)
 
 
-## The first CHAT GGUF in the models folder, or "" if there is none.
+## Every narrator on this machine — filenames, not paths.
 ##
-## Skips the embedding model, which lives in the same folder (LocalMemory picks
-## it out of here by the same hints). `DirAccess.get_files()` order is whatever
-## the filesystem hands back — today "llama..." happens to sort before
-## "nomic...", which is luck, not a guarantee. Getting this wrong does not fail
-## loudly: an 80 MB encoder loaded as the narrator answers, badly, forever. And
-## since the HTTP narrator is gone there is nothing behind it to catch that.
-func model_file() -> String:
+## Settings offered a GAME MASTER picker listing models from the BACKEND's
+## /api/models, which is to say Ollama endpoints. The narrator has been a GGUF
+## file in this folder for weeks, so the control let a player choose a narrator
+## that was never consulted: `gm_model` was write-only, and `auto_gm_model()` —
+## the function that would have read it — had no callers at all.
+func chat_models() -> Array:
+	var out: Array = []
 	var d := DirAccess.open(MODEL_DIR)
 	if d == null:
-		return ""
+		return out
 	for f in d.get_files():
 		var lf := f.to_lower()
 		if not lf.ends_with(".gguf"):
@@ -92,10 +92,36 @@ func model_file() -> String:
 		for h in LocalMemory.EMBED_HINTS:
 			if lf.find(h) >= 0:
 				is_encoder = true
-				break
 		if not is_encoder:
-			return MODEL_DIR + "/" + f
-	return ""
+			out.append(f)
+	out.sort()
+	return out
+
+
+## The player's chosen narrator, if they picked one and it is still there.
+## Falling back rather than failing: a model deleted out from under the setting
+## should cost you the preference, not the game.
+func preferred_model() -> String:
+	var cfg := ConfigFile.new()
+	cfg.load(Api.SETTINGS_FILE)
+	var want := str(cfg.get_value("settings", "gm_model", ""))
+	return want if want != "" and chat_models().has(want) else ""
+
+
+## The CHAT GGUF the narrator will actually load, or "" if there is none.
+##
+## Skips the embedding model, which lives in the same folder (LocalMemory picks
+## it out of here by the same hints). `DirAccess.get_files()` order is whatever
+## the filesystem hands back — today "llama..." happens to sort before
+## "nomic...", which is luck, not a guarantee. Getting this wrong does not fail
+## loudly: an 80 MB encoder loaded as the narrator answers, badly, forever. And
+## since the HTTP narrator is gone there is nothing behind it to catch that.
+func model_file() -> String:
+	var pick := preferred_model()
+	if pick != "":
+		return MODEL_DIR + "/" + pick
+	var all := chat_models()
+	return (MODEL_DIR + "/" + str(all[0])) if not all.is_empty() else ""
 
 
 ## Both halves must be present. `ClassDB` is the honest test for the extension:

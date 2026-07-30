@@ -164,35 +164,11 @@ func activate(char_id: String, char_name: String) -> void:
 		{"id": char_id, "name": char_name})
 
 
-## Param count (billions) read off a model id — "llama3.1:8b" → 8.0. Unknown
-## ids score huge so a size-blind name never wins the "fastest" race. Mirrors
-## the server's own `_model_size` in character_studio_routes.py.
-func model_size_b(mid: String) -> float:
-	var m := RegEx.new()
-	m.compile("(\\d+(?:\\.\\d+)?)\\s*[bB]\\b")
-	var hit := m.search(mid)
-	return float(hit.get_string(1)) if hit != null else 999.0
-
-
-## What "Auto" means for the narrator. The account default is whatever model is
-## biggest, which on a one-GPU box is whatever model is slowest — a 14B took
-## 53s for one turn and the player waited two minutes. So Auto takes the LARGEST
-## model that still fits the fast window (≤9B): good prose, a fraction of the
-## wait. Returns {} when nothing qualifies, and the caller falls back to the
-## account default as before. Settings still overrides this outright.
-const GM_FAST_CEILING := 9.0
-
-func auto_gm_model() -> Dictionary:
-	var mods := await call_json(HTTPClient.METHOD_GET, "/api/models")
-	var best := {}
-	var best_sz := 0.0
-	for host in mods.get("items", []):
-		for mn in host.get("models", []):
-			var sz := model_size_b(str(mn))
-			if sz <= GM_FAST_CEILING and sz > best_sz:
-				best_sz = sz
-				best = {"url": str(host.get("url", "")), "model": str(mn)}
-	return best
+# `model_size_b` and `auto_gm_model` lived here: they ranked the BACKEND's chat
+# models so "Auto" could pick the largest one under 9B. The narrator is a local
+# .gguf now and Settings picks it by filename (LocalGM.chat_models), so both were
+# ranking candidates that could never be chosen. auto_gm_model had no callers at
+# all — its last one went with the session code.
 
 
 # ── Sessions ────────────────────────────────────────────────────────────────

@@ -179,22 +179,39 @@ func _turn_damage_heal() -> void:
 ## chair. A 14B measured 53s for one turn (player-felt: ~2 min); the fast
 ## window (≤9B) is what keeps play playable, and the LARGEST model inside it
 ## wins so prose quality isn't thrown away for speed.
+## The narrator the player picks must be the narrator that speaks.
+##
+## The check that lived here asserted `model_size_b()` parsed "14b" as 14 and
+## then RE-IMPLEMENTED the ranking inline — so it passed on a pure helper while
+## the feature it was named for sat disconnected: the Settings picker listed the
+## backend's Ollama models and saved to a key nothing read. A test that cannot
+## tell whether the feature is plugged in is not testing the feature.
 func _check_gm_model_pick() -> void:
-	_ck(Api.model_size_b("llama3.1:8b") == 8.0, "model_size_b: plain tag")
-	_ck(Api.model_size_b("qwen2.5:14b") == 14.0, "model_size_b: 14b must read as 14, not 2.5")
-	_ck(Api.model_size_b("deepseek-r1:32b") == 32.0, "model_size_b: 32b")
-	_ck(Api.model_size_b("llama3.2:3b") == 3.0, "model_size_b: 3b")
-	_ck(Api.model_size_b("some-mystery-model") == 999.0, "model_size_b: unknown must lose the race")
-	# The real pick: 8b beats 3b (quality) and 14b/32b are out of the window.
-	var best := ""
-	var best_sz := 0.0
-	for mid in ["qwen2.5:14b", "llama3.2:3b", "llama3.1:8b", "deepseek-r1:32b"]:
-		var sz: float = Api.model_size_b(mid)
-		if sz <= Api.GM_FAST_CEILING and sz > best_sz:
-			best_sz = sz
-			best = mid
-	_ck(best == "llama3.1:8b", "auto GM pick: expected the largest ≤9B, got '%s'" % best)
-	print("  gm model: Auto picks the largest model in the fast window (llama3.1:8b)")
+	var models := LocalGM.chat_models()
+	_ck(not models.has(""), "the narrator list holds filenames, not blanks")
+	for m in models:
+		var lower := str(m).to_lower()
+		_ck(lower.ends_with(".gguf"), "every listed narrator is a .gguf (%s)" % m)
+		for hint in LocalMemory.EMBED_HINTS:
+			_ck(lower.find(hint) < 0,
+				"the embedding model is not offered as a narrator (%s)" % m)
+	# The contract that actually matters: whatever Settings saved is what loads.
+	if not models.is_empty():
+		var cfg := ConfigFile.new()
+		cfg.load(Api.SETTINGS_FILE)
+		var keep = cfg.get_value("settings", "gm_model", "")
+		cfg.set_value("settings", "gm_model", str(models[-1]))
+		cfg.save(Api.SETTINGS_FILE)
+		_ck(LocalGM.model_file().get_file() == str(models[-1]),
+			"the chosen narrator is the one that loads")
+		# A model deleted out from under the setting costs the preference, not
+		# the game.
+		cfg.set_value("settings", "gm_model", "a-model-that-was-deleted.gguf")
+		cfg.save(Api.SETTINGS_FILE)
+		_ck(LocalGM.model_file() != "", "a stale pick falls back rather than failing")
+		cfg.set_value("settings", "gm_model", keep)
+		cfg.save(Api.SETTINGS_FILE)
+	print("  gm model: %d narrator(s) installed, Settings picks by filename" % models.size())
 
 
 ## The catalogue only ever covered weapon and armor, so eleven of the thirteen

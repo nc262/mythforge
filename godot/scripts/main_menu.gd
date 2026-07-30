@@ -629,28 +629,38 @@ func _show_settings() -> void:
 	_show_sub("Settings", "")
 	var cfg := ConfigFile.new()
 	cfg.load(Api.SETTINGS_FILE)
+	# THE NARRATOR IS A FILE ON THIS MACHINE. This control used to list models
+	# from the backend's /api/models — Ollama endpoints — and save the choice to
+	# a setting NOTHING read: `gm_model` was write-only and the function that
+	# would have consulted it had no callers. A player could pick a narrator and
+	# be narrated at by a different one.
 	_content.add_child(_section("GAME MASTER"))
-	var model_in := OptionButton.new()
-	model_in.custom_minimum_size = Vector2(420, 0)
-	model_in.add_item("Auto — the fastest capable narrator")
-	var picks: Array = []
-	var mods := await Api.call_json(HTTPClient.METHOD_GET, "/api/models")
-	for host in mods.get("items", []):
-		for mn in host.get("models", []):
-			picks.append({"url": str(host.get("url", "")), "model": str(mn)})
-			model_in.add_item(str(mn))
-	var saved_pick = JSON.parse_string(str(cfg.get_value("settings", "gm_model", "")))
-	if saved_pick is Dictionary:
-		for i in picks.size():
-			if picks[i]["model"] == str(saved_pick.get("model", "")):
-				model_in.selected = i + 1
-	model_in.item_selected.connect(func(idx):
-		_set_setting("gm_model", "" if idx == 0 else JSON.stringify(picks[idx - 1])))
-	var model_hint := Label.new()
-	model_hint.theme_type_variation = "HintLabel"
-	model_hint.text = "The narrator's mind — applies to newly opened adventures. Auto keeps the biggest models out of the chair — they narrate no better and cost minutes a turn."
-	_content.add_child(model_in)
-	_content.add_child(model_hint)
+	var models := LocalGM.chat_models()
+	if models.is_empty():
+		var none := Label.new()
+		none.theme_type_variation = "HintLabel"
+		none.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		none.custom_minimum_size = Vector2(420, 0)
+		none.text = "No narrator installed. Drop a .gguf into %s and restart." 			% ProjectSettings.globalize_path(LocalGM.MODEL_DIR)
+		_content.add_child(none)
+	else:
+		var model_in := OptionButton.new()
+		model_in.custom_minimum_size = Vector2(420, 0)
+		for m in models:
+			model_in.add_item(str(m))
+		var current := LocalGM.model_file().get_file()
+		for i in models.size():
+			if str(models[i]) == current:
+				model_in.selected = i
+		model_in.item_selected.connect(func(idx):
+			_set_setting("gm_model", str(models[idx])))
+		var model_hint := Label.new()
+		model_hint.theme_type_variation = "HintLabel"
+		model_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		model_hint.custom_minimum_size = Vector2(420, 0)
+		model_hint.text = "The narrator's mind, loaded from %s. Takes effect on restart. Bigger is not better here: a 14B narrates no more vividly than an 8B and costs minutes a turn." 			% ProjectSettings.globalize_path(LocalGM.MODEL_DIR)
+		_content.add_child(model_in)
+		_content.add_child(model_hint)
 	_content.add_child(_section("SOUND & MOTION"))
 	var sfx := CheckButton.new()
 	sfx.text = "Sound effects — dice, blows, stings, chimes"
