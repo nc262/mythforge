@@ -5,11 +5,11 @@
 #        nvidia → ComfyUI + CUDA torch      (fully automated)
 #        amd    → ComfyUI-ZLUDA             (automated clone + guided finish)
 #        none   → text-only game            (skips the image stack)
-#   2. Installs prerequisites it can't find: Git, Python 3.11+, Ollama (via winget).
-#   3. Creates the app venv + installs Python requirements.
+#   2. Installs prerequisites it can't find: Git, Python 3.11+ (for the art
+#      tooling in scripts/ only — the GAME needs neither).
 #   4. Pulls the AI models (llama3.1:8b storyteller + llama3.2:3b helper).
 #   5. Sets up the image stack for your GPU (optional download: SDXL model ~6.5 GB).
-#   6. Leaves you one command from playing: .\start-odysseus.ps1
+#   6. Leaves you one double-click from playing: play-mythforge.cmd
 #
 #   powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 #   flags: -Yes (no prompts)  -SkipImages (text-only even with a good GPU)
@@ -36,22 +36,21 @@ if (-not $sys.textOK) {
 $imagePath = if ($SkipImages) { 'none' } else { $sys.imagePath }
 
 # ── 2. Prerequisites ─────────────────────────────────────────────────────────
-Step 'Installing prerequisites (Git, Python, Ollama)'
+Step 'Installing prerequisites (Git, Python)'
 if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { throw 'winget not found — update Windows App Installer from the Microsoft Store, then rerun.' }
 if (-not (Get-Command git -ErrorAction SilentlyContinue))    { winget install --id Git.Git -e --accept-source-agreements --accept-package-agreements | Out-Null; Ok 'Git installed' } else { Ok 'Git present' }
 $py = Get-Command python -ErrorAction SilentlyContinue
 $pyOK = $false
 if ($py) { $v = (& python --version) -replace 'Python ', ''; $pyOK = [version]$v -ge [version]'3.11.0' }
 if (-not $pyOK) { winget install --id Python.Python.3.12 -e --accept-source-agreements --accept-package-agreements | Out-Null; Ok 'Python 3.12 installed (open a NEW terminal if python is not found below)' } else { Ok "Python present ($v)" }
-if (-not (Get-Command ollama -ErrorAction SilentlyContinue)) { winget install --id Ollama.Ollama -e --accept-source-agreements --accept-package-agreements | Out-Null; Ok 'Ollama installed' } else { Ok 'Ollama present' }
 
 # ── 3. App environment ───────────────────────────────────────────────────────
-Step 'Setting up the game server (Python venv + requirements)'
-if (-not (Test-Path "$root\venv")) { python -m venv "$root\venv" }
-& "$root\venv\Scripts\python.exe" -m pip install --upgrade pip -q
-& "$root\venv\Scripts\python.exe" -m pip install -r "$root\requirements.txt" -q
-Ok 'App environment ready'
-if ((Test-Path "$root\.env.example") -and -not (Test-Path "$root\.env")) { Copy-Item "$root\.env.example" "$root\.env"; Ok '.env created from template' }
+# NO VENV, NO REQUIREMENTS, NO SERVER. There was a FastAPI backend here — the
+# launcher called it "the game's brain" — and it is gone. Every LLM call, the
+# save file, campaign memory, the chronicle and speech-to-text run inside the
+# game; art goes straight to sd-server. Python survives only for the art tooling
+# in scripts/, which a player never runs.
+Ok 'No server to set up — the game is the whole application'
 
 # ── 4. AI models (the storytellers) ──────────────────────────────────────────
 # The NARRATOR is in-process now (NobodyWho / llama.cpp on Vulkan), so its model
@@ -116,13 +115,9 @@ if (Test-Path $sttTarget) {
   else { Warn 'Voice model download failed — push-to-talk will say so; typing still works.' }
 }
 
-# Ollama now serves only the FOUR studio helpers still on the backend:
-# worldsmith, worldtick, codex and quests. complete_json and campaign memory both
-# moved in-process. See Backlog, "the Odysseus carcass".
-Step 'Pulling the helper model (quests, codex, worldsmith)'
-try { Start-Process ollama -ArgumentList 'serve' -WindowStyle Hidden -ErrorAction SilentlyContinue; Start-Sleep 3 } catch {}
-ollama pull llama3.2:3b
-Ok 'Helper model ready'
+# Ollama is NOT installed any more. It served the backend's studio helpers —
+# worldsmith, worldtick, codex, quests, complete_json — and every one of them
+# moved into the game. Nothing on this machine speaks to :11434.
 
 # ── 5. Image generation ──────────────────────────────────────────────────────
 # ONE path, whatever the card. This used to branch three ways — ComfyUI+CUDA for
@@ -161,11 +156,9 @@ if ($imagePath -eq 'none') {
 Step 'Install complete'
 Write-Host ''
 Write-Host '  To play:' -ForegroundColor Yellow
-Write-Host '    1.  .\start-odysseus.ps1          (the game server → http://localhost:7000)'
+Write-Host '    1.  play-mythforge.cmd            (the game — that is the whole application)'
 if ($imagePath -ne 'none') {
   Write-Host '    2.  pwsh scripts\start-image-sdcpp.ps1   (the art engine — optional but pretty)'
 }
-Write-Host '    3.  Open http://localhost:7000, create your account, press New Adventure.'
 Write-Host ''
-Write-Host '  Hosting for friends? Install Tailscale (https://tailscale.com), invite them,' -ForegroundColor DarkGray
-Write-Host '  and share http://<your-tailscale-name>:7000 — they only need a browser.' -ForegroundColor DarkGray
+Write-Host '  No account, no server, no browser: it opens straight into the Hall.' -ForegroundColor DarkGray

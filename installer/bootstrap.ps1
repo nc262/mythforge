@@ -1,9 +1,11 @@
 # bootstrap.ps1 — first-run "download and configure everything" step.
 #
 # Run once by the installer right after it lays down the app source. It reuses
-# the project's existing, proven installer for the hard parts (GPU detection,
-# Ollama + models, ComfyUI on the right backend for THIS machine, the app venv)
-# and adds only what the desktop edition needs on top: the Godot game client.
+# the project's own installer for the hard parts (GPU detection, the narrator /
+# encoder / voice models, the image engine) and adds the Godot game client.
+#
+# It used to say "the whole server-side stack": Ollama, ComfyUI, an app venv and
+# a FastAPI backend. There is no server side. The game is the application.
 #
 # Everything here is idempotent — safe to re-run as a "repair".
 #
@@ -19,15 +21,15 @@ $Root = Split-Path -Parent $PSScriptRoot     # install dir = app source root
 Set-Location $Root
 function Step($m) { Write-Host "`n=== $m ===" -ForegroundColor Cyan }
 
-# Make a just-installed Python/Ollama visible without opening a new terminal —
-# the one wrinkle in the underlying installer's "new terminal" note.
+# Make a just-installed Python visible without opening a new terminal — the one
+# wrinkle in the underlying installer's "new terminal" note.
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
             [Environment]::GetEnvironmentVariable('Path', 'User')
 
-# 1. The whole server-side stack, via the project's own installer. Detects the
-#    GPU and takes the CUDA / ZLUDA / text-only path automatically; installs
-#    Ollama + pulls the models; builds the app venv; sets up ComfyUI + SDXL.
-Step 'Setting up the engine (GPU, Ollama, ComfyUI, models)'
+# 1. Models and the image engine, via the project's own installer. Detects the
+#    GPU, downloads the narrator (~4.6 GB), the memory encoder and the voice
+#    model, and installs stable-diffusion.cpp + a checkpoint.
+Step 'Setting up the engine (GPU, models, image engine)'
 $install = Join-Path $Root 'scripts\install.ps1'
 if (-not (Test-Path $install)) { throw "scripts\install.ps1 missing — the install payload is incomplete." }
 $installArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $install)

@@ -1,26 +1,25 @@
-# CLAUDE.md — Odysseus (local fork)
+# CLAUDE.md — Mythforge
 
-Project context for AI-assisted work on this machine's Odysseus install. Read this
-first, then the relevant file in `docs/`.
+Project context for AI-assisted work on this machine. Read this first, then the
+relevant file in `docs/` or `godot/docs/`.
 
 ## What this is
-A self-hosted AI workspace (chat, agents, memory, documents, email, calendar, deep
-research) — upstream project `pewdiepie-archdaemon/odysseus`, branch `dev`. This
-machine runs it natively on **Windows** and has been extended with a **local,
-The upstream `README.md` documents the base app; the `docs/` set below documents
-*this* deployment and the local additions.
+A single-player desktop RPG: a Godot 4.7 game whose Game Master is a local LLM.
+It began as a fork of the `odysseus` AI workspace (chat, agents, documents,
+email, calendar, deep research) and **that workspace is gone** — the browser UI,
+the FastAPI backend, and the ~79k lines behind them.
 
 ## Architecture in one paragraph
-`uvicorn app:app` serves the FastAPI app on `:7000` (currently bound `0.0.0.0`).
-It renders a single-page UI from `static/` and persists everything to `data/`
-(`app.db`, `presets.json`, `memory.json`, `chroma/`, uploads, `auth.json`,
-`settings.json`). Chat/agent calls go to model endpoints in the `model_endpoints`
-table (`core/database.py`); locally that's **Ollama** (`localhost:11434`, GPU via
-ROCm). Image generation is OpenAI-API-shaped: `src/ai_interaction.do_generate_image`
-→ a registered image `ModelEndpoint` → **stable-diffusion.cpp** (`:8189`) running
-SDXL on the AMD RX 7900 GRE through **Vulkan**. No CUDA, no ZLUDA, no Python. Personas are `user_templates` in `presets.json`
-sharing one canon ("World Bible"); continuity is the memory system. See
-[docs/architecture-review.md](docs/architecture-review.md).
+**The game is the whole application.** `Mythforge.exe` runs llama.cpp in its own
+process through the **NobodyWho** GDExtension (Vulkan on the AMD RX 7900 GRE):
+the narrator, campaign memory (embeddings + cosine recall), the cast codex, the
+quest log, the world tick, the Worldsmith, the World Compiler and
+speech-to-text. Saves are JSON files under `user://`. The one other process is
+**stable-diffusion.cpp** on `:8189`, which serves the OpenAI image API itself, so
+the game POSTs to it directly. There is no server, no login, no session, no
+database and no Ollama. See
+[godot/docs/Architecture-InProcess.md](godot/docs/Architecture-InProcess.md) and
+[godot/docs/LocalLLM-Tuning.md](godot/docs/LocalLLM-Tuning.md).
 
 ## Hard rules / gotchas (don't relearn these)
 - **The image engine is `stable-diffusion.cpp` on Vulkan** (`scripts/start-image-sdcpp.ps1`,
@@ -57,39 +56,53 @@ sharing one canon ("World Bible"); continuity is the memory system. See
   pointing at the *older* `Code/odysseus` checkout — outside this repo entirely.
   Both are disabled; check pm2's dump and the Startup folder before believing a
   kill worked.
-- **The invariant that still holds:** the app never loads torch/CUDA itself —
-  diffusion happens entirely in the image engine. Its venv is CPU-only torch and
-  that is correct; don't "fix" it. The engine changed underneath (sd.cpp instead
-  of ComfyUI); the separation did not.
+- **The invariant that still holds:** nothing outside the image engine loads
+  torch/CUDA. The engine changed underneath (sd.cpp instead of ComfyUI) and the
+  app that used to sit in front of it is gone; the separation did not.
+- **A grammar and a sampler chain REPLACE each other** in NobodyWho, so a
+  schema-constrained call runs with no top-k/top-p/temperature/penalties. Never
+  let one call both invent and serialise — think in prose, then serialise. This
+  cost three wrong diagnoses before it was measured; see
+  [godot/docs/LocalLLM-Tuning.md](godot/docs/LocalLLM-Tuning.md).
 
 ## Workflow before changing anything
 DISCOVER → PLAN → CHALLENGE → EXECUTE → VERIFY → REVIEW → IMPROVE. Weigh architecture,
 security, operational, and cost impact (the four review docs below).
 
 ## Verifying changes
-- App: restart `uvicorn`, hit `http://localhost:7000`. Presets only reload on restart.
-- Image stack: `pwsh scripts/start-image-sdcpp.ps1`; `curl :8189/v1/models`;
-  a browser WebUI is served at `:8189` for eyeballing prompts.
-- Personas / image trigger: `python scripts/test_persona_image.py <model> [persona|plain]`
-  drives the real agent loop and reports whether `generate_image` fired.
-- See [docs/testing-strategy.md](docs/testing-strategy.md).
+Four harnesses, all headless, all offline (`Api.test_mode`), run from the repo root:
+
+```
+<godot> --headless --path godot res://tests/self_check.tscn      # rules, prompts, parsers
+<godot> --headless --path godot res://tests/click_driver.tscn    # every station reachable
+<godot> --headless --path godot res://tests/ui_playthrough.tscn  # a real game, scripted
+<godot> --headless --path godot res://tests/local_stack.tscn     # REAL models + GPU
+<godot> --headless --path godot res://tests/bench_gm.tscn        # turn latency + repetition
+```
+
+`local_stack` and `bench_gm` drive the actual model — they are the only ones that
+can tell you an answer is *good*, not merely well-shaped. **Re-export after any
+`godot/**` change** or you are testing a stale exe.
+
+Image engine: `pwsh scripts/start-image-sdcpp.ps1`; `curl :8189/v1/models`.
 
 ## Local services & ports
 | Port | Service |
 |---|---|
-| `7000` | Odysseus app (uvicorn) |
-| `8189` | stable-diffusion.cpp (image engine, Vulkan) |
-| ~~`8188`~~ | ~~ComfyUI-ZLUDA~~ — no longer part of this stack |
-| ~~`8101`~~ | ~~OpenAI→ComfyUI bridge~~ — sd.cpp speaks the API itself |
-| `11434` | Ollama (LLMs) |
-| `8100`/`8080`/`8091` | ChromaDB / SearXNG / ntfy (if used) |
+| `8189` | stable-diffusion.cpp (image engine, Vulkan) — **the only service** |
+| ~~`7000`~~ | ~~FastAPI backend~~ — deleted; the game has no server |
+| ~~`11434`~~ | ~~Ollama~~ — it served the backend's helpers; they are in-process |
+| ~~`8188`~~/~~`8101`~~ | ~~ComfyUI-ZLUDA / bridge~~ — sd.cpp speaks the API itself |
 
-## The `docs/` set
+## The docs that matter now
 | Doc | Covers |
 |-----|--------|
-| [architecture-review.md](docs/architecture-review.md) | System design, data flow, the local image/persona stack, scaling limits |
-| [devsecops-review.md](docs/devsecops-review.md) | Auth, network exposure, AV exclusion, third-party nodes, supply chain |
-| [finops-review.md](docs/finops-review.md) | What this costs to run (all local); VRAM budget; per-image cost |
-| [testing-strategy.md](docs/testing-strategy.md) | Verify gates for the app, image stack, and personas |
-| [troubleshooting.md](docs/troubleshooting.md) | RCAs for the ZLUDA / ComfyUI / preset issues hit during setup |
-| [code-style.md](docs/code-style.md) | Conventions for the codebase and the local automation scripts |
+| [godot/docs/Architecture-InProcess.md](godot/docs/Architecture-InProcess.md) | What moved into the game, and what the HTTP costume cost |
+| [godot/docs/LocalLLM-Tuning.md](godot/docs/LocalLLM-Tuning.md) | **Read before touching a model call.** Sampler/grammar limits, with numbers |
+| [godot/docs/WorldForge-UX.md](godot/docs/WorldForge-UX.md) | Why the forge felt cookie-cutter; five of six fixes shipped |
+| [docs/troubleshooting.md](docs/troubleshooting.md) | RCAs for the ZLUDA / ComfyUI / preset issues hit during setup |
+| [docs/code-style.md](docs/code-style.md) | Conventions for the codebase and the local automation scripts |
+
+The `docs/` reviews (architecture, devsecops, finops, testing-strategy) describe
+the **Odysseus workspace**, which no longer exists. They are kept as history of
+why the tower was built; do not treat them as current.
