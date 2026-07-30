@@ -286,8 +286,9 @@ func _add_leave_button() -> void:
 
 
 # ── STT push-to-talk: hold the quill, speak, release — words land in the box.
-## Server side is multi-provider (/api/stt/transcribe) and may 503 without a
-## configured provider; the client degrades to a polite line either way.
+## In this process (NobodyWhoSTT). It was a multi-provider server endpoint that
+## 503'd without one configured — and none is, on any install here, so speaking
+## always answered "no speech provider is configured on the server".
 var _mic_player: AudioStreamPlayer
 var _rec: AudioEffectRecord
 
@@ -332,14 +333,14 @@ func _mic_stop() -> void:
 	if wav == null:
 		return
 	wav.save_to_wav("user://stt.wav")
-	var r: Dictionary = await Api.post_file("/api/stt/transcribe", "file", FileAccess.get_file_as_bytes("user://stt.wav"))
-	var text := str(r.get("text", "")).strip_edges()
-	if int(r.get("_status", 0)) == 200 and text != "":
+	if not LocalGM.stt_available():
+		_say_system("No voice model installed — drop a whisper .gguf into the models folder, or type it.", "quill")
+		return
+	var text := (await LocalGM.transcribe("user://stt.wav")).strip_edges()
+	if text != "":
 		_msg.text = text
 		_msg.grab_focus()
 		_msg.caret_column = _msg.text.length()
-	elif int(r.get("_status", 0)) == 503:
-		_say_system("No speech provider is configured on the server — typing it is.", "quill")
 	else:
 		_say_system("The words didn't carry — try again.", "quill")
 
@@ -2467,17 +2468,14 @@ func _session_zero_retune() -> void:
 	tuner.popup_centered()
 
 
-## 💾 A chapter marker: the backend distills the recent tale into a snapshot.
+## 💾 A chapter marker: the chronicler distills the recent tale, in this process.
 func _save_snapshot() -> void:
 	if Chronicle.transcript.is_empty():
 		_say_system("Nothing to chronicle yet — play a little first.")
 		return
 	_say_system("The chronicler sets down this chapter…", "save")
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/snapshot", {
-		"character_id": GameState.cid(), "character_name": str(GameState.character.get("name", "")),
-		"world_id": GameState.world_id(), "transcript": Chronicle.transcript})
-	if r.get("_status", 0) == 200:
-		var snap: Dictionary = r.get("snapshot", r)
+	var snap := await Chronicle.save_chapter()
+	if not snap.is_empty():
 		Sfx.ui("save")   # MIL §5 — saving is visible AND audible, or it isn't trusted
 		_say_system("Chapter saved: %s" % str(snap.get("title", "untitled")), "save")
 		GameState.remember_adventure()
@@ -2489,8 +2487,7 @@ func _save_snapshot() -> void:
 
 ## Resume from a chapter: its summary re-anchors the GM's context.
 func _recall_snapshot(id: String) -> void:
-	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
-	for sn in r.get("snapshots", r.get("data", [])):
+	for sn in Chronicle.chapters():
 		if sn is Dictionary and str(sn.get("id", "")) == id:
 			_say_me(_bb("We pick the tale back up at: %s" % str(sn.get("title", ""))))
 			_last_player_msg = "We resume from a saved chapter."

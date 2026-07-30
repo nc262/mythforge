@@ -66,9 +66,18 @@ func await_backend(max_seconds := 180.0) -> bool:
 	return false
 
 
+## The only service the game still waits on is the one that paints. The backend
+## used to be probed here (/api/version) and the Hall would not open until it
+## answered — a gate in front of a server the game no longer asks for anything.
 func _probe() -> bool:
-	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/version")
-	return int(r.get("_status", 0)) != 0
+	var req := HTTPRequest.new()
+	add_child(req)
+	if req.request(Art.IMAGE_SERVER + "/v1/models") != OK:
+		req.queue_free()
+		return false
+	var res: Array = await req.request_completed
+	req.queue_free()
+	return int(res[1]) == 200
 
 
 ## Honest, world-flavoured waiting copy — the boot is a real minute on a cold

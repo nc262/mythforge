@@ -876,11 +876,9 @@ func _fill_atlas() -> void:
 # ── Page: Chronicle — the closed chapters, and the way back into one ─────────
 func _fill_chronicle() -> void:
 	var host: VBoxContainer = _pages["Chronicle"]
-	var r := await Api.call_json(HTTPClient.METHOD_GET,
-		"/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
+	var snaps: Array = Chronicle.chapters()
 	if not is_instance_valid(host):
 		return
-	var snaps: Array = r.get("snapshots", r.get("data", [])) if r.get("_status", 0) == 200 else []
 	host.add_child(MythHeader.new("The Chronicle"))
 	if snaps.is_empty():
 		host.add_child(_body("No chapters yet — close one from The Table when a moment deserves remembering.", "ink_dim"))

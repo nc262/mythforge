@@ -143,18 +143,15 @@ func is_dm() -> bool:
 	return cid().begins_with("dm-")
 
 
-## Local file first. If there isn't one yet, import whatever the server holds
-## for this adventure ONCE and write it down — a player who has been saving to
-## the backend all along keeps every byte, and never touches it again after.
+## The save, from disk. There is nowhere else it could be.
+##
+## This used to fall back to a one-time import from the backend, for a player who
+## had been saving there before the game kept its own files. That server holds
+## nothing on any install I can see — no endpoints, no user templates, no state —
+## and the browser client that wrote it was deleted. A migration with nothing to
+## migrate is a network round trip on every first open of every adventure.
 func hydrate() -> void:
 	state = _read_local(cid())
-	if not state.is_empty():
-		return
-	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/" + cid().uri_encode())
-	if r.get("_status", 0) == 200 and r.get("state") is Dictionary and not r["state"].is_empty():
-		state = r["state"]
-		_flush()
-		print("GameState: imported '%s' from the backend into %s" % [cid(), _save_path(cid())])
 
 
 # ── The Adventure Index (_global.adventures) ────────────────────────────────
@@ -191,14 +188,7 @@ func load_index() -> Array:
 	if FileAccess.file_exists(_index_path()):
 		arr = JSON.parse_string(FileAccess.get_file_as_string(_index_path()))
 	if not (arr is Array):
-		# First run on this machine: take whatever the backend has, once.
-		var g := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-		var from_server = g.get("state", {}).get(ADVENTURES, []) if g.get("state") is Dictionary else []
-		arr = from_server if from_server is Array else []
-		if not arr.is_empty():
-			_index_cache = arr
-			_save_index()
-			print("GameState: imported %d adventure record(s) from the backend" % arr.size())
+		arr = []
 	_index_cache = arr if arr is Array else []
 	_index_cache.sort_custom(func(a, b): return int(a.get("updated_at", 0)) > int(b.get("updated_at", 0)))
 	return _index_cache
@@ -341,14 +331,9 @@ func global_set(key: String, value) -> void:
 ## Seed the shelf from the backend once, so a player who built custom worlds
 ## before this change still has them. Called by the Hall on its first look.
 func import_global_once() -> void:
-	if FileAccess.file_exists(_global_path()):
-		return
-	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/state/_global")
-	var st = r.get("state") if r.get("state") is Dictionary else {}
-	if st is Dictionary and not st.is_empty():
-		_global_cache = st
-		_write_json(_global_path(), st)
-		print("GameState: imported the shared shelf (%s) from the backend" % ", ".join(st.keys()))
+	# Was a one-time import of the shared shelf from the backend. Kept as a no-op
+	# so the Hall's boot sequence reads the same; there is no server copy to take.
+	pass
 
 
 ## Another adventure's whole save, for captioning the Chronicles shelf.

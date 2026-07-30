@@ -100,6 +100,22 @@ if (Test-Path $embTarget) {
   else { Warn 'Encoder download failed — recall falls back to the server.' }
 }
 
+# VOICE INPUT is in-process too now (NobodyWhoSTT). Push-to-talk used to POST to
+# /api/stt/transcribe, a multi-provider endpoint that 503'd without one
+# configured — and none ever was, so speaking always answered "no speech provider
+# is configured on the server". Matched by name like the encoder.
+Step 'Downloading the voice model (~75 MB)'
+$stt = 'ggml-base.en.bin'
+$sttTarget = Join-Path $modelDir $stt
+if (Test-Path $sttTarget) {
+  Ok "Voice model already present ($stt)"
+} else {
+  $sttUrl = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/$stt"
+  curl.exe -L --fail --retry 5 --retry-delay 3 -C - -o "$sttTarget" $sttUrl
+  if ($LASTEXITCODE -eq 0 -and (Test-Path $sttTarget)) { Ok 'Voice input ready' }
+  else { Warn 'Voice model download failed — push-to-talk will say so; typing still works.' }
+}
+
 # Ollama now serves only the FOUR studio helpers still on the backend:
 # worldsmith, worldtick, codex and quests. complete_json and campaign memory both
 # moved in-process. See Backlog, "the Odysseus carcass".

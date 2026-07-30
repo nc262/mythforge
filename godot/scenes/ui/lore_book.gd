@@ -269,8 +269,7 @@ func _quests() -> void:
 
 
 func _chronicle() -> void:
-	var r := await Api.call_json(HTTPClient.METHOD_GET, "/api/characters/studio/snapshots?character_id=" + GameState.cid().uri_encode())
-	for sn in r.get("snapshots", r.get("data", [])):
+	for sn in Chronicle.chapters():
 		if sn is Dictionary:
 			var e := _entry(str(sn.get("title", "A chapter")), str(sn.get("summary", sn.get("text", ""))), "", "")
 			var sid := str(sn.get("id", ""))

@@ -258,6 +258,88 @@ func world_tick() -> Dictionary:
 	return {"events": events, "newQuest": nq}
 
 
+# ── Chapters (save-points) ──────────────────────────────────────────────────
+## A titled recap of the tale so far, written when the player marks a chapter.
+##
+## This was the LAST LLM call still leaving the process, and I had already
+## claimed none did — `studio_snapshot` summarised the session server-side while
+## codex, quests and the world tick had all moved. It is the same shape as those:
+## prose from the local narrator, then a small schema to give it fields.
+const SNAP_SCHEMA := '{"type":"object","required":["title","story_so_far","world_changes"],' \
+	+ '"properties":{"title":{"type":"string"},"story_so_far":{"type":"string"},' \
+	+ '"world_changes":{"type":"string"}}}'
+
+const SNAP_DIR := "user://chapters"
+
+
+func _snap_path(key: String) -> String:
+	return "%s/%s.json" % [SNAP_DIR, key.validate_filename()]
+
+
+## Every chapter of this adventure, oldest first.
+func chapters(key := "") -> Array:
+	var p := _snap_path(key if key != "" else GameState.cid())
+	if not FileAccess.file_exists(p):
+		return []
+	var arr = JSON.parse_string(FileAccess.get_file_as_string(p))
+	return arr if arr is Array else []
+
+
+## Mark a chapter. Returns {} when there is nothing to set down or no narrator.
+func save_chapter() -> Dictionary:
+	if transcript.is_empty() or not LocalGM.available():
+		return {}
+	var raw := await LocalGM.prose(
+		"You turn an in-progress roleplay session into a save-point. Answer in "
+		+ "exactly three parts.\nPART 1 — an evocative chapter title, at most six "
+		+ "words.\nPART 2 — a recap of what has happened, 2 to 4 sentences.\n"
+		+ "PART 3 — a short list of how the world, the relationships or the "
+		+ "situation have CHANGED, one per line, plus any threads left open.\n\n"
+		+ "The session:\n%s" % _convo())
+	if raw.strip_edges() == "":
+		return {}
+	var parsed = JSON.parse_string(await LocalGM.complete_json(
+		"Copy the following into the required fields. Use ONLY what it says — do "
+		+ "not invent, summarise or improve anything.\n\n" + raw, SNAP_SCHEMA))
+	if not (parsed is Dictionary):
+		return {}
+	var name := str(GameState.character.get("name", "the character"))
+	var snap := {
+		"id": "%d-%04d" % [Time.get_unix_time_from_system(), randi() % 10000],
+		"character_id": GameState.cid(), "character_name": name,
+		"world_id": GameState.world_id(),
+		"title": _first_line(str(parsed.get("title", ""))).left(80),
+		"story_so_far": str(parsed.get("story_so_far", "")).strip_edges().left(900),
+		"world_changes": str(parsed.get("world_changes", "")).strip_edges().left(900),
+		"message_count": transcript.size(),
+		"created_at": Time.get_datetime_string_from_system(),
+	}
+	if str(snap["title"]) == "":
+		snap["title"] = "%s — save point" % name
+	var all := chapters()
+	all.append(snap)
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(SNAP_DIR))
+	var p := _snap_path(GameState.cid())
+	var f := FileAccess.open(p + ".tmp", FileAccess.WRITE)
+	if f == null:
+		return {}
+	f.store_string(JSON.stringify(all))
+	f.close()
+	if FileAccess.file_exists(p):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(p))
+	DirAccess.rename_absolute(ProjectSettings.globalize_path(p + ".tmp"),
+		ProjectSettings.globalize_path(p))
+	return snap
+
+
+## A title is one line. The prose half is asked for six words and sometimes
+## explains itself first.
+func _first_line(s: String) -> String:
+	var t := s.strip_edges()
+	var nl := t.find("\n")
+	return (t.left(nl) if nl > 0 else t).strip_edges().lstrip("*_\" ").rstrip("*_\" .")
+
+
 func codex_text() -> String:
 	var codex = GameState.state.get("codex", [])
 	if not (codex is Array) or codex.is_empty():

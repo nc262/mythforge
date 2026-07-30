@@ -725,8 +725,9 @@ func _show_settings() -> void:
 	_content.add_child(contrast)
 	# No ACCOUNT section. There is no account, and "Sign out" led to a login
 	# screen that no longer exists.
-	var ver := await Api.call_json(HTTPClient.METHOD_GET, "/api/version")
-	_content.add_child(_section("Mythforge desktop · backend %s" % str(ver.get("version", ver.get("data", "?")))))
+	# Was "backend <version>", fetched over HTTP. The game's own version is the
+	# one a player can act on, and it is compiled in.
+	_content.add_child(_section("Mythforge · %s" % ProjectSettings.get_setting("application/config/version", "desktop")))
 
 
 func _set_setting(key: String, val) -> void:

@@ -266,8 +266,16 @@ func _seed() -> void:
 		"inventory": [], "conditions": [], "spells": [], "slots": {},
 		"profSkills": ["athletics"], "profSaves": ["STR", "CON"], "hitDie": 10, "hitDiceUsed": 0,
 	}
+	# SEED THE SAVE FILE, not a stubbed HTTP import. This used to hand the sheet
+	# back through a canned /characters/studio/state/ response, so the harness was
+	# exercising a one-time migration from a server — a path the game no longer
+	# has, and never really had (no install carries backend state). Writing the
+	# file is what the game actually reads.
+	GameState.character = {"id": "dm-embervale-clickdrive", "world_id": "embervale"}
+	GameState.state = {"sheet": sheet, "clock": {"day": 1, "ti": 1}}
+	GameState.save_kind("sheet", sheet)
+	GameState.save_kind("clock", {"day": 1, "ti": 1})
 	Api.test_json = {
-		"/characters/studio/state/": {"_status": 200, "state": {"sheet": sheet, "clock": {"day": 1, "ti": 1}}},
 		"/generate": {"_status": 200, "image_url": ""},
 		"/memory/recall": {"_status": 200, "beats": []},
 	}

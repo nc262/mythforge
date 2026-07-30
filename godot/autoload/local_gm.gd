@@ -282,6 +282,56 @@ func complete_json(prompt: String, schema := "") -> String:
 	return await _json_done
 
 
+## Speech to text, in this process. The last thing the game asked a server for.
+##
+## `/api/stt/transcribe` was multi-provider and 503'd without one configured —
+## and nothing is configured on this install, so push-to-talk answered "no speech
+## provider is configured on the server" every time. NobodyWhoSTT ships with the
+## same extension as the narrator and the encoder; it wants its own whisper GGUF,
+## matched by name for the same reason the encoder is.
+const STT_HINTS := ["whisper", "stt", "ggml-base", "ggml-small", "ggml-tiny"]
+
+var _stt: Node = null
+
+
+func stt_model_file() -> String:
+	var d := DirAccess.open(MODEL_DIR)
+	if d == null:
+		return ""
+	for f in d.get_files():
+		var lf := f.to_lower()
+		if not lf.ends_with(".gguf") and not lf.ends_with(".bin"):
+			continue
+		for h in STT_HINTS:
+			if lf.find(h) >= 0:
+				return MODEL_DIR + "/" + f
+	return ""
+
+
+func stt_available() -> bool:
+	if Api.test_mode:
+		return false
+	return ClassDB.class_exists("NobodyWhoSTT") and stt_model_file() != ""
+
+
+## Transcribe a WAV already on disk. "" when unusable, so the caller can say so
+## in the world's voice rather than surfacing a status code.
+func transcribe(wav_path: String) -> String:
+	if not stt_available():
+		return ""
+	if _stt == null or not is_instance_valid(_stt):
+		_stt = ClassDB.instantiate("NobodyWhoSTT")
+		if _stt == null:
+			return ""
+		_stt.set("model_path", ProjectSettings.globalize_path(stt_model_file()))
+		_stt.set("language", "en")
+		add_child(_stt)
+		if _stt.has_method("start_worker"):
+			_stt.call("start_worker")
+	_stt.call("transcribe_file", ProjectSettings.globalize_path(wav_path))
+	return str(await _stt.transcription_finished)
+
+
 ## Free prose from the local model, with a sampler that has actually been tuned.
 ##
 ## This is the FIRST half of every generative call: think here, then hand the
