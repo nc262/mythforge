@@ -28,6 +28,12 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
+	# Two .gguf files share one folder and only their names tell them apart.
+	# If the narrator ever picked up the encoder there would be no error, just a
+	# bad narrator — and no server left to fall back to.
+	_ck(LocalGM.model_file() != LocalMemory.embed_model_file(),
+		"narrator and encoder resolve to DIFFERENT model files")
+
 	LocalMemory.wipe(KEY)
 
 	# ── Memory: store beats, then recall by MEANING rather than wording ──────

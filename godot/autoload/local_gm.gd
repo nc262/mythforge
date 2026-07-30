@@ -38,13 +38,28 @@ var _busy := false
 var _json_chat: Node = null
 
 
-## The first GGUF in the models folder, or "" if there is none.
+## The first CHAT GGUF in the models folder, or "" if there is none.
+##
+## Skips the embedding model, which lives in the same folder (LocalMemory picks
+## it out of here by the same hints). `DirAccess.get_files()` order is whatever
+## the filesystem hands back — today "llama..." happens to sort before
+## "nomic...", which is luck, not a guarantee. Getting this wrong does not fail
+## loudly: an 80 MB encoder loaded as the narrator answers, badly, forever. And
+## since the HTTP narrator is gone there is nothing behind it to catch that.
 func model_file() -> String:
 	var d := DirAccess.open(MODEL_DIR)
 	if d == null:
 		return ""
 	for f in d.get_files():
-		if f.to_lower().ends_with(".gguf"):
+		var lf := f.to_lower()
+		if not lf.ends_with(".gguf"):
+			continue
+		var is_encoder := false
+		for h in LocalMemory.EMBED_HINTS:
+			if lf.find(h) >= 0:
+				is_encoder = true
+				break
+		if not is_encoder:
 			return MODEL_DIR + "/" + f
 	return ""
 
