@@ -16,10 +16,16 @@ from core.models import set_session_manager
 from src.personal_docs import PersonalDocsManager
 from src.api_key_manager import APIKeyManager
 from src.preset_manager import PresetManager
-from src.chat_processor import ChatProcessor
+# [MYTHFORGE-CUT] ChatProcessor / ChatHandler — they served /api/chat_stream,
+# which is gone: the narrator runs in the Godot process now. They were also the
+# last live path to the agent stack:
+#   chat_handler -> document_processor -> pdf_form_doc -> tool_implementations
+#     -> task_scheduler -> agent_loop / deep_research
+# Only app.py (feeding the cut route) and routes/chat_helpers.py (itself now
+# orphaned) ever consumed them.
 from src.model_discovery import ModelDiscovery
-from src.chat_handler import ChatHandler
-from src.research_handler import ResearchHandler
+# [MYTHFORGE-CUT] ResearchHandler — multi-minute web deep-research jobs for the
+# assistant. Nothing in the game asks a question that needs a research agent.
 from src.upload_handler import UploadHandler
 from src.search import update_search_config
 
@@ -63,18 +69,9 @@ def initialize_managers(base_dir: str, rag_manager=None) -> Dict[str, Any]:
     ])
 
     # Initialize processors
-    chat_processor = ChatProcessor(memory_manager, personal_docs_manager, memory_vector=memory_vector, skills_manager=skills_manager)
-    research_handler = ResearchHandler()
-    
-    # Initialize chat handler with all dependencies
-    chat_handler = ChatHandler(
-        session_manager=session_manager,
-        memory_manager=memory_manager,
-        chat_processor=chat_processor,
-        research_handler=research_handler,
-        preset_manager=preset_manager,
-        upload_handler=upload_handler,
-    )
+    chat_processor = None
+    research_handler = None
+    chat_handler = None
     
     # Initialize model discovery
     model_discovery = ModelDiscovery(DEFAULT_HOST, OPENAI_API_KEY)

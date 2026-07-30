@@ -10,6 +10,10 @@ const COOKIE_FILE := "user://session.cfg"
 signal sse_delta(text: String)
 signal sse_event(data: Dictionary)
 signal sse_done(ok: bool)
+## The narrator could not speak because the local model is missing. There is no
+## server to fall back to by design, so this must surface to the player instead
+## of failing quietly — carries the reason from LocalGM.why_unavailable().
+signal narrator_missing(reason: String)
 
 var cookie := ""
 
@@ -288,13 +292,15 @@ func ensure_session(char_id: String, char_name: String) -> String:
 # ── SSE chat stream ─────────────────────────────────────────────────────────
 ## Streams one GM turn. Emits sse_delta per token batch, sse_event for
 ## message_saved / tool_output / error, then sse_done exactly once.
-var _stream_cancel := false
 
 ## Drop the GM turn in flight. The player leaving the table must not have to
 ## wait out a ~45s reply they've already walked away from; the tale is saved
 ## continuously, so an abandoned turn costs nothing.
+## Stop the narrator mid-sentence. Used to set a flag that the SSE read loop
+## checked; with the turn running in-process there is no loop to poll, so ask the
+## worker directly — NobodyWhoChat exposes `stop_generation`.
 func cancel_stream() -> void:
-	_stream_cancel = true
+	LocalGM.stop()
 
 
 func stream_chat(message: String, session_id: String) -> void:
@@ -306,88 +312,30 @@ func stream_chat(message: String, session_id: String) -> void:
 		await get_tree().process_frame
 		sse_done.emit(true)
 		return
-	# Stage 2 — the narrator, in-process. Chosen only when the NobodyWho
-	# extension AND a GGUF are both present; otherwise this is a no-op and the
-	# turn goes to the server exactly as it always has. It answers the same two
-	# signals, so nothing downstream knows the difference.
+	# THE NARRATOR IS LOCAL. There is no server path any more.
+	#
+	# This used to fall back to POST /api/chat_stream when NobodyWho or the model
+	# was missing, and that fallback was not a safety net — it was the REAL path
+	# for every install, because nothing ever put a .gguf on disk (the installer
+	# pulled Ollama models instead). So the game silently depended on a FastAPI
+	# process and an Ollama service, and the in-process narrator was dev-only.
+	#
+	# Games do not ship an infrastructure fallback. They ship their assets and
+	# require them. The installer now downloads the GGUF, LocalGM is the only
+	# narrator, and a missing model is a plain, honest failure rather than a
+	# silent degradation into 21k lines of agent/tool machinery on a web server.
+	#
 	# `message` is the full per-turn envelope; `system_prompt()` is the framing a
-	# remote turn gets from its SESSION (composed once at the forge and prepended
-	# by the server). A local narrator has neither, so it is handed both — built
-	# by the same `compose_world_gm` the forges call, so the two paths cannot
-	# drift apart.
-	if LocalGM.available() and LocalGM.stream(message, Composer.system_prompt()):
+	# turn used to get from its SESSION. Both are built by the same
+	# `compose_world_gm` the forges call, so they cannot drift apart.
+	if LocalGM.stream(message, Composer.system_prompt()):
 		return
-	var client := HTTPClient.new()
-	if client.connect_to_host(HOST, PORT) != OK:
-		sse_done.emit(false)
-		return
-	while client.get_status() in [HTTPClient.STATUS_CONNECTING, HTTPClient.STATUS_RESOLVING]:
-		client.poll()
-		await get_tree().process_frame
-	if client.get_status() != HTTPClient.STATUS_CONNECTED:
-		sse_done.emit(false)
-		return
-	var body := _urlencode({
-		"message": message, "session": session_id, "mode": "chat", "preset_id": "custom",
-		# The player's own reply-length ceiling (GM tuning → "Reply length").
-		# 0 = uncapped, which is what every turn used to be.
-		"max_tokens": str(Composer.reply_cap()),
-	})
-	var headers := _headers([
-		"Content-Type: application/x-www-form-urlencoded",
-		"Accept: text/event-stream",
-	])
-	if client.request(HTTPClient.METHOD_POST, "/api/chat_stream", headers, body) != OK:
-		sse_done.emit(false)
-		return
-	while client.get_status() == HTTPClient.STATUS_REQUESTING:
-		client.poll()
-		await get_tree().process_frame
-	# Byte buffer, not String: a UTF-8 char can straddle two chunks.
-	var buf := PackedByteArray()
-	# Idle watchdog (mirrors the web client): abort only after a long gap with
-	# no tokens — first token on a slow local model can take ~50s.
-	var last_data := Time.get_ticks_msec()
-	while client.get_status() == HTTPClient.STATUS_BODY:
-		if _stream_cancel:
-			_stream_cancel = false
-			client.close()
-			sse_done.emit(false)
-			return
-		client.poll()
-		var chunk := client.read_response_body_chunk()
-		if chunk.size() > 0:
-			buf.append_array(chunk)
-			buf = _drain_lines(buf)
-			last_data = Time.get_ticks_msec()
-		else:
-			if Time.get_ticks_msec() - last_data > 180_000:
-				push_warning("SSE stalled for 75s — aborting stream")
-				client.close()
-				sse_done.emit(false)
-				return
-			await get_tree().process_frame
-	_drain_lines(buf)
-	sse_done.emit(true)
+	# Only reachable if the model is absent or a turn is already in flight.
+	var why := LocalGM.why_unavailable()
+	if why != "":
+		push_error("Narrator unavailable: %s" % why)
+		narrator_missing.emit(why)
+	sse_done.emit(false)
 
 
 ## Consume complete "data: {...}" lines from buf; return the unfinished tail.
-func _drain_lines(buf: PackedByteArray) -> PackedByteArray:
-	while true:
-		var nl := buf.find(10)  # \n
-		if nl == -1:
-			break
-		var line := buf.slice(0, nl).get_string_from_utf8().strip_edges()
-		buf = buf.slice(nl + 1)
-		if not line.begins_with("data: "):
-			continue
-		var payload := line.substr(6)
-		if payload == "[DONE]":
-			continue
-		var j = JSON.parse_string(payload)
-		if j is Dictionary:
-			if j.has("delta"):
-				sse_delta.emit(str(j["delta"]))
-			else:
-				sse_event.emit(j)
-	return buf

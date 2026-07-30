@@ -17,10 +17,18 @@ class TestAppStructure:
         app_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "app.py")
         assert os.path.exists(app_path), "app.py should exist"
 
-    def test_static_directory_exists(self):
-        """Test that static directory exists"""
+    def test_no_browser_ui_directory(self):
+        """There must be NO static/ directory.
+
+        Inverted rather than deleted. This asserted static/ EXISTED; the browser UI
+        is gone (two front ends, 201k lines) and the point is that it stays gone —
+        a stray static/ would mean someone rebuilt a web client instead of building
+        in the Godot project.
+        """
         static_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
-        assert os.path.exists(static_path), "static directory should exist"
+        assert not os.path.exists(static_path), (
+            "static/ is deleted on purpose - the client is the Godot exe, not a web page"
+        )
 
     def test_routes_directory_exists(self):
         """Test that routes directory exists"""
@@ -61,8 +69,9 @@ class TestImports:
         assert callable(abs_join)
 
     def test_exceptions_importable(self):
-        """Test that exceptions module is importable"""
-        from src.exceptions import (
+        """core.exceptions, not src.exceptions — the two were byte-identical and
+        only core's was reachable, so src's was a duplicate this test kept alive."""
+        from core.exceptions import (
             SessionNotFoundError,
             InvalidFileUploadError,
             LLMServiceError,
@@ -81,17 +90,24 @@ class TestRouteFiles:
         auth_routes = os.path.join(routes_path, "routes", "auth_routes.py")
         assert os.path.exists(auth_routes), "auth_routes.py should exist"
 
-    def test_chat_routes_exist(self):
-        """Test chat_routes.py exists"""
+    def test_no_chat_routes(self):
+        """chat_routes.py must STAY deleted — the narrator lives in the game.
+
+        It served /api/chat_stream and ran the assistant's agent loop with 77 tool
+        schemas. LocalGM (NobodyWho, in-process llama.cpp) replaced it, with no
+        HTTP fallback by design. If this file comes back, so does ~21k lines."""
         routes_path = os.path.dirname(os.path.dirname(__file__))
         chat_routes = os.path.join(routes_path, "routes", "chat_routes.py")
-        assert os.path.exists(chat_routes), "chat_routes.py should exist"
+        assert not os.path.exists(chat_routes), "chat_routes.py is deleted on purpose"
 
-    def test_memory_routes_exist(self):
-        """Test memory_routes.py exists"""
+    def test_character_studio_routes_exist(self):
+        """The studio router is the one the Godot client cannot do without.
+
+        Replaces a check for memory_routes.py, cut with ChromaDB in batch 2 — the
+        test outlived its subject by several passes."""
         routes_path = os.path.dirname(os.path.dirname(__file__))
-        mem_routes = os.path.join(routes_path, "routes", "memory_routes.py")
-        assert os.path.exists(mem_routes), "memory_routes.py should exist"
+        studio = os.path.join(routes_path, "routes", "character_studio_routes.py")
+        assert os.path.exists(studio), "character_studio_routes.py should exist"
 
 
 if __name__ == "__main__":

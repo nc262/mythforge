@@ -260,14 +260,28 @@ def string_referenced(mods: dict[str, str]) -> dict[str, str]:
     for m, p in mods.items():
         try:
             with open(p, encoding="utf-8") as f:
-                text = f.read()
-        except (OSError, UnicodeDecodeError):
+                tree = ast.parse(f.read(), filename=p)
+        except (SyntaxError, UnicodeDecodeError, OSError):
             continue
-        for rel, target in by_relpath.items():
-            if target == m:
+        # STRING LITERALS ONLY, taken from the AST.
+        #
+        # This used to search the raw file text, which meant a COMMENT naming a
+        # path counted as a live reference. core/auth.py has a comment mentioning
+        # "src/task_scheduler.py", and that alone made task_scheduler a root —
+        # keeping agent_loop, tool_implementations and the whole 21k-line agent
+        # stack "reachable" through it. Prose is not a dependency. Docstrings are
+        # still strings and are excluded explicitly below for the same reason.
+        for node in ast.walk(tree):
+            if not (isinstance(node, ast.Constant) and isinstance(node.value, str)):
                 continue
-            if rel in text:
-                found.setdefault(target, os.path.relpath(p, ROOT).replace("\\", "/"))
+            val = node.value
+            if len(val) > 400 or "\n" in val:   # docstrings/prose, not a path arg
+                continue
+            for rel, target in by_relpath.items():
+                if target == m:
+                    continue
+                if rel in val:
+                    found.setdefault(target, os.path.relpath(p, ROOT).replace("\\", "/"))
     return found
 
 

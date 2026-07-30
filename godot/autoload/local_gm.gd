@@ -90,6 +90,17 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	return true
 
 
+## Stop mid-sentence. NobodyWhoChat exposes `stop_generation`; the player pressing
+## cancel used to set a flag that the SSE read loop polled, which does not exist
+## any more now the turn runs in this process.
+func stop() -> void:
+	if _chat != null and is_instance_valid(_chat) and _chat.has_method("stop_generation"):
+		_chat.call("stop_generation")
+	if _busy:
+		_busy = false
+		Api.sse_done.emit(false)
+
+
 func _on_token(tok: String) -> void:
 	Api.sse_delta.emit(tok)
 

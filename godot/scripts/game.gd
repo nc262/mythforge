@@ -44,6 +44,8 @@ func _ready() -> void:
 	Api.sse_delta.connect(_on_delta)
 	Api.sse_event.connect(_on_event)
 	Api.sse_done.connect(_on_done)
+	# No model, no narrator, and no server to quietly cover for it. Say so.
+	Api.narrator_missing.connect(_on_narrator_missing)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
 	_build_suggestions()   # R6 PLAY-04 — verbs above the box, before the box is empty
@@ -974,12 +976,29 @@ func _log_drift(snippet: String) -> void:
 	f.close()
 
 
+## The narrator's own error channel. `sse_event` used to also carry
+## `type: tool_output` with an image_url — the SERVER's agent loop calling its
+## image tool mid-answer. This game never used that: art is requested by the
+## CLIENT from the GM's `[[scene]]` / `[[portrait]]` tags via Art.ensure(), and
+## the GM system prompt does not mention tools at all. It came from the Odysseus
+## assistant and went with the agent loop.
 func _on_event(d: Dictionary) -> void:
 	if d.get("type", "") == "error" or d.has("error"):
 		if _gm_rt != null:
 			_gm_rt.append_text("[color=%s]%s[/color]" % [Ui.c("danger").to_html(false), _bb(str(d.get("error", "stream error")))])
-	elif d.get("type", "") == "tool_output" and str(d.get("image_url", "")) != "":
-		_show_image(str(d["image_url"]))
+
+
+## The one failure that used to hide behind the server fallback. Name the missing
+## thing and where it goes, in the transcript where the player is already looking
+## — not a push_error only a developer reads.
+func _on_narrator_missing(reason: String) -> void:
+	if _gm_rt == null:
+		return
+	_gm_rt.append_text("\n[color=%s]The storyteller has no voice yet — %s.[/color]\n" % [
+		Ui.c("danger").to_html(false), _bb(reason)])
+	_gm_rt.append_text("[color=%s]Drop a .gguf model into %s and restart.[/color]\n" % [
+		Ui.c("ink_soft").to_html(false),
+		_bb(ProjectSettings.globalize_path(LocalGM.MODEL_DIR))])
 
 
 func _on_done(_ok: bool) -> void:

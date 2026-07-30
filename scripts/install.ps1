@@ -54,12 +54,42 @@ Ok 'App environment ready'
 if ((Test-Path "$root\.env.example") -and -not (Test-Path "$root\.env")) { Copy-Item "$root\.env.example" "$root\.env"; Ok '.env created from template' }
 
 # ── 4. AI models (the storytellers) ──────────────────────────────────────────
-Step 'Pulling the AI models (~7 GB — go get a coffee)'
+# The NARRATOR is in-process now (NobodyWho / llama.cpp on Vulkan), so its model
+# is a FILE THE GAME OWNS, not a service to talk to. This step used to be three
+# `ollama pull`s, which meant every install depended on a background daemon and
+# the in-process narrator was effectively dev-only — nothing ever put a .gguf on
+# disk, so LocalGM.available() was false and every turn went over HTTP.
+#
+# Measured on this box, that mattered: 19.3s per turn through Ollama against
+# 3.7s in-process (godot/docs/Architecture-InProcess.md).
+Step 'Downloading the Game Master (~4.6 GB — go get a coffee)'
+$gguf = 'Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf'
+$modelDir = Join-Path $env:APPDATA 'Godot\app_userdata\Mythforge\models'
+New-Item -ItemType Directory -Force $modelDir | Out-Null
+$target = Join-Path $modelDir $gguf
+if (Test-Path $target) {
+  Ok "Game Master already present ($gguf)"
+} else {
+  # Resumable, because a 4.6 GB download over a bad line should not start over.
+  $url = "https://huggingface.co/bartowski/Meta-Llama-3.1-8B-Instruct-GGUF/resolve/main/$gguf"
+  curl.exe -L --fail --retry 5 --retry-delay 3 -C - -o "$target" $url
+  if ($LASTEXITCODE -ne 0 -or -not (Test-Path $target)) {
+    Warn "Model download failed. The game will say so on the first turn."
+    Warn "  Drop any .gguf into $modelDir and restart."
+  } else {
+    Ok "Game Master ready ($([math]::Round((Get-Item $target).Length/1GB,1)) GB)"
+  }
+}
+
+# Ollama is still used by the SIX studio helpers that have not moved in-process
+# yet — worldsmith, worldtick, codex, quests, complete_json and campaign memory
+# all still POST to the backend (see Backlog "the Odysseus carcass"). The small
+# model and the embedder serve those, not the narrator.
+Step 'Pulling the helper models (quests, codex, campaign memory)'
 try { Start-Process ollama -ArgumentList 'serve' -WindowStyle Hidden -ErrorAction SilentlyContinue; Start-Sleep 3 } catch {}
-ollama pull llama3.1:8b     # the Game Master's voice
 ollama pull llama3.2:3b     # fast helper (quests, codex, worldsmith)
 ollama pull all-minilm      # ~45 MB — embeddings for pinpoint campaign memory
-Ok 'Models ready'
+Ok 'Helper models ready'
 
 # ── 5. Image generation ──────────────────────────────────────────────────────
 # ONE path, whatever the card. This used to branch three ways — ComfyUI+CUDA for

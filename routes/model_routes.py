@@ -2224,29 +2224,10 @@ def setup_model_routes(model_discovery):
         finally:
             db.close()
 
-    # ── Tool management ──
-
-    @router.get("/tools")
-    def list_tools():
-        """List all available tools with their enabled/disabled status."""
-        from src.agent_tools import TOOL_TAGS
-        settings = _load_settings()
-        disabled = set(settings.get("disabled_tools", []))
-        tools = []
-        for tag in sorted(TOOL_TAGS):
-            tools.append({"id": tag, "enabled": tag not in disabled})
-        return {"tools": tools}
-
-    class ToolsUpdate(BaseModel):
-        disabled: list = []
-
-    @router.post("/tools")
-    def update_tools(body: ToolsUpdate, request: Request):
-        """Update which tools are disabled."""
-        require_admin(request)
-        settings = _load_settings()
-        settings["disabled_tools"] = body.disabled
-        _save_settings(settings)
-        return {"ok": True, "disabled": body.disabled}
+    # [MYTHFORGE-CUT] Tool management — GET/POST /api/models/tools listed and
+    # toggled the assistant's 77 tool tags for a settings screen that no longer
+    # exists. The client calls /api/models and /api/default-chat from this router
+    # and nothing else, and this was the LAST live import of src.agent_tools —
+    # which is what kept the entire agent/tool stack reachable.
 
     return router

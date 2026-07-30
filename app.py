@@ -604,15 +604,25 @@ app.include_router(setup_session_routes(session_manager, session_config, webhook
 # [MYTHFORGE-CUT] from routes.skills_routes import setup_skills_routes
 # [MYTHFORGE-CUT] app.include_router(setup_skills_routes(skills_manager))
 
-# Chat
-from routes.chat_routes import setup_chat_routes
-app.include_router(setup_chat_routes(
-    session_manager, chat_handler, chat_processor,
-    memory_manager, research_handler, upload_handler,
-    memory_vector=memory_vector,
-    webhook_manager=webhook_manager,
-    skills_manager=skills_manager,
-))
+# [MYTHFORGE-CUT] chat_routes — and with it the entire agent/tool stack.
+#
+# THE NARRATOR IS IN THE GAME NOW. /api/chat_stream was the only path here the
+# Godot client called, and it no longer calls it: LocalGM (NobodyWho, llama.cpp
+# on Vulkan) runs the turn in-process, and there is deliberately no fallback.
+# Measured 19.3s per turn through this route against 3.7s in-process.
+#
+# The route did not merely proxy a completion — it ran `stream_agent_loop` with
+# 77 tool schemas: documents, email, calendar, notes, scheduled tasks, skills,
+# webhooks, MCP management, model serving, web research. That is the Odysseus
+# ASSISTANT's brain. A game master needs none of it; this game's GM emits
+# `[[scene]]` / `[[portrait]]` tags that the CLIENT turns into art, and its system
+# prompt never mentions a tool at all.
+#
+# So the whole stack goes with the route: agent_loop, tool_implementations,
+# tool_schemas, tool_execution, tool_parsing, tool_index, builtin_actions,
+# builtin_mcp, mcp_manager, deep_research, research_handler, task_scheduler.
+# ~21k lines, none of it reachable from the six studio helpers that still use
+# this server (they call llm_core directly — see character_studio_routes).
 
 # Research (background deep-research tasks)
 # [MYTHFORGE-CUT] from routes.research_routes import setup_research_routes
@@ -698,11 +708,16 @@ logger.info("STT service initialized (provider managed via settings)")
 # [MYTHFORGE-CUT] from routes.editor_draft_routes import setup_editor_draft_routes
 # [MYTHFORGE-CUT] app.include_router(setup_editor_draft_routes())
 
-# Scheduled tasks + event bus
-from src.task_scheduler import TaskScheduler
-task_scheduler = TaskScheduler(session_manager)
-from src.event_bus import set_task_scheduler
-set_task_scheduler(task_scheduler)
+# [MYTHFORGE-CUT] TaskScheduler — every one of its routes was already cut, so it
+# was a live object with no HTTP surface: cron/event-triggered assistant chores
+# (send this email at 9am, run this research weekly). A single-player game has no
+# such chores; the world clock is client-side in Godot.
+#
+# event_bus STAYS — history_routes, session_routes and ai_interaction all
+# fire_event(). Without a scheduler registered, _handle_event() finds no
+# ScheduledTask rows and its `if _task_scheduler:` guard skips the rest, so it
+# degrades to a no-op rather than breaking.
+task_scheduler = None
 # [MYTHFORGE-CUT] from routes.task_routes import setup_task_routes
 # [MYTHFORGE-CUT] app.include_router(setup_task_routes(task_scheduler))
 
@@ -742,15 +757,16 @@ app.include_router(setup_prefs_routes())
 # [MYTHFORGE-CUT] app.include_router(setup_font_routes())
 
 
-# MCP (Model Context Protocol)
-from src.mcp_manager import McpManager
-from src.agent_tools import set_mcp_manager
-# [MYTHFORGE-CUT] from routes.mcp_routes import setup_mcp_routes
-
-mcp_manager = McpManager()
-set_mcp_manager(mcp_manager)
-# [MYTHFORGE-CUT] app.include_router(setup_mcp_routes(mcp_manager))
-logger.info("MCP routes initialized")
+# [MYTHFORGE-CUT] MCP (Model Context Protocol) — the assistant's plugin bus, for
+# giving an agent extra tools. Its routes were already cut. The game's GM calls no
+# tools at all: it emits [[scene]] / [[portrait]] tags and the CLIENT turns those
+# into Art.ensure() requests.
+#
+# Note the built-in it used to register was mcp_servers/image_gen_server.py, so
+# this looks load-bearing for art and is not: the studio generates through
+# src.ai_interaction.do_generate_image against an image ModelEndpoint (sd.cpp on
+# :8189). Verified by generating a real 1024x1024 PNG with all of this removed.
+mcp_manager = None
 
 # AI Interaction tools (debates, pipelines, self-managing AI, UI control)
 from src.ai_interaction import set_session_manager as set_ai_session_manager, set_memory_manager as set_ai_memory_manager, set_rag_manager as set_ai_rag_manager
@@ -946,46 +962,15 @@ async def _startup_event():
     app.state._startup_tasks = _startup_tasks
     if upload_cleanup_func:
         upload_cleanup_task = asyncio.create_task(upload_cleanup_func())
-    # Always-on monitor that auto-continues the agent when a background bash
-    # job (#!bg) finishes — re-invokes the turn with the job output.
-    try:
-        from src.bg_monitor import start_bg_monitor
-        _startup_tasks.append(start_bg_monitor())
-    except Exception as _e:
-        logger.warning("Failed to start background-job monitor: %s", _e)
-    # MCP servers can be slow or blocked by local tooling. Connect them after
-    # the web server is accepting traffic instead of delaying the whole UI.
-    async def _startup_mcp_connections():
-        try:
-            from src.builtin_mcp import register_builtin_servers
-            await register_builtin_servers(mcp_manager)
-        except BaseException as e:
-            logger.warning(f"Built-in MCP registration failed (non-critical): {type(e).__name__}: {e}")
-        try:
-            await asyncio.wait_for(mcp_manager.connect_all_enabled(), timeout=20)
-        except asyncio.TimeoutError:
-            logger.warning("User MCP startup timed out (non-critical)")
-        except BaseException as e:
-            logger.warning(f"MCP startup failed (non-critical): {type(e).__name__}: {e}")
+    # [MYTHFORGE-CUT] bg_monitor — auto-continued the AGENT when a background
+    # bash job (#!bg) finished. There is no agent and no bash tool.
+    # [MYTHFORGE-CUT] MCP server startup — nothing to connect; see the McpManager
+    # note above. This also removes a 20s connect timeout from boot.
 
-    _startup_tasks.append(asyncio.create_task(_startup_mcp_connections()))
-
-    # Pre-warm the RAG tool index off the request path. Loading the local
-    # embedding model + opening ChromaDB + indexing the built-in tools is a
-    # one-time ~1-3s cost that otherwise lands on the user's FIRST message
-    # (showing up as a big `tool_selection` time). Doing it here makes the
-    # first turn as fast as subsequent ones (warm embed ≈ a few ms).
-    async def _warmup_tool_index():
-        try:
-            from src.tool_index import get_tool_index
-            idx = await asyncio.to_thread(get_tool_index)
-            if idx:
-                await asyncio.to_thread(idx.get_tools_for_query, "warmup", 8)
-                logger.info("[startup] Tool index pre-warmed")
-        except Exception as e:
-            logger.warning(f"Tool index warmup failed (non-critical): {type(e).__name__}: {e}")
-
-    _startup_tasks.append(asyncio.create_task(_warmup_tool_index()))
+    # [MYTHFORGE-CUT] tool-index warmup — it pre-loaded an embedding model and
+    # opened ChromaDB to rank 77 assistant tools by relevance. ChromaDB was cut in
+    # batch 2, so this had been retrying a dead service every 30s on every boot
+    # and logging a warning about starting docker.
     # Warmup: ping all known LLM endpoints to prime connections
     async def _warmup_endpoints():
         try:
@@ -1017,52 +1002,11 @@ async def _startup_event():
 
     _startup_tasks.append(asyncio.create_task(_keepalive_loop()))
 
-    async def _ensure_default_tasks():
-        # Create/reconcile default automation tasks + personal assistant for every user.
-        owners = set()
-        try:
-            import json as _json
-            auth_path = AUTH_FILE
-            with open(auth_path, encoding="utf-8") as f:
-                users = _json.load(f).get("users", {})
-            owners.update(users.keys())
-        except Exception as e:
-            logger.debug(f"Default task auth-owner scan: {e}")
+    # [MYTHFORGE-CUT] _ensure_default_tasks — seeded and reconciled the
+    # assistant's built-in HOUSEKEEPING scheduled tasks per user. With no
+    # TaskScheduler there is nothing to seed, and this was the last live import of
+    # src.task_scheduler.
 
-        # Also reconcile owners already present in scheduled_tasks. This cleans
-        # up stale/demo/deleted-user built-ins that are no longer in auth.json;
-        # otherwise their old scheduled rows can keep firing forever.
-        try:
-            from core.database import SessionLocal, ScheduledTask
-            from src.task_scheduler import HOUSEKEEPING_DEFAULTS
-            builtin_names = []
-            for defs in HOUSEKEEPING_DEFAULTS.values():
-                builtin_names.append(defs["name"])
-                builtin_names.extend(defs.get("legacy_names") or [])
-            db_seed = SessionLocal()
-            try:
-                rows = db_seed.query(ScheduledTask.owner).filter(
-                    (ScheduledTask.action.in_(list(HOUSEKEEPING_DEFAULTS.keys())))
-                    | (ScheduledTask.name.in_(builtin_names))
-                ).distinct().all()
-                owners.update(row[0] for row in rows if row[0])
-            finally:
-                db_seed.close()
-        except Exception as e:
-            logger.debug(f"Default task existing-owner scan: {e}")
-
-        try:
-            for uname in sorted(owners):
-                try:
-                    await task_scheduler.ensure_defaults(uname)
-                except Exception as e:
-                    logger.debug(f"ensure_defaults({uname}): {e}")
-        except Exception as e:
-            logger.debug(f"Default tasks: {e}")
-
-    # Reconcile built-in tasks before the runner starts. Otherwise legacy
-    # scheduled built-ins can fire once before being converted to event tasks.
-    await _ensure_default_tasks()
 
     # Disk-backed skills are not covered by the DB legacy-owner sweep. Repair
     # ownerless or deleted/test-owner SKILL.md files so strict owner filtering
@@ -1090,8 +1034,8 @@ async def _startup_event():
     # deployment where an external worker drives task firing. Mirrors
     # `ODYSSEUS_INPROCESS_POLLERS` from the email pollers.
     _tasks_inprocess = os.environ.get("ODYSSEUS_INPROCESS_TASKS", "1").strip().lower()
-    if _tasks_inprocess not in ("0", "false", "no", "off", ""):
-        await task_scheduler.start()
+    if False:  # [MYTHFORGE-CUT] no TaskScheduler to start
+        pass
     else:
         logger.info(
             "In-process task scheduler disabled (ODYSSEUS_INPROCESS_TASKS=0); "
@@ -1161,11 +1105,7 @@ async def _shutdown_event():
             await upload_cleanup_task
         except asyncio.CancelledError:
             pass
-    # Stop task scheduler (no-op if it never started under the gate)
-    try:
-        await task_scheduler.stop()
-    except Exception:
-        pass
+    # [MYTHFORGE-CUT] task scheduler stop — nothing was started.
     # Close webhook manager
     try:
         await webhook_manager.close()
