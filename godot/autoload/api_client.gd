@@ -154,14 +154,17 @@ func fetch_bytes(path: String) -> PackedByteArray:
 
 
 # ── Studio ──────────────────────────────────────────────────────────────────
-func list_characters() -> Array:
-	var r := await call_json(HTTPClient.METHOD_GET, "/api/presets/templates")
-	return r.get("data", []) if r.get("_status", 0) == 200 else []
-
-
-func activate(char_id: String, char_name: String) -> void:
-	await call_json(HTTPClient.METHOD_POST, "/api/characters/studio/activate",
-		{"id": char_id, "name": char_name})
+# `list_characters()` asked /api/presets/templates for the backend's
+# user_templates and ALWAYS got an empty list — the key does not exist in
+# presets.json, here or on the running server. Companions come from the worlds'
+# own cast now (main_menu._companions_from_worlds), which is where they were all
+# along.
+#
+# The four `studio/save` calls went with it. They POSTed a system prompt composed
+# by Composer.compose_world_gm for the backend to store on a persona — and
+# nothing ever read it back: Composer.system_prompt() rebuilds it from the local
+# world every turn, on purpose, "so the two paths cannot drift". They were writes
+# into a void.
 
 
 # `model_size_b` and `auto_gm_model` lived here: they ranked the BACKEND's chat

@@ -393,16 +393,6 @@ func _begin() -> void:
 	GameState.pending_hero = draft["hero"] if draft["hero"] is Dictionary else {}
 	var adv_id := str(adv.get("id", ""))
 	# A gallery tale may not have its dm- template yet — bind it now.
-	if adv.has("world"):
-		var w: Dictionary = adv["world"]
-		var full := w.duplicate(true)
-		if not (full.get("locations") is Array) or full.get("locations", []).is_empty():
-			full["locations"] = Rules.world_locations(str(w.get("id", "")))
-		await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
-			"id": adv_id, "name": adv.get("name", ""),
-			"personality": Composer.compose_world_gm(full, adv.get("story", {})),
-			"relationship": "Dungeon Master", "world_id": str(w.get("id", "")),
-		})
 	# The table's own rules override whatever rode in with the world.
 	var prior = GameState.kind_for(adv_id, "world")
 	var world_kind: Dictionary = prior if prior is Dictionary else {}

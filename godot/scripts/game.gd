@@ -842,7 +842,11 @@ func _stream(framed: String) -> void:
 	# world's own voice, not three glyphs. Lifted when the first token lands.
 	_thinking = MythThinking.new()
 	_gm_rt.get_parent().add_child(_thinking)
-	await Api.activate(GameState.cid(), str(GameState.character.get("name", "")))
+	# `Api.activate(...)` used to be awaited here, before EVERY turn. It set the
+	# backend's "custom" preset so the chat engine would speak as this persona —
+	# an engine that no longer exists. The narrator takes its system prompt from
+	# Composer.system_prompt(), so this was an HTTP round trip per turn that
+	# changed nothing.
 	Api.stream_chat(framed)
 
 

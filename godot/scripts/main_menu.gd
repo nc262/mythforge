@@ -252,7 +252,7 @@ func _refresh() -> void:
 	for w in _all_worlds():  # warm the World Skin cache so every world themes correctly in play
 		WorldSkin.remember(w)
 	$Title/Box/Status.text = ""
-	_templates = await Api.list_characters()
+	_templates = _companions_from_worlds()
 	await GameState.import_global_once()   # first run only: seed the shelf, once
 	if _cworlds.is_empty():
 		_cworlds = GameState.global_get("cworlds", [])
@@ -311,6 +311,41 @@ func _show_sub(heading: String, step := "") -> void:
 
 func _all_worlds() -> Array:
 	return Rules.builtin_worlds() + _cworlds
+
+
+## The companions a player can sit down with: every named cast member of every
+## world they have.
+##
+## This list came from `/api/presets/templates` — the backend's user_templates —
+## and was ALWAYS EMPTY, on this install and on the running server both: the key
+## does not exist in either presets.json. The screen has never had anything to
+## show, and it said so ("No companions yet") while the worlds it was meant to
+## draw from were sitting in memory the whole time.
+##
+## The cast is already local, already used to build the GM's system prompt
+## (Composer.compose_world_gm), and already persisted with the world.
+func _companions_from_worlds() -> Array:
+	var out: Array = []
+	var seen := {}
+	for w in _all_worlds():
+		if not (w is Dictionary):
+			continue
+		var wid := str(w.get("id", ""))
+		for c in w.get("cast", []):
+			if not (c is Dictionary):
+				continue
+			var nm := str(c.get("name", "")).strip_edges()
+			if nm == "" or seen.has(nm.to_lower()):
+				continue
+			seen[nm.to_lower()] = true
+			out.append({
+				"id": "companion-%s-%s" % [wid, nm.to_lower().replace(" ", "-").left(24)],
+				"name": nm,
+				"world_id": wid,
+				"relationship": str(c.get("role", "")),
+				"world": str(w.get("name", "")),
+			})
+	return out
 
 
 func _world_by_id(wid: String) -> Dictionary:
@@ -613,12 +648,6 @@ func _chat_companion(w: Dictionary, c: Dictionary) -> void:
 	_sub_status.text = "Waking %s…" % str(c.get("name", ""))
 	var wid := str(w.get("id", ""))
 	var id := "wc-%s-%s" % [wid, str(c.get("slug", str(c.get("name", "")).to_lower().replace(" ", "-")))]
-	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
-		"id": id, "name": str(c.get("name", "")),
-		"personality": "%s\nThe world you live in: %s — %s" % [str(c.get("persona", "")), str(w.get("name", "")), str(w.get("lore", ""))],
-		"relationship": str(c.get("role", "")),
-		"world_id": wid,
-	})
 	_busy = false
 	_play({"id": id, "name": c.get("name", ""), "world_id": wid})
 
@@ -877,11 +906,6 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 	var full := w.duplicate(true)
 	if not (full.get("locations") is Array) or full.get("locations", []).is_empty():
 		full["locations"] = Rules.world_locations(wid)
-	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
-		"id": adv_id, "name": name,
-		"personality": Composer.compose_world_gm(full, story),
-		"relationship": "Dungeon Master", "world_id": wid,
-	})
 	await _seed_forge_defaults(w, adv_id)
 	_busy = false
 	var adv := {"id": adv_id, "name": name, "world_id": wid}

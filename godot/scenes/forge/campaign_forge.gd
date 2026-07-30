@@ -639,11 +639,6 @@ func _begin_campaign() -> void:
 	var story := _story
 	var adv_name := str(story.get("title", "")) if not story.is_empty() else "%s: Free Roam" % str(world.get("name", ""))
 	var adv_id := Rules.adventure_id(wid, story)
-	await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/save", {
-		"id": adv_id, "name": adv_name,
-		"personality": Composer.compose_world_gm(world, story),
-		"relationship": "Dungeon Master", "world_id": wid,
-	})
 	if draft["gm"] is Dictionary and not draft["gm"].is_empty():
 		GameState.set_kind_for(adv_id, "gm", draft["gm"])
 	var world_kind := {"rules": draft["rules"]}
