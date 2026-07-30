@@ -5,7 +5,9 @@ extends Node
 const BASE := "http://127.0.0.1:7000"
 const HOST := "127.0.0.1"
 const PORT := 7000
-const COOKIE_FILE := "user://session.cfg"
+## Local settings (chosen GM model, UI prefs). Same PATH as the old cookie jar
+## so nothing a player already set is lost — it just stopped holding a cookie.
+const SETTINGS_FILE := "user://session.cfg"
 
 signal sse_delta(text: String)
 signal sse_event(data: Dictionary)
@@ -15,7 +17,6 @@ signal sse_done(ok: bool)
 ## of failing quietly — carries the reason from LocalGM.why_unavailable().
 signal narrator_missing(reason: String)
 
-var cookie := ""
 
 ## Integration-test hooks (tests/ui_playthrough): when test_mode is on, no real
 ## network happens — call_json/call_form return canned responses matched by a
@@ -35,28 +36,13 @@ func _test_response(path: String) -> Dictionary:
 
 
 func _ready() -> void:
-	_load_cookie()
-
-
-# ── Cookie persistence ──────────────────────────────────────────────────────
-func _save_cookie() -> void:
-	var cfg := ConfigFile.new()
-	cfg.set_value("auth", "cookie", cookie)
-	cfg.save(COOKIE_FILE)
-
-
-func _load_cookie() -> void:
-	var cfg := ConfigFile.new()
-	if cfg.load(COOKIE_FILE) == OK:
-		cookie = cfg.get_value("auth", "cookie", "")
+	pass
 
 
 func _headers(extra: Array = []) -> PackedStringArray:
 	var h := PackedStringArray()
 	for e in extra:
 		h.append(e)
-	if cookie != "":
-		h.append("Cookie: " + cookie)
 	return h
 
 
@@ -102,18 +88,10 @@ func _request(method: int, path: String, headers: PackedStringArray, payload: St
 		return {"_status": 0}
 	var res: Array = await req.request_completed  # [result, code, headers, body]
 	req.queue_free()
-	_capture_cookie(res[2])
 	var out = JSON.parse_string(res[3].get_string_from_utf8())
 	var d: Dictionary = out if out is Dictionary else {"data": out}
 	d["_status"] = res[1]
 	return d
-
-
-func _capture_cookie(headers: PackedStringArray) -> void:
-	for h in headers:
-		if h.to_lower().begins_with("set-cookie:"):
-			cookie = h.substr(11).strip_edges().split(";")[0]
-			_save_cookie()
 
 
 func _urlencode(fields: Dictionary) -> String:
@@ -164,20 +142,15 @@ func fetch_bytes(path: String) -> PackedByteArray:
 
 
 # ── Auth ────────────────────────────────────────────────────────────────────
-func login(username: String, password: String) -> Dictionary:
-	return await call_json(HTTPClient.METHOD_POST, "/api/auth/login",
-		{"username": username, "password": password, "remember": true})
-
-
-func auth_ok() -> bool:
-	var r := await call_json(HTTPClient.METHOD_GET, "/api/auth/status")
-	if r.get("_status", 0) != 200:
-		return false
-	# Backend has auth turned off (single-player desktop): there's no door to
-	# open — go straight in.
-	if not bool(r.get("auth_enabled", true)):
-		return true
-	return bool(r.get("authenticated", r.get("ok", false)))
+# THERE ISN'T ANY. This is a single-player desktop game; there was nothing on
+# the other side of the door. The exe booted into a login form backed by a
+# backend that had no accounts configured at all, so the only way in was the
+# `auth_enabled: false` escape hatch — a password prompt that could not be
+# satisfied by any password, guarding a save file already sitting in user://.
+#
+# `login()`, `auth_ok()` and the cookie went with it. The backend still resolves
+# an identity for its own bookkeeping (app.py, _identify_without_gating) and
+# refuses nothing.
 
 
 # ── Studio ──────────────────────────────────────────────────────────────────
@@ -222,70 +195,12 @@ func auto_gm_model() -> Dictionary:
 	return best
 
 
-## A remembered session keeps whatever model it was BORN with, forever.
-##
-## `auto_gm_model()` runs only when a session is created, so a session made
-## while the account default was a 14B stayed pinned to it for the life of the
-## save — and Auto's whole job is to keep the narrator under 9B. Observed live:
-## qwen2.5:14b resident with 4.2 GB in VRAM (half of it spilled to CPU) and a
-## turn still composing at 143 s. The fast-ceiling logic was correct and simply
-## never got a second chance to apply.
-##
-## So the model is re-asserted every time a session is reopened. Cheap — one
-## PATCH per adventure load — against minutes a turn.
-func _reassert_gm_model(sid: String) -> void:
-	if test_mode:
-		return
-	var cfg := ConfigFile.new()
-	cfg.load(COOKIE_FILE)
-	var pick = JSON.parse_string(str(cfg.get_value("settings", "gm_model", "")))
-	if not (pick is Dictionary and str(pick.get("url", "")) != ""):
-		pick = await auto_gm_model()
-	if not (pick is Dictionary and str(pick.get("url", "")) != ""):
-		return
-	await call_form("/api/session/" + sid, {
-		"model": str(pick.get("model", "")),
-		"endpoint_url": str(pick.get("url", "")),
-	}, HTTPClient.METHOD_PATCH)
-
-
-## Session per character, mirrored from the web client's _ensureSession:
-## reuse a remembered session if /api/history/{sid} still 200s, else create one
-## seeded with the caller's default chat endpoint (/api/default-chat).
-func ensure_session(char_id: String, char_name: String) -> String:
-	if test_mode:
-		return "test-session"
-	var cfg := ConfigFile.new()
-	cfg.load(COOKIE_FILE)
-	var sid: String = cfg.get_value("sessions", char_id, "")
-	if sid != "":
-		var r := await call_json(HTTPClient.METHOD_GET, "/api/history/" + sid)
-		if r.get("_status", 0) == 200:
-			await _reassert_gm_model(sid)
-			return sid
-	# The chosen GM model (Settings) beats the account default.
-	var cfg2 := ConfigFile.new()
-	cfg2.load(COOKIE_FILE)
-	var pick = JSON.parse_string(str(cfg2.get_value("settings", "gm_model", "")))
-	if not (pick is Dictionary and str(pick.get("url", "")) != ""):
-		pick = await auto_gm_model()   # "Auto" means fast, not biggest
-	var ep := await call_json(HTTPClient.METHOD_GET, "/api/default-chat")
-	var fields := {"name": char_name}
-	if pick is Dictionary and str(pick.get("url", "")) != "":
-		fields["endpoint_url"] = pick["url"]
-		fields["model"] = pick.get("model", "")
-		fields["skip_validation"] = "true"
-	elif str(ep.get("endpoint_url", "")) != "":
-		fields["endpoint_url"] = ep["endpoint_url"]
-		fields["model"] = ep.get("model", "")
-		fields["endpoint_id"] = ep.get("endpoint_id", "")
-		fields["skip_validation"] = "true"
-	var created := await call_form("/api/session", fields)
-	sid = str(created.get("session_id", created.get("id", "")))
-	if sid != "":
-		cfg.set_value("sessions", char_id, sid)
-		cfg.save(COOKIE_FILE)
-	return sid
+# ── Sessions ────────────────────────────────────────────────────────────────
+# ALSO GONE. A session was a SERVER concept: an id the backend hung a model and
+# a system prompt on, mirrored from the old web client's _ensureSession. The
+# narrator runs in this process now and has neither, so opening a save used to
+# mean asking a server for permission to start before reaching the code that no
+# longer needed the server.
 
 
 # ── SSE chat stream ─────────────────────────────────────────────────────────
@@ -302,7 +217,7 @@ func cancel_stream() -> void:
 	LocalGM.stop()
 
 
-func stream_chat(message: String, session_id: String) -> void:
+func stream_chat(message: String) -> void:
 	if test_mode:
 		var reply := str(test_replies.pop_front()) if not test_replies.is_empty() else "The quiet holds a moment longer."
 		await get_tree().process_frame

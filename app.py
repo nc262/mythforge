@@ -160,7 +160,16 @@ from routes.auth_routes import setup_auth_routes, SESSION_COOKIE
 
 auth_manager = AuthManager()
 app.state.auth_manager = auth_manager
-AUTH_ENABLED = os.getenv("AUTH_ENABLED", "true").lower() != "false"
+# DEFAULTS OFF. This is a single-player desktop game whose save file is a JSON
+# document in the player's own user:// directory, on a server bound to their own
+# machine. The default was "true", inherited from the multi-user workspace this
+# was forked from — and on this install there were no accounts configured at
+# all, so the login wall could not be satisfied by any password. The client's
+# only way in was the `auth_enabled: false` escape hatch.
+#
+# Set AUTH_ENABLED=true to put the wall back (it is still fully implemented, and
+# still what you want if you ever expose this beyond loopback).
+AUTH_ENABLED = os.getenv("AUTH_ENABLED", "false").lower() != "false"
 LOCALHOST_BYPASS = os.getenv("LOCALHOST_BYPASS", "false").lower() == "true"
 if LOCALHOST_BYPASS:
     logger.warning("LOCALHOST_BYPASS is enabled, loopback requests bypass authentication. Do not expose this instance to a network.")

@@ -22,6 +22,15 @@ func _ready() -> void:
 	theme = Ui.theme
 	Ui.apply("")
 	Mode.enter("MainMenu")
+	# THIS IS THE FIRST SCREEN NOW. It used to be a login form, on a single-player
+	# desktop game, in front of a backend with no accounts configured at all — so
+	# the only way past the door was the `auth_enabled: false` escape hatch, and
+	# the thing being guarded was a save file already sitting in user://.
+	#
+	# The backend is still warmed here because art and the world-state import want
+	# it, but nothing WAITS on it: the Hall reads its shelf from disk, and a
+	# narrator that lives in this process does not need a server to be awake.
+	Services.await_backend()
 	$Title/Box/Divider.draw.connect(func():
 		var d: Control = $Title/Box/Divider
 		var w := d.size.x
@@ -210,11 +219,11 @@ func _boot_cinematic() -> void:
 	# every showing after that is a toll between the player and the game, and it
 	# is paid by the person testing the build most often. Remembered across runs.
 	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
+	cfg.load(Api.SETTINGS_FILE)
 	if bool(cfg.get_value("settings", "cine_seen", false)):
 		return
 	cfg.set_value("settings", "cine_seen", true)
-	cfg.save(Api.COOKIE_FILE)
+	cfg.save(Api.SETTINGS_FILE)
 	_title.visible = false
 	var cine := preload("res://scenes/ui/cinematic.gd").new()
 	add_child(cine)
@@ -619,7 +628,7 @@ func _show_settings() -> void:
 	Mode.enter("Settings")
 	_show_sub("Settings", "")
 	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
+	cfg.load(Api.SETTINGS_FILE)
 	_content.add_child(_section("GAME MASTER"))
 	var model_in := OptionButton.new()
 	model_in.custom_minimum_size = Vector2(420, 0)
@@ -675,30 +684,22 @@ func _show_settings() -> void:
 	contrast.button_pressed = bool(cfg.get_value("settings", "high_contrast", false))
 	contrast.toggled.connect(func(on): _set_setting("high_contrast", on); Ui.high_contrast = on)
 	_content.add_child(contrast)
-	_content.add_child(_section("ACCOUNT"))
-	var out := Button.new()
-	out.text = "Sign out"
-	out.custom_minimum_size = Vector2(240, 0)
-	out.pressed.connect(func():
-		await Api.call_json(HTTPClient.METHOD_POST, "/api/auth/logout")
-		Api.cookie = ""
-		Api._save_cookie()
-		Ui.transition("res://scenes/login.tscn", get_tree()))
-	_content.add_child(out)
+	# No ACCOUNT section. There is no account, and "Sign out" led to a login
+	# screen that no longer exists.
 	var ver := await Api.call_json(HTTPClient.METHOD_GET, "/api/version")
 	_content.add_child(_section("Mythforge desktop · backend %s" % str(ver.get("version", ver.get("data", "?")))))
 
 
 func _set_setting(key: String, val) -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
+	cfg.load(Api.SETTINGS_FILE)
 	cfg.set_value("settings", key, val)
-	cfg.save(Api.COOKIE_FILE)
+	cfg.save(Api.SETTINGS_FILE)
 
 
 func _load_settings() -> void:
 	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
+	cfg.load(Api.SETTINGS_FILE)
 	Sfx.enabled = bool(cfg.get_value("settings", "sfx", true))
 	Sfx.ambient_enabled = bool(cfg.get_value("settings", "ambient", true))
 	Sfx.ambient_volume = float(cfg.get_value("settings", "ambient_vol", 0.6))
@@ -874,12 +875,11 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 	await _seed_forge_defaults(w, adv_id)
 	_busy = false
 	var adv := {"id": adv_id, "name": name, "world_id": wid}
-	# A live save already? Continue it or start over (archive + wipe).
-	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
-	var sid := str(cfg.get_value("sessions", str(adv["id"]), ""))
-	if sid != "" and (await Api.call_json(HTTPClient.METHOD_GET, "/api/history/" + sid)).get("_status", 0) == 200:
-		_ask_continue_or_new(adv, sid)
+	# A live save already? Continue it or start over. Asked of the SAVE FILE now:
+	# this used to ask the backend whether a chat session id still resolved, so a
+	# player whose server was down was offered a fresh start over a good save.
+	if GameState.has_save(str(adv["id"])):
+		_ask_continue_or_new(adv)
 	else:
 		_play(adv)
 
@@ -896,7 +896,7 @@ func _seed_forge_defaults(w: Dictionary, adv_id: String) -> void:
 		GameState.set_kind_for(adv_id, "world", {"rules": fd["rules"]})
 
 
-func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
+func _ask_continue_or_new(adv: Dictionary) -> void:
 	var dlg := ConfirmationDialog.new()
 	dlg.title = str(adv.get("name", "This adventure"))
 	dlg.ok_button_text = "▶ Continue"
@@ -912,11 +912,6 @@ func _ask_continue_or_new(adv: Dictionary, sid: String) -> void:
 	dlg.confirmed.connect(func(): dlg.queue_free(); _play(adv))
 	dlg.canceled.connect(func():
 		dlg.queue_free()
-		await Api.call_json(HTTPClient.METHOD_POST, "/api/session/%s/archive" % sid)
-		var cfg := ConfigFile.new()
-		cfg.load(Api.COOKIE_FILE)
-		cfg.set_value("sessions", str(adv["id"]), null)
-		cfg.save(Api.COOKIE_FILE)
 		# Reset this adventure's world-state so the hero forge runs fresh.
 		GameState.wipe_adventure(str(adv["id"]))
 		# A forged world's voice and rules survive the reset.
@@ -949,7 +944,7 @@ func _continue_last() -> void:
 func _show_saves(saved: Array) -> void:
 	_show_sub("Chronicles", "Every tale you've begun — take up the thread, or open its book")
 	var cfg := ConfigFile.new()
-	cfg.load(Api.COOKIE_FILE)
+	cfg.load(Api.SETTINGS_FILE)
 	var last = JSON.parse_string(str(cfg.get_value("last", "adventure", "")))
 	var last_id := str(last.get("id", "")) if last is Dictionary else ""
 	if saved.is_empty():
@@ -1073,19 +1068,13 @@ func _play(c: Dictionary) -> void:
 		str(c.get("name", "")).split(":")[0])
 	Sfx.music(WorldSkin.music_for_id(str(c.get("world_id", ""))))  # sound arrives before picture
 	curtain.step(0.15, "Opening the way…")
-	GameState.session_id = await Api.ensure_session(str(c.get("id", "")), str(c.get("name", "")))
-	# A session is a SERVER concept: an id the backend hangs a model and a system
-	# prompt on. A narrator running inside this process has neither and needs
-	# neither, so failing to get one is not a reason to refuse the tale. Without
-	# this the local GM was reachable and the game still would not open a save —
-	# it asked a server for permission to start before ever reaching the code
-	# that no longer needs the server.
-	if GameState.session_id == "" and not LocalGM.available():
-		# The realm faltered — say so in the world's voice, and go back gently.
+	# The one thing a tale genuinely cannot open without is a narrator, and that
+	# is now a file on this disk rather than a server's permission.
+	if not LocalGM.available():
 		curtain.step(1.0, "The way will not open — no storyteller answered.")
 		MythLoading.lift()
 		var status := _sub_status if _sub.visible else $Title/Box/Status
-		status.text = "No storyteller answered. Check that a chat model endpoint is configured, then try again."
+		status.text = "No storyteller answered — %s." % LocalGM.why_unavailable()
 		Ui.apply("")
 		Mode.enter("MainMenu")
 		_busy = false
@@ -1093,7 +1082,7 @@ func _play(c: Dictionary) -> void:
 	curtain.step(0.4, "Waking the world…")
 	if str(c.get("id", "")).begins_with("dm-"):
 		var cfg := ConfigFile.new()
-		cfg.load(Api.COOKIE_FILE)
+		cfg.load(Api.SETTINGS_FILE)
 		cfg.set_value("last", "adventure", JSON.stringify({"id": c.get("id"), "name": c.get("name"), "world_id": c.get("world_id", "")}))
-		cfg.save(Api.COOKIE_FILE)
+		cfg.save(Api.SETTINGS_FILE)
 	get_tree().change_scene_to_file(GAME_SCENE)  # under the curtain — game.gd lifts it

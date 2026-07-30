@@ -843,7 +843,7 @@ func _stream(framed: String) -> void:
 	_thinking = MythThinking.new()
 	_gm_rt.get_parent().add_child(_thinking)
 	await Api.activate(GameState.cid(), str(GameState.character.get("name", "")))
-	Api.stream_chat(framed, GameState.session_id)
+	Api.stream_chat(framed)
 
 
 func _on_delta(t: String) -> void:
@@ -1427,13 +1427,10 @@ func _roll_pending() -> void:
 			if bool(GameState.rule("permadeath", false)):
 				# The table rule: the tale truly ends. The save is archived.
 				_say_system("Permadeath — this save is being sealed into the archive.", "skull")
-				var cfg := ConfigFile.new()
-				cfg.load(Api.COOKIE_FILE)
-				var sid := str(cfg.get_value("sessions", GameState.cid(), ""))
-				if sid != "":
-					Api.call_json(HTTPClient.METHOD_POST, "/api/session/%s/archive" % sid)
-					cfg.set_value("sessions", GameState.cid(), null)
-					cfg.save(Api.COOKIE_FILE)
+				# The save is a file; sealing it is a local act. This used to POST
+				# an archive request for a SERVER session id and leave the file
+				# exactly where it was.
+				GameState.wipe_adventure(GameState.cid())
 			else:
 				_say_system("A long rest starts a new dawn… if the GM allows it.")
 			_stream(Composer.envelope("[Three death saves failed — I am dying, my tale at its end. Narrate my final moment with the weight it deserves.]"))

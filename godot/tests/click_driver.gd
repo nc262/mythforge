@@ -268,7 +268,6 @@ func _seed() -> void:
 	}
 	Api.test_json = {
 		"/characters/studio/state/": {"_status": 200, "state": {"sheet": sheet, "clock": {"day": 1, "ti": 1}}},
-		"/default-chat": {"_status": 200, "endpoint_url": "test", "model": "test"},
 		"/generate": {"_status": 200, "image_url": ""},
 		"/memory/recall": {"_status": 200, "beats": []},
 	}

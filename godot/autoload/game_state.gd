@@ -28,7 +28,6 @@ const WEATHERS := {
 signal leveled_up(from_level: int, to_level: int)
 
 var character: Dictionary = {}
-var session_id := ""
 var state: Dictionary = {}
 var pending_hero: Dictionary = {}   # a banked hero chosen to fill the next adventure's Quenching
 
@@ -406,6 +405,16 @@ func _write_json(path: String, value) -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	DirAccess.rename_absolute(ProjectSettings.globalize_path(tmp),
 		ProjectSettings.globalize_path(path))
+
+
+## Is there a save on this machine for this adventure?
+##
+## The Hall used to answer this by asking the BACKEND whether a chat session id
+## still resolved — so "do I have a save?" was a question about a server's
+## session table, and a player whose backend was down was offered a fresh start
+## on top of a perfectly good save. The save is a file; ask the file.
+func has_save(for_cid: String) -> bool:
+	return FileAccess.file_exists(_save_path(for_cid))
 
 
 func _read_local(for_cid: String) -> Dictionary:
