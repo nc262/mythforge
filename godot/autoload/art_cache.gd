@@ -376,6 +376,61 @@ var hold := false
 const HOLD_MAX := 180.0   # ponytail: safety valve — a stuck flag must never freeze art for good
 
 
+## Where the pictures come from. stable-diffusion.cpp serves the OpenAI image API
+## itself, so this is the whole client.
+const IMAGE_SERVER := "http://127.0.0.1:8189"
+const IMAGE_PATH := "/v1/images/generations"
+const IMAGE_MODEL := "sd-cpp-local"
+
+
+## One picture, straight from the image server.
+##
+## This used to POST to the backend, which resolved a registered ModelEndpoint,
+## called src.ai_interaction.do_generate_image, saved a PNG to the server's disk
+## and handed back a URL for a SECOND request to fetch. Three hops and a file,
+## between a game and a diffusion server on the same machine.
+##
+## And it did not work: `do_generate_image` needs a ModelEndpoint row, and this
+## install has ZERO registered — so every generation failed at the proxy while
+## sd-server sat up and healthy on :8189 answering /v1/models. The fallback was
+## in front of the thing that worked.
+##
+## Measured direct: 8.7 s for 512x512, base64 PNG in the response body.
+##
+## NOT CARRIED OVER, and none of it was working through the proxy either:
+## `style` picked a checkpoint per art profile, but sd-server is launched with
+## one .safetensors and cannot switch; `steps`/`cfg` are launch flags it ignores
+## in the request body (CLAUDE.md); `matte`, `regions` and IP-Adapter `character`
+## went when ComfyUI did. If any of them come back they belong here, as a field
+## in this payload, not as an argument to a proxy that adds nothing else.
+func _paint(prompt: String, size: String) -> Dictionary:
+	# The harnesses drive the real game headless and must not reach a GPU. This
+	# used to come free because every call went through Api, which stubs itself
+	# in test_mode; talking to the image server directly means owning that here.
+	if Api.test_mode:
+		return {}
+	var req := HTTPRequest.new()
+	add_child(req)
+	var err := req.request(IMAGE_SERVER + IMAGE_PATH,
+		PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST,
+		JSON.stringify({"model": IMAGE_MODEL, "prompt": prompt, "n": 1, "size": size}))
+	if err != OK:
+		req.queue_free()
+		return {}
+	var res: Array = await req.request_completed
+	req.queue_free()
+	if res[1] != 200:
+		return {}
+	var out = JSON.parse_string(res[3].get_string_from_utf8())
+	if not (out is Dictionary) or not (out.get("data") is Array) or out["data"].is_empty():
+		return {}
+	var b64 := str(out["data"][0].get("b64_json", ""))
+	if b64 == "":
+		return {}
+	return {"bytes": Marshalls.base64_to_raw(b64), "prompt": prompt, "size": size,
+		"model": IMAGE_MODEL, "workflow": "sd.cpp direct"}
+
+
 func _pump() -> void:
 	_pumping = true
 	while not _queue.is_empty():
@@ -390,17 +445,10 @@ func _pump() -> void:
 			continue
 		_painting = key
 		art_progress.emit(key, "painting")
-		# `style` pins the checkpoint (per PROFILES) — no auto-pick, so a
-		# photoreal model can never land in a painted slot again.
-		var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/generate",
-			{"prompt": str(job["prompt"]), "size": str(job["size"]),
-			"style": str(job.get("style", "artwork")), "matte": bool(job.get("matte", false))})
+		var r := await _paint(str(job["prompt"]), str(job["size"]))
 		_painting = ""
 		_generating[key] = false
-		if r.get("_status", 0) != 200 or str(r.get("image_url", "")) == "":
-			_finish(key, false)
-			continue
-		var bytes := await Api.fetch_bytes(str(r["image_url"]).trim_prefix(Api.BASE))
+		var bytes: PackedByteArray = r.get("bytes", PackedByteArray())
 		if bytes.is_empty():
 			_finish(key, false)
 			continue
