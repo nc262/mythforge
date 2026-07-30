@@ -524,6 +524,12 @@ func _ready() -> void:
 	var sysp := Composer.system_prompt()
 	assert(sysp.contains("Fimbulreach"), "the local narrator is told which world it runs")
 	assert(sysp.contains("CRAFT:") and sysp.contains("VOICE:"), "...and how to narrate it")
+	# This one line is what stopped the GM opening every reply on the weather —
+	# measured 3/3 atmosphere openings before it, 0/3 after (bench_gm). It reads
+	# like ordinary prose in a long directive and is exactly the kind of thing a
+	# later tidy-up deletes as redundant, so it is pinned.
+	assert(sysp.contains("OPEN ON WHAT CHANGED"),
+		"the GM is told to open on what changed, not on the weather")
 	GameState.character["world_id"] = keep_world
 
 	# The Worldsmith's class reskins are PARSED out of prose rather than extracted

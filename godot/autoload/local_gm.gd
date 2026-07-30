@@ -152,6 +152,29 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	return true
 
 
+## The narrator's sampler, set fresh before every turn.
+##
+## It had NONE — it ran on the extension's default, which the worker log shows
+## carries a fixed `seed: 1234`. A fixed seed plus an envelope that barely
+## changes between turns is a recipe for the same sentence twice, and that is
+## what a playtest found: the smell of bread and the light in the room, every
+## response.
+##
+## The seed therefore moves every turn. The penalties are a smaller effect and an
+## honest one to state: they only act WITHIN one generation, so they stop a
+## single reply circling, not the GM's habit across turns. What fixes the habit
+## is showing the model what it just wrote — Composer.recent_narration().
+func _tune_narrator() -> void:
+	if _chat == null or not is_instance_valid(_chat) or not _chat.has_method("set_sampler_config"):
+		return
+	var b: Object = ClassDB.instantiate("NobodyWhoSamplerBuilder")
+	if b == null or not b.has_method("top_k"):
+		return
+	_chat.call("set_sampler_config", b.call("top_k", 40).call("top_p", 0.95, 1) \
+		.call("temperature", 0.8).call("penalties", 256, 1.12, 0.0, 0.0) \
+		.call("seed", randi()).call("dist"))
+
+
 ## One JSON answer from the local model.
 ##
 ## PASS A SCHEMA. Measured on llama3.1-8b, same prompt:
@@ -346,6 +369,7 @@ func stream(message: String, system_prompt := "") -> bool:
 	# Clearing first makes every turn cost what the first one did.
 	if _chat.has_method("reset_context"):
 		_chat.call("reset_context")
+	_tune_narrator()
 	# `ask` is the current name; `say` is deprecated upstream and warns on every
 	# turn. Fall back for older builds of the extension rather than requiring one.
 	_chat.call("ask" if _chat.has_method("ask") else "say", message)
