@@ -1235,69 +1235,6 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
             "reskins": _reskins(parsed.get("reskins")),
         }}
 
-    @router.post("/api/characters/studio/worldtick")
-    async def studio_worldtick(request: Request):
-        """Advance the living world between days. Given the active quests, the
-        NPCs' own goals, and the story so far, return a few small, concrete
-        things that plausibly happened OFF-SCREEN while the player was busy —
-        driven by NPC agendas and open threads, not by the player. The client
-        shows these as a 'Meanwhile…' aside and folds them into memory."""
-        user = get_current_user(request)
-        data = await request.json()
-        quests = data.get("quests") or []
-        codex = data.get("codex") or []
-        memory = (data.get("memory") or "").strip()
-        day = data.get("day")
-        active_q = "; ".join(
-            q.get("title", "") for q in quests if isinstance(q, dict) and q.get("status") != "done" and q.get("title")
-        ) or "(none)"
-        goals = "; ".join(
-            f"{n.get('name')} wants {n.get('goal')}"
-            for n in codex if isinstance(n, dict) and n.get("name") and n.get("goal")
-        ) or "(no known agendas)"
-        if active_q == "(none)" and goals == "(no known agendas)":
-            return {"ok": True, "events": []}   # nothing in motion yet — skip the call
-        model_spec = _extractor_model(user, (data.get("model") or "").strip())
-        if not model_spec:
-            raise HTTPException(400, "No text model available.")
-        try:
-            url, model_id, headers = _resolve_model(model_spec, owner=user)
-        except ValueError:
-            raise HTTPException(400, "Could not resolve a model.")
-        messages = [
-            {"role": "system", "content": (
-                "You simulate a living world between scenes in an ongoing roleplay. A day has passed off-screen. "
-                "Given the story so far, the open quests, and what each NPC WANTS, output ONLY a JSON object with keys: "
-                "\"events\" (an array of 1 to 3 short, concrete developments that plausibly happened while the player was elsewhere — "
-                "each driven by an NPC pursuing their goal or by an open thread progressing; small and reactive like a rumor, a rival's move, "
-                "or a quiet change in town, NOT major plot twists, and NEVER acting for the player; one sentence each) "
-                "and \"newQuest\" (either null, or — only if these developments naturally create a fresh opportunity or threat the player "
-                "could choose to pursue — an object {\"title\": short name, \"desc\": one-sentence hook}). "
-                "No text outside the JSON."
-            )},
-            {"role": "user", "content": f"Story so far:\n{memory or '(just beginning)'}\n\nOpen quests: {active_q}\n\nNPC agendas: {goals}\n\nA new day (day {day or '?'}) has dawned. What happened off-screen?"},
-        ]
-        try:
-            raw = await llm_call_async(url, model_id, messages, temperature=0.7, max_tokens=480, headers=headers, json_mode=True, num_ctx=8192)
-        except Exception as e:
-            logger.warning("World tick failed: %s", e)
-            raise HTTPException(502, "World tick failed.")
-        parsed = _parse_json_object(raw)
-        events = parsed.get("events")
-        out = []
-        if isinstance(events, list):
-            for ev in events:
-                s = str(ev).strip()
-                if s:
-                    out.append(s[:240])
-                if len(out) >= 3:
-                    break
-        new_quest = None
-        nq = parsed.get("newQuest")
-        if isinstance(nq, dict) and str(nq.get("title") or "").strip():
-            new_quest = {"title": str(nq.get("title")).strip()[:80], "desc": str(nq.get("desc") or "").strip()[:240]}
-        return {"ok": True, "events": out, "newQuest": new_quest}
-
     @router.post("/api/characters/studio/worldstate")
     async def studio_worldstate(request: Request):
         """Track the realm itself: the places the player has been and the factions

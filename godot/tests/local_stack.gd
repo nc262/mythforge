@@ -155,6 +155,24 @@ func _ready() -> void:
 					st_ok = false
 			_ck(st_ok, "every status is one the enum allows")
 
+		# The world tick, which has been silently returning nothing since it was
+		# written: game.gd read "tick"/"aside"/"text" and the route sent
+		# "events"/"newQuest". Assert on the shape the CALLER uses, since agreeing
+		# with myself about the schema is what missed it the first time.
+		t0 = Time.get_ticks_msec()
+		var tick := await Chronicle.world_tick()
+		print("  worldtick: %d ms -> %s" % [Time.get_ticks_msec() - t0, JSON.stringify(tick).left(240)])
+		_ck(tick.get("events") is Array and not (tick["events"] as Array).is_empty(),
+			"world tick produced off-screen events")
+		_ck((tick.get("events", []) as Array).size() <= 3, "world tick respects maxItems")
+		# A new quest, if the model offered one, must be IN THE LOG — the old route
+		# returned it and nothing ever filed it.
+		if not (tick.get("newQuest", {}) as Dictionary).is_empty():
+			var titles: Array[String] = []
+			for q in GameState.state.get("quests", []):
+				titles.append(str(q.get("title", "")))
+			_ck(titles.has(str(tick["newQuest"]["title"])), "a new thread was filed in the quest log")
+
 		# Two callers, one JSON node. Started WITHOUT await so both are genuinely
 		# in flight: without the serialising guard in complete_json the second
 		# `ask()` lands on a node mid-answer and the two interleave into one

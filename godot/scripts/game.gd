@@ -2126,21 +2126,21 @@ func _rest(kind: String) -> void:
 		_worldtick()
 
 
-## The living world breathes between days: off-screen events surface as an
-## aside and fold into memory (backend /worldtick extractor).
+## The living world breathes between days: off-screen events surface as an aside
+## and fold into memory. Chronicle owns the model call; this owns the bubble.
 func _worldtick() -> void:
-	if Chronicle.transcript.is_empty():
+	var r := await Chronicle.world_tick()
+	var events: Array = r.get("events", [])
+	if events.is_empty():
 		return
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldtick", {
-		"character_name": str(GameState.character.get("name", "")),
-		"transcript": Chronicle.transcript,
-		"codex": GameState.state.get("codex", []),
-		"quests": GameState.state.get("quests", [])})
-	var tick := str(r.get("tick", r.get("aside", r.get("text", ""))))
-	if r.get("_status", 0) == 200 and tick != "":
-		var rt := _bubble("gm")
-		rt.append_text("[color=%s][i]Meanwhile… %s[/i][/color]" % [Ui.c("ink_dim").to_html(false), _bb(tick.left(400))])
-		Chronicle.record("(a day passes)", "Meanwhile: " + tick.left(300))
+	var tick := " ".join(events)
+	var rt := _bubble("gm")
+	rt.append_text("[color=%s][i]Meanwhile… %s[/i][/color]" % [Ui.c("ink_dim").to_html(false), _bb(tick.left(400))])
+	var nq: Dictionary = r.get("newQuest", {})
+	if not nq.is_empty():
+		rt.append_text("\n[color=%s][i]New thread: %s — %s[/i][/color]" % [
+			Ui.c("gold").to_html(false), _bb(str(nq.get("title", ""))), _bb(str(nq.get("desc", "")))])
+	Chronicle.record("(a day passes)", "Meanwhile: " + tick.left(300))
 
 
 # ── Images ───────────────────────────────────────────────────────────────────

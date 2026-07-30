@@ -31,6 +31,13 @@ const QUESTS_SCHEMA := '{"type":"object","required":["quests"],"properties":{"qu
 	+ '"title":{"type":"string"},"desc":{"type":"string"},' \
 	+ '"status":{"enum":["active","done"]}}}}}}'
 
+## `newQuest` is deliberately NOT required — most days do not produce one, and a
+## required object would make the model invent one every long rest.
+const TICK_SCHEMA := '{"type":"object","required":["events"],"properties":{' \
+	+ '"events":{"type":"array","maxItems":3,"items":{"type":"string"}},' \
+	+ '"newQuest":{"type":"object","required":["title","desc"],"properties":{' \
+	+ '"title":{"type":"string"},"desc":{"type":"string"}}}}}'
+
 var transcript: Array = []  # [{role, content}] — this adventure, this session
 var _player_turns := 0
 
@@ -174,6 +181,77 @@ func _update_quests() -> void:
 		})
 	GameState.save_kind("quests", out)
 	chronicle_updated.emit()
+
+
+## A day passes off-screen. Returns {"events": [String], "newQuest": Dictionary}
+## — small developments driven by what the NPCs want and what threads are open.
+##
+## A new quest, if one appears, is FILED HERE rather than handed back for the
+## caller to remember to save. The old server route returned one and game.gd
+## dropped it on the floor for the same reason it dropped the events: it read
+## keys ("tick"/"aside"/"text") the route never sent, so this feature has been
+## returning an empty string since it was written.
+func world_tick() -> Dictionary:
+	var empty := {"events": [], "newQuest": {}}
+	if transcript.is_empty() or not LocalGM.available():
+		return empty
+	var quests = GameState.state.get("quests", [])
+	var codex = GameState.state.get("codex", [])
+	var active: Array[String] = []
+	if quests is Array:
+		for q in quests:
+			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+				active.append(str(q["title"]))
+	var goals: Array[String] = []
+	if codex is Array:
+		for n in codex:
+			if n is Dictionary and str(n.get("goal", "")) != "" and str(n.get("name", "")) != "":
+				goals.append("%s wants %s" % [n["name"], n["goal"]])
+	# Nothing in motion yet — a tick here would be the model inventing a world
+	# rather than advancing one.
+	if active.is_empty() and goals.is_empty():
+		return empty
+	var raw := await LocalGM.complete_json(
+		"You simulate a living world between scenes in an ongoing roleplay. A day has "
+		+ "passed off-screen. Give 1 to 3 short, concrete developments that plausibly "
+		+ "happened while the player was elsewhere — each driven by an NPC pursuing "
+		+ "their goal or by an open thread progressing. Small and reactive: a rumour, "
+		+ "a rival's move, a quiet change in town. NOT major plot twists, and NEVER act "
+		+ "for the player. One sentence each. Add `newQuest` ONLY if these developments "
+		+ "naturally create a fresh opportunity or threat the player could choose to "
+		+ "pursue.\n\nStory so far:\n%s\n\nOpen quests: %s\n\nNPC agendas: %s\n\n"
+		% [_convo() if not transcript.is_empty() else "(just beginning)",
+			"; ".join(active) if not active.is_empty() else "(none)",
+			"; ".join(goals) if not goals.is_empty() else "(no known agendas)"]
+		+ "Day %d has dawned. What happened off-screen?" % int(GameState.clock().get("day", 1)),
+		TICK_SCHEMA)
+	var parsed = JSON.parse_string(raw)
+	if not (parsed is Dictionary):
+		return empty
+	var events: Array[String] = []
+	if parsed.get("events") is Array:
+		for ev in parsed["events"]:
+			var s := str(ev).strip_edges()
+			if s != "":
+				events.append(s.left(240))
+	var nq: Dictionary = {}
+	var raw_nq = parsed.get("newQuest")
+	if raw_nq is Dictionary and str(raw_nq.get("title", "")).strip_edges() != "":
+		nq = {
+			"title": str(raw_nq.get("title", "")).strip_edges().left(80),
+			"desc": str(raw_nq.get("desc", "")).strip_edges().left(240),
+			"status": "active",
+		}
+		var log: Array = (quests if quests is Array else []).duplicate()
+		var known := false
+		for q in log:
+			if q is Dictionary and str(q.get("title", "")).to_lower() == str(nq["title"]).to_lower():
+				known = true
+		if not known:
+			log.append(nq)
+			GameState.save_kind("quests", log)
+			chronicle_updated.emit()
+	return {"events": events, "newQuest": nq}
 
 
 func codex_text() -> String:
