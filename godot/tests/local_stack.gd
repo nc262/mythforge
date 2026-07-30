@@ -8,6 +8,18 @@ extends Node
 const KEY := "spike-local-memory"
 
 var _fail := 0
+var _race_out := [null, null]
+
+
+## Fire a complete_json without awaiting it here — the only way to have two in
+## flight at once, since GDScript refuses to let a coroutine's result be stored
+## unawaited.
+func _race(prompt: String, schema: String, slot: int) -> void:
+	var raw := await LocalGM.complete_json(prompt, schema)
+	var p = JSON.parse_string(raw)
+	# Never leave the slot null — that is the loop's "still running" sentinel, and
+	# a failed parse would hang the test instead of failing it.
+	_race_out[slot] = p if p != null else {"_unparsed": raw}
 
 
 func _ck(ok: bool, what: String) -> void:
@@ -105,6 +117,58 @@ func _ready() -> void:
 		if parsed is Dictionary:
 			_ck((parsed as Dictionary).has("name") and (parsed as Dictionary).has("mood"),
 				"and it has the keys the schema demanded")
+
+	# ── Chronicle's extractors, which now run here rather than on the backend ──
+	# The point is the ENUM: an invalid disposition is not normalised afterwards,
+	# it is ungeneratable. maxItems is the other half — an unbounded array against
+	# a chatty model is how a codex becomes a novel.
+	if LocalGM.available():
+		Chronicle.transcript = [
+			{"role": "user", "content": "I ask Maren the harbourmaster to amend the manifest."},
+			{"role": "assistant", "content": "[scene] Maren pockets the coins, scowling, and scratches out the entry. 'This is the last time,' she says."},
+			{"role": "user", "content": "I promise to bring her the smuggler's ledger."},
+			{"role": "assistant", "content": "Maren nods once. 'Bring me the ledger and we are square.'"},
+		]
+		t0 = Time.get_ticks_msec()
+		await Chronicle._update_codex()
+		var codex = GameState.state.get("codex", [])
+		print("  codex: %d ms -> %s" % [Time.get_ticks_msec() - t0, JSON.stringify(codex).left(200)])
+		_ck(codex is Array and not (codex as Array).is_empty(), "codex extracted at least one NPC")
+		if codex is Array and not (codex as Array).is_empty():
+			var disps := ["ally", "friendly", "neutral", "wary", "hostile"]
+			var all_valid := true
+			for n in codex:
+				if not disps.has(str(n.get("disposition", ""))):
+					all_valid = false
+			_ck(all_valid, "every disposition is one the enum allows")
+			_ck((codex as Array).size() <= 12, "codex respects maxItems")
+
+		t0 = Time.get_ticks_msec()
+		await Chronicle._update_quests()
+		var quests = GameState.state.get("quests", [])
+		print("  quests: %d ms -> %s" % [Time.get_ticks_msec() - t0, JSON.stringify(quests).left(200)])
+		_ck(quests is Array and not (quests as Array).is_empty(), "quest log extracted the ledger promise")
+		if quests is Array:
+			var st_ok := true
+			for q in quests:
+				if not ["active", "done"].has(str(q.get("status", ""))):
+					st_ok = false
+			_ck(st_ok, "every status is one the enum allows")
+
+		# Two callers, one JSON node. Started WITHOUT await so both are genuinely
+		# in flight: without the serialising guard in complete_json the second
+		# `ask()` lands on a node mid-answer and the two interleave into one
+		# garbled reply that still parses — the worst kind.
+		t0 = Time.get_ticks_msec()
+		_race("Name a tavern.", '{"type":"object","required":["name"],"properties":{"name":{"type":"string"}}}', 0)
+		_race("Name a mountain.", '{"type":"object","required":["peak"],"properties":{"peak":{"type":"string"}}}', 1)
+		while _race_out[0] == null or _race_out[1] == null:
+			await get_tree().process_frame
+		print("  concurrent: %d ms | %s | %s" % [Time.get_ticks_msec() - t0, _race_out[0], _race_out[1]])
+		_ck(_race_out[0] is Dictionary and (_race_out[0] as Dictionary).has("name"),
+			"concurrent call A kept its own schema")
+		_ck(_race_out[1] is Dictionary and (_race_out[1] as Dictionary).has("peak"),
+			"concurrent call B kept its own schema")
 
 	LocalMemory.wipe(KEY)
 	print("LOCAL STACK %s" % ("OK" if _fail == 0 else "FAILED (%d)" % _fail))

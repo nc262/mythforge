@@ -36,6 +36,11 @@ var _busy := false
 ## would silently turn prose into objects. Sharing `_model` means this costs a
 ## context, not another 4.6 GB of weights.
 var _json_chat: Node = null
+## One JSON node, so one caller at a time. Chronicle fires codex and quests off
+## the same turn and the World Compiler runs its own stages; two `ask()` calls
+## on one chat node interleave into a single garbled answer that still parses.
+var _json_busy := false
+signal _json_free
 
 
 ## The first CHAT GGUF in the models folder, or "" if there is none.
@@ -147,6 +152,9 @@ func complete_json(prompt: String, schema := "") -> String:
 		add_child(_json_chat)
 		if _json_chat.has_method("start_worker"):
 			_json_chat.call("start_worker")
+	while _json_busy:
+		await _json_free
+	_json_busy = true
 	if schema != "" and _json_chat.has_method("set_sampler_preset_constrain_with_json_schema"):
 		_json_chat.call("set_sampler_preset_constrain_with_json_schema", schema)
 	elif _json_chat.has_method("set_sampler_preset_json"):
@@ -156,7 +164,10 @@ func complete_json(prompt: String, schema := "") -> String:
 	if _json_chat.has_method("reset_context"):
 		_json_chat.call("reset_context")
 	_json_chat.call("ask" if _json_chat.has_method("ask") else "say", prompt)
-	return await _json_chat.response_finished
+	var out: String = await _json_chat.response_finished
+	_json_busy = false
+	_json_free.emit()
+	return out
 
 
 ## Stop mid-sentence. NobodyWhoChat exposes `stop_generation`; the player pressing
