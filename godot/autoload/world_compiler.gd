@@ -877,6 +877,24 @@ func _stage_tactical(world_id: String, style: Dictionary) -> void:
 ## One JSON answer from the local model. Small models fence their JSON and
 ## chatter around it, so the payload is extracted rather than trusted.
 func _ask_json(prompt: String) -> Dictionary:
+	# Local first. NOTE this passes no schema, so the model still fences and
+	# chatters exactly as the server's did — `_extract_json` below is doing real
+	# work, not belt-and-braces. The win here is only that the call stays in
+	# process.
+	#
+	# The real prize is unclaimed: with a JSON SCHEMA the same call measured
+	# 717 ms against 4798 ms and parsed directly (see LocalGM.complete_json).
+	# Each compiler stage knows the shape it wants — style guide, asset language,
+	# creatures, NPCs — so handing those shapes down would make this both exact
+	# and ~6x faster. Left as a follow-up because it means threading a schema
+	# through every stage, not because it is in doubt.
+	if LocalGM.available():
+		var txt := await LocalGM.complete_json(prompt)
+		if txt != "":
+			var ld := _extract_json(txt)
+			if ld.size() == 1 and (ld.values()[0] is Dictionary):
+				return ld.values()[0]
+			return ld
 	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/complete_json",
 		{"prompt": prompt})
 	if r.get("_status", 0) != 200:

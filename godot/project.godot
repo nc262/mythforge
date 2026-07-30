@@ -26,6 +26,7 @@ WorldSkin="*res://autoload/world_skin.gd"
 Pad="*res://autoload/pad.gd"
 Compiler="*res://autoload/world_compiler.gd"
 LocalGM="*res://autoload/local_gm.gd"
+LocalMemory="*res://autoload/local_memory.gd"
 
 [audio]
 

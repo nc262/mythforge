@@ -366,6 +366,10 @@ func wipe_adventure(adv_id: String) -> void:
 	var path := _save_path(adv_id)
 	if FileAccess.file_exists(path):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+	# Campaign memory lives in its own file (Stage 3, LocalMemory), so deleting
+	# the save alone would leave the beats behind — and a new adventure reusing
+	# the id would inherit a stranger's history as canon.
+	LocalMemory.wipe(adv_id)
 	if adv_id == cid():
 		state = {}
 

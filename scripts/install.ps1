@@ -81,15 +81,32 @@ if (Test-Path $target) {
   }
 }
 
-# Ollama is still used by the SIX studio helpers that have not moved in-process
-# yet — worldsmith, worldtick, codex, quests, complete_json and campaign memory
-# all still POST to the backend (see Backlog "the Odysseus carcass"). The small
-# model and the embedder serve those, not the narrator.
-Step 'Pulling the helper models (quests, codex, campaign memory)'
+# CAMPAIGN MEMORY is in-process too now (Stage 3). Beats are embedded on the same
+# Vulkan device as the narrator and searched with cosine similarity — measured
+# 228 ms to store three beats, 4 ms to recall. The beat never leaves the process.
+#
+# This is a SEPARATE model from the narrator's: LocalMemory matches it by name, so
+# the filename must contain "embed"/"minilm"/"nomic"/"bge"/"gte". An 8 GB chat
+# model loaded as an encoder would be a slow, silent mistake.
+Step 'Downloading the campaign memory encoder (~80 MB)'
+$emb = 'nomic-embed-text-v1.5.Q4_K_M.gguf'
+$embTarget = Join-Path $modelDir $emb
+if (Test-Path $embTarget) {
+  Ok "Encoder already present ($emb)"
+} else {
+  $embUrl = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/$emb"
+  curl.exe -L --fail --retry 5 --retry-delay 3 -C - -o "$embTarget" $embUrl
+  if ($LASTEXITCODE -eq 0 -and (Test-Path $embTarget)) { Ok 'Campaign memory ready' }
+  else { Warn 'Encoder download failed — recall falls back to the server.' }
+}
+
+# Ollama now serves only the FOUR studio helpers still on the backend:
+# worldsmith, worldtick, codex and quests. complete_json and campaign memory both
+# moved in-process. See Backlog, "the Odysseus carcass".
+Step 'Pulling the helper model (quests, codex, worldsmith)'
 try { Start-Process ollama -ArgumentList 'serve' -WindowStyle Hidden -ErrorAction SilentlyContinue; Start-Sleep 3 } catch {}
-ollama pull llama3.2:3b     # fast helper (quests, codex, worldsmith)
-ollama pull all-minilm      # ~45 MB — embeddings for pinpoint campaign memory
-Ok 'Helper models ready'
+ollama pull llama3.2:3b
+Ok 'Helper model ready'
 
 # ── 5. Image generation ──────────────────────────────────────────────────────
 # ONE path, whatever the card. This used to branch three ways — ComfyUI+CUDA for

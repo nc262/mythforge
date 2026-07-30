@@ -27,15 +27,25 @@ func record(player_msg: String, gm_reply: String) -> void:
 		transcript = transcript.slice(-60)
 	_player_turns += 1
 	var beat := "Player: %s\nGM: %s" % [player_msg.left(300), gm_reply.left(500)]
-	Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/memory/beat",
-		{"cid": GameState.cid(), "text": beat, "day": int(GameState.clock().get("day", 1))})
+	var day := int(GameState.clock().get("day", 1))
+	# Stage 3 — campaign memory in-process. The embedding runs on the same Vulkan
+	# device as the narrator; the beat never leaves the machine or the process.
+	# Falls through to the server only while no embedding model is installed.
+	if LocalMemory.available():
+		LocalMemory.add_beat(GameState.cid(), beat, day)
+	else:
+		Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/memory/beat",
+			{"cid": GameState.cid(), "text": beat, "day": day})
 	if _player_turns % CODEX_EVERY == 0:
 		_update_codex()
 		_update_quests()
 
 
-## The beats most relevant to this moment (score-floored server-side).
+## The beats most relevant to this moment. Score floor and k are the same either
+## way — LocalMemory is a port of src/campaign_memory.py, not a reimagining.
 func recall(query: String) -> Array:
+	if LocalMemory.available():
+		return await LocalMemory.recall(GameState.cid(), query, 4)
 	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/memory/recall",
 		{"cid": GameState.cid(), "query": query, "k": 4})
 	return r.get("beats", []) if r.get("_status", 0) == 200 else []

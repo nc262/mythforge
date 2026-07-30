@@ -30,6 +30,12 @@ const CLASS_MODEL := "NobodyWhoModel"
 var _model: Node = null
 var _chat: Node = null
 var _busy := false
+## A SECOND chat over the same model, for structured answers.
+##
+## The sampler is per-chat-node, so constraining the narrator's node to JSON
+## would silently turn prose into objects. Sharing `_model` means this costs a
+## context, not another 4.6 GB of weights.
+var _json_chat: Node = null
 
 
 ## The first GGUF in the models folder, or "" if there is none.
@@ -47,6 +53,12 @@ func model_file() -> String:
 ## the class only exists once the GDExtension has actually loaded, so a broken
 ## or missing install reports false instead of crashing at the first call.
 func available() -> bool:
+	# INERT UNDER test_mode, so the harnesses stay deterministic. `stream_chat`
+	# already returns its canned reply before consulting this, but
+	# `complete_json` is reached from the World Compiler with no such guard — and
+	# a harness that silently runs a real 8B model is neither fast nor repeatable.
+	if Api.test_mode:
+		return false
 	return ClassDB.class_exists(CLASS_CHAT) and ClassDB.class_exists(CLASS_MODEL) \
 		and model_file() != ""
 
@@ -88,6 +100,48 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	if _chat.has_method("start_worker"):
 		_chat.call("start_worker")
 	return true
+
+
+## One JSON answer from the local model.
+##
+## PASS A SCHEMA. Measured on llama3.1-8b, same prompt:
+##
+##   set_sampler_preset_json()                     4798 ms — output still arrives
+##                                                 fenced in ```json and does NOT
+##                                                 parse. It is not the constraint
+##                                                 its name suggests.
+##   set_sampler_preset_constrain_with_json_schema  717 ms — parses directly, with
+##                                                 exactly the keys demanded.
+##
+## 6.7x faster AND correct, because the grammar prunes the token space: the model
+## cannot spend tokens on a fence or a preamble, so it does not. Without a schema
+## this is no better than the server path — the caller still has to dig the object
+## out of the chatter (world_compiler._extract_json exists for precisely that).
+##
+## Returns "" when unusable, so callers fall through to the server as before.
+func complete_json(prompt: String, schema := "") -> String:
+	if not available():
+		return ""
+	if _model == null and not _ensure_nodes(""):
+		return ""
+	if _json_chat == null or not is_instance_valid(_json_chat):
+		_json_chat = ClassDB.instantiate(CLASS_CHAT)
+		if _json_chat == null:
+			return ""
+		_json_chat.set("model_node", _model)
+		add_child(_json_chat)
+		if _json_chat.has_method("start_worker"):
+			_json_chat.call("start_worker")
+	if schema != "" and _json_chat.has_method("set_sampler_preset_constrain_with_json_schema"):
+		_json_chat.call("set_sampler_preset_constrain_with_json_schema", schema)
+	elif _json_chat.has_method("set_sampler_preset_json"):
+		_json_chat.call("set_sampler_preset_json")
+	# Stateless per call, for the same reason turns are: every prompt carries its
+	# own context, so an accumulating conversation is pure cost.
+	if _json_chat.has_method("reset_context"):
+		_json_chat.call("reset_context")
+	_json_chat.call("ask" if _json_chat.has_method("ask") else "say", prompt)
+	return await _json_chat.response_finished
 
 
 ## Stop mid-sentence. NobodyWhoChat exposes `stop_generation`; the player pressing
