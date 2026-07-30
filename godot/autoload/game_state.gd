@@ -11,6 +11,13 @@ const DEFAULT_SHEET := {
 	"abilities": {"STR": 10, "DEX": 10, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10},
 	"inventory": [], "conditions": [], "notes": "", "spells": [], "slots": {},
 	"profSkills": [], "profSaves": [], "hitDie": 8, "hitDiceUsed": 0, "exhaustion": 0,
+	# WHAT THIS HERO LOOKS LIKE — the words the player wrote at the forge, and the
+	# brush they chose. Carried on the SHEET rather than passed to the one
+	# commission that first needed them, because every later render needs them
+	# too: the paper doll, a re-render with new gear, a portrait in a new
+	# adventure. Derived at the point of use, a hero grows a different face per
+	# surface (see Art.hero_look).
+	"look": "", "brush": "painted",
 }
 const TIMES := ["Dawn", "Morning", "Midday", "Afternoon", "Dusk", "Nightfall", "Deep Night"]
 const WEATHERS := {
@@ -21,6 +28,9 @@ const WEATHERS := {
 }
 
 signal leveled_up(from_level: int, to_level: int)
+## The light or the weather changed enough that the room should look different.
+## Carries the new mood bucket (see scene_mood).
+signal mood_changed(mood: String)
 
 var character: Dictionary = {}
 var state: Dictionary = {}
@@ -950,7 +960,51 @@ func clock() -> Dictionary:
 	return _merged("clock", {"day": 1, "ti": 1, "at": 0})
 
 
+## HOW THIS PLACE LOOKS RIGHT NOW — a coarse bucket of light and weather.
+##
+## CN-4: one backdrop plate held across four days, three weather states and four
+## locations, because the scene key was the PLACE alone. The same tavern at dawn
+## in clear light and at deep night in a storm shared one painting, so the world
+## never visibly moved.
+##
+## Deliberately coarse. Seven times of day times six weathers would be 42
+## paintings per location; three by three is nine, and in a real campaign far
+## fewer. Cheap enough to be free, different enough to be seen.
+func scene_mood() -> String:
+	var c := clock()
+	var ti := clampi(int(c.get("ti", 0)), 0, TIMES.size() - 1)
+	var light := "day"
+	if ti >= 6:
+		light = "night"
+	elif ti >= 4:
+		light = "dusk"
+	var wx := ""
+	if c.get("wx") is Dictionary:
+		wx = str(c["wx"].get("name", "")).to_lower()
+	var sky := "clear"
+	for wet in ["rain", "drizzle", "storm", "snow"]:
+		if wx.find(wet) >= 0:
+			sky = "wet"
+	for dim in ["mist", "fog", "haze", "smog"]:
+		if wx.find(dim) >= 0:
+			sky = "misty"
+	return "%s-%s" % [light, sky]
+
+
+## The same mood, as words a painter can use.
+func scene_mood_words() -> String:
+	var m := scene_mood()
+	var light := m.split("-")[0]
+	var sky := m.split("-")[1]
+	var lw := str({"day": "in full daylight", "dusk": "at dusk, the light going",
+		"night": "deep in the night, lit only by what burns"}.get(light, "in daylight"))
+	var sw := str({"clear": "under a clear sky", "wet": "in the rain, everything slick and running",
+		"misty": "in thick mist that swallows the distance"}.get(sky, "under a clear sky"))
+	return "%s, %s" % [lw, sw]
+
+
 func advance_time(steps := 1) -> Dictionary:
+	var mood_before := scene_mood()
 	var c := clock()
 	var prev_day := int(c.get("day", 1))
 	c["ti"] = int(c.get("ti", 0)) + steps
@@ -962,6 +1016,11 @@ func advance_time(steps := 1) -> Dictionary:
 		var w: Array = list[randi() % list.size()]
 		c["wx"] = {"ico": w[0], "name": w[1]}
 	save_kind("clock", c)
+	# Only when the LOOK of the world actually changed. An hour passing inside one
+	# afternoon is not worth a repaint; dusk falling, or rain starting, is.
+	var mood_now := scene_mood()
+	if mood_now != mood_before:
+		mood_changed.emit(mood_now)
 	# Timed sheet conditions wane as in-world time passes.
 	var s := sheet()
 	var conds: Array = s.get("conditions", [])
@@ -979,18 +1038,39 @@ func advance_time(steps := 1) -> Dictionary:
 	return c
 
 
+## WHERE THE PLAYER IS. One answer, because the rest instructions, the shop gate
+## and the scene context all need it and each used to dig it out of `world`.
+func here() -> String:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	return str(world.get("here", ""))
+
+
+## A clause pinning the GM to the place the player actually stands.
+##
+## CN-1: the player camped at the barrow-mound and woke in the mead-hall guest
+## room, with no travel in between. The location IS in the envelope — but it sits
+## near the top, and the rest instruction that arrives last said only "narrate
+## the new morning and what's changed", which is an open invitation to move
+## someone. Recency wins in a long context, so the pin has to travel WITH the
+## instruction, not sit above it.
+func here_pin() -> String:
+	var h := here()
+	if h == "":
+		return " I am where the last scene left me; do not relocate me."
+	return " I am at %s and I have not travelled — I wake exactly there. Do not move me to another place; if travel happens, it happens because I choose it." % h
+
+
 ## Is there anyone HERE to trade with?
 ##
 ## R8-15 — the pack offered "Sell — 3 silver" inside a sealed barrow four days'
 ## walk from the nearest keeper. The shop system already gates on a location
 ## carrying a `shop`; the sell affordance simply never asked.
 func shop_here() -> bool:
-	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
-	var here := str(world.get("here", ""))
-	if here == "":
+	var h := here()
+	if h == "":
 		return false
 	for l in Rules.world_locations(world_id()):
-		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
+		if l is Dictionary and str(l.get("name", "")) == h and str(l.get("shop", "")) != "":
 			return true
 	return false
 
@@ -1033,14 +1113,18 @@ func short_rest() -> Dictionary:
 	set_sheet(s)
 	_recharge_features("short")
 	advance_time(1)
-	var gm := "[I take a short rest%s. Briefly narrate the pause, then continue.]" % why
+	var gm := "[I take a short rest%s.%s Briefly narrate the pause, then continue.]" % [why, here_pin()]
 	return {"note": note, "gm": gm}
 
 
 func long_rest() -> Dictionary:
 	var s := sheet()
-	# The night is not guaranteed: 1-in-4 rests are interrupted.
-	var interrupted := randf() < 0.25
+	# The night is not guaranteed, and WHERE you lie down decides how likely that
+	# is. This was a flat 1-in-4 anywhere, so a tavern bed and an opened barrow
+	# carried the same risk — two rests in a tomb with a hostile figure watching
+	# passed without incident (CN-3). Rules owns the odds; this owns the night.
+	var risk: Dictionary = Rules.rest_risk(world_id(), here())
+	var interrupted := randf() < float(risk["risk"])
 	if interrupted:
 		s["hp"] = mini(int(s["hpMax"]), int(s.get("hp", 0)) + maxi(1, ceili((int(s["hpMax"]) - int(s.get("hp", 0))) / 2.0)))
 		s["hitDiceUsed"] = maxi(0, int(s.get("hitDiceUsed", 0)) - ceili(int(s.get("level", 1)) / 2.0))
@@ -1062,6 +1146,6 @@ func long_rest() -> Dictionary:
 	advance_time(steps)
 	var note := ("*You make camp — but something finds you in the night. You wake half-rested at %d/%d HP.*" % [int(s["hp"]), int(s["hpMax"])]) if interrupted \
 		else ("*You make camp and sleep. You wake at dawn, fully restored — %d/%d HP.*" % [int(s["hpMax"]), int(s["hpMax"])])
-	var gm := ("[My rest is interrupted in the night — run a short encounter fitting where I'm camped. I woke at %d/%d HP, only half-rested. Open on the moment I startle awake.]" % [int(s["hp"]), int(s["hpMax"])]) if interrupted \
-		else "[I take a long rest through the night and wake at dawn, fully healed. Narrate the new morning and what's changed, then continue.]"
+	var gm := ("[My rest is interrupted in the night — I slept %s, so run a short encounter that fits that ground.%s I woke at %d/%d HP, only half-rested. Open on the moment I startle awake.]" % [str(risk["shelter"]), here_pin(), int(s["hp"]), int(s["hpMax"])]) if interrupted \
+		else ("[I take a long rest through the night, %s, and wake at dawn fully healed.%s Narrate the new morning where I am, then continue.]" % [str(risk["shelter"]), here_pin()])
 	return {"note": note, "gm": gm}

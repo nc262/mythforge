@@ -568,16 +568,45 @@ func hero_key() -> String:
 	return "hero-" + GameState.cid().validate_filename()
 
 
+## THE HERO'S IDENTITY, as a prompt clause — the one answer to "what do they
+## look like", asked by every renderer instead of each inventing its own.
+##
+## There is no seed lock to hold a face still: sd-server ignores `seed` in the
+## request body exactly as it ignores `steps` (measured — two different seeds,
+## byte-identical output). What it IS is deterministic on the prompt, so the
+## prompt is the only identity anchor available, and identity therefore lives or
+## dies on every renderer describing the same person.
+##
+## It did not. The portrait carried the player's appearance words; the paper doll
+## carried none at all, so the doll was a different person wearing the same gear.
+func hero_look(sheet := {}) -> String:
+	var s: Dictionary = sheet if not sheet.is_empty() else GameState.sheet()
+	var look := str(s.get("look", "")).strip_edges()
+	var brush := str(s.get("brush", "painted")).strip_edges()
+	if brush == "":
+		brush = "painted"
+	return (look + ", " if look != "" else "") + brush + " style"
+
+
+## The hero's FULL-BODY key. Derived from the face key so a banked hero keeps one
+## body as they keep one face — never rebuilt from the current adventure's id.
+func hero_body_key() -> String:
+	return "herobody-" + hero_key().trim_prefix("hero-")
+
+
 func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
 	# Already painted under a carried key? Then there is nothing to commission —
 	# this is what used to burn a GPU render per adventure for a face we own.
 	var stored := str(sheet.get("portrait_key", ""))
 	if stored != "" and stored != "heroprev" and has_art(stored):
 		return
+	# `extra` is the forge handing over the look on the very first commission,
+	# before the sheet has been written. After that the sheet is the source.
+	var look := extra.strip_edges() if extra.strip_edges() != "" else hero_look(sheet)
 	ensure("hero-" + cid.validate_filename(),
-		"character portrait of %s, a %s %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
+		"character portrait of %s, a %s %s %s, %s, %s, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
 			str(sheet.get("name", "a hero")), str(sheet.get("race", "")), str(sheet.get("cls", "adventurer")),
-			subject_style("char"), (extra + ", ") if extra != "" else "", world_flavor()], "1024x1024", true)
+			subject_style("char"), look, world_flavor()], "1024x1024", true)
 
 
 ## A1 — if the world's compile already baked this name (vendor wares are a

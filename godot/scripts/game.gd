@@ -46,6 +46,11 @@ func _ready() -> void:
 	Api.sse_done.connect(_on_done)
 	# No model, no narrator, and no server to quietly cover for it. Say so.
 	Api.narrator_missing.connect(_on_narrator_missing)
+	# CN-4 — the room follows the clock. Standing still through dusk and a
+	# gathering storm used to leave the same noon painting up: the backdrop only
+	# ever repainted on a [[scene]] tag, so a player who did not MOVE never saw
+	# the world change. GameState fires this only when the look actually shifts.
+	GameState.mood_changed.connect(_on_mood_changed)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
 	_build_suggestions()   # R6 PLAY-04 — verbs above the box, before the box is empty
@@ -479,6 +484,13 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 		story["background"] = str(extra["bg_story"])
 	if not story.is_empty():
 		s["story"] = story
+	# THE LOOK GOES ON THE SHEET. It used to be handed to the first portrait
+	# commission and dropped, so nothing downstream could ask what this hero looks
+	# like — the paper doll invented its own person. Persisted here, one identity
+	# serves every render, in this adventure and any later one (Art.hero_look).
+	s["look"] = str(extra.get("appearance", "")).strip_edges()
+	var brush := str(extra.get("style", "")).strip_edges()
+	s["brush"] = brush if brush != "" else "painted"
 	if bool(preset.get("caster", false)):
 		s["slots"] = Rules.full_caster_slots(1)
 		var seed: Array = Rules.tables.get("class_spells", {}).get(cls, [])
@@ -512,10 +524,7 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	if pkey != "" and Art.has_art(pkey):
 		Art.copy(pkey, "hero-" + GameState.cid().validate_filename())
 	else:
-		var looks := str(extra.get("appearance", ""))
-		var brush := str(extra.get("style", ""))
-		Art.ensure_hero_portrait(GameState.cid(), s,
-			(looks + (", " if looks != "" and brush != "" else "") + brush).strip_edges())
+		Art.ensure_hero_portrait(GameState.cid(), s)
 	_build_dice_menu()
 	_render_sheet()
 	# The HP and purse used to be repeated here. The chips bar states both, one
@@ -2157,8 +2166,13 @@ func _show_image(key: String) -> void:
 ## how a stranger's photograph landed in the scene slot (playtest #1). Keyed by
 ## place, so returning somewhere reuses its painting instead of repainting it.
 func _repaint_scene(place: String) -> void:
-	var key := "scene-%s-%s" % [GameState.world_id().validate_filename(),
-		place.to_lower().replace(" ", "-").validate_filename().left(48)]
+	# CN-4 — THE MOOD IS PART OF THE KEY. It was the place alone, so the first
+	# painting of a location served it forever: one plate across four days, three
+	# weather states and every hour of them. The same tavern at dawn in clear
+	# light and at deep night in a storm is not the same picture.
+	var key := "scene-%s-%s-%s" % [GameState.world_id().validate_filename(),
+		place.to_lower().replace(" ", "-").validate_filename().left(48),
+		GameState.scene_mood()]
 	# R6 FUN-28 / Performance §7 — the room CHANGES the instant you arrive.
 	#
 	# This used to do one thing: queue a bespoke ~25 s render in the NOW lane and
@@ -2178,8 +2192,9 @@ func _repaint_scene(place: String) -> void:
 			Compiler.biome_for_place(place, kind))
 		if plate != null:
 			_paint_backdrop(plate)
-	var prompt := "%s, in the world of %s. Atmospheric %s establishing scene, cinematic lighting, no people, no text." % [
-		place, WorldSkin.world_name(GameState.world_id()), Art.world_flavor()]
+	var prompt := "%s, in the world of %s, %s. Atmospheric %s establishing scene, cinematic lighting, no people, no text." % [
+		place, WorldSkin.world_name(GameState.world_id()),
+		GameState.scene_mood_words(), Art.world_flavor()]
 	Art.request(key, prompt, {"lane": Art.Lane.IDLE, "owner": self,
 		"on_ready": func(k: String): _show_backdrop(k)})
 
@@ -2512,6 +2527,16 @@ func _open_world_map() -> void:
 	add_child(dlg)
 	dlg.popup_centered()
 	Ui.ritual_open(dlg)
+
+
+## The light or the weather turned. Repaint where we already are — no tag, no
+## travel, no player action needed. Silent: it is set dressing, not an event.
+func _on_mood_changed(_mood: String) -> void:
+	if _conjuring or Combat.active:
+		return
+	var place := GameState.here()
+	if place != "":
+		_repaint_scene(place)
 
 
 ## Auto here-tracking: the GM's [[scene]] prose moves the pin when the place

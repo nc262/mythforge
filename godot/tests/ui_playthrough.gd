@@ -34,6 +34,7 @@ func _ready() -> void:
 	_check_adventure_ids()
 	_check_every_slot_has_forms()
 	_check_save_spells()
+	_check_rest_place()
 	_check_multiclass()
 	_check_controller()
 	await _build_windows()
@@ -304,6 +305,126 @@ func _check_persistence() -> void:
 	# is shared scratch. No id means a blank card and, later, a stranger's face.
 	_ck(str(banked[0].get("id", "")) != "", "persistence: banked hero has no id — roster art can't resolve")
 	print("  persistence: forged hero survives a disk round-trip, with its own id")
+	_check_one_identity()
+
+
+## ONE HERO, ONE FACE.
+##
+## The portrait and the paper doll were separate renders with nothing shared: the
+## portrait carried the player's appearance words, the body prompt carried none,
+## so the two views described different people wearing the same gear.
+##
+## There is no seed to lock (sd-server ignores `seed` in the body, measured — two
+## different seeds, byte-identical output), so the PROMPT is the only anchor.
+## This asserts what the failure looked like: a render that does not name the
+## hero's look, and a key rebuilt from the current adventure instead of asked for.
+func _check_one_identity() -> void:
+	var keep_char := GameState.character
+	var keep_state := GameState.state
+	GameState.character = {"id": "dm-identity-probe", "world_id": "embervale"}
+	GameState.state = {"sheet": {"name": "Sable", "race": "Half-Elf", "cls": "Rogue",
+		"look": "a knife-thin scar from brow to jaw, cropped silver hair", "brush": "painted"}}
+	var look := Art.hero_look()
+	for must in ["knife-thin scar", "cropped silver hair", "painted style"]:
+		_ck(look.find(must) >= 0, "identity: hero_look dropped '%s'" % must)
+	# Every renderer must carry it. A prompt that omits the look is a stranger.
+	var screen = load("res://scenes/ui/character_screen.gd").new()
+	var body: String = screen._body_prompt(GameState.sheet(), {"equipped": {}})
+	screen.free()
+	for must in ["knife-thin scar", "cropped silver hair"]:
+		_ck(body.find(must) >= 0,
+			"identity: the paper-doll prompt does not describe the hero ('%s') — it will paint someone else" % must)
+	GameState.character = keep_char
+	GameState.state = keep_state
+	# The body key must be DERIVED, never rebuilt. A hero banked in one adventure
+	# and played in another owns art under the key they were painted with, so
+	# "herobody-" + cid names a file that does not exist: the plate renders empty
+	# and the game re-commissions a body it already owns. Asserted on the source,
+	# because the defect is a call site, not a return value — the same shape as
+	# the art-door and hard-cut laws below.
+	for path in ["res://scenes/ui/character_screen.gd", "res://scripts/game.gd",
+			"res://scenes/forge/character_forge.gd"]:
+		_ck(FileAccess.file_exists(path), "identity: %s exists to be checked" % path)
+		var src := FileAccess.get_file_as_string(path)
+		_ck(src.find("\"herobody-\"") < 0,
+			"identity: %s builds the body key by hand — ask Art.hero_body_key()" % path)
+	print("  identity: one look, carried by the portrait, the doll and the key")
+
+
+## A REST HAPPENS SOMEWHERE.
+##
+## Two defects, one cause — the rest knew nothing about the ground under it:
+##   CN-1: camped at the barrow-mound, woke in the mead-hall with no travel. The
+##         location IS in the envelope, but the instruction that arrives LAST said
+##         only "narrate the new morning", and recency wins in a long context.
+##   CN-3: two rests inside an opened barrow, hostile figure watching, nothing
+##         happened — the interrupt was a flat 1-in-4 anywhere.
+func _check_rest_place() -> void:
+	# Risk follows the ground. A bed is not a barrow.
+	var tavern: Dictionary = Rules.rest_risk("embervale", "The Ember & Oak")
+	var wild: Dictionary = Rules.rest_risk("embervale", "The Sunken Barrow")
+	var nowhere: Dictionary = Rules.rest_risk("embervale", "")
+	_ck(float(tavern["risk"]) < float(nowhere["risk"]),
+		"rest: sleeping in a tavern is no safer than sleeping nowhere in particular")
+	_ck(float(wild["risk"]) >= float(tavern["risk"]),
+		"rest: an unknown/wild place is not riskier than a tavern bed")
+	_ck(str(tavern["shelter"]) != str(nowhere["shelter"]),
+		"rest: every place describes itself the same way — the GM cannot fit the encounter")
+
+	# The pin travels WITH the instruction, naming the actual place.
+	var keep_char := GameState.character
+	var keep_state := GameState.state
+	GameState.character = {"id": "dm-rest-probe", "world_id": "embervale"}
+	GameState.state = {"sheet": GameState.DEFAULT_SHEET.duplicate(true),
+		"world": {"here": "The Sunken Barrow"}, "clock": {"day": 1, "ti": 3}}
+	_ck(GameState.here() == "The Sunken Barrow", "rest: GameState.here() lost the location")
+	var pin := GameState.here_pin()
+	_ck(pin.find("The Sunken Barrow") >= 0, "rest: the pin does not name where the player is")
+	var long_gm := str(GameState.long_rest()["gm"])
+	_ck(long_gm.find("The Sunken Barrow") >= 0,
+		"rest: the long-rest instruction never names the place — the GM will relocate the player (CN-1)")
+	_ck(long_gm.find("do not") >= 0 or long_gm.find("Do not") >= 0,
+		"rest: the long-rest instruction does not forbid relocating the player (CN-1)")
+	GameState.state["sheet"]["hp"] = 1
+	var short_gm := str(GameState.short_rest()["gm"])
+	_ck(short_gm.find("The Sunken Barrow") >= 0,
+		"rest: an hour's pause is not a journey either — the short rest lost the place")
+	GameState.character = keep_char
+	GameState.state = keep_state
+	print("  rest: risk follows the ground, and the place rides the instruction")
+	_check_scene_follows_mood()
+
+
+## CN-4 — IS THE MOOD ACTUALLY PLUGGED INTO THE BACKDROP?
+##
+## self_check proves scene_mood() buckets light and weather correctly. That is
+## worth nothing if the scene key ignores it: one painting would still serve a
+## place across four days and three weather states, and every unit assertion
+## would still pass. A test that cannot tell whether the feature is WIRED is not
+## testing the feature — so this asks the source, the same way the art-door and
+## hard-cut laws below do.
+func _check_scene_follows_mood() -> void:
+	var path := "res://scripts/game.gd"
+	_ck(FileAccess.file_exists(path), "scene: %s exists to be checked" % path)
+	var src := FileAccess.get_file_as_string(path)
+	var at := src.find("func _repaint_scene(")
+	_ck(at >= 0, "scene: _repaint_scene is gone — the backdrop has no single door")
+	if at < 0:
+		return
+	# Bound to the real function body, not a fixed window — this function carries
+	# a long comment block and a 900-char guess stopped short of the prompt.
+	var nxt := src.find("
+func ", at + 10)
+	var body := src.substr(at, (nxt - at) if nxt > at else 2000)
+	_ck(body.find("scene_mood()") >= 0,
+		"scene: the backdrop key ignores the mood — one painting will serve a place forever (CN-4)")
+	_ck(body.find("scene_mood_words()") >= 0,
+		"scene: the backdrop PROMPT ignores the mood — every hour paints the same picture (CN-4)")
+	# And something must repaint when only the clock moves, or a player who
+	# stands still through dusk never sees the light change.
+	_ck(src.find("mood_changed.connect") >= 0,
+		"scene: nothing repaints on a mood change — standing still freezes the world (CN-4)")
+	print("  scene: the backdrop follows the light and the weather, not just the place")
 
 
 ## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no

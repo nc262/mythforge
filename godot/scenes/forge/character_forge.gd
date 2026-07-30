@@ -436,9 +436,13 @@ func _stage_nature() -> void:
 ## The portrait commission — shared by the live Appearance preview and the
 ## Quenching so the face the player approves is the face the hero wears.
 func _portrait_prompt(nm: String) -> String:
-	return "character portrait of %s, a %s %s, %s%s style, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
+	# Same identity clause the sheet will carry (Art.hero_look), built from the
+	# draft because the sheet does not exist yet. The face the player approves
+	# here and the face the hero wears at the table must be described by the same
+	# words, or the approval means nothing.
+	return "character portrait of %s, a %s %s, %s, painted head-and-shoulders portrait, dramatic rim light, dark background, detailed face, no text" % [
 		nm if nm != "" else "a hero", str(draft["race"]), str(draft["cls"]),
-		(str(draft["appearance"]) + ", ") if str(draft["appearance"]) != "" else "", str(draft["style"])]
+		Art.hero_look({"look": str(draft["appearance"]), "brush": str(draft["style"])})]
 
 
 const LOOK_GUIDES := ["build", "age", "hair", "eyes", "skin", "garb", "bearing", "a scar or mark", "a color they wear"]

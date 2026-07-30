@@ -488,6 +488,44 @@ func _ready() -> void:
 	GameState.state = {}
 	assert(Composer.scene_context().contains("not yet established"))
 
+	# CN-2 — the envelope must forbid INVENTING A CAUSE for a number.
+	#
+	# The GM narrated "the vitality you lost in battle" with no battle fought. It
+	# could see HP below max and supplied a reason, which is what storytellers do
+	# with unexplained numbers. The sheet states what is true and never why, so
+	# the envelope has to say out loud that the why is not the model's to invent.
+	GameState.state = {"sheet": {"name": "Drao", "level": 3, "hp": 7, "hpMax": 22,
+		"abilities": {"STR": 12, "DEX": 12, "CON": 12, "INT": 10, "WIS": 10, "CHA": 10}}}
+	var env := Composer.envelope("I look around.")
+	assert(env.contains("7/22"))                       # the fact is stated
+	assert(env.contains("CAUSES are not yours to invent"))
+	assert(env.contains("Never explain a number by inventing an event"))
+	GameState.state = {}
+
+	# CN-4 — the backdrop key must carry the MOOD, or one painting serves a place
+	# forever: the reported symptom was a single plate across four days and three
+	# weather states. Buckets are coarse on purpose (3 light x 3 sky = 9 max per
+	# place, not 7 x 6 = 42), so this asserts they SEPARATE, not that they enumerate.
+	GameState.state = {"clock": {"day": 1, "ti": 1, "wx": {"ico": "*", "name": "clear skies"}}}
+	var noon := GameState.scene_mood()
+	GameState.state = {"clock": {"day": 1, "ti": 6, "wx": {"ico": "*", "name": "a brewing storm"}}}
+	var night := GameState.scene_mood()
+	assert(noon != night)                     # the same place must not key the same
+	assert(noon == "day-clear")
+	assert(night == "night-wet")
+	GameState.state = {"clock": {"day": 1, "ti": 5, "wx": {"ico": "*", "name": "low mist"}}}
+	assert(GameState.scene_mood() == "dusk-misty")
+	# An hour inside one afternoon is NOT a repaint; dusk falling is.
+	GameState.state = {"clock": {"day": 1, "ti": 1, "wx": {"ico": "*", "name": "clear skies"}}}
+	var m0 := GameState.scene_mood()
+	GameState.state["clock"]["ti"] = 2
+	assert(GameState.scene_mood() == m0)
+	# And the words a painter gets must differ with it.
+	assert(GameState.scene_mood_words() != "")
+	GameState.state = {"clock": {"day": 1, "ti": 6, "wx": {"ico": "*", "name": "a brewing storm"}}}
+	assert(GameState.scene_mood_words().contains("night"))
+	GameState.state = {}
+
 	# Persistence: save_kind updates local state AND lands on disk, immediately.
 	# The check that matters is the one that reads it back — asserting a write was
 	# merely QUEUED is how three features silently never persisted.

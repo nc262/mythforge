@@ -4,25 +4,6 @@ What is actually open, and why. Resolved work is not kept here — the code is t
 record of what shipped. Priority **P1** (blocks play) → **P4** (nice to have);
 effort **S/M/L**.
 
-## Identity — one hero, three different faces
-
-| # | Item | P | E |
-|---|---|---|---|
-| ID-1 | **The portrait and the paper doll are different people.** The round portrait and the full-body doll are separate diffusion renders with no shared seed or identity anchor, so the hero's face changes between two views of the same character | P1 | L |
-
-The habit behind it is deriving the likeness at the point of use instead of
-carrying one identity. Every future render of a character has to hang off one
-anchor, or this comes back per surface.
-
-## Continuity — the GM forgets where you are and what happened
-
-| # | Item | P | E |
-|---|---|---|---|
-| CN-1 | **Location breaks across a long rest** — camped at the barrow-mound, woke in the mead-hall guest room with no travel between them | P1 | M |
-| CN-2 | **The GM invents consequences that never happened** ("vitality lost in battle", no battle fought) | P2 | M |
-| CN-3 | **Sleeping somewhere hostile has no consequence** — two rests in an opened barrow with a hostile figure watching, nothing happened | P2 | M |
-| CN-4 | **The scene backdrop never changes** — one plate across four days, three weather states and four locations | P2 | M |
-
 ## Play systems — gaps a player runs into
 
 | # | Item | P | E |
@@ -32,6 +13,12 @@ anchor, or this comes back per surface.
 | PS-3 | Equipped weapon contradicts the kit — Quenching said Longsword, combat swung a Korvul Black Iron Hammer | P2 | S |
 | PS-4 | Each long rest costs a full dawn-to-dawn day; no way to rest without losing one | P4 | M |
 | PS-5 | Time divider printed for the first long rest only | P4 | S |
+
+Audited against the code 2026-07-30. Identity (one hero, one face), rest-place
+continuity, invented consequences and the frozen backdrop were all confirmed
+present, fixed, and each left a check behind that fails if the defect returns —
+see `_check_one_identity`, `_check_rest_place`, `_check_scene_follows_mood` and
+the envelope/mood assertions in `self_check`.
 
 ## The Atlas
 

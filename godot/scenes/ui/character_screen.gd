@@ -755,9 +755,13 @@ func _body_view(s: Dictionary, inv: Dictionary) -> Control:
 	col.custom_minimum_size = Vector2(238, 0)
 	col.add_theme_constant_override("separation", Ui.SPACE["s"])
 	# MythPlate: the shared forge frame every AI image ships in (phase 6).
-	var key := "herobody-" + GameState.cid().validate_filename()
+	# Both keys come from Art, not from string-building. A hero banked in one
+	# adventure and played in another owns art under the key they were painted
+	# with; rebuilding "hero-" + cid here names a file that does not exist, so the
+	# plate renders empty and the game re-commissions a face it already owns.
+	var key := Art.hero_body_key()
 	var plate := MythPlate.new(Vector2(230, 336))
-	plate.bind_key(key, Art.texture_for("hero-" + GameState.cid().validate_filename()))
+	plate.bind_key(key, Art.texture_for(Art.hero_key()))
 	if not Art.has_art(key):
 		Art.ensure(key, _body_prompt(s, inv))
 	col.add_child(plate)
@@ -787,10 +791,14 @@ func _body_prompt(s: Dictionary, inv: Dictionary) -> String:
 		if not it.is_empty():
 			worn.append(str(it.get("name", "")))
 	# Identity-true: world fashion ALWAYS (an Everyday cleric is not a plate
-	# knight), the worn pieces named on top of it.
+	# knight), the worn pieces named on top of it — and THE HERO'S OWN LOOK, which
+	# this prompt used to omit entirely. That omission is the whole of "the
+	# portrait and the doll are different people": the face was described in one
+	# prompt and left to the model's imagination in the other.
 	var gear := Art.subject_style("char") + ((", wearing " + ", ".join(worn)) if not worn.is_empty() else "")
-	return "full body character illustration of %s, a %s %s, %s, standing heroic pose, front view, %s, plain dark background, no text" % [
-		str(s.get("name", "a hero")), str(s.get("race", "")), str(s.get("cls", "")), gear, Art.world_flavor()]
+	return "full body character illustration of %s, a %s %s, %s, %s, standing heroic pose, front view, %s, plain dark background, no text" % [
+		str(s.get("name", "a hero")), str(s.get("race", "")), str(s.get("cls", "")),
+		Art.hero_look(s), gear, Art.world_flavor()]
 
 
 func _open_slot_picker(slot_key: String) -> void:

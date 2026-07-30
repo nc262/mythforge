@@ -116,6 +116,48 @@ func armor_ac_bonus(nm: String) -> int:
 ## world that renamed Halfling silently made them Medium and lost the
 ## heavy-weapon rule. Data wins now; this only catches what the table has never
 ## heard of.
+## HOW SAFE IS IT TO SLEEP HERE?
+##
+## CN-3 — two long rests inside an opened barrow, a hostile figure watching, and
+## nothing happened either night: the interrupt was a flat 1-in-4 wherever you
+## lay down, so a tavern bed and a monster's tomb carried identical risk. Where
+## you sleep is the single most obvious thing a rest should care about.
+##
+## Keyed on the location `kind` the worlds already carry. Unknown or unnamed is
+## treated as the wilds, because "I don't know where I am" is not a safe bed.
+const REST_RISK := {
+	"tavern": 0.05, "home": 0.05, "settlement": 0.08, "shop": 0.10,
+	"landmark": 0.25, "ruin": 0.45, "wilds": 0.40,
+}
+const REST_RISK_UNKNOWN := 0.35
+
+
+## The chance a long rest is interrupted in this place, and the reason, so the GM
+## can run an encounter that fits the ground rather than a generic ambush.
+func rest_risk(world_id_: String, here: String) -> Dictionary:
+	if here == "":
+		return {"risk": REST_RISK_UNKNOWN, "kind": "", "shelter": "in the open, with no roof you trust"}
+	for l in world_locations(world_id_):
+		if l is Dictionary and str(l.get("name", "")) == here:
+			var k := str(l.get("kind", ""))
+			if REST_RISK.has(k):
+				return {"risk": float(REST_RISK[k]), "kind": k, "shelter": _shelter_word(k)}
+			break
+	return {"risk": REST_RISK_UNKNOWN, "kind": "", "shelter": "somewhere you do not know well"}
+
+
+func _shelter_word(kind: String) -> String:
+	match kind:
+		"tavern": return "under a roof, among people"
+		"home": return "somewhere you are welcome"
+		"settlement": return "inside a settlement's walls"
+		"shop": return "on someone else's floor"
+		"landmark": return "at a place others also know how to find"
+		"ruin": return "inside a ruin that something else may still consider home"
+		"wilds": return "in the open wilds"
+	return "somewhere you do not know well"
+
+
 const SMALL_NAME_HINT := "(?i)halfling|gnome|goblin|kobold|imp|sprite|fairy|pixie|homunculus"
 
 const DEFAULT_BODY := {"height": 1.0, "girth": 1.0, "head": 1.0, "leg": 1.0, "arm": 1.0}
