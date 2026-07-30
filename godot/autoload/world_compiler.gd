@@ -887,31 +887,129 @@ func _stage_tactical(world_id: String, style: Dictionary) -> void:
 ## really does fence and chatter, so it is not dead code.
 func _ask_json(prompt: String, schema := "") -> Dictionary:
 	if LocalGM.available():
-		var txt := await LocalGM.complete_json(prompt, schema)
+		# THINK FIRST. These stages INVENT — a style guide, a bestiary, a cast —
+		# and inventing under a grammar is what produced word salad in the
+		# Worldsmith, because the schema preset replaces the sampler with raw
+		# distribution sampling (docs/LocalLLM-Tuning.md). The prose call keeps
+		# top-k/top-p/temperature/penalties, which is what makes the CONTENT good.
+		var txt := await LocalGM.prose(prompt)
 		if txt != "":
-			if schema != "":
-				var direct = JSON.parse_string(txt)
-				if direct is Dictionary:
-					return direct
+			# The prompts already ask for a JSON object and the model obliges,
+			# fenced and chattered at, exactly as it did through the server. When
+			# the extractor can read it that is the whole answer for ONE call —
+			# only pay for a second when it cannot.
 			var ld := _extract_json(txt)
 			if ld.size() == 1 and (ld.values()[0] is Dictionary):
-				return ld.values()[0]
-			return ld
-	var r := await Api.call_json(HTTPClient.METHOD_POST, "/api/characters/studio/complete_json",
-		{"prompt": prompt})
-	if r.get("_status", 0) != 200:
-		return {}
-	# The endpoint returns raw model text under "text"; small models fence and
-	# chatter around the object, so extract it rather than trust it.
-	if r.get("text") is String:
-		var d := _extract_json(str(r["text"]))
-		# The fast (3B) model often wraps the whole thing in a single descriptive
-		# key ({"style-guide": {...}}); unwrap once so the expected keys surface
-		# instead of the stage falling back to generic content.
-		if d.size() == 1 and (d.values()[0] is Dictionary):
-			return d.values()[0]
-		return d
+				ld = ld.values()[0]
+			ld = _coerce(ld, schema)
+			if _satisfies(ld, schema):
+				return ld
+			if schema != "":
+				# Copying the prose into the shape is LOW-ENTROPY WORK, which is
+				# the regime the constrained sampler is reliable in — but only
+				# while the schema is small. This one has eighteen keys with
+				# nested objects, and it degenerated partway through, turning
+				# `"colors": {"dominant": "#7A288A"}` into three more "materials"
+				# called colors, dominant and #:7A288A.
+				#
+				# So its answer is CHECKED, not trusted, and a prose answer that
+				# was merely incomplete wins over a re-shape that fell apart.
+				var shaped = JSON.parse_string(await LocalGM.complete_json(
+					"Copy the following into the required fields. Use ONLY what it "
+					+ "says — do not invent, summarise or improve anything.\n\n" + txt,
+					schema))
+				if shaped is Dictionary:
+					shaped = _coerce(shaped, schema)
+					if _satisfies(shaped, schema):
+						return shaped
+			if not ld.is_empty():
+				return ld
+	# No server path. Every stage has a `_fallback_*` that keeps a world playable
+	# without a model at all, which is a better answer than a second, quieter
+	# dependency on a FastAPI process and an Ollama daemon — and it is the answer
+	# the caller already knows how to use.
 	return {}
+
+
+## Make the prose answer fit the shape, where that is a rewrite and not a guess.
+##
+## Prose gives good CONTENT and loose SHAPE. Measured: the style stage returned
+## "materials": "Weathered wood, rusting iron, bleached bone, …" — eleven
+## excellent materials for a drowned pirate coast, in ONE string where an array
+## was wanted. The old grammar path could not have made that mistake, and also
+## could not have written "salt-rotted canvas".
+##
+## The schema is already written down, so it does the coercion here instead of
+## constraining the sampler: a declared array of strings that arrived as a string
+## is split, a declared string that arrived as a list is joined. Nothing else is
+## touched — an array of OBJECTS cannot be recovered from a sentence, and that is
+## what the extraction call below is for.
+func _coerce(d: Dictionary, schema: String) -> Dictionary:
+	if schema == "" or d.is_empty():
+		return d
+	var s = JSON.parse_string(schema)
+	if not (s is Dictionary) or not (s.get("properties") is Dictionary):
+		return d
+	for key in s["properties"]:
+		if not d.has(key):
+			continue
+		var spec = s["properties"][key]
+		if not (spec is Dictionary):
+			continue
+		var want := str(spec.get("type", ""))
+		var items := str(spec.get("items", {}).get("type", "")) if spec.get("items") is Dictionary else ""
+		var raw = d[key]
+		# The observed mistake is subtler than a bare string: the model emits
+		# valid JSON with the WHOLE LIST inside one array element —
+		#   "materials": ["Weathered wood, rusting iron, bleached bone, …"]
+		# — which parses cleanly, satisfies "is an Array", and is wrong.
+		if want == "array" and items == "string" and raw is Array \
+				and (raw as Array).size() == 1 and (raw as Array)[0] is String \
+				and int(spec.get("minItems", 0)) > 1:
+			raw = str((raw as Array)[0])
+		if want == "array" and raw is String:
+			if items != "string":
+				continue   # a list of objects is not hiding in a comma-separated line
+			var parts: Array = []
+			for piece in str(raw).split(",", false):
+				var t := piece.strip_edges().lstrip("-*• ").strip_edges()
+				if t != "":
+					parts.append(t)
+			if parts.size() > 1:
+				d[key] = parts
+		elif want == "string" and d[key] is Array:
+			d[key] = ", ".join((d[key] as Array).map(func(x): return str(x)))
+	return d
+
+
+## Did the answer arrive with everything the stage needs? Only `required` keys,
+## present and non-empty, and arrays long enough to be worth having — a stage
+## that falls back to generic content because one key was missing is worse than
+## one that pays for a second call.
+func _satisfies(d: Dictionary, schema: String) -> bool:
+	if d.is_empty():
+		return false
+	if schema == "":
+		return true
+	var s = JSON.parse_string(schema)
+	if not (s is Dictionary):
+		return true
+	for key in s.get("required", []):
+		if not d.has(key):
+			return false
+		var v = d[key]
+		if v is String and str(v).strip_edges() == "":
+			return false
+		if v is Array:
+			var want_min := 0
+			var spec = s.get("properties", {}).get(key)
+			if spec is Dictionary:
+				want_min = int(spec.get("minItems", 0))
+			# Half of what was asked for, floor 2: models under-fill lists, and
+			# rejecting a 7-of-10 bestiary costs more than it saves.
+			if (v as Array).size() < maxi(2, want_min / 2):
+				return false
+	return true
 
 
 # ── The shapes each stage wants ─────────────────────────────────────────────

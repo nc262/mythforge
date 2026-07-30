@@ -136,11 +136,6 @@ _TIMEOUT_EXEMPT_PREFIXES = (
     # moved in-process — see godot/autoload/chronicle.gd.)
     "/api/characters/studio/suggest",
     "/api/characters/studio/describe",
-    # World Compiler seed stages (style guide, asset language, creatures, NPCs):
-    # each is a large structured-JSON completion that routinely exceeds 45s, so
-    # the middleware was 504'ing them and the compiler silently fell back to
-    # generic content — the world lost its LLM-authored identity.
-    "/api/characters/studio/complete_json",
 )
 
 

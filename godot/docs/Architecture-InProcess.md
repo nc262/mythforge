@@ -40,8 +40,12 @@ Every endpoint the Godot client calls, and whether it needs a server:
 | ~~`/api/characters/studio/memory/{beat,recall}`~~ | embed a beat, recall by similarity | **gone** — `LocalMemory` (cfac9fd) |
 | ~~`/api/characters/studio/{codex,quests,worldtick}`~~ | cast, quests, the living world | **gone** — `Chronicle`, schema-constrained |
 | ~~`/api/characters/studio/worldsmith`~~ | forge a world or a campaign | **gone** — `Worldsmith` autoload |
+| ~~`/api/characters/studio/complete_json`~~ | the World Compiler's stages | **gone** — think-then-serialise, in process |
 | `/api/characters/studio/generate` | portrait/scene art → sd.cpp | **no** — local diffusion |
-| `/api/characters/studio/complete_json` | the World Compiler's stages | **no** — local LLM |
+
+**No LLM call leaves this process any more.** The backend still holds session,
+auth and world-state bookkeeping, and proxies image generation to sd.cpp; every
+word the game writes is written here.
 | `/api/models`, `/api/session`, `/api/default-chat`, `/api/history` | model + session bookkeeping | **no** — an artefact of the server |
 | `/api/auth/*` | identity | **no** — single player |
 | `/api/stt/transcribe` | speech to text | **no** — whisper.cpp |

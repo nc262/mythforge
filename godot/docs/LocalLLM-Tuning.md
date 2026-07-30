@@ -70,6 +70,21 @@ Split it in two, and use each config for the thing it is good at:
    prose from step 1. Extraction is a low-entropy task, which is the regime where
    `Dist` is safe, and it is what codex/quests/world-tick already do reliably.
 
+**…but only while the schema is small.** Being on the extraction side of the
+split is not a licence. Copying an eighteen-key style guide with nested objects
+into shape, the sampler degenerated partway through and turned
+`"colors": {"dominant": "#7A288A"}` into three further "materials" named
+`colors`, `dominant` and `#:7A288A`. Treat an extraction's answer as a claim to
+be checked, and prefer an incomplete prose answer over a re-shape that fell
+apart.
+
+**Prefer fixing the shape in code to asking twice.** Prose gives good content and
+loose shape — the same stage returned eleven excellent materials for a drowned
+pirate coast inside ONE array element. Unpacking that in code took the stage from
+20.8 s to **7.4 s**, because the second call stopped being necessary. The schema
+is still worth writing; it just earns its keep as a spec the code enforces rather
+than as a constraint on the sampler.
+
 Two calls at ~2 s each beat one call that fails at 98 s. It also sidesteps the
 "cannot combine" limitation entirely rather than fighting it.
 

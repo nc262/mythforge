@@ -246,6 +246,50 @@ func _ready() -> void:
 		_ck(st.get("_status", 0) == 200 and str(st.get("title", "")) != "", "a campaign was crafted")
 		_ck(str(st.get("hook", "")) != "", "and it has an opening scene")
 
+	# ── The World Compiler's stages ─────────────────────────────────────────
+	# These INVENT under what used to be a large nested grammar, which is the
+	# shape that produced word salad. The check is not "did it return a
+	# dictionary" — a garbled answer is still a dictionary — but whether the
+	# strings are English.
+	if LocalGM.available():
+		var world := {"id": "cw-probe", "name": "Saltmarsh Reach",
+			"kind": "drowned pirate coast", "tagline": "where the tide keeps its secrets",
+			"lore": "A shattered archipelago of sunken forts and salt-bleached wrecks, "
+				+ "ruled by tide-pirates and the drowned things that envy them."}
+		t0 = Time.get_ticks_msec()
+		var style: Dictionary = await Compiler._stage_style_guide(world)
+		print("  style: %d ms | %s" % [Time.get_ticks_msec() - t0,
+			str(style.get("visual_language", "")).left(150)])
+		_ck(not style.is_empty(), "the style guide compiled")
+		_ck(str(style.get("visual_language", "")).length() > 20, "and it described the look")
+		var mats = style.get("materials", [])
+		_ck(mats is Array and (mats as Array).size() >= 6,
+			"and named the materials the world is built from (%d)" % (mats as Array).size())
+		print("    materials: %s" % ", ".join((mats as Array).slice(0, 6)))
+		# Word salad passes every structural check ever written, so look at the
+		# words. This started at "short and few words", which happily accepted
+		# `colors`, `dominant`, `accent` and `#:7A288A` — the style schema's own
+		# field names, which had leaked in from a botched re-shape. Anything that
+		# smells of JSON structure, or names a key of the object it lives in, is
+		# debris rather than a material.
+		var junk := ["colors", "dominant", "accent", "shadow", "lighting", "weather",
+			"symbols", "culture", "music", "flora", "fauna", "armor", "weapons"]
+		var sane := 0
+		var bad: Array[String] = []
+		for m in (mats as Array):
+			var w := str(m).strip_edges()
+			var ok := w.length() >= 3 and w.length() <= 40 and w.split(" ").size() <= 4 \
+				and w.find(":") < 0 and w.find("#") < 0 and w.find("{") < 0 \
+				and w.find("\"") < 0 and not junk.has(w.to_lower())
+			if ok:
+				sane += 1
+			else:
+				bad.append(w)
+		_ck(sane >= int((mats as Array).size() * 0.8),
+			"and they read as materials rather than noise (%d/%d)%s"
+			% [sane, (mats as Array).size(),
+				"  rejected: %s" % ", ".join(bad) if not bad.is_empty() else ""])
+
 	LocalMemory.wipe(KEY)
 	print("LOCAL STACK %s" % ("OK" if _fail == 0 else "FAILED (%d)" % _fail))
 	get_tree().quit(1 if _fail > 0 else 0)

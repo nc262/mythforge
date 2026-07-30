@@ -493,54 +493,6 @@ def setup_character_studio_routes(preset_manager) -> APIRouter:
         suggestions = _parse_suggestion_list(raw, spec["n"])
         return {"ok": True, "field": field, "suggestions": suggestions}
 
-    @router.post("/api/characters/studio/complete_json")
-    async def studio_complete_json(request: Request):
-        """Generic 'answer with one JSON object' completion. The World Compiler
-        (godot client) asks for structured design documents — style guides,
-        asset languages — that don't fit the field-locked /suggest or the
-        world/story-shaped /worldsmith. One prompt in, one JSON object out.
-        Uses the larger creative model; small models fence/chatter, so the
-        client extracts the object defensively either way."""
-        user = get_current_user(request)
-        data = await request.json()
-        prompt = (data.get("prompt") or "").strip()
-        if not prompt:
-            raise HTTPException(400, "prompt required.")
-        # The World Compiler's seed is creative, quality-critical work (weapon
-        # forms, materials, monsters that must READ right — the 3B fast model
-        # produces junk here, e.g. "weapon forms" = sharpening stones). Use the
-        # full default (narration-grade) model. `fast:true` opts a caller into the
-        # small model for cheap stages that can tolerate it.
-        pick = _extractor_model if bool(data.get("fast")) else _default_text_model
-        model_spec = pick(user, (data.get("model") or "").strip())
-        if not model_spec:
-            raise HTTPException(400, "No text model available.")
-        try:
-            url, model_id, headers = _resolve_model(model_spec, owner=user)
-        except ValueError:
-            raise HTTPException(400, "Could not resolve a model.")
-        messages = [
-            {"role": "system", "content": "You are a precise design assistant. "
-             "Answer with exactly one valid JSON object and nothing else — no "
-             "prose, no markdown fences."},
-            {"role": "user", "content": prompt},
-        ]
-        try:
-            # json_mode grammar-constrains the decode to ONE valid JSON value
-            # (Ollama format:"json"), so a small model can't emit the malformed
-            # objects the World Compiler kept falling back on. The higher token
-            # ceiling stops big arrays (8-creature bestiaries) truncating
-            # mid-structure — the "Expected ']'" failures.
-            raw = await llm_call_async(url, model_id, messages,
-                                       temperature=0.9,
-                                       max_tokens=int(data.get("max_tokens") or 3000),
-                                       json_mode=True,
-                                       headers=headers)
-        except Exception as e:
-            logger.warning("Studio complete_json failed: %s", e)
-            raise HTTPException(502, "Generation failed.")
-        return {"ok": True, "text": raw}
-
     @router.post("/api/characters/studio/activate")
     async def studio_activate(request: Request):
         """Make a saved character the active persona for chat (sets the `custom`

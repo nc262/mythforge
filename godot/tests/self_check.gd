@@ -569,6 +569,38 @@ The term for spell slots is "Echoes."
 	assert(Worldsmith.parse_reskins(decoy).get("names", {}).size() == 1,
 		"a partial answer yields only what it actually said")
 
+	# The World Compiler's stages think in prose and are shaped afterwards, so
+	# the coercion is load-bearing: measured, the style stage returned eleven
+	# good materials inside ONE string where an array was wanted.
+	var arr_schema := '{"type":"object","required":["materials","visual_language"],' \
+		+ '"properties":{"materials":{"type":"array","minItems":10,"items":{"type":"string"}},' \
+		+ '"visual_language":{"type":"string"},' \
+		+ '"colors":{"type":"array","minItems":2,"items":{"type":"object"}}}}'
+	var coerced := Compiler._coerce({
+		"materials": "Weathered wood, rusting iron, bleached bone, tarred rope",
+		"visual_language": ["salt-bleached", "low sun"],
+		"colors": "not, recoverable",
+	}, arr_schema)
+	assert(coerced["materials"] is Array and (coerced["materials"] as Array).size() == 4,
+		"a comma-joined list becomes the array the stage asked for")
+	# The shape actually observed: valid JSON, whole list inside ONE element.
+	# It parses, it IS an array, and it is still wrong.
+	var one_elem := Compiler._coerce({"materials":
+		["Weathered wood, rusting iron, bleached bone, tarred rope"],
+		"visual_language": "salt and rust"}, arr_schema)
+	assert((one_elem["materials"] as Array).size() == 4,
+		"a list smuggled inside a single array element is unpacked")
+	assert(str((coerced["materials"] as Array)[1]) == "rusting iron", "…trimmed")
+	assert(coerced["visual_language"] is String, "a list where prose was wanted is joined")
+	assert(coerced["colors"] is String,
+		"an array of OBJECTS is left alone — it is not hiding in a sentence")
+	# The gate that decides whether a second call is worth paying for.
+	assert(not Compiler._satisfies({"materials": ["one"]}, arr_schema),
+		"a stage missing a required key is not accepted")
+	assert(Compiler._satisfies({"materials": ["a", "b", "c", "d", "e"],
+		"visual_language": "salt and rust"}, arr_schema),
+		"…but an under-filled list still beats falling back to generic content")
+
 	# The smith's ask-back copies prose lines faithfully, label and all, so the
 	# label is stripped on this side. Pinned here because the pattern holds
 	# literal dash characters — PCRE2 has no \u escape, and getting that wrong
