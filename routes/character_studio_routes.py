@@ -38,7 +38,11 @@ from src.llm_core import llm_call_async
 from src import party_registry
 from src import campaign_memory
 from src import art_styles
-from routes.gallery_routes import _first_visible_image_endpoint
+# Was `from routes.gallery_routes import _first_visible_image_endpoint`. The
+# studio is the router the Godot client depends on; the gallery is one it never
+# calls, so importing image-endpoint selection from it made the gallery
+# undeletable and put image generation behind dead code. See src/image_endpoints.py.
+from src.image_endpoints import first_visible_image_endpoint as _first_visible_image_endpoint
 
 logger = logging.getLogger(__name__)
 

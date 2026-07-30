@@ -150,30 +150,9 @@ def test_document_owner_filter_applies_owner_clause():
 
 
 # ---------------------------------------------------------------------------
-# gallery._owner_filter
+# The two gallery._owner_filter cases were removed with the gallery router. The
+# same single-user/owner gate is still covered here for every surviving module.
 # ---------------------------------------------------------------------------
-
-def test_gallery_owner_filter_allows_single_user_mode():
-    from routes.gallery_routes import _owner_filter
-    fake_q = MagicMock()
-    out = _owner_filter(fake_q, user=None)
-    # user=None means single-user/auth-disabled mode: return q unchanged, no filter.
-    fake_q.filter.assert_not_called()
-    assert out is fake_q
-
-
-def test_gallery_owner_filter_passes_user():
-    from routes.gallery_routes import _owner_filter
-    fake_q = MagicMock()
-    out = _owner_filter(fake_q, user="alice")
-    # Under the SQLAlchemy MagicMock stubs we can't introspect the
-    # column clause; verifying that filter() was invoked exactly once
-    # (and returned its mocked query) is enough to guard the signature
-    # and stop a regression where the function silently no-ops on
-    # logged-in users.
-    fake_q.filter.assert_called_once()
-    assert out is fake_q.filter.return_value
-
 
 # ---------------------------------------------------------------------------
 # webhook._caller_owns_session  (POST /api/v1/chat sync-chat endpoint)

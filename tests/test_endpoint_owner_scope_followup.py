@@ -376,29 +376,33 @@ def test_compare_endpoint_key_lookup_is_owner_scoped():
     assert "owner_filter(q, ModelEndpoint, owner)" in id_helper_body
 
 
-def test_gallery_image_endpoint_lookups_are_owner_scoped():
-    body = Path("routes/gallery_routes.py").read_text(encoding="utf-8")
-    helper_body = body.split("def _visible_image_endpoint_query", 1)[1].split(
-        "def _first_visible_image_endpoint", 1
+def test_image_endpoint_lookups_are_owner_scoped():
+    """The image-endpoint query must stay owner-scoped.
+
+    Was `test_gallery_image_endpoint_lookups_are_owner_scoped`, reading
+    routes/gallery_routes.py. That router is deleted (32 endpoints, none called by
+    the game) but these two lookups moved to src/image_endpoints.py — the studio
+    needs them to generate — so the SECURITY invariant follows the code rather
+    than dying with its old home. Dropped with the router: the assertions about
+    gallery_ai_upscale / style_transfer / inpaint_proxy / harmonize_image, whose
+    routes no longer exist.
+    """
+    body = Path("src/image_endpoints.py").read_text(encoding="utf-8")
+    helper_body = body.split("def visible_image_endpoint_query", 1)[1].split(
+        "def first_visible_image_endpoint", 1
     )[0]
 
     assert "owner_filter(q, ModelEndpoint, owner)" in helper_body
-    assert body.count("_first_visible_image_endpoint(db, user)") >= 4
-    assert body.count("_visible_image_endpoint_for_base(db,") >= 2
-    assert "def _current_user_is_admin" in body
-    assert body.count('raise HTTPException(403, "Choose a registered image endpoint")') == 2
-    for marker in (
-        "async def gallery_ai_upscale",
-        "async def gallery_style_transfer",
-        "async def inpaint_proxy",
-        "async def harmonize_image",
-    ):
-        section = body.split(marker, 1)[1].split("@router.", 1)[0]
-        assert "user = require_privilege(request, \"can_generate_images\")" in section
-        assert (
-            "_first_visible_image_endpoint(db, user)" in section
-            or "_visible_image_endpoint_for_base(db," in section
+    # Both lookups must go through the owner-scoped query, never a raw db.query.
+    for fn in ("def first_visible_image_endpoint", "def visible_image_endpoint_for_base"):
+        section = body.split(fn, 1)[1].split("\ndef ", 1)[0]
+        assert "visible_image_endpoint_query(db, owner)" in section, (
+            "%s must resolve through the owner-scoped query" % fn
         )
+
+    # And the caller still gates on the privilege before generating.
+    studio = Path("routes/character_studio_routes.py").read_text(encoding="utf-8")
+    assert 'require_privilege(request, "can_generate_images")' in studio
 
 
 def test_research_endpoint_resolution_passes_owner():

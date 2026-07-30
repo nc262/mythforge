@@ -40,10 +40,8 @@ def test_direct_upload_routes_use_bounded_reads():
         "routes/stt_routes.py": [
             "read_upload_limited(file, STT_MAX_AUDIO_BYTES",
         ],
-        "routes/gallery_routes.py": [
-            "read_upload_limited(file, GALLERY_UPLOAD_MAX_BYTES",
-            "read_upload_limited(file, GALLERY_TRANSFORM_UPLOAD_MAX_BYTES",
-        ],
+        # gallery_routes.py entry dropped with the gallery router (32 endpoints,
+        # none called by the game). Its upload paths went with it.
         "routes/memory_routes.py": [
             "read_upload_limited(file, MEMORY_IMPORT_MAX_BYTES",
         ],

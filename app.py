@@ -681,8 +681,16 @@ logger.info("STT service initialized (provider managed via settings)")
 # [MYTHFORGE-CUT] app.include_router(setup_signature_routes())
 
 # Gallery (image library)
-from routes.gallery_routes import setup_gallery_routes
-app.include_router(setup_gallery_routes())
+# [MYTHFORGE-CUT] gallery_routes — 1,900 lines, 32 endpoints, ZERO called by the
+# Godot client (scripts/route_surface.py). It served the web UI's image gallery:
+# albums, AI tagging, AI upscale, batch operations. The client's own art lives in
+# godot/baked/ and user://art, and it fetches generated images through
+# /api/generated-image/{filename}, which stays.
+#
+# The one thing worth keeping from it — image-endpoint selection, which the
+# character studio needs for generation — moved to src/image_endpoints.py first.
+# [MYTHFORGE-CUT] from routes.gallery_routes import setup_gallery_routes
+# [MYTHFORGE-CUT] app.include_router(setup_gallery_routes())
 
 # Persisted image-editor drafts (server-backed projects)
 # [MYTHFORGE-CUT] from routes.editor_draft_routes import setup_editor_draft_routes
