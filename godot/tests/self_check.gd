@@ -94,6 +94,54 @@ func _ready() -> void:
 	# Spell save DC: level 5 Wizard INT 16 → 8 + 3 + 3 = 14
 	assert(Rules.spell_save_dc({"cls": "Wizard", "level": 5, "abilities": {"INT": 16}}) == 14)
 
+	# PS-1 — A LEVEL-1 HERO HAS THEIR CLASS FEATURE.
+	#
+	# The forge wrote HERITAGE traits into sheet.features, which the sheet renders
+	# under "Class Features" and which feature_action_key() matches to put a
+	# usable action on the HUD. So a level-1 Fighter had no Second Wind, a
+	# Barbarian no Rage, and the "Class Features" list was their heritage —
+	# repeated again on the Story page. Level-up only grants the level just
+	# reached, so level 1's features were lost the moment the hero was forged.
+	assert(Rules.class_features_upto("Fighter", 1).any(func(f): return str(f).begins_with("Second Wind")))
+	assert(Rules.class_features_upto("Barbarian", 1).any(func(f): return str(f).begins_with("Rage")))
+	assert(Rules.class_features_upto("Paladin", 1).any(func(f): return str(f).begins_with("Lay on Hands")))
+	# It must ACCUMULATE, not report only the newest level.
+	var f5 := Rules.class_features_upto("Fighter", 5)
+	assert(f5.any(func(f): return str(f).begins_with("Second Wind")))     # still there at 5
+	assert(f5.any(func(f): return str(f).begins_with("Action Surge")))    # level 2
+	assert(f5.size() > Rules.class_features_upto("Fighter", 1).size())
+	# No heritage trait may masquerade as a class feature.
+	for race in ["Human", "Half-Orc", "Elf"]:
+		for t in Rules.tables.get("heritages", {}).get(race, {}).get("traits", []):
+			assert(not Rules.class_features_upto("Fighter", 5).has(str(t)))
+	# And the feature must actually REACH the HUD, or it is a line of text.
+	assert(GameState.feature_action_key(str(Rules.class_features_upto("Fighter", 1)[0])) == "Second Wind")
+
+	# PS-2 — NO HERO LEAVES THE FORGE WITH A SWORD AND NOTHING ELSE.
+	#
+	# Both kit paths can hand back exactly one weapon (a compiled world whose
+	# asset language invented no armour forms does), and neither ever granted
+	# sundries. The floor fills only what is MISSING.
+	var lone_sword := [{"name": "Longsword", "type": "weapon"}]
+	var gaps := Rules.kit_gaps(lone_sword, "fantasy")
+	assert(not gaps.has("Club"))                            # already armed
+	assert(gaps.has("Traveler's Leathers"))                 # but unarmoured
+	assert(gaps.any(func(g): return str(g).begins_with("Rations")))
+	# A generous kit is left alone apart from sundries.
+	var full := [{"name": "Longsword", "type": "weapon"}, {"name": "Chain Shirt", "type": "armor"}]
+	var gaps2 := Rules.kit_gaps(full, "fantasy")
+	assert(not gaps2.has("Club") and not gaps2.has("Traveler's Leathers"))
+	# Nothing is added twice.
+	var already := [{"name": "Torch", "type": "misc"}]
+	assert(not Rules.kit_gaps(already, "fantasy").has("Torch"))
+	# An empty-handed hero gets armed.
+	assert(Rules.kit_gaps([], "fantasy").has("Club"))
+	# Family-flavoured: a runner carries no tinderbox.
+	var cyber := Rules.kit_gaps([], "cyber")
+	assert(not cyber.has("Tinderbox"))
+	assert(cyber.any(func(g): return str(g).begins_with("Ration Bars")))
+	assert(Rules.starting_sundries("nonesuch") == Rules.starting_sundries("_"))
+
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
 	assert(Combat.weapon_dmg_type("Longbow") == "piercing")

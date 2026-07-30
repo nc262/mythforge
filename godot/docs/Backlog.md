@@ -8,17 +8,19 @@ effort **S/M/L**.
 
 | # | Item | P | E |
 |---|---|---|---|
-| PS-1 | A level-1 Fighter has **no class features** — Powers shows only the heritage trait, mislabelled as a class feature and duplicated on Story | P2 | M |
-| PS-2 | **Starting equipment is one weapon** — no armour, shield, pack or rations | P2 | M |
-| PS-3 | Equipped weapon contradicts the kit — Quenching said Longsword, combat swung a Korvul Black Iron Hammer | P2 | S |
 | PS-4 | Each long rest costs a full dawn-to-dawn day; no way to rest without losing one | P4 | M |
 | PS-5 | Time divider printed for the first long rest only | P4 | S |
 
-Audited against the code 2026-07-30. Identity (one hero, one face), rest-place
-continuity, invented consequences and the frozen backdrop were all confirmed
-present, fixed, and each left a check behind that fails if the defect returns —
-see `_check_one_identity`, `_check_rest_place`, `_check_scene_follows_mood` and
-the envelope/mood assertions in `self_check`.
+Audited against the code 2026-07-30, high priority first. Every P1 (identity,
+rest-place continuity, invented consequences, the frozen backdrop) and the three
+P2 play-system gaps (level-1 class features, the starting-kit floor, the kit the
+Quenching promises) were confirmed still present, fixed, and each left a check
+behind that FAILS if the defect returns — verified by reverting each fix and
+watching it fail. See `_check_one_identity`, `_check_rest_place`,
+`_check_scene_follows_mood`, `_check_forge_grants_features` and the
+envelope/mood/feature/kit assertions in `self_check`.
+
+Still unaudited below this line.
 
 ## The Atlas
 

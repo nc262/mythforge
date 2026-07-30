@@ -473,8 +473,14 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 		if not skills.has(sk):
 			skills.append(sk)
 	s["profSkills"] = skills
-	var traits: Array = heritage.get("traits", [])
-	s["features"] = traits.duplicate()
+	# CLASS features, not heritage traits. `features` is rendered on the sheet
+	# under "Class Features" and is what GameState.feature_action_key() matches to
+	# put a usable action on the HUD — so writing heritage traits here gave a
+	# level-1 Fighter no Second Wind, a Barbarian no Rage, and a "Class Features"
+	# list that was actually their heritage, repeated again on the Story page.
+	# Heritage traits are not lost: the Story page reads them from the heritage
+	# table, which is where they live (PS-1).
+	s["features"] = Rules.class_features_upto(cls, int(s.get("level", 1)))
 	# The player's own class/background story — the GM reinterprets it inside
 	# whatever world this hero was dropped into (adventure_forge / world card).
 	var story := {}
@@ -509,6 +515,14 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	else:
 		for it_nm in extra.get("kit", []):
 			GameState.add_item(str(it_nm), "common", 1)
+	# PS-2 — THE FLOOR. Both kit paths above can legitimately hand back a single
+	# weapon: a compiled world whose asset language invented no armour forms
+	# yields exactly that, and neither path has ever granted sundries. A hero who
+	# walks out of the forge with a sword and no rations is not equipped, they are
+	# half-built. Only what is MISSING is added, so a generous kit is untouched.
+	for gap in Rules.kit_gaps(GameState.inv().get("items", []),
+			WorldSkin.family_for_id(GameState.world_id())):
+		GameState.add_item(str(gap), "common", 1)
 	var inv2 := GameState.inv()
 	var eq2: Dictionary = inv2.get("equipped", {})
 	for it in inv2.get("items", []):

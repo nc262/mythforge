@@ -207,6 +207,65 @@ func body_tier(race: String) -> String:
 	return str(heritage(race).get("tier", "regular"))
 
 
+## EVERY CLASS FEATURE A HERO OF THIS LEVEL HAS EARNED.
+##
+## PS-1 — a level-1 Fighter had no class features at all. The forge wrote the
+## HERITAGE traits into `sheet.features`, the sheet rendered that list under the
+## header "Class Features", and the Story page rendered the same traits again
+## from the heritage table: mislabelled in one place, duplicated in the other,
+## and Second Wind nowhere. Level-up only ever granted features for the level
+## just reached, so level 1's were lost the moment the hero was forged.
+##
+## The data was there the whole time (tables.json class_features."Fighter"."1").
+## Nothing asked for it.
+func class_features_upto(cls: String, level: int) -> Array:
+	var out: Array = []
+	var by_level: Dictionary = tables.get("class_features", {}).get(cls, {})
+	for l in range(1, maxi(1, level) + 1):
+		for f in by_level.get(str(l), []):
+			var name := str(f)
+			if not out.has(name):
+				out.append(name)
+	return out
+
+
+## WHAT EVERY ADVENTURER CARRIES, whatever their class or world.
+##
+## PS-2 — a forged hero started with a weapon and nothing else: no armour, no
+## pack, no rations. Two paths produce a starting kit and both could legitimately
+## return one item — a compiled world whose asset language happened to invent no
+## armour forms yields `[weapon]`, and neither path has ever granted sundries at
+## all. So this is a FLOOR under both rather than a fix to either.
+##
+## Family-flavoured, because a cyberpunk runner does not carry a tinderbox.
+func starting_sundries(fam: String) -> Array:
+	var by_fam: Dictionary = tables.get("starting_sundries", {})
+	var got = by_fam.get(fam, by_fam.get("_", []))
+	return got if got is Array else []
+
+
+## The gear a hero is still missing after their kit was applied: a weapon, body
+## armour, and any sundry they do not already carry. Names only — the caller
+## decides how they enter the pack.
+func kit_gaps(items: Array, fam: String) -> Array:
+	var have_type := {}
+	var have_name := {}
+	for it in items:
+		if not (it is Dictionary):
+			continue
+		have_type[str(it.get("type", ""))] = true
+		have_name[str(it.get("name", "")).to_lower()] = true
+	var out: Array = []
+	if not have_type.has("weapon"):
+		out.append("Club")            # humble, but a hero is never unarmed
+	if not have_type.has("armor"):
+		out.append("Traveler's Leathers")
+	for nm in starting_sundries(fam):
+		if not have_name.has(str(nm).to_lower()):
+			out.append(str(nm))
+	return out
+
+
 ## Extra meshes parented to a bone (ears, horns, tail, snout). These do not
 ## affect armour fitting — the one real exception is helm versus horns.
 func heritage_features(race: String) -> Array:

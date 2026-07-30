@@ -1675,5 +1675,39 @@
    "shoulder": 0.97,
    "hip": 1.03
   }
+ },
+ "starting_sundries": {
+  "_": [
+   "Rations (3 days)",
+   "Waterskin",
+   "Bedroll",
+   "Hempen Rope (50 ft)",
+   "Torch",
+   "Tinderbox"
+  ],
+  "cyber": [
+   "Ration Bars (3 days)",
+   "Water Flask",
+   "Thermal Blanket",
+   "Grapple Line",
+   "Glowstrip",
+   "Multitool"
+  ],
+  "everyday": [
+   "Snacks",
+   "Water Bottle",
+   "Spare Jacket",
+   "Phone Charger",
+   "Flashlight",
+   "Multitool"
+  ],
+  "space": [
+   "Ration Packs (3 days)",
+   "Water Recycler",
+   "Sleep Sack",
+   "Tether Line",
+   "Handlamp",
+   "Multitool"
+  ]
  }
 }

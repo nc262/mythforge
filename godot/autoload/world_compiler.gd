@@ -1761,6 +1761,24 @@ func battle_map_path(world_id: String, biome_index: int) -> String:
 
 ## A starting loadout resolved to full catalogue records, for an archetype id
 ## (warrior/defender/skirmisher/ranger/caster). [] if the world or kit is absent.
+## THE NAMES A HERO OF THIS CLASS WILL ACTUALLY START WITH, in this world.
+##
+## PS-3 — the Quenching promised "kit: Longsword, Oak Shield, Traveler's
+## Leathers" and combat swung a Korvul Black Iron Hammer. Both were correct
+## about their own source: the forge showed its generic card, while the commit
+## granted the WORLD's compiled kit whenever one existed. Two answers to one
+## question is how a summary becomes a lie.
+##
+## Empty means this world has no compiled kit and the caller's generic list is
+## the truth — the same condition _create_hero branches on.
+func kit_names_for_class(world_id: String, cls: String) -> Array:
+	var out: Array = []
+	for rec in kit_for(world_id, archetype_for_class(cls)):
+		if rec is Dictionary and str(rec.get("name", "")) != "":
+			out.append(str(rec["name"]))
+	return out
+
+
 func kit_for(world_id: String, archetype: String) -> Array:
 	var p := "%s/data/kits.json" % world_dir(world_id)
 	if not FileAccess.file_exists(p):

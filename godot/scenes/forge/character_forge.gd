@@ -591,8 +591,22 @@ func _stage_quenching() -> void:
 	# ability score is a whole number; round on the way to the eye, not in the data.
 	var nature := ("destiny: " + ", ".join(draft["rolled"].map(func(x): return str(int(round(float(x))))))) if not draft["rolled"].is_empty() \
 		else "the standard array, by hand"
+	# PS-3 — show what the hero will ACTUALLY carry. This read draft["kit"], the
+	# generic forge card, while the commit grants the WORLD's compiled kit
+	# whenever one exists: the Quenching said Longsword and combat swung a Korvul
+	# Black Iron Hammer. Ask the same source the commit asks. In menu mode there
+	# is no world yet, so the generic list is the honest answer there.
+	var kit_names: Array = [] if menu_mode else Compiler.kit_names_for_class(GameState.world_id(), str(draft["cls"]))
+	if kit_names.is_empty():
+		kit_names = draft["kit"].duplicate()
+	# ...and the sundries floor is part of the promise too (PS-2).
+	var shown: Array = []
+	for k in kit_names:
+		shown.append({"name": str(k), "type": Rules.item_type(str(k))})
+	for gap in Rules.kit_gaps(shown, WorldSkin.family_for_id(GameState.world_id())):
+		kit_names.append(str(gap))
 	epithet.text = "%s %s · %s · %s · kit: %s" % [str(draft["race"]), str(draft["cls"]), str(draft["bg"]), nature,
-		", ".join(draft["kit"])]
+		", ".join(kit_names)]
 	epithet.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	epithet.custom_minimum_size = Vector2(620, 0)
 	_stage_box.add_child(epithet)

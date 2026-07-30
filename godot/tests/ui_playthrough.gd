@@ -425,6 +425,44 @@ func ", at + 10)
 	_ck(src.find("mood_changed.connect") >= 0,
 		"scene: nothing repaints on a mood change — standing still freezes the world (CN-4)")
 	print("  scene: the backdrop follows the light and the weather, not just the place")
+	_check_forge_grants_features()
+
+
+## PS-1 — IS THE CLASS-FEATURE TABLE ACTUALLY WIRED TO THE FORGE?
+##
+## self_check proves Rules.class_features_upto() returns the right list. That is
+## worth nothing if _create_hero never calls it — which is exactly the state this
+## was in: the table had Second Wind at level 1 the whole time, and nothing asked
+## for it. Asserted on the source, because the defect is a call site.
+func _check_forge_grants_features() -> void:
+	var path := "res://scripts/game.gd"
+	_ck(FileAccess.file_exists(path), "features: %s exists to be checked" % path)
+	var src := FileAccess.get_file_as_string(path)
+	var at := src.find("func _create_hero(")
+	_ck(at >= 0, "features: _create_hero is gone — heroes are built somewhere else now")
+	if at < 0:
+		return
+	var nxt := src.find("
+func ", at + 10)
+	var body := src.substr(at, (nxt - at) if nxt > at else 4000)
+	_ck(body.find("class_features_upto") >= 0,
+		"features: the forge does not grant class features — a level-1 hero has none (PS-1)")
+	_ck(body.find('"features"] = traits') < 0,
+		"features: heritage traits are being written as class features again (PS-1)")
+	# PS-2 — and the kit floor has to be APPLIED, not merely available.
+	_ck(body.find("kit_gaps") >= 0,
+		"features: the forge applies no kit floor — a hero can leave with one weapon (PS-2)")
+	# PS-3 — the Quenching must promise what the commit delivers. Both must read
+	# the SAME source: the forge showed its generic card while the commit granted
+	# the world's compiled kit, so the summary said Longsword and combat swung a
+	# Korvul Black Iron Hammer.
+	var forge_src := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
+	_ck(forge_src.find("kit_names_for_class") >= 0,
+		"kit: the Quenching does not ask what the hero will actually carry (PS-3)")
+	_ck(body.find("Compiler.kit_for(") >= 0,
+		"kit: the commit no longer grants the world kit — the two paths have drifted (PS-3)")
+	print("  features: the forge grants level-1 features and floors the starting kit")
+	print("  kit: the Quenching promises what the commit delivers")
 
 
 ## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no
