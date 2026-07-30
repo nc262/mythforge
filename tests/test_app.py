@@ -84,11 +84,12 @@ class TestImports:
 class TestRouteFiles:
     """Test that route files exist and have proper structure"""
 
-    def test_auth_routes_exist(self):
-        """Test auth_routes.py exists"""
-        routes_path = os.path.dirname(os.path.dirname(__file__))
-        auth_routes = os.path.join(routes_path, "routes", "auth_routes.py")
-        assert os.path.exists(auth_routes), "auth_routes.py should exist"
+    def test_no_auth_session_or_history_routes(self):
+        """The single-player game has no login, no server session, no server
+        transcript — so those routers are gone, not merely unmounted."""
+        routes_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "routes")
+        for gone in ("auth_routes.py", "session_routes.py", "history_routes.py"):
+            assert not os.path.exists(os.path.join(routes_path, gone)),                 f"{gone} was deleted; the game does not log in or keep server sessions"
 
     def test_no_chat_routes(self):
         """chat_routes.py must STAY deleted — the narrator lives in the game.

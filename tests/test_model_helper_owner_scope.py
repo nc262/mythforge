@@ -33,10 +33,11 @@ def test_task_parse_resolves_with_owner_scope():
     assert 'resolve_endpoint("default", owner=user or None)' in body
 
 
-def test_history_compact_resolves_with_owner_scope():
-    body = _function_source("routes/history_routes.py", "compact_session")
-    assert "owner = effective_user(request)" in body
-    assert 'resolve_endpoint("utility", owner=owner or None)' in body
+# test_history_compact_resolves_with_owner_scope lived here. It guarded owner
+# scoping inside routes/history_routes.py:compact_session, and that router was
+# deleted with the rest of the server-side chat transcript — the game keeps its
+# own in Chronicle. The sibling checks below still cover every remaining caller
+# of resolve_endpoint.
 
 
 def test_note_reminder_synthesis_resolves_with_owner_scope():

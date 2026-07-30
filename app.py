@@ -156,7 +156,10 @@ class _RequestTimeoutMiddleware(_BaseHTTPMiddleware):
 app.add_middleware(_RequestTimeoutMiddleware)
 
 # ========= AUTH =========
-from routes.auth_routes import setup_auth_routes, SESSION_COOKIE
+# The auth ROUTER is gone (see below); this constant is not. With AUTH_ENABLED
+# off the identity middleware still reads a cookie if one happens to exist, so
+# it keeps the same name it always had.
+SESSION_COOKIE = "odysseus_session"
 
 auth_manager = AuthManager()
 app.state.auth_manager = auth_manager
@@ -569,9 +572,11 @@ webhook_manager = WebhookManager(api_key_manager=api_key_manager)
 
 # ========= INCLUDE ROUTERS =========
 
-# Auth
-auth_router = setup_auth_routes(auth_manager)
-app.include_router(auth_router)
+# [MYTHFORGE-CUT] auth_routes — 27 endpoints (login, logout, status, users,
+# tokens, TOTP...). This is a single-player desktop game; the client stopped
+# logging in and AUTH_ENABLED defaults to false. auth_manager itself STAYS: the
+# identity middleware still uses it to answer "whose game is this" without
+# gating anything.
 
 # [MYTHFORGE-CUT] upload_routes — 6 endpoints (/api/upload, /api/upload/cleanup,
 # /api/upload/stats...), none called by the Godot client. Director's call: "we
@@ -589,10 +594,10 @@ upload_cleanup_task = None
 # [MYTHFORGE-CUT] workspace_routes — 1 endpoint for the workspace SPA, which is
 # deleted.
 
-# Sessions
-from routes.session_routes import setup_session_routes
-session_config = {"REQUEST_TIMEOUT": REQUEST_TIMEOUT, "OPENAI_API_KEY": OPENAI_API_KEY, "SESSIONS_FILE": SESSIONS_FILE}
-app.include_router(setup_session_routes(session_manager, session_config, webhook_manager=webhook_manager))
+# [MYTHFORGE-CUT] session_routes — 19 endpoints. A session was an id the backend
+# hung a model and a system prompt on, for a chat stream that now runs inside the
+# game's own process. session_manager STAYS (assistant_log and ai_interaction
+# wire to it); only its HTTP surface is gone.
 
 # Admin Danger Zone wipes (Settings → System → Danger Zone)
 # [MYTHFORGE-CUT] from routes.admin_wipe_routes import setup_admin_wipe_routes
@@ -629,9 +634,8 @@ app.include_router(setup_session_routes(session_manager, session_config, webhook
 # [MYTHFORGE-CUT] from routes.research_routes import setup_research_routes
 # [MYTHFORGE-CUT] app.include_router(setup_research_routes(research_handler, session_manager=session_manager))
 
-# History
-from routes.history_routes import setup_history_routes
-app.include_router(setup_history_routes(session_manager))
+# [MYTHFORGE-CUT] history_routes — 11 endpoints reading back a server-side chat
+# transcript. The transcript lives in Chronicle, in the game.
 
 # Search
 # [MYTHFORGE-CUT] from routes.search_routes import setup_search_routes
