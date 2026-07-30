@@ -563,5 +563,43 @@ The term for spell slots is "Echoes."
 	assert(Worldsmith.parse_reskins(decoy).get("names", {}).size() == 1,
 		"a partial answer yields only what it actually said")
 
+	# The World Forge's question pool. The whole point is that two different
+	# worlds get asked different things, so that is what gets asserted — a pool
+	# that quietly returns the same five every time would look fine in a
+	# screenshot and be exactly the bug it replaced.
+	const WQ := preload("res://scenes/forge/world_questions.gd")
+	var sea := WQ.pick("a drowned city where the tide keeps the dead polite", {})
+	var stars := WQ.pick("a starfaring frontier of salvage crews and cold void",
+		{"title": "Sci-Fi"})
+	var sea_ids := sea.map(func(q): return str(q["id"]))
+	var star_ids := stars.map(func(q): return str(q["id"]))
+	assert(sea_ids != star_ids, "two different worlds are asked different questions")
+	assert(sea_ids.has("the_water"), "a drowned world is asked what the water takes")
+	assert(not star_ids.has("the_water"), "...and a starfaring one is not")
+	assert(star_ids.has("machine_cost"), "a machine world is asked what the machines run on")
+	# The conflict pair leads every world — they are what make it playable rather
+	# than merely described.
+	for ids in [sea_ids, star_ids]:
+		assert(ids.has("scarcity") and ids.has("authority"),
+			"every world is asked what is scarce and who decides")
+	assert(sea.size() <= WQ.ASK, "never more questions than the interaction budget")
+	# "Different six" must actually be different, or the button is a lie.
+	var p0 := WQ.premises(0)
+	var p1 := WQ.premises(1)
+	assert(p0.size() == 6 and p1.size() == 6, "the Spark offers six premises")
+	for prem in p0:
+		assert(not p1.has(prem), "a second page repeats nothing from the first")
+		assert(str(prem).length() > 40, "a premise is specific enough to be worth picking")
+	# Never ask what the player already told you.
+	var mundane := WQ.pick("a world with no magic at all, just mud and politics", {})
+	assert(not mundane.map(func(q): return str(q["id"])).has("magic_cost"),
+		"a premise that rules out magic is not asked what magic costs")
+	# Options carry consequences, not categories — the option text becomes prompt
+	# text, so an empty rule would hand the model an adjective and nothing else.
+	for q in sea:
+		for o in q["options"]:
+			assert(str(o.get("rule", "")).strip_edges() != "",
+				"every option states the rule it puts into the world")
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

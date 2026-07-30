@@ -40,10 +40,23 @@ time.**
 
 ## Six changes, in the order I would do them
 
-### 1. Invert the Spark — choose before you describe
+**1, 2 and 4 have shipped** (`scenes/forge/world_questions.gd`, and the Spark and
+Pillars stages of `world_forge.gd`). 3, 5 and 6 are still open. `self_check`
+guards the behaviour, not the wording: that two different worlds get asked
+different things, that a drowned world is asked about water and a starfaring one
+is not, that the conflict pair always leads, that a premise ruling out magic is
+never asked what magic costs, and that every option states a rule.
 
-Do not open with a blank box. Open with **six concrete, specific world premises**
-generated fresh each time, plus *"none of these — I'll describe my own."*
+### 1. Invert the Spark — choose before you describe ✅
+
+Do not open with a blank box. Open with **six concrete, specific world premises**,
+plus *"none of these — I'll describe my own."*
+
+*Shipped as an authored pool of 18 with a "↻ different six" button, not as
+generated text: generating six costs a model call at the exact moment the forge
+opens, and the blank page is a latency problem as much as a creative one.
+Generating a further row in the background is a later change that does not alter
+the interaction.*
 
 Not genre labels. Actual premises, the length of the placeholder text that is
 already in the box:
@@ -55,7 +68,7 @@ Rejecting all six is also signal, and the player who wanted the blank box still
 has it — one click away, now primed by six examples of the *level of specificity*
 you want. This alone fixes the most common failure: a two-word idea.
 
-### 2. Make the questions come from the answers
+### 2. Make the questions come from the answers ✅
 
 Replace the fixed five axes with a **question pool tagged by relevance**. Each
 question declares what makes it apply:
@@ -79,7 +92,7 @@ generate conflict rather than colour:
 
 Those two do more for a playable world than *Technology: Medieval* ever will.
 
-### 3. Ask for a judgement, not a category
+### 3. Ask for a judgement, not a category — OPEN
 
 The highest-signal question type is **A or B, both attractive**. Not "pick your
 tone from four options" — *"Which is worse: the thing in the water, or the people
@@ -89,7 +102,7 @@ ruling about it**, and a ruling is a fact the GM can hold you to later.
 Two or three of these are worth more than all five current axes, and they are
 faster to answer.
 
-### 4. Show the cost of every choice
+### 4. Show the cost of every choice ✅
 
 Each option should say what it *does*, not just what it is. `Magic system:
 Forbidden & feared` is a label. *"Casting in public gets you reported"* is a rule
@@ -99,7 +112,7 @@ already carrying consequences.
 This also quietly fixes prompt quality: the option text becomes the prompt text,
 so the model is handed rules rather than adjectives.
 
-### 5. Let the forge ask ONE question back
+### 5. Let the forge ask ONE question back — OPEN
 
 After the first strike, the smith should ask a single question about the thing it
 was least sure of — and it genuinely knows which, because it just wrote it:
@@ -113,7 +126,7 @@ It is also cheap — a small extraction call over prose that already exists, whi
 is the regime the local model is reliable in
 ([LocalLLM-Tuning.md](LocalLLM-Tuning.md)).
 
-### 6. Reveal progressively, and let it be edited in place
+### 6. Reveal progressively, and let it be edited in place — OPEN
 
 The Atlas currently arrives all at once. Reveal it as it is built — name and
 tagline first, then locations, then cast, then bestiary — and make each card
@@ -137,15 +150,16 @@ whole world.
 
 | change | file |
 |---|---|
-| premise cards instead of a blank Spark | `scenes/forge/world_forge.gd:_stage_spark` |
-| question pool + relevance tags | `scenes/forge/world_forge.gd:_smith_guide` → a data file |
-| consequence text on options | same, options become `{label, rule}` |
+| premise cards instead of a blank Spark | ✅ `world_forge.gd:_stage_spark` |
+| question pool + relevance tags | ✅ `scenes/forge/world_questions.gd` |
+| consequence text on options | ✅ options are `{pick, rule}`; the rule is what reaches the prompt |
 | the smith's one question | `autoload/worldsmith.gd`, new small extraction call |
 | progressive reveal, per-card reject | `scenes/forge/world_forge.gd:_stage_atlas` |
 
-`_smith_guide()` returning a flat `[[label, options]]` array is the thing holding
-the current design in place; making it return relevance-tagged questions is the
-one structural change the rest depends on.
+`_smith_guide()` is gone. `WorldQuestions.pick(idea, theme)` replaced it, and
+the answers stored in `draft["fields"]` are now RULES rather than labels — so
+what reaches the model is "casting in public gets you reported" instead of
+"Magic system: Forbidden & feared".
 
 ## Note on the campaign and character forges
 

@@ -35,8 +35,14 @@ const Fold := preload("res://ui/myth_fold.gd")
 ## not registered until Godot reimports, so the harness saw the forge fail to
 ## parse. preload works the moment the file exists.
 const ForgeWait := preload("res://ui/myth_forge_wait.gd")
+## Preloaded for the same reason as ForgeWait: a `class_name` is not registered
+## until Godot reimports, and the harness parses this file before that happens.
+const WorldQuestions := preload("res://scenes/forge/world_questions.gd")
 
 var draft := {"name": "", "idea": "", "theme": {}, "fields": {}}
+var _questions := {}           # question label -> its chip buttons
+var _qbox: VBoxContainer = null   # rebuilt whenever the theme or idea changes
+var _premise_page := 0            # which six premises the Spark is offering
 var _forged: Dictionary = {}   # the smith's latest take, pre-seal
 var _sealed: Dictionary = {}   # the world after the wax came down
 var _fails := 0                # consecutive failed strikes, for an honest message
@@ -84,14 +90,57 @@ func _stage_spark() -> void:
 	var nc := CenterContainer.new()
 	nc.add_child(name_in)
 	_stage_box.add_child(nc)
+	# SIX PREMISES, NOT A BLANK BOX. Picking one carries more signal than most
+	# typed sentences, and seeing six shows the level of specificity that makes a
+	# good world — which is the thing an empty text area cannot communicate.
+	var picks := VBoxContainer.new()
+	picks.add_theme_constant_override("separation", Ui.SPACE["xs"])
 	var idea := TextEdit.new()
-	idea.placeholder_text = "e.g. A drowned Venice of sky-whales and salvage guilds, melancholy but hopeful…"
+	var chosen: Array = []
+	for p in WorldQuestions.premises(_premise_page):
+		var b := Button.new()
+		b.theme_type_variation = "GhostButton"
+		b.text = str(p)
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.custom_minimum_size = Vector2(560, 0)
+		b.toggle_mode = true
+		b.button_pressed = str(draft["idea"]) == str(p)
+		b.pressed.connect(func():
+			draft["idea"] = str(p)
+			idea.text = str(p)
+			for o in chosen:
+				o.button_pressed = o == b)
+		chosen.append(b)
+		picks.add_child(b)
+	var pc := CenterContainer.new()
+	pc.add_child(picks)
+	_stage_box.add_child(pc)
+
+	var more := Button.new()
+	more.theme_type_variation = "GhostButton"
+	more.text = "↻ different six"
+	more.pressed.connect(func():
+		_premise_page += 1
+		_enter_stage(0))
+	var mc := CenterContainer.new()
+	mc.add_child(more)
+	_stage_box.add_child(mc)
+
+	# The blank box is DEMOTED, not deleted. A player who knows exactly what they
+	# want should not have to click past six suggestions to say it — but they
+	# should not be met by an empty rectangle either.
+	var own := Fold.new("…or describe your own", str(draft["idea"]) != ""
+		and not WorldQuestions.PREMISES.has(str(draft["idea"])))
+	idea.placeholder_text = "One or two sentences. Be specific — a place, a problem, a mood."
 	idea.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	idea.custom_minimum_size = Vector2(560, 84)
 	idea.text = str(draft["idea"])
+	own.content.add_child(idea)
 	var ic := CenterContainer.new()
-	ic.add_child(idea)
+	ic.add_child(own)
 	_stage_box.add_child(ic)
+
 	_nav(-1, "To the pillars ›", func():
 		draft["name"] = name_in.text.strip_edges()
 		draft["idea"] = idea.text.strip_edges()
@@ -112,58 +161,92 @@ func _stage_pillars() -> void:
 		card.pressed.connect(func():
 			draft["theme"] = t
 			for c in cards:
-				c.set_selected(c == card))
+				c.set_selected(c == card)
+			# The theme decides which questions are worth asking, so choosing one
+			# has to re-ask. Without this the pool is whatever it was when the
+			# stage opened, which is the frozen-axes problem wearing a new coat.
+			_refill_questions())
 		cards.append(card)
 		grid.add_child(card)
 	var gc := CenterContainer.new()
 	gc.add_child(grid)
 	_stage_box.add_child(gc)
-	# Advanced: the five pillars, written by hand — overrides the theme.
-	var adv := Fold.new("Advanced: shape the five pillars by hand", not draft["fields"].is_empty())
-	var pillar_inputs := {}
-	for pillar in _smith_guide():
-		var lbl := Label.new()
-		lbl.theme_type_variation = "HintLabel"
-		lbl.text = str(pillar[0])
-		adv.content.add_child(lbl)
-		var pin := LineEdit.new()
-		pin.text = str(draft["fields"].get(pillar[0], ""))
-		pin.placeholder_text = "anything you like — or tap a suggestion"
-		adv.content.add_child(pin)
-		var chips := HFlowContainer.new()
-		for sug in pillar[1]:
-			var chip := Button.new()
-			chip.theme_type_variation = "GhostButton"
-			chip.text = str(sug)
-			chip.add_theme_font_size_override("font_size", 12)
-			chip.pressed.connect(func(): pin.text = str(sug))
-			chips.add_child(chip)
-		adv.content.add_child(chips)
-		pillar_inputs[pillar[0]] = pin
+	# The questions are chosen for THIS world — see WorldQuestions. Rebuilt on
+	# every entry to the stage, so changing the theme changes what is asked
+	# instead of leaving five frozen axes sitting there.
+	_qbox = VBoxContainer.new()
+	_qbox.add_theme_constant_override("separation", Ui.SPACE["s"])
 	var ac := CenterContainer.new()
-	ac.add_child(adv)
+	ac.add_child(_qbox)
 	_stage_box.add_child(ac)
+	_refill_questions()
 	_nav(0, "Strike the world ›", func():
-		draft["fields"] = {}
-		for k in pillar_inputs:
-			var v: String = pillar_inputs[k].text.strip_edges()
-			if v != "":
-				draft["fields"][k] = v
 		if draft["theme"].is_empty() and str(draft["idea"]) == "" and draft["fields"].is_empty():
-			_status.text = "Choose a pillar-theme, write an idea, or shape the pillars by hand."
+			_status.text = "Choose a theme, write an idea, or answer a question or two."
 			return
 		_forged = {}
 		_enter_stage(2))
 
 
-func _smith_guide() -> Array:
-	return [
-		["Magic system", ["Forbidden & feared", "Elemental pacts", "Tech-grafted mods", "Divine bargains", "Wild & untamed", "None — mundane grit"]],
-		["Technology", ["Medieval", "Steam & clockwork", "Modern day", "Neon cyberpunk", "Starfaring"]],
-		["Era & timeline", ["A golden age fading", "After the cataclysm", "Frontier boom", "A long peace cracking", "Under occupation"]],
-		["Beast variants", ["Corrupted wildlife", "Ancient constructs", "Spirits & shades", "Bio-engineered horrors", "Dragons & their kin"]],
-		["Tone", ["Grim & gritty", "Heroic & bright", "Whimsical", "Noir & conspiratorial"]],
-	]
+## Re-ask, for the theme and idea as they stand now. Answers already given are
+## kept when their question survives the re-pick and dropped when it does not —
+## a rule belonging to a question this world no longer asks has no business in
+## the prompt.
+func _refill_questions() -> void:
+	if _qbox == null or not is_instance_valid(_qbox):
+		return
+	for c in _qbox.get_children():
+		c.queue_free()
+	_questions.clear()
+	var asked := {}
+	for q in WorldQuestions.pick(str(draft["idea"]), draft["theme"]):
+		asked[str(q["label"])] = true
+		_question_row(_qbox, q)
+	for k in draft["fields"].keys():
+		if not asked.has(k):
+			draft["fields"].erase(k)
+
+
+## One question: its label, its options as chips, and — once chosen — the RULE
+## that choice puts into the world, shown back so the player can see what they
+## just decided rather than only what they clicked.
+func _question_row(box: VBoxContainer, q: Dictionary) -> void:
+	var label := str(q["label"])
+	var lbl := Label.new()
+	lbl.text = label
+	box.add_child(lbl)
+	var echo := Label.new()
+	echo.theme_type_variation = "HintLabel"
+	echo.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	echo.custom_minimum_size = Vector2(560, 0)
+	echo.text = str(draft["fields"].get(label, ""))
+	var chips := HFlowContainer.new()
+	var buttons: Array = []
+	for opt in q["options"]:
+		var chip := Button.new()
+		chip.theme_type_variation = "GhostButton"
+		chip.text = str(opt["pick"])
+		chip.tooltip_text = str(opt["rule"])
+		chip.add_theme_font_size_override("font_size", 12)
+		chip.button_pressed = str(draft["fields"].get(label, "")) == str(opt["rule"])
+		chip.toggle_mode = true
+		chip.pressed.connect(func():
+			# Clicking the chosen option again clears it. A question the player
+			# does not want to answer must be leaveable, or five questions become
+			# five obligations.
+			if str(draft["fields"].get(label, "")) == str(opt["rule"]):
+				draft["fields"].erase(label)
+				echo.text = ""
+			else:
+				draft["fields"][label] = str(opt["rule"])
+				echo.text = str(opt["rule"])
+			for b in buttons:
+				b.button_pressed = b == chip and draft["fields"].has(label))
+		buttons.append(chip)
+		chips.add_child(chip)
+	box.add_child(chips)
+	box.add_child(echo)
+	_questions[label] = buttons
 
 
 # ── Stage 2: the forging (smith strike + refine loop + seal) ─────────────────
