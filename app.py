@@ -129,7 +129,6 @@ _TIMEOUT_EXEMPT_PREFIXES = (
     "/api/cookbook/setup",  # remote pacman/apt installs
     "/api/upload",          # large files
     "/api/image",           # diffusion proxies (inpaint/harmonize/upscale/etc.) — own 120s httpx timeout
-    "/api/characters/studio/worldsmith",  # one-off long creative LLM call — own 180s timeout
     "/api/characters/studio/generate",    # SDXL image gen — 30-120s warm, up to 420s on cold ZLUDA load; own 300s httpx timeout
     # Living-world LLM extractors: suggest/describe run a local-model completion
     # that routinely exceeds 45s, so the middleware was 504'ing them and silently

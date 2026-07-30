@@ -71,19 +71,18 @@ func call_json(method: int, path: String, body = null) -> Dictionary:
 	return await _request(method, path, _headers(extra), payload)
 
 
-## The worldsmith, unwrapped. The endpoint answers an ENVELOPE —
-## `{"ok":true,"world":{…}}` for mode=world, `{"ok":true,"story":{…}}` for
-## mode=story — but all four callers read `name`/`title` straight off the
-## envelope, where they never are. So a perfectly good world was thrown away as
-## "The forge sputtered (200)" every single time, after ~2.5 min and six LLM
-## calls (UIPolish R5 B3); the campaign forge failed the same way, quieter.
-## Unwrap in one place and every caller's existing check starts working.
+## The worldsmith. It used to POST to an endpoint that answered an ENVELOPE —
+## `{"ok":true,"world":{…}}` — which every caller read straight through, so a
+## perfectly good world was thrown away as "The forge sputtered (200)" every
+## single time, after ~2.5 min and six LLM calls (UIPolish R5 B3).
+##
+## It runs IN THIS PROCESS now (autoload/worldsmith.gd) and there is no envelope
+## left to unwrap: Worldsmith returns the flat body every caller was already
+## reading. Kept here as the entry point so all four call sites stay untouched.
 func worldsmith(payload: Dictionary) -> Dictionary:
-	var r := await call_json(HTTPClient.METHOD_POST, "/api/characters/studio/worldsmith", payload)
-	var key := "story" if str(payload.get("mode", "world")) == "story" else "world"
-	var body: Dictionary = r[key] if r.get(key) is Dictionary else {}
-	body["_status"] = r.get("_status", 0)
-	return body
+	if test_mode:
+		return _test_response("/api/characters/studio/worldsmith")
+	return await Worldsmith.forge(payload)
 
 
 ## POST application/x-www-form-urlencoded (the backend's Form(...) endpoints).

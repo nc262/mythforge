@@ -188,6 +188,47 @@ func _ready() -> void:
 		_ck(_race_out[1] is Dictionary and (_race_out[1] as Dictionary).has("peak"),
 			"concurrent call B kept its own schema")
 
+	# ── The Worldsmith ──────────────────────────────────────────────────────
+	# Assert the sections the SERVER used to lose. The old route carried a retry
+	# loop and two rescue calls precisely because `locations` and `stories` went
+	# missing; if the grammar really makes that unreachable, these hold every run.
+	if LocalGM.available():
+		t0 = Time.get_ticks_msec()
+		var w := await Api.worldsmith({
+			"idea": "a drowned city where the tide keeps the dead polite",
+			"mode": "world",
+			"fields": {"tone": "melancholy", "tech": "bronze age"}})
+		var t_world := Time.get_ticks_msec() - t0
+		print("  world: %d ms | %s — %s" % [t_world, str(w.get("name", "")), str(w.get("kind", ""))])
+		print("    locations=%d cast=%d stories=%d creatures=%d reskins=%s" % [
+			(w.get("locations", []) as Array).size(), (w.get("cast", []) as Array).size(),
+			(w.get("stories", []) as Array).size(), (w.get("creatures", []) as Array).size(),
+			"yes" if w.get("reskins") is Dictionary else "NO"])
+		_ck(w.get("_status", 0) == 200 and str(w.get("name", "")) != "", "the forge produced a world")
+		_ck((w.get("locations", []) as Array).size() >= 5, "locations survived — the section the retry loop existed for")
+		_ck((w.get("stories", []) as Array).size() == 2, "exactly 2 campaigns, not 'about 2'")
+		_ck((w.get("cast", []) as Array).size() == 3, "exactly 3 cast members")
+		_ck((w.get("creatures", []) as Array).size() == 6, "a full bestiary of 6")
+		var kinds := ["tavern", "shop", "landmark", "wilds", "home"]
+		var kinds_ok := true
+		for l in w.get("locations", []):
+			if not kinds.has(str(l.get("kind", ""))):
+				kinds_ok = false
+		_ck(kinds_ok, "every location kind is one the enum allows")
+		_ck(w.get("reskins") is Dictionary and (w["reskins"]["names"] as Dictionary).size() == 12,
+			"all 12 classes got world-specific names (the server settled for 8)")
+		if w.get("reskins") is Dictionary:
+			print("    reskins: %s" % JSON.stringify(w["reskins"]["names"]).left(180))
+
+		# mode=story is the other half, and the one the campaign forge uses.
+		t0 = Time.get_ticks_msec()
+		var st := await Api.worldsmith({"idea": "a debt comes due at the spring tide",
+			"mode": "story", "world": {"name": str(w.get("name", "")), "kind": str(w.get("kind", "")),
+			"lore": str(w.get("lore", ""))}})
+		print("  story: %d ms | %s" % [Time.get_ticks_msec() - t0, str(st.get("title", ""))])
+		_ck(st.get("_status", 0) == 200 and str(st.get("title", "")) != "", "a campaign was crafted")
+		_ck(str(st.get("hook", "")) != "", "and it has an opening scene")
+
 	LocalMemory.wipe(KEY)
 	print("LOCAL STACK %s" % ("OK" if _fail == 0 else "FAILED (%d)" % _fail))
 	get_tree().quit(1 if _fail > 0 else 0)

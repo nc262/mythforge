@@ -17,26 +17,30 @@ const CODEX_EVERY := 6  # player turns between codex/quest extractions
 ## and there is nothing to extract. `enum` also makes an invalid disposition or
 ## status UNGENERATABLE rather than something to normalise afterwards — measured
 ## 6.7x faster than asking politely for JSON (LocalGM.complete_json).
+##
+## Every string carries `maxLength` — declared, not relied on; see the note on
+## Worldsmith._s() for what this build actually does with it. The numbers match
+## the caps the answer is clamped to anyway.
 const CODEX_SCHEMA := '{"type":"object","required":["npcs"],"properties":{"npcs":' \
 	+ '{"type":"array","maxItems":12,"items":{"type":"object",' \
 	+ '"required":["name","role","disposition","note","goal","appearance"],"properties":{' \
-	+ '"name":{"type":"string"},"role":{"type":"string"},' \
+	+ '"name":{"type":"string","maxLength":60},"role":{"type":"string","maxLength":60},' \
 	+ '"disposition":{"enum":["ally","friendly","neutral","wary","hostile"]},' \
-	+ '"note":{"type":"string"},"goal":{"type":"string"},' \
-	+ '"appearance":{"type":"string"}}}}}}'
+	+ '"note":{"type":"string","maxLength":240},"goal":{"type":"string","maxLength":160},' \
+	+ '"appearance":{"type":"string","maxLength":240}}}}}}'
 
 const QUESTS_SCHEMA := '{"type":"object","required":["quests"],"properties":{"quests":' \
 	+ '{"type":"array","maxItems":10,"items":{"type":"object",' \
 	+ '"required":["title","desc","status"],"properties":{' \
-	+ '"title":{"type":"string"},"desc":{"type":"string"},' \
+	+ '"title":{"type":"string","maxLength":80},"desc":{"type":"string","maxLength":240},' \
 	+ '"status":{"enum":["active","done"]}}}}}}'
 
 ## `newQuest` is deliberately NOT required — most days do not produce one, and a
 ## required object would make the model invent one every long rest.
 const TICK_SCHEMA := '{"type":"object","required":["events"],"properties":{' \
-	+ '"events":{"type":"array","maxItems":3,"items":{"type":"string"}},' \
+	+ '"events":{"type":"array","maxItems":3,"items":{"type":"string","maxLength":240}},' \
 	+ '"newQuest":{"type":"object","required":["title","desc"],"properties":{' \
-	+ '"title":{"type":"string"},"desc":{"type":"string"}}}}}'
+	+ '"title":{"type":"string","maxLength":80},"desc":{"type":"string","maxLength":240}}}}}'
 
 var transcript: Array = []  # [{role, content}] — this adventure, this session
 var _player_turns := 0

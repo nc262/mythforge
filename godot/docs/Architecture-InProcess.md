@@ -39,8 +39,9 @@ Every endpoint the Godot client calls, and whether it needs a server:
 | `/api/characters/studio/state/*` | reads/writes **one JSON file** | **no** — `user://` |
 | ~~`/api/characters/studio/memory/{beat,recall}`~~ | embed a beat, recall by similarity | **gone** — `LocalMemory` (cfac9fd) |
 | ~~`/api/characters/studio/{codex,quests,worldtick}`~~ | cast, quests, the living world | **gone** — `Chronicle`, schema-constrained |
+| ~~`/api/characters/studio/worldsmith`~~ | forge a world or a campaign | **gone** — `Worldsmith` autoload |
 | `/api/characters/studio/generate` | portrait/scene art → sd.cpp | **no** — local diffusion |
-| `/api/characters/studio/{worldsmith,complete_json}` | LLM calls with a JSON schema | **no** — local LLM |
+| `/api/characters/studio/complete_json` | the World Compiler's stages | **no** — local LLM |
 | `/api/models`, `/api/session`, `/api/default-chat`, `/api/history` | model + session bookkeeping | **no** — an artefact of the server |
 | `/api/auth/*` | identity | **no** — single player |
 | `/api/stt/transcribe` | speech to text | **no** — whisper.cpp |

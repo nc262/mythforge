@@ -549,7 +549,7 @@ Be concrete and sensory. Avoid generic fantasy filler.""" % [
 		str(world.get("name", "a world")), str(world.get("kind", "")),
 		str(world.get("tagline", "")), str(world.get("lore", "")).left(700),
 		fam, str(base.get("char", ""))]
-	var got := await _ask_json(ask)
+	var got := await _ask_json(ask, _style_schema())
 	if got.is_empty():
 		return _fallback_style(world, fam, base)
 	got["family"] = fam
@@ -604,7 +604,7 @@ Every id is one or two SHORT snake_case words (e.g. cutlass, brine_iron) — do 
 append "_id" or "_form". Names must sound like THIS world.""" % [
 		str(world.get("name", "a world")), str(style.get("visual_language", "")),
 		", ".join(mats), str(style.get("weapons", "")), str(style.get("armor", ""))]
-	var got := await _ask_json(ask)
+	var got := await _ask_json(ask, _assets_schema())
 	if got.is_empty() or not (got.get("materials") is Array):
 		return _fallback_assets(style)
 	# Small models parrot the schema placeholder ("cutlass_form_id") — scrub every
@@ -666,7 +666,7 @@ world — no goblins/kobolds/dragons unless the world truly is that generic.""" 
 		str(world.get("name", "a world")), str(style.get("visual_language", "")),
 		str(style.get("monsters", "")), str(style.get("fauna", "")),
 		WorldSkin.family_of(world)]
-	var got := await _ask_json(ask)
+	var got := await _ask_json(ask, _creatures_schema())
 	var raw = got.get("creatures") if got.get("creatures") is Array else []
 	var out: Array = []
 	for c in raw:
@@ -764,7 +764,7 @@ Rules: exactly 6 people, varied roles and dispositions. Every slug
 lowercase_with_underscores and unique. Names and roles must fit THIS world.""" % [
 		str(world.get("name", "a world")), str(style.get("visual_language", "")),
 		str(style.get("clothing", "")), str(style.get("culture", ""))]
-	var got := await _ask_json(ask)
+	var got := await _ask_json(ask, _npcs_schema())
 	var raw = got.get("npcs") if got.get("npcs") is Array else []
 	var out: Array = []
 	for c in raw:
@@ -874,23 +874,25 @@ func _stage_tactical(world_id: String, style: Dictionary) -> void:
 	stage_done.emit("tactical", true)
 
 
-## One JSON answer from the local model. Small models fence their JSON and
-## chatter around it, so the payload is extracted rather than trusted.
-func _ask_json(prompt: String) -> Dictionary:
-	# Local first. NOTE this passes no schema, so the model still fences and
-	# chatters exactly as the server's did — `_extract_json` below is doing real
-	# work, not belt-and-braces. The win here is only that the call stays in
-	# process.
-	#
-	# The real prize is unclaimed: with a JSON SCHEMA the same call measured
-	# 717 ms against 4798 ms and parsed directly (see LocalGM.complete_json).
-	# Each compiler stage knows the shape it wants — style guide, asset language,
-	# creatures, NPCs — so handing those shapes down would make this both exact
-	# and ~6x faster. Left as a follow-up because it means threading a schema
-	# through every stage, not because it is in doubt.
+## One JSON answer from the local model.
+##
+## PASS THE SCHEMA. Every stage below knows the shape it wants, and handing that
+## shape down is worth more than the round trip it saves: measured 717 ms against
+## 4798 ms on the same prompt, and the answer parses with no extraction at all
+## (LocalGM.complete_json). It also makes `_fallback_*` a genuine last resort
+## rather than a routine outcome — the stages fell back whenever a key went
+## missing, and a required key cannot go missing.
+##
+## `_extract_json` still runs on the unschema'd and server paths, where the model
+## really does fence and chatter, so it is not dead code.
+func _ask_json(prompt: String, schema := "") -> Dictionary:
 	if LocalGM.available():
-		var txt := await LocalGM.complete_json(prompt)
+		var txt := await LocalGM.complete_json(prompt, schema)
 		if txt != "":
+			if schema != "":
+				var direct = JSON.parse_string(txt)
+				if direct is Dictionary:
+					return direct
 			var ld := _extract_json(txt)
 			if ld.size() == 1 and (ld.values()[0] is Dictionary):
 				return ld.values()[0]
@@ -910,6 +912,67 @@ func _ask_json(prompt: String) -> Dictionary:
 			return d.values()[0]
 		return d
 	return {}
+
+
+# ── The shapes each stage wants ─────────────────────────────────────────────
+# Bounded strings throughout — declared, not relied on; see Worldsmith._s().
+# They also state each field's budget where the shape is, which is the only
+# place the numbers mean anything.
+func _t(cap: int) -> String:
+	return '{"type":"string","maxLength":%d}' % cap
+
+
+func _list(item: String, lo: int, hi: int) -> String:
+	return '{"type":"array","minItems":%d,"maxItems":%d,"items":%s}' % [lo, hi, item]
+
+
+func _shape(props: Dictionary) -> String:
+	var parts: Array[String] = []
+	for k in props:
+		parts.append('"%s":%s' % [k, props[k]])
+	return '{"type":"object","required":["%s"],"properties":{%s}}' % [
+		"\",\"".join(props.keys()), ",".join(parts)]
+
+
+func _one_of(vals: Array) -> String:
+	return '{"enum":["%s"]}' % "\",\"".join(vals)
+
+
+func _style_schema() -> String:
+	return _shape({
+		"visual_language": _t(200), "lighting": _t(160),
+		"weather": _list(_t(60), 3, 3), "materials": _list(_t(48), 10, 10),
+		"colors": _shape({"dominant": _t(7), "accent": _t(7), "shadow": _t(7)}),
+		"architecture": _t(200), "clothing": _t(200), "armor": _t(200),
+		"weapons": _t(200), "monsters": _t(200), "flora": _t(160),
+		"fauna": _t(160), "symbols": _list(_t(48), 4, 4), "culture": _t(200),
+		"music": _t(160), "ui_feel": _t(160), "prompt_anchor": _t(400),
+	})
+
+
+func _assets_schema() -> String:
+	return _shape({
+		"materials": _list(_shape({"id": _t(32), "name": _t(48), "dark": _t(7),
+			"light": _t(7), "tier": '{"enum":[1,2,3]}',
+			"class": _one_of(["soft", "mail", "rigid", "exotic"])}), 10, 10),
+		"treatments": _list(_shape({"id": _t(32), "name": _t(48), "note": _t(160)}), 10, 10),
+		"naming": _shape({"prefix": _list(_t(40), 4, 4), "suffix": _list(_t(40), 4, 4)}),
+	})
+
+
+func _creatures_schema() -> String:
+	return _shape({"creatures": _list(_shape({
+		"slug": _t(32), "name": _t(60), "tier": _one_of(["minor", "standard", "dire"]),
+		"desc": _t(240), "weakness": _t(200), "tactics": _t(200),
+		"habitat": _t(160), "art": _t(240)}), 8, 8)})
+
+
+func _npcs_schema() -> String:
+	return _shape({"npcs": _list(_shape({
+		"slug": _t(32), "name": _t(60), "role": _t(80),
+		"disposition": _one_of(["friendly", "wary", "hostile", "neutral"]),
+		"look": _t(240), "location": _t(120), "hook": _t(240),
+		"art": _t(240)}), 6, 6)})
 
 
 func _extract_json(text: String) -> Dictionary:

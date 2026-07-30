@@ -27,6 +27,27 @@ const MODEL_DIR := "user://models"
 const CLASS_CHAT := "NobodyWhoChat"
 const CLASS_MODEL := "NobodyWhoModel"
 
+## Context for a NARRATOR turn. The backend asked Ollama for `num_ctx=8192` and
+## this is the same number.
+const CTX := 8192
+
+## Context for a STRUCTURED turn, which needs more, because the whole answer is
+## one message with nothing to evict. The Worldsmith's world-core call died with
+##
+##   Error during context shift: Context shift failed: not enough messages to shift
+##   help: The message fits in the context but there is not enough room left for
+##         the response. Either shorten the message or increase n_ctx.
+##
+## after 98 s — roughly 1400 tokens at the rate this box generates, which is a
+## perfectly ordinary answer, not a runaway. A chat context sized for a
+## conversation is simply too small for one object that carries a world in it.
+const JSON_CTX := 16384
+
+## How long one structured answer may take before it is written off. Generous
+## because a cold world-core call is genuinely slow; the point is only that a
+## wedged worker must not take the session with it.
+const GEN_DEADLINE := 180.0
+
 var _model: Node = null
 var _chat: Node = null
 var _busy := false
@@ -40,7 +61,15 @@ var _json_chat: Node = null
 ## the same turn and the World Compiler runs its own stages; two `ask()` calls
 ## on one chat node interleave into a single garbled answer that still parses.
 var _json_busy := false
+## Which call is in flight. Only used to tell a live deadline from a stale one.
+var _json_gen := 0
+## Whether the shared node currently holds the prose sampler. The two configs
+## replace each other, so whoever runs next has to put its own back.
+var _json_prose := false
 signal _json_free
+## Emitted with the answer on success and with "" on failure — see the note where
+## it is wired up.
+signal _json_done(text: String)
 
 
 ## The first CHAT GGUF in the models folder, or "" if there is none.
@@ -107,6 +136,7 @@ func _ensure_nodes(system_prompt: String) -> bool:
 		return false
 	_chat.set("model_node", _model)
 	_chat.set("system_prompt", system_prompt)
+	_chat.set("context_length", CTX)
 	add_child(_chat)
 	# NobodyWho streams tokens on `response_updated` and closes with
 	# `response_finished` — the same shape as the SSE contract, so the bridge is
@@ -138,36 +168,141 @@ func _ensure_nodes(system_prompt: String) -> bool:
 ## this is no better than the server path — the caller still has to dig the object
 ## out of the chatter (world_compiler._extract_json exists for precisely that).
 ##
-## Returns "" when unusable, so callers fall through to the server as before.
+## BUT A SCHEMA IS NOT FREE, and the cost is invisible until it is enormous.
+## `set_sampler_preset_*` REPLACES the whole sampler config — measured by reading
+## the config back out of the worker log — so a grammar-constrained call runs with
+## no top-k, no top-p, no temperature and no repetition penalty. Pure sampling
+## from the raw distribution. NobodyWhoSamplerBuilder has no grammar step, so
+## there is no supported way to have both.
+##
+## That is survivable while the model is confident and catastrophic when it is
+## not. A three-key schema wrote a good tagline in 2559 ms; the six-key world
+## schema, one field of which is an array of 5-7 objects, produced grammar-valid
+## WORD SALAD at 84 tok/s — "births freely Attendance ensemble span mind plague".
+##
+## So: use a schema to EXTRACT, never to INVENT. `prose()` below is the other
+## half. See docs/LocalLLM-Tuning.md.
+##
+## Returns "" when unusable.
 func complete_json(prompt: String, schema := "") -> String:
 	if not available():
 		return ""
 	if _model == null and not _ensure_nodes(""):
 		return ""
-	if _json_chat == null or not is_instance_valid(_json_chat):
-		_json_chat = ClassDB.instantiate(CLASS_CHAT)
-		if _json_chat == null:
-			return ""
-		_json_chat.set("model_node", _model)
-		add_child(_json_chat)
-		if _json_chat.has_method("start_worker"):
-			_json_chat.call("start_worker")
+	# Take the lock BEFORE touching the node. A caller that waited here may have
+	# been waiting on a call whose deadline expired and freed the node out from
+	# under it, so the node has to be checked on this side of the wait.
 	while _json_busy:
 		await _json_free
 	_json_busy = true
+	_json_gen += 1
+	var gen := _json_gen
+	if _json_chat == null or not is_instance_valid(_json_chat):
+		_json_chat = ClassDB.instantiate(CLASS_CHAT)
+		if _json_chat == null:
+			_deliver("")
+			return ""
+		_json_chat.set("model_node", _model)
+		_json_chat.set("context_length", JSON_CTX)
+		_json_prose = false
+		add_child(_json_chat)
+		_json_chat.connect("response_finished", func(t: String): _deliver(t))
+		if _json_chat.has_signal("worker_failed"):
+			_json_chat.connect("worker_failed", func(why: String):
+				push_warning("LocalGM: JSON generation failed: %s" % why)
+				_deliver(""))
+		if _json_chat.has_method("start_worker"):
+			_json_chat.call("start_worker")
+	# The sampler is set EVERY call, not once, because `prose()` and this share the
+	# node and each clobbers the other's config.
 	if schema != "" and _json_chat.has_method("set_sampler_preset_constrain_with_json_schema"):
 		_json_chat.call("set_sampler_preset_constrain_with_json_schema", schema)
+		_json_prose = false
 	elif _json_chat.has_method("set_sampler_preset_json"):
 		_json_chat.call("set_sampler_preset_json")
+		_json_prose = false
 	# Stateless per call, for the same reason turns are: every prompt carries its
 	# own context, so an accumulating conversation is pure cost.
 	if _json_chat.has_method("reset_context"):
 		_json_chat.call("reset_context")
 	_json_chat.call("ask" if _json_chat.has_method("ask") else "say", prompt)
-	var out: String = await _json_chat.response_finished
+	# The timer always fires, answer or not, so it carries the id of the call it
+	# was armed for — otherwise a deadline left over from a call that finished in
+	# time would go off in the middle of a perfectly healthy later one.
+	get_tree().create_timer(GEN_DEADLINE).timeout.connect(_on_deadline.bind(gen))
+	return await _json_done
+
+
+## Free prose from the local model, with a sampler that has actually been tuned.
+##
+## This is the FIRST half of every generative call: think here, then hand the
+## result to `complete_json` with a schema to serialise it. Doing both at once is
+## what the literature calls premature serialization, and an 8B model is squarely
+## in the class that pays for it — measured here as word salad, not as a subtle
+## quality dip.
+##
+## The numbers are the usual llama.cpp defaults rather than anything clever: top-k
+## 40, top-p 0.95, temperature 0.7, and a mild repetition penalty over the last 64
+## tokens. They exist because the grammar path silently has NONE of them.
+const PROSE := {"top_k": 40, "top_p": 0.95, "temp": 0.7, "pen_last": 64, "pen_repeat": 1.1}
+
+func prose(prompt: String) -> String:
+	if not available():
+		return ""
+	if _model == null and not _ensure_nodes(""):
+		return ""
+	while _json_busy:
+		await _json_free
+	_json_busy = true
+	_json_gen += 1
+	var gen := _json_gen
+	if _json_chat == null or not is_instance_valid(_json_chat):
+		_deliver("")
+		return await complete_json(prompt)   # rebuilds the node, then this retries
+	if not _json_prose:
+		var b: Object = ClassDB.instantiate("NobodyWhoSamplerBuilder")
+		if b != null and b.has_method("top_k"):
+			_json_chat.call("set_sampler_config", b.call("top_k", PROSE["top_k"]) \
+				.call("top_p", PROSE["top_p"], 1).call("temperature", PROSE["temp"]) \
+				.call("penalties", PROSE["pen_last"], PROSE["pen_repeat"], 0.0, 0.0) \
+				.call("dist"))
+			_json_prose = true
+	if _json_chat.has_method("reset_context"):
+		_json_chat.call("reset_context")
+	_json_chat.call("ask" if _json_chat.has_method("ask") else "say", prompt)
+	get_tree().create_timer(GEN_DEADLINE).timeout.connect(_on_deadline.bind(gen))
+	return await _json_done
+
+
+## The single exit from a JSON call. Everything that can end one — the answer,
+## `worker_failed`, the deadline — comes through here, so the lock is released
+## exactly once and by whoever got there first.
+func _deliver(text: String) -> void:
+	if not _json_busy:
+		return   # a late answer from a call that already gave up; drop it
 	_json_busy = false
+	_json_done.emit(text)
 	_json_free.emit()
-	return out
+
+
+## A generation that overran its context did not fail — it HUNG. No
+## `response_finished`, no `worker_failed`, no error the extension surfaced;
+## the worker simply never came back, and a probe with a deliberately tiny
+## context could not even be shut down afterwards. So a deadline is not belt and
+## braces here, it is the only thing that notices.
+##
+## The node is thrown away rather than reused: a worker that missed its deadline
+## is in a state this code cannot reason about, and freeing it also disconnects
+## its signals, which is what stops a late answer from being handed to whichever
+## call happens to be waiting next.
+func _on_deadline(gen: int) -> void:
+	if gen != _json_gen or not _json_busy:
+		return
+	push_warning("LocalGM: JSON generation exceeded %ds — discarding the worker" % int(GEN_DEADLINE))
+	if _json_chat != null and is_instance_valid(_json_chat):
+		_json_chat.queue_free()
+	_json_chat = null
+	_deliver("")
 
 
 ## Stop mid-sentence. NobodyWhoChat exposes `stop_generation`; the player pressing

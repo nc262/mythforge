@@ -526,5 +526,42 @@ func _ready() -> void:
 	assert(sysp.contains("CRAFT:") and sysp.contains("VOICE:"), "...and how to narrate it")
 	GameState.character["world_id"] = keep_world
 
+	# The Worldsmith's class reskins are PARSED out of prose rather than extracted
+	# by a schema — a nested twelve-key object burned the whole 180 s deadline
+	# every run. That makes the parser load-bearing, and it is the kind of regex
+	# that quietly stops matching when a model changes its bullet style, so it is
+	# checked here against the shapes actually observed rather than only against
+	# whatever the model happens to emit on the day.
+	var sample := """**PART 1**
+In Aquari's Repose, power seeps from ancient stones as an energy called "Echovox".
+
+**PART 2**
+The term for spell slots is "Echoes."
+
+**PART 3**
+- Fighter: Kraelion
+1. Barbarian — Vorgathor
+**Rogue**: Shadewalker
+- Ranger: Tidesinger
+- Monk: Kyrium
+- Paladin: Solaire
+- Wizard: Aetherbinder
+- Sorcerer: Dreamweaver
+- Cleric: Elyrian
+- Druid: Terrakai
+- Bard: Melodist
+- Warlock: Umbrawyn"""
+	var rs := Worldsmith.parse_reskins(sample)
+	assert(rs.get("names", {}).size() == 12, "all twelve class titles parse out of prose")
+	assert(str(rs["names"]["Fighter"]) == "Kraelion", "a plain bullet parses")
+	assert(str(rs["names"]["Barbarian"]) == "Vorgathor", "a numbered line with an em dash parses")
+	assert(str(rs["names"]["Rogue"]) == "Shadewalker", "a bolded class name parses")
+	assert(str(rs["slots"]) == "Echoes", "the spell-slot term is unwrapped from its sentence")
+	assert(str(rs["flavor"]).contains("Echovox"), "the flavor line survives")
+	# A class named inside PART 1's prose must NOT be mistaken for an entry.
+	var decoy := "**PART 3**\n- Fighter: Kraelion"
+	assert(Worldsmith.parse_reskins(decoy).get("names", {}).size() == 1,
+		"a partial answer yields only what it actually said")
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
