@@ -50,7 +50,16 @@ extractions survive, long generative asks do not.
 
 ## 3. The rule that follows
 
-**Never ask one grammar-constrained call to both invent and serialise.**
+**Never ask one grammar-constrained call to both invent and serialise** — and
+that means *never*, not "unless the schema looks small". I tried the exception:
+three flat string fields, on the reasoning that the cliff was nesting. It took
+**95.8 s** and returned paragraphs where six-word answers were asked for.
+
+The cliff is not only nesting, it is **total generated length**. Under grammar
+plus `Dist` nothing pulls generation to a close, so a field the code will clamp
+to 160 characters is under no obligation to stop there, and every extra token is
+another chance to wander. Rewritten as think-then-serialise with an explicit
+"AT MOST SIX WORDS" in the prose prompt, the same call behaves.
 
 Split it in two, and use each config for the thing it is good at:
 

@@ -314,6 +314,77 @@ func _world(idea: String, payload: Dictionary) -> Dictionary:
 	return out
 
 
+## The smith's one question back — see docs/WorldForge-UX.md, change 5.
+##
+## After a world is struck, ask about the thing the world left OPEN. The forge
+## stops being a form the player filled in and becomes something they are in
+## conversation with, for one round and one click.
+##
+## THINK-THEN-SERIALISE, like everything else. I first wrote this as one flat
+## three-key schema, reasoning that the cliff was nesting and that three short
+## strings sat safely below it. Measured: **95827 ms**, and the "answers" came
+## back as paragraphs about a specific NPC rather than answers to a question.
+##
+## The cliff is not only nesting, it is TOTAL GENERATED LENGTH — under grammar
+## plus `Dist` there is no penalty pulling generation to a close, so a field the
+## code will clamp to 160 characters is under no obligation to stop there, and
+## every extra token is one more chance to wander. Nothing gets to invent under a
+## grammar, however small the schema looks.
+##
+## Returns {} rather than a placeholder when it has nothing to ask — a forge that
+## always has a question will eventually ask a stupid one, and the stage simply
+## does not show the row.
+func ask_back(world: Dictionary) -> Dictionary:
+	if not LocalGM.available() or str(world.get("name", "")) == "":
+		return {}
+	var cast_names: Array[String] = []
+	for c in world.get("cast", []):
+		if c is Dictionary:
+			cast_names.append(str(c.get("name", "")))
+	var parsed := await _ask(
+		"You are the smith who just forged this world. Ask the player ONE closed "
+		+ "question about something the world leaves genuinely open — a power you "
+		+ "gave someone without saying whether it is deserved, a bargain without "
+		+ "saying who got the better of it. Name the specific thing you are asking "
+		+ "about.\n\nAnswer in exactly three lines and nothing else:\n"
+		+ "QUESTION: one sentence, at most 20 words, ending in a question mark.\n"
+		+ "A: one possible answer, AT MOST SIX WORDS.\n"
+		+ "B: the opposing answer, AT MOST SIX WORDS.\n\n"
+		+ "A and B are answers to the question, not descriptions — if the question "
+		+ "is whether the wardens are trusted, A is \"Trusted\" and B is \"Merely "
+		+ "obeyed\". Never ask an open question and never ask the player to describe "
+		+ "anything.\n\nThe world: %s — %s. %s\nIts people: %s\n"
+		% [str(world.get("name", "")), str(world.get("kind", "")),
+			str(world.get("lore", "")).left(600), ", ".join(cast_names)],
+		_obj({"question": _s("premise"), "a": _s("kind"), "b": _s("kind")}))
+	if parsed.is_empty():
+		return {}
+	var q := _strip_label(_cap(parsed.get("question", ""), "premise"), "QUESTION")
+	var a := _strip_label(_cap(parsed.get("a", ""), "kind"), "A")
+	var b := _strip_label(_cap(parsed.get("b", ""), "kind"), "B")
+	# Two identical options is not a choice, and a button the width of the screen
+	# is not an option — an answer that arrives as a paragraph means the model
+	# described the world instead of answering, so drop the whole row.
+	if q == "" or a == "" or b == "" or a.to_lower() == b.to_lower():
+		return {}
+	if a.length() > 48 or b.length() > 48:
+		return {}
+	return {"question": q, "a": a, "b": b}
+
+
+## Drop the prose format's own label off an extracted field.
+##
+## The prose prompt asks for "A: one possible answer", and the extraction copies
+## the line faithfully — label included — so the button read "A: A sea goddess's
+## silent compact." Faithful copying is exactly what was asked for; the label has
+## to come off on this side.
+func _strip_label(s: String, label: String) -> String:
+	# LITERAL dash characters — RegEx is PCRE2, where `—` is not an escape.
+	# This is the second time that has bitten in this file; see parse_reskins.
+	var re := RegEx.create_from_string("(?i)^\\**%s\\**[ \\t]*[-:.—–][ \\t]*" % label)
+	return re.sub(s.strip_edges(), "").strip_edges()
+
+
 ## Pull `{flavor, slots, names}` out of the reskins prose. Public because it is
 ## the load-bearing half of that call and self_check exercises it directly — a
 ## regex over model output is exactly the thing that quietly stops matching.

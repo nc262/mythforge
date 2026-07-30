@@ -563,6 +563,17 @@ The term for spell slots is "Echoes."
 	assert(Worldsmith.parse_reskins(decoy).get("names", {}).size() == 1,
 		"a partial answer yields only what it actually said")
 
+	# The smith's ask-back copies prose lines faithfully, label and all, so the
+	# label is stripped on this side. Pinned here because the pattern holds
+	# literal dash characters — PCRE2 has no \u escape, and getting that wrong
+	# once already shipped a parser that silently matched nothing.
+	assert(Worldsmith._strip_label("A: A sea goddess's silent compact.", "A")
+		== "A sea goddess's silent compact.", "a colon label comes off")
+	assert(Worldsmith._strip_label("**B** — Her own potential", "B")
+		== "Her own potential", "a bolded em-dash label comes off")
+	assert(Worldsmith._strip_label("Ashen tide", "A") == "Ashen tide",
+		"an answer that merely starts with the letter is left alone")
+
 	# The World Forge's question pool. The whole point is that two different
 	# worlds get asked different things, so that is what gets asserted — a pool
 	# that quietly returns the same five every time would look fine in a

@@ -349,6 +349,16 @@ func _show_take() -> void:
 	var bc := CenterContainer.new()
 	bc.add_child(bs)
 	_stage_box.add_child(bc)
+	# The smith asks ONE question back, about something this world actually left
+	# open. Built empty and filled when the answer arrives, so the take is
+	# readable immediately rather than gated behind another wait.
+	var ask := VBoxContainer.new()
+	ask.add_theme_constant_override("separation", Ui.SPACE["xs"])
+	var akc := CenterContainer.new()
+	akc.add_child(ask)
+	_stage_box.add_child(akc)
+	_fill_ask_back(ask)
+
 	var refine := LineEdit.new()
 	refine.placeholder_text = "What should change? darker tone, a pirate faction, rename it…"
 	refine.custom_minimum_size = Vector2(540, 0)
@@ -379,6 +389,42 @@ func _show_take() -> void:
 	back.pressed.connect(func(): _enter_stage(1))
 	row.add_child(back)
 	_stage_box.add_child(row)
+
+
+## Ask the smith what it left open, then offer the two answers as a re-strike.
+##
+## Silent on failure by design — no model, no question, no empty row. A forge
+## that always has a question will eventually ask a stupid one, and "the smith
+## has nothing to ask" is a perfectly good state for a world that came out whole.
+func _fill_ask_back(box: VBoxContainer) -> void:
+	var q := await Worldsmith.ask_back(_forged)
+	# The player may have re-struck or walked away during the call; the box goes
+	# with the stage, so a stale answer must not be poured into a freed node.
+	if q.is_empty() or not is_instance_valid(box) or not box.is_inside_tree():
+		return
+	var lbl := RichTextLabel.new()
+	lbl.bbcode_enabled = true
+	lbl.fit_content = true
+	lbl.custom_minimum_size = Vector2(560, 0)
+	lbl.append_text("[color=%s][i]The smith looks up: “%s”[/i][/color]" % [
+		Ui.c("gold_soft").to_html(false), _esc(str(q["question"]))])
+	box.add_child(lbl)
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", Ui.SPACE["s"])
+	for key in ["a", "b"]:
+		var b := Button.new()
+		b.theme_type_variation = "GhostButton"
+		b.text = str(q[key])
+		b.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		b.custom_minimum_size = Vector2(268, 0)
+		# The answer is a REFINE, so it goes back through the same path a typed
+		# refinement does — the smith's question is a shortcut to good input, not
+		# a separate mechanism.
+		b.pressed.connect(func(): _strike("%s — specifically: %s" % [
+			str(q["question"]), str(q[key])]))
+		row.add_child(b)
+	box.add_child(row)
 
 
 func _seal() -> void:

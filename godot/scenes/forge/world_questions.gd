@@ -146,6 +146,39 @@ const POOL := [
 			{"pick": "Nothing did — that is the lie", "rule": "the golden age is propaganda and the evidence is buried"},
 		],
 	},
+	# ── Rulings ─────────────────────────────────────────────────────────────
+	# Two options, both attractive, neither a category. The player is not
+	# classifying their world here, they are MAKING A RULING ABOUT IT — and a
+	# ruling is a fact the GM can hold them to later, which "Tone: Grim & gritty"
+	# never was. These sit low in the pool on purpose: they land best once a
+	# premise and a theme have given them something to be a ruling about.
+	{
+		"id": "ruling_blame", "label": "Which is worse — the thing in the dark, or the people who feed it?",
+		"answered_by": [],
+		"when": {"theme": ["Horror", "Dark Fantasy"], "premise": ["dread", "dark", "cult", "sacrifice", "hunger", "monster"]},
+		"options": [
+			{"pick": "The thing", "rule": "the horror is genuinely inhuman and the people are its victims"},
+			{"pick": "The people", "rule": "the horror is fed on purpose by people with reasons, and the reasons are good ones"},
+		],
+	},
+	{
+		"id": "ruling_order", "label": "Which would this world rather lose — its order, or its freedom?",
+		"answered_by": [],
+		"when": {},
+		"options": [
+			{"pick": "Order", "rule": "people here will accept chaos before they accept being told what to do"},
+			{"pick": "Freedom", "rule": "people here will trade almost anything for safety, and have"},
+		],
+	},
+	{
+		"id": "ruling_past", "label": "Is the past something to recover, or something to survive?",
+		"answered_by": [],
+		"when": {"theme": ["Dark Fantasy", "High Fantasy", "Steampunk", "Sci-Fi"], "premise": ["ruin", "ancient", "forgotten", "empire", "relic", "old"]},
+		"options": [
+			{"pick": "Recover", "rule": "the old world was better and everyone is digging for what it left"},
+			{"pick": "Survive", "rule": "the old world is what went wrong and its leavings are still dangerous"},
+		],
+	},
 	{
 		"id": "beasts", "label": "What kind of thing hunts people?",
 		"answered_by": [],

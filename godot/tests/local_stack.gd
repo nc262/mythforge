@@ -220,6 +220,23 @@ func _ready() -> void:
 		if w.get("reskins") is Dictionary:
 			print("    reskins: %s" % JSON.stringify(w["reskins"]["names"]).left(180))
 
+		# The smith's one question back. A FLAT three-key schema, which is the
+		# shape that stays coherent — the check is that it asks about THIS world
+		# rather than producing a generic prompt, and that the two answers differ.
+		t0 = Time.get_ticks_msec()
+		var q := await Worldsmith.ask_back(w)
+		var t_ask := Time.get_ticks_msec() - t0
+		print("  ask_back: %d ms | %s" % [t_ask, JSON.stringify(q).left(260)])
+		_ck(not q.is_empty(), "the smith has something to ask")
+		if not q.is_empty():
+			_ck(str(q["a"]) != str(q["b"]), "the two answers are actually different")
+			_ck(str(q["question"]).length() > 20, "and it asked a real question")
+			# The first version of this returned paragraphs — grammatically fine,
+			# useless as buttons, and 96 s to produce. Length IS the assertion.
+			_ck(str(q["a"]).length() <= 48 and str(q["b"]).length() <= 48,
+				"the answers fit on a button")
+			_ck(t_ask < 20000, "and it asked quickly (%d ms)" % t_ask)
+
 		# mode=story is the other half, and the one the campaign forge uses.
 		t0 = Time.get_ticks_msec()
 		var st := await Api.worldsmith({"idea": "a debt comes due at the spring tide",
