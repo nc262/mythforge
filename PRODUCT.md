@@ -1,28 +1,43 @@
-# Odysseus — Character Studio
+# Mythforge
 
 ## What this is
-A self-hosted AI game console. Odysseus (the app) has been repurposed into two
-experiences: **Character Studio** — a full D&D-5e-style adventure game run by a
-local LLM Game Master with generated art, and **Companions** — persistent
-one-on-one AI character chats. Everything runs on one Windows PC (FastAPI +
-Ollama + ComfyUI image gen); no cloud, no accounts, one player.
+
+A single-player desktop RPG whose Game Master is a language model running inside
+the game's own process. D&D-5e-style rules with real dice, real sheets and real
+consequences, in worlds you can forge from one sentence. One executable, one
+optional image engine, a folder of save files. No cloud, no account, one player.
 
 ## Who it serves
-One person: the owner. Success = "it feels like a finished game I want to keep
-playing" — engaging sessions, no waiting on the GM, no jank.
+
+One person: the owner. Success is *"it feels like a finished game I want to keep
+playing"* — engaging sessions, no waiting on the GM, no jank.
 
 ## Register
-Game UI. Design serves immersion: night-and-gold fantasy palette
-(`.studio-root` tokens in `static/studio.css`), serif display type, generated
-key art/backdrops/portraits over hand-drawn CSS wherever art can be generated.
+
+A game, not an app. Design serves immersion: a night-and-gold palette that
+re-skins per world, serif display type, and generated key art, backdrops and
+portraits wherever art can be generated rather than drawn in widgets.
 
 ## Hard constraints
-- **Local only.** All inference/gen is local GPU; latency budget matters —
-  narration on a fast 8B model, extractors on small models, art async.
-- **One design system.** Reuse `--st-*` tokens and existing panel/overlay
-  patterns (`chronicle-overlay`, `st-btn`, `gm-row`) — never a parallel system.
-- **Reuse before build.** The app already has chat, personas, image gen,
-  world-state persistence; new features glue these, not duplicate them.
-- **Reduced-motion safe.** Every animation has a `prefers-reduced-motion` out.
-- The title screen and game flow: title → world → campaign → hero → Session
-  Zero → play. See [docs/character-studio-roadmap.md](docs/character-studio-roadmap.md).
+
+- **The engine decides; the model narrates.** Every mechanical effect arrives as
+  a typed tag. The model may never state a roll, an HP total or a success. This
+  is the founding decision — it is why the sheet can be trusted.
+- **Local only, and not as a mode.** Every model call happens in this process on
+  the same Vulkan device that draws the frame. Latency is a design constraint,
+  not a footnote: a GM turn is 3.7 s and it is expected to stay that way.
+- **No second path.** A missing model is an honest failure the player can act
+  on, never a quiet degradation into something worse.
+- **One design system.** Reuse the `Ui` tokens and the `Myth*` components.
+  Never a parallel widget for a job one already does.
+- **Reduce-motion safe.** Every animation has an out.
+- **Reuse before build.** Worlds, art, memory and the tag pipeline already
+  exist; new features glue them together rather than duplicating them.
+
+## The flow
+
+Hall → world → campaign → hero → Session Zero → play.
+
+Details: [godot/docs/Vision.md](godot/docs/Vision.md) ·
+[godot/docs/Architecture.md](godot/docs/Architecture.md) ·
+[godot/docs/DesignSystem.md](godot/docs/DesignSystem.md).

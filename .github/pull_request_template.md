@@ -2,18 +2,13 @@
 
 <!-- One paragraph: what changed and why. "Fixed bug" and "Added feature" are not summaries. -->
 
-## Target branch
+## Linked issue
 
-- [ ] This PR targets **`dev`**, not `main`. All PRs land in `dev`; `main` is curated by the maintainer at each release. If your PR is on `main` by accident, click "Edit" on this PR and change the base.
-
-## Linked Issue
-
-<!-- Every PR should be linked to an issue.
-     Use one of:  Fixes #NNN  |  Part of #NNN  |  Closes #NNN  -->
+<!-- Fixes #NNN  |  Part of #NNN  |  Closes #NNN -->
 
 Fixes #
 
-## Type of Change
+## Type of change
 
 - [ ] Bug fix (non-breaking — fixes a confirmed issue)
 - [ ] New feature (non-breaking — adds new behaviour)
@@ -22,36 +17,48 @@ Fixes #
 - [ ] Documentation only
 - [ ] CI / tooling / configuration
 
-## Checklist
+## Harnesses
 
-- [ ] I searched [open issues](https://github.com/pewdiepie-archdaemon/odysseus/issues) and [open PRs](https://github.com/pewdiepie-archdaemon/odysseus/pulls) — this is not a duplicate.
-- [ ] This PR targets `dev`
-- [ ] My changes are limited to the scope described above — no unrelated refactors or whitespace changes mixed in.
-- [ ] I actually ran the app (`docker compose up` or `uvicorn app:app`) and verified the change works end-to-end. Type-checks and unit tests are not enough.
+Paste the last line of each run. Say so if you could not run one.
 
-## How to Test
+- [ ] `self_check` → `SELF-CHECK OK`
+- [ ] `click_driver` → `CLICKDRIVE OK`
+- [ ] `ui_playthrough` → `PLAYTHROUGH OK`
+- [ ] `local_stack` / `bench_gm` — **required if this touches a model call**
+- [ ] Re-exported the exe and played it. A stale Desktop build gets tested by mistake.
 
-<!-- Step-by-step instructions a reviewer can follow to verify this works.
-     Do not leave this empty — a PR without test steps will be sent back. -->
+```
+<paste harness output here>
+```
+
+## How to test
+
+<!-- Step-by-step instructions a reviewer can follow. Do not leave this empty. -->
 
 1.
 2.
 3.
 
-## Visual / UI changes — REQUIRED if you touched anything that renders
+## Visual changes — REQUIRED if you touched anything that renders
 
-**Anything that changes what the UI looks like — buttons, icons, padding, colors, fonts, spacing, layout, CSS, HTML, SVG, or any `static/js/` module that draws to the DOM — needs all of the following. PRs that change rendering without these WILL be closed.**
+The harnesses assert screens are *reachable*. They do not assert a screen is
+*right*. If this changes what the game looks like, all of the following:
 
-- [ ] **Screenshot or short clip** of the change in the running app, attached below. Mobile screenshot too if the change affects mobile.
-- [ ] **Style match**: the change uses Odysseus's existing visual language. Specifically:
-  - Reuse existing CSS variables (`--red`, `--fg`, `--bg`, `--card`, `--border`, etc.) — do not introduce new color values, font sizes, or spacing units.
-  - Reuse existing button/input/card/border classes. Don't invent parallel styling.
-  - **No Unicode emoji in UI or code.** Use inline SVG (matching the monochrome icon style already in `static/index.html`) or plain text.
-  - Monospaced font (`Fira Code`) for primary UI text. Don't override.
-  - Dark theme is the default; any light-mode work must be wired through the existing theme system, not hard-coded.
-- [ ] **No new component patterns.** If a similar widget already exists in the app, extend it instead of writing a parallel one.
-- [ ] **I am not an LLM agent submitting a bulk PR.** If you are, please open an issue describing the problem first — bulk auto-generated PRs that don't match the project's visual style are closed on sight, even when the underlying fix is correct.
+- [ ] **Screenshot** of the change in the running game, attached below.
+- [ ] **Tokens only** — colours, spacing and radii come from `Ui`. No new literals.
+- [ ] **No emoji.** Functional glyphs come from `ui/myth_icon.gd`.
+- [ ] **No parallel component.** Extend the `Myth*` one that already exists.
+- [ ] Reduce-motion still has an out.
 
-### Screenshots / clips
+If you are unsure whether a change is visual, it is.
 
-<!-- Drag and drop images or a screen recording here. Required for any UI/visual change. -->
+### Screenshots
+
+<!-- Drag and drop here. -->
+
+## The rules this change did not break
+
+- [ ] The model still cannot state a roll, an HP total or a success — every
+      mechanical effect goes through a typed tag handler.
+- [ ] No new fallback path. A missing model fails honestly and loudly.
+- [ ] No model call both invents and serialises.

@@ -321,8 +321,7 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 	stage_started.emit("keyart", "Painting the world…")
 	var anchor := str(style.get("prompt_anchor", ""))
 	var name := str(world.get("name", "the world"))
-	# Key art: the establishing shot. `scene` profile — painted, not photoreal,
-	# no matte (a backdrop is never cut out).
+	# Key art: the establishing shot. `scene` profile — full bleed, never cut out.
 	var key := "world-" + world_id.validate_filename()
 	await _await_art(key,
 		"establishing key art of %s, %s. %s. cinematic wide shot, no people, no text" % [
@@ -340,13 +339,14 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 	stage_done.emit("biomes", true)
 
 
-## S8 (art half) — the ARMORY. One matted icon per (form × material), painted in
+## S8 (art half) — the ARMORY. One icon per (form × material), painted in
 ## the material's ACTUAL look (a driftwood cutlass is driftwood, a brine-iron one
 ## is pitted iron) — quality over the neutral-grey-tint shortcut, which produced
 ## muddy recolours. ~60 icons per world; rarity is a draw-time glow, not new art.
 ## The item prompt carries NO scene anchor — appending the world's scene line
-## ("…lantern light") turned a sword into a lantern. `item` profile = Turbo 1024
-## + matte; "plain flat background, no scene" keeps the cut-out clean.
+## ("…lantern light") turned a sword into a lantern. `item` profile is 1024, and
+## "plain flat background, no scene" is what keeps the icon readable at 64 px —
+## there is no matting step, so the background has to be plain by construction.
 func _stage_parts(world_id: String, _style: Dictionary, assets: Dictionary) -> void:
 	stage_started.emit("parts", "Forging the armory…")
 	var mats: Array = assets.get("materials", []) if assets.get("materials") is Array else []
@@ -364,11 +364,20 @@ func _stage_parts(world_id: String, _style: Dictionary, assets: Dictionary) -> v
 				continue
 			var key := "part-%s-%s-%s" % [world_id.validate_filename(), str(f["id"]), str(m["id"])]
 			await _await_art(key,
-				("a %s %s. %s. fantasy RPG %s item icon, single subject centered, plain flat background, no scene, dramatic studio lighting, highly detailed painterly render, no text, no hands, no people" % [
-					str(m.get("name", "")), str(f["name"]), str(f["prompt"]), str(f["kind"])]).strip_edges(),
+				("a %s %s. %s. fantasy RPG %s item icon, " % [
+					str(m.get("name", "")), str(f["name"]), str(f["prompt"]), str(f["kind"])]
+					+ ICON_TAIL).strip_edges(),
 				{"profile": "item", "lane": Art.Lane.IDLE},
 				"art/parts/%s.%s.png" % [str(f["id"]), str(m["id"])])
 	stage_done.emit("parts", true)
+
+
+## THE PHOTOGRAPH DEFENCE, in one place because it is load-bearing and was
+## duplicated. The engine runs one checkpoint and cannot be pointed at a
+## painterly one per request, so the ONLY thing standing between an item icon and
+## a photograph of someone holding the thing is this tail. `ui_playthrough`
+## asserts its three critical clauses every run.
+const ICON_TAIL := "single subject centered, plain flat background, no scene, dramatic studio lighting, highly detailed painterly render, no text, no hands, no people"
 
 
 ## S8b — the SHELVES. A keeper's stock is a constant per world family (`tables.json`
@@ -385,7 +394,7 @@ func _stage_vendor_icons(world_id: String, family: String) -> void:
 	stage_started.emit("wares", "Stocking the keeper's shelves…")
 	for nm in names:
 		await _await_art("ware-%s-%s" % [world_id.validate_filename(), icon_slug(str(nm))],
-			"a %s. fantasy RPG item icon, single subject centered, plain flat background, no scene, dramatic studio lighting, highly detailed painterly render, no text, no hands, no people" % str(nm),
+			"a %s. fantasy RPG item icon, " % str(nm) + ICON_TAIL,
 			{"profile": "item", "lane": Art.Lane.IDLE},
 			"art/icons/%s.png" % icon_slug(str(nm)))
 	stage_done.emit("wares", true)
@@ -564,7 +573,7 @@ Be concrete and sensory. Avoid generic fantasy filler.""" % [
 ##
 ## B2 — the ask is MATERIALS AND TREATMENTS ONLY. It used to ask for weapon and
 ## armour forms too, and raising the material ask from 6 to 10 made the 8B worse
-## at everything at once: measured 2026-07-23 against the live backend, it
+## at everything at once: measured 2026-07-23, it
 ## returned 8 materials, 4 treatments, and its forms collapsed from 6/4 to 3/2
 ## ("leather_greaves" filed under armour). The JSON was clean both times, so this
 ## is capacity, not format — and the answer is a smaller ask, not a smaller model
@@ -699,7 +708,7 @@ world — no goblins/kobolds/dragons unless the world truly is that generic.""" 
 
 
 ## Art half for a roster — one painted portrait per entry (portrait profile:
-## 1024, no matte, matching the bestiary look). kind picks the key prefix and
+## 1024, matching the bestiary look). kind picks the key prefix and
 ## package sub-dir ("creature"→art/creatures, "npc"→art/npc). Sequential: one GPU.
 func _stage_portrait_art(world_id: String, entries: Array, kind: String) -> void:
 	if entries.is_empty():
@@ -860,7 +869,7 @@ func _lay_merge(a: Dictionary, b: Dictionary) -> Dictionary:
 
 
 ## S9 (art half) — a top-down tactical map per biome, painted overhead so it
-## reads as a battlefield from above. `scene` profile (no matte — it's a floor).
+## reads as a battlefield from above. `scene` profile — it is a floor.
 func _stage_tactical(world_id: String, style: Dictionary) -> void:
 	stage_started.emit("tactical", "Mapping the battlegrounds…")
 	var anchor := str(style.get("prompt_anchor", ""))
@@ -895,9 +904,8 @@ func _ask_json(prompt: String, schema := "") -> Dictionary:
 		var txt := await LocalGM.prose(prompt)
 		if txt != "":
 			# The prompts already ask for a JSON object and the model obliges,
-			# fenced and chattered at, exactly as it did through the server. When
-			# the extractor can read it that is the whole answer for ONE call —
-			# only pay for a second when it cannot.
+			# fenced and chattered at. When the extractor can read it, that is the
+			# whole answer for ONE call — only pay for a second when it cannot.
 			var ld := _extract_json(txt)
 			if ld.size() == 1 and (ld.values()[0] is Dictionary):
 				ld = ld.values()[0]
@@ -924,10 +932,8 @@ func _ask_json(prompt: String, schema := "") -> Dictionary:
 						return shaped
 			if not ld.is_empty():
 				return ld
-	# No server path. Every stage has a `_fallback_*` that keeps a world playable
-	# without a model at all, which is a better answer than a second, quieter
-	# dependency on a FastAPI process and an Ollama daemon — and it is the answer
-	# the caller already knows how to use.
+	# Every stage has a `_fallback_*` that keeps a world playable with no model at
+	# all, and that is the answer the caller already knows how to use.
 	return {}
 
 

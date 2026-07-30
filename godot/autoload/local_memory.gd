@@ -1,10 +1,7 @@
 extends Node
-## Campaign memory, in-process — Stage 3 of docs/Architecture-InProcess.md.
+## Campaign memory — see docs/Architecture.md.
 ##
-## A per-adventure store of story beats, recalled by meaning rather than recency.
-## This is a straight port of src/campaign_memory.py, which POSTed every beat to
-## the backend to be embedded by Ollama's `all-minilm` and searched with numpy.
-## Same algorithm, same thresholds, no server:
+## A per-adventure store of story beats, recalled by meaning rather than recency:
 ##
 ##   add_beat  embed -> skip near-duplicates -> append
 ##   recall    embed the query -> cosine against every beat -> top-k over a floor

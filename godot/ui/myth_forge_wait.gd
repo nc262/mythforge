@@ -1,5 +1,5 @@
 class_name MythForgeWait extends VBoxContainer
-## The forge's long wait, made honest (UXAudit R6 LAT-10, Round-5 VIS-09).
+## The forge's long wait, made honest.
 ##
 ## Forging a world is SIX sequential LLM calls — the world's core, its places,
 ## its people, its campaigns, its beasts, its tongue — and on a local model that
@@ -8,15 +8,15 @@ class_name MythForgeWait extends VBoxContainer
 ## both the least information in the game and, at "about a minute", wrong.
 ##
 ## Two rules this obeys, because the alternative is a lie:
-##   · It never claims to KNOW which call is running. The backend does all six
-##     inside one request and reports nothing until the end, so a progress bar
+##   · It never claims to KNOW which call is running. The Worldsmith runs all
+##     six behind one await and reports nothing until the end, so a progress bar
 ##     here would be invented. Instead the smith NARRATES the work in the order
 ##     it genuinely happens, which is true whether or not the timing lines up.
 ##   · It shows real elapsed seconds. Past the point where a player starts to
 ##     wonder, a ticking number is the difference between waiting and worrying —
 ##     the same lesson MythThinking learned for the narration wait.
 
-## The worldsmith's actual call order (routes/character_studio_routes.py):
+## The Worldsmith's actual call order (autoload/worldsmith.gd):
 ## core → life (cast/stories/creatures) → stories retry → beasts → reskins.
 const BEATS := [
 	["the world takes its name", 0.0],

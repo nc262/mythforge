@@ -12,8 +12,7 @@ extends Node
 ##   godot --headless --path godot res://tests/click_driver.tscn   (audit)
 ##   godot --path godot res://tests/click_driver.tscn              (+ PNGs)
 ## Windowed runs save a screenshot per station to user://clickdrive/.
-## Backend: canned (Api.test_mode) by default — the same shipped scene runs
-## either way; set MF_LIVE=1 with a logged-in session to drive the live stack.
+## Narrator: scripted (Api.test_mode) — the shipped scene, without the model.
 
 var _game: Control
 var _issues: Array[String] = []
@@ -266,19 +265,12 @@ func _seed() -> void:
 		"inventory": [], "conditions": [], "spells": [], "slots": {},
 		"profSkills": ["athletics"], "profSaves": ["STR", "CON"], "hitDie": 10, "hitDiceUsed": 0,
 	}
-	# SEED THE SAVE FILE, not a stubbed HTTP import. This used to hand the sheet
-	# back through a canned /characters/studio/state/ response, so the harness was
-	# exercising a one-time migration from a server — a path the game no longer
-	# has, and never really had (no install carries backend state). Writing the
-	# file is what the game actually reads.
+	# SEED THE SAVE FILE. Writing the file is what the game actually reads, so
+	# the harness must set up state the same way play does.
 	GameState.character = {"id": "dm-embervale-clickdrive", "world_id": "embervale"}
 	GameState.state = {"sheet": sheet, "clock": {"day": 1, "ti": 1}}
 	GameState.save_kind("sheet", sheet)
 	GameState.save_kind("clock", {"day": 1, "ti": 1})
-	Api.test_json = {
-		"/generate": {"_status": 200, "image_url": ""},
-		"/memory/recall": {"_status": 200, "beats": []},
-	}
 	GameState.character = {"id": "dm-embervale-clickdrive", "name": "Clickwyn: Free Roam", "world_id": "embervale"}
 
 
@@ -290,7 +282,7 @@ func _boot_game() -> void:
 		if Mode.state == "Exploration":
 			break
 	await _must(Mode.state == "Exploration", "boot never reached Exploration (state=%s)" % Mode.state)
-	print("  boot: real game scene up (%s)" % ("LIVE backend" if not Api.test_mode else "canned backend"))
+	print("  boot: real game scene up (%s)" % ("live narrator" if not Api.test_mode else "scripted turns"))
 
 
 ## R8-06 / R12-03 — is each tab actually REACHABLE BY A MOUSE?

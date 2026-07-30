@@ -75,7 +75,7 @@ The Dossier       — campaign summary: name, theme, map sketch, cast faces,
   |                 the hook, the table rules; anything re-forgeable from
   |                 here (re-roll cast, re-seal intro)
   ↓
-Begin Campaign    — creates the dm- adventure + session + save slot; the
+Begin Campaign    — creates the dm- adventure and its save file; the
                     tale opens ON the intro scene
 ```
 
@@ -129,7 +129,7 @@ before the Forging sequence is built.
   (envelope text). Each engine-enforced where the engine owns the lever.
 - The Forging: existing endpoints — /worldsmith (world, story),
   /save (cworld + dm- adventure), Art.ensure (key art, chart, cast
-  portraits — pays the forge-art-queue matrix row), /api/session.
+  portraits — pays the forge-art-queue matrix row).
 - Outputs: campaign · world seed · map seed (chart art + locations) ·
   settlement seed (first here + seen) · NPC seeds (cast + codex entries)
   · quest seed (hook → first quest) · AI campaign prompt · save slot ·

@@ -23,8 +23,8 @@ compile_time  ≈  images × seconds_per_image
 
 ### T is MEASURED, not assumed (2026-07-21, this box)
 
-**Hardware:** AMD RX 7900 GRE via ZLUDA, 17.2 GB VRAM · ComfyUI 0.25.0.
-Method: 3 runs per config, median, warm (model already resident).
+**Hardware:** AMD RX 7900 GRE on Vulkan, 17.2 GB VRAM.
+Method: 3 runs per config, median, warm (checkpoint already resident).
 
 | Config | Warm median | Images / 30 min |
 |---|---|---|
@@ -105,20 +105,22 @@ treatment (§5) multiply each base by its material sets, so Deep still yields
 
 ### The model policy — spend resolution where it is seen
 
-Nothing is pinned today (`image_model = ''`), so the backend auto-picks from
-six checkpoints — **two of which are photorealistic** (`Juggernaut…Photo`,
-`RealVisXL`). That is the root cause of the stranger's photograph in playtest
-#15, and it must be fixed regardless of this design.
+The engine is launched with **one** checkpoint and cannot switch, so the
+resolution table below is the whole policy. An earlier stack auto-picked from six
+checkpoints, two of them photorealistic, which is how a stranger's photograph
+landed in a fantasy scene slot (playtest #15). One checkpoint cannot do that.
 
 | Content | Model / size / steps | Cost | Why |
 |---|---|---|---|
 | Item parts, icons, small props | Turbo · 512² · 6 | **1.5 s** | seen at 64–128 px; bulk |
 | Creatures, NPC bases, kit plates | Turbo · 768² · 8 | 5.6 s | seen at ~256 px |
 | Biome plates, world chart | Turbo · 1024² · 6 | 8.1 s | full-width backdrops |
-| **Key art · hero portraits · legendaries · boss art** | **SDXL · 1024² · 25** | 17 s | seen large, and *this is where uniqueness creates delight* |
+| **Key art · hero portraits · legendaries · boss art** | Quality · 1024² · 25 | 17 s | seen large, and *this is where uniqueness creates delight* |
 
-Every prompt gets a **pinned checkpoint** and a negative prompt carrying
-`photo, photorealistic, person` for item work — no auto-pick, ever.
+The engine runs **one** checkpoint, so the "model" column is a target for the
+day it can switch, not a live dial. What *is* live is the negative prompt —
+item work carries `photo, photorealistic, person`, because a photoreal item
+icon is the single most world-breaking thing this pipeline can produce.
 
 **The directive asks for tens of thousands of items. The GPU now affords
 ~1,200 generated images per 30-minute compile** — and composition multiplies
@@ -221,18 +223,15 @@ and the Environmental Art System illustrates per-screen environments — a separ
 architecture/dungeon/village pass would be near-duplicate generation, so it was
 deliberately not built.
 
-**Not yet built:** nothing on the original 10-stage plan. Matte plumbing
-(backend → ComfyUI Inspyrenet rembg) is verified end-to-end; the whole pipeline
-S1→S10 + Reforge compiles a world to POPULATED with world-true, AAA content.
+**Not yet built:** nothing on the original 10-stage plan. The whole pipeline
+S1→S10 + Reforge compiles a world to POPULATED with world-true content.
 
-**Seed-stage LLM gotcha (hard-won):** the seed stages POST to
-`/api/characters/studio/complete_json`. That endpoint MUST be (a) in app.py's
-`_TIMEOUT_EXEMPT_PREFIXES` — the asks run ~90s on llama3.1:8b and the 45s
-middleware silently 504'd them, so every world fell back to generic content —
-and (b) called with `json_mode=True` + a high token ceiling (~3000), or the big
-asset/creature objects come back as invalid/truncated JSON and still fall back.
-Both are now fixed; a fallback (`generated:false`) in a world's data is the
-signal this regressed.
+**Seed-stage model gotcha (hard-won):** every seed stage is prose-first —
+`LocalGM.prose()` for the thinking, then a small schema to give it fields. A
+single schema-constrained call that has to invent *and* serialise runs with no
+sampler at all and produces exactly the generic content the fallbacks exist to
+replace. `generated: false` in a world's data is the signal this regressed. See
+[LocalLLM-Tuning.md](LocalLLM-Tuning.md).
 
 ## 2. Pipeline overview
 
@@ -455,36 +454,24 @@ so the joins are invisible. No registration problem, because the object was
 always coherent. Verified working, including bands laid along the item's own
 **principal axis**, so diagonal art needs no reorientation.
 
-#### Matting · **SOLVED** — `InspyrenetRembg` installed
-Path B is unblocked and proven end-to-end: **8 of 8** items came back as clean
-cut-outs over a checkerboard (`docs/spikes/matte_key.png`), and the full chain
-— generate → matte → per-region material → rarity rim — produces coherent
-variant sets (`docs/spikes/matte_full.png`). Matting runs **inside the same
-ComfyUI graph**, so one call yields a finished RGBA asset.
+#### Matting · **NOT IN THE PIPELINE**
 
-Installed for a fresh machine by `scripts/install.ps1` (both GPU paths) and
-retrofittable via `scripts/install-comfy-nodes.ps1`.
+There is no background-removal step. The engine is one native binary serving one
+checkpoint; nothing mats, and nothing composites. Item art therefore has to be
+readable *as painted* — which is why every item prompt ends in "plain flat
+background, no scene".
 
-> **ZLUDA gotcha, learned the hard way.** Restarting ComfyUI via
-> ComfyUI-Manager's *reboot* drops the ZLUDA environment; every generation then
-> dies at `VAEDecode` with *"GET was unable to find an engine to execute this
-> computation"*. Two rules now encoded in the scripts: **restart ZLUDA only via
-> its own launcher**, and set `TORCH_BACKENDS_CUDNN_ENABLED=0` (ZLUDA cannot
-> reliably find a cuDNN convolution engine). Both `_run-comfy.bat` and
-> `start-image-stack.ps1` now set it.
-
-#### The historical bottleneck · background removal *(now retired)*
-Everything above depends on an alpha mask, and that is where it breaks:
+The methods that were tried before, and why prompt-controlled backgrounds are
+not a production pipeline on their own:
 
 | Method | Success rate | Failure mode |
 |---|---|---|
 | Luminance threshold | ~75 % | "black background" is often mid-grey; eats the item's own shadows |
 | Corner flood-fill | ~75 % | fails when the model paints a vignette |
-| **Chroma key** (green screen prompt) | ~50–70 % | the model paints a dark vignette *over* the key colour |
-| Local matting model | — | **not installed.** ComfyUI has only `BriaRemoveImageBackground`, an **API node** (cloud, key, credits) |
+| Chroma key (green-screen prompt) | ~50–70 % | the model paints a dark vignette *over* the key colour |
 
-**Prompt-controlled backgrounds are not reliable enough for a production
-pipeline.** This is the finding that reshapes the plan.
+If a real alpha mask ever becomes available, it belongs in the payload in
+`art_cache._paint()` — not in a proxy in front of the engine.
 
 ### The settled pipeline
 
@@ -688,7 +675,7 @@ Three profiles (Director-approved). Costs use §0's measured rates: parts at
 | Stage | Quick | Standard | Deep |
 |---|---|---|---|
 | S1–S2 Style + Language *(LLM, no GPU)* | 40 s | 50 s | 60 s |
-| S3 Key art *(SDXL)* + biome plates *(turbo 1024)* | 1 + 3 | 1 + 6 | 2 + 10 |
+| S3 Key art + biome plates *(1024)* | 1 + 3 | 1 + 6 | 2 + 10 |
 | S4 Parts *(turbo 512)* | 40 | 150 | **450** |
 | S5 Kit plates *(turbo 768)* | 8 | 22 | 40 |
 | S6 Creature species *(turbo 768)* | 6 | 16 | 30 |
@@ -701,9 +688,9 @@ Three profiles (Director-approved). Costs use §0's measured rates: parts at
 Notes:
 - Deep spends **75 % of its budget on parts at 1.5 s** — the cheapest images
   buy the most gameplay. That is the measurement paying for itself.
-- A cold model load costs ~16 s extra, so the compiler should **order stages by
-  checkpoint** (all turbo work together, then the SDXL showcase pass) to pay
-  each load once. Worth ~1–2 minutes on Deep.
+- A cold checkpoint load costs ~16 s. With one checkpoint that is paid once per
+  pour; if the engine ever switches, stages must be **ordered by checkpoint** so
+  it stays once.
 - Storage at Deep: ~558 images, mixed sizes ≈ **250–350 MB/world**. Director
   has confirmed multi-GB is acceptable, so §6's aggressive compression tactics
   are **deprioritised** — right-sizing stays (it buys speed, not just space),
@@ -740,13 +727,10 @@ things" — before a single minute of compile time is spent.
 
 ## 14. Director decisions (2026-07-21)
 
-1. ✅ **T measured** — see §0. Turbo@512 = 1.5 s changed the budget by 10×.
-   *"If ComfyUI isn't the right tool for loot, I'm open to additional tools."*
-   **Finding: ComfyUI is the right tool — the wrong part was the checkpoint.**
-   A Turbo model already installed, pinned per content tier, plus a negative
-   prompt against photorealism, solves both the speed and the quality problem.
-   No new tool needed. *(Revisit only if T2 layering needs ControlNet/IP-Adapter
-   nodes — those are ComfyUI extensions, not another tool.)*
+1. ✅ **T measured** — see §0. A Turbo checkpoint at 512² is 1.5 s, which changed
+   the budget by 10×. **The tool was never the problem; the checkpoint was.** A
+   Turbo model pinned per content tier, plus a negative prompt against
+   photorealism, solves both the speed and the quality problem at once.
 2. ✅ **Multi-time builds** — Quick / Standard / Deep, budgets in §12.
 3. ✅ **Disk is not a constraint** — "gigs for worlds is perfectly fine".
    Compression tactics deprioritised; right-sizing retained for speed.

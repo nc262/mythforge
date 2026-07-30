@@ -19,13 +19,13 @@ Session Zero knobs → per-turn `[GM style — …]` directive (only extremes
 speak: ≤25 / ≥75). Re-tunable mid-campaign via the GM panel — parity gap,
 M2 (knobs persist in the `gm` kind already).
 
-## Voice (roadmapped M3)
-Server TTS route exists (`/api/tts/synthesize`); narrator voice + speed and
-per-turn narration playback are FeatureMatrix rows. The web original used
-browser speechSynthesis — the desktop client will use the server route.
+## Voice — not built
+Narrator voice, speed and per-turn playback are FeatureMatrix rows waiting on a
+local voice engine. Speech goes IN today (NobodyWhoSTT, push-to-talk); nothing
+comes out.
 
-## Parity gaps
-Edit-message (inline bubble editing via `/api/session/{sid}/edit-message`) ·
+## Gaps
+Inline bubble editing (↻ retell is live; editing a sent line is not) ·
 speaker-name lines in group scenes · "How do you want to do this?" flourish
 input on killing blows (currently auto-asks the GM without the player's
 flourish text) · banter injections.

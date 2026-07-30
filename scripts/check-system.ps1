@@ -1,8 +1,10 @@
 # check-system.ps1 — can this machine run Mythforge?
 #
-# Analyzes CPU / RAM / disk / GPU (NVIDIA, AMD, Intel, none) and prints a
-# verdict + the exact install path for this hardware. Run it standalone, or
-# let scripts\install.ps1 call it (-Json) to pick the right ComfyUI flavor.
+# Analyzes CPU / RAM / disk / GPU and prints a verdict. Run it standalone, or
+# let scripts\install.ps1 call it (-Json).
+#
+# Both engines run on VULKAN, which every current vendor ships, so the only
+# question this asks is how much VRAM there is — not whose logo is on the card.
 #
 #   powershell -ExecutionPolicy Bypass -File .\scripts\check-system.ps1
 param([switch]$Json)
@@ -10,13 +12,14 @@ param([switch]$Json)
 $ErrorActionPreference = 'SilentlyContinue'
 
 # ── Requirements (the honest numbers) ────────────────────────────────────────
-# TEXT-ONLY  — the full game minus generated art:
-#   4-core CPU · 16 GB RAM · 15 GB disk · any GPU or none
-#   (the 8B storyteller model runs on CPU if it must — slower turns)
-# FULL (with image generation):
-#   NVIDIA: GTX 1070 / RTX 2060 (8 GB VRAM) minimum · RTX 3060 12 GB recommended
-#   AMD:    RDNA2 or newer with 12 GB VRAM (RX 6700 XT+) via ZLUDA
-#   plus 32 GB RAM recommended · 45 GB disk (models are big)
+# TEXT-ONLY — the full game minus generated art:
+#   4-core CPU · 16 GB RAM · 15 GB disk · any GPU or none.
+#   The narrator falls back to CPU if it must; turns get slow but nothing breaks.
+# COMFORTABLE — the narrator fully resident on the GPU:
+#   8 GB VRAM. A half-offloaded model is the single biggest latency cost there
+#   is (godot/docs/Performance.md), so this is the number that matters most.
+# FULL — generated art as well:
+#   12 GB VRAM · 32 GB RAM recommended · 45 GB disk.
 
 $os   = Get-CimInstance Win32_OperatingSystem
 $cs   = Get-CimInstance Win32_ComputerSystem
@@ -64,29 +67,22 @@ $best = $gpus | Sort-Object vramGB -Descending | Select-Object -First 1
 
 # ── Verdict ──────────────────────────────────────────────────────────────────
 $textOK  = ($ramGB -ge 15) -and ($cores -ge 4) -and ($freeGB -ge 15)
-$imageOK = $false; $imagePath = 'none'; $notes = @()
+$imageOK = $false; $imagePath = 'none'; $gpuNarrator = $false; $notes = @()
 if ($best) {
-  switch ($best.vendor) {
-    'nvidia' {
-      if ($best.vramGB -ge 8) { $imageOK = $true; $imagePath = 'comfyui-cuda' }
-      else { $notes += "NVIDIA card found but $($best.vramGB) GB VRAM < 8 GB — image generation will struggle or fail." }
-      if ($best.vramGB -ge 8 -and $best.vramGB -lt 12) { $notes += '8 GB VRAM works; 12 GB is the comfortable tier for SDXL.' }
-    }
-    'amd' {
-      $rdna2 = $best.name -match 'RX 6\d{3}|RX 7\d{3}|RX 9\d{3}'
-      if ($rdna2 -and $best.vramGB -ge 12) { $imageOK = $true; $imagePath = 'comfyui-zluda'; $notes += 'AMD runs SDXL through ZLUDA — it works well but setup takes ~30-60 min (HIP SDK + first-run compile).' }
-      elseif ($rdna2) { $notes += "AMD RDNA2+ card found but $($best.vramGB) GB VRAM < 12 GB — SDXL via ZLUDA needs 12 GB to be reliable." }
-      else { $notes += "AMD card '$($best.name)' predates RDNA2 — ZLUDA support is unreliable; text-only recommended." }
-    }
-    default { $notes += "GPU '$($best.name)' can't run local SDXL — the game runs text-only (no generated art)." }
-  }
-} else { $notes += 'No discrete GPU found — the game runs text-only (no generated art).' }
-if ($imageOK -and $ramGB -lt 31) { $notes += "32 GB RAM recommended for LLM + image gen together (you have $ramGB GB — it will work, with more model swapping)." }
-if ($imageOK -and $freeGB -lt 45) { $notes += "Full install wants ~45 GB free (you have $freeGB GB)." }
+  # One rule, every vendor: enough VRAM or not. Vulkan does the rest.
+  if ($best.vramGB -ge 8)  { $gpuNarrator = $true }
+  else { $notes += "$($best.vramGB) GB VRAM — the narrator will run partly on the CPU, which is the biggest single cost per turn." }
+  if ($best.vramGB -ge 12) { $imageOK = $true; $imagePath = 'sdcpp-vulkan' }
+  elseif ($gpuNarrator)    { $notes += 'Generated art wants ~12 GB so it does not compete with the narrator for the card.' }
+  if ($best.vendor -eq 'intel') { $notes += "Intel graphics run Vulkan too, but this combination is untested here — expect to find out." }
+} else { $notes += 'No discrete GPU found — the game plays text-only, on the CPU, slowly but completely.' }
+if ($imageOK -and $ramGB -lt 31) { $notes += "32 GB RAM recommended when both engines are live (you have $ramGB GB)." }
+if ($imageOK -and $freeGB -lt 45) { $notes += "A full install wants ~45 GB free (you have $freeGB GB)." }
 
 $result = [pscustomobject]@{
   os = $os.Caption; cpu = $cpu.Name.Trim(); cores = $cores; ramGB = $ramGB; freeGB = $freeGB
-  gpus = $gpus; textOK = $textOK; imageOK = $imageOK; imagePath = $imagePath; notes = $notes
+  gpus = $gpus; textOK = $textOK; imageOK = $imageOK; imagePath = $imagePath
+  gpuNarrator = $gpuNarrator; notes = $notes
 }
 if ($Json) { $result | ConvertTo-Json -Depth 4; exit 0 }
 
@@ -101,10 +97,12 @@ Write-Host "  Disk  : $freeGB GB free"
 foreach ($g in $gpus) { Write-Host ("  GPU   : {0}  [{1}, {2} GB VRAM]" -f $g.name, $g.vendor.ToUpper(), $g.vramGB) }
 if (-not $gpus) { Write-Host '  GPU   : none detected' }
 Write-Host ('  ' + ('─' * 60)) -ForegroundColor DarkGray
-if ($textOK) { Write-Host '  ✔ TEXT ADVENTURE: this machine can run the game (story, combat, worlds).' -ForegroundColor Green }
-else { Write-Host '  ✘ Below minimum for a smooth game (want: 4 cores, 16 GB RAM, 15 GB disk). Consider joining a friend''s server instead.' -ForegroundColor Red }
-if ($imageOK) { Write-Host "  ✔ FULL EXPERIENCE: image generation supported → install path: $imagePath" -ForegroundColor Green }
-else { Write-Host '  ○ Image generation: not supported on this hardware — portraits/backdrops will be disabled (or join a server that has them).' -ForegroundColor Yellow }
+if ($textOK) { Write-Host '  ✔ THE GAME: story, combat, worlds — this machine can run it.' -ForegroundColor Green }
+else { Write-Host '  ✘ Below minimum (want: 4 cores, 16 GB RAM, 15 GB disk). It will run; it will not be pleasant.' -ForegroundColor Red }
+if ($gpuNarrator) { Write-Host '  ✔ NARRATOR ON THE GPU: turns stay fast.' -ForegroundColor Green }
+else { Write-Host '  ○ Narrator will share with the CPU — expect slow turns.' -ForegroundColor Yellow }
+if ($imageOK) { Write-Host '  ✔ GENERATED ART: supported (stable-diffusion.cpp, Vulkan).' -ForegroundColor Green }
+else { Write-Host '  ○ Generated art: off. The shipped worlds carry pre-baked art, so nothing is missing from play.' -ForegroundColor Yellow }
 foreach ($n in $notes) { Write-Host "  · $n" -ForegroundColor DarkYellow }
 Write-Host ''
 Write-Host '  Next: powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1' -ForegroundColor Cyan

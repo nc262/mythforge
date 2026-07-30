@@ -98,7 +98,7 @@ the player?" — never "what controls belong here?" UI is layered INTO an
 illustrated environment, not floated over chrome.
 
 - **`MythEnvironment`** (ui/myth_environment.gd) is the mount: a generated
-  SDXL painting of the room (cover-fit, clipped, whisper of mouse parallax),
+  generated painting of the room (cover-fit, clipped, whisper of mouse parallax),
   a legibility scrim + edge vignette, breathing volumetric light shafts,
   flickering candle anchors, and drifting particles (dust or embers). With
   no key it is a pure atmosphere overlay for screens that already own art.

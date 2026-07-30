@@ -3,7 +3,7 @@ extends Node
 ## can ship them PRE-BAKED (world-true items/creatures/art, zero forge wait).
 ## Sequential (one GPU); waits for each world to reach POPULATED before the next.
 ##   godot --headless --path godot res://tests/bake_worlds.tscn
-## Needs a reachable backend + GPU (auth is off, so no login required).
+## Needs the narrator model and the image engine (scripts/start-image-sdcpp.ps1).
 ##
 ## RESUMABLE (AssetBake B4). The pour is hours per world, so this is written to be
 ## killed and re-run:
@@ -24,9 +24,10 @@ const STALL_TICKS := 240 # give up on a world after 20 min with no image landing
 
 func _ready() -> void:
 	Compiler.stage_started.connect(func(s, human): print("    ▶ %-12s %s" % [s, human]))
-	if not await Api.auth_ok():
-		# auth is off, so this should pass; if not, the backend is down.
-		print("BAKE: backend not reachable — aborting"); get_tree().quit(1); return
+	if not LocalGM.available():
+		print("BAKE: no narrator — %s" % LocalGM.why_unavailable()); get_tree().quit(1); return
+	if not await Services.warm_art(15.0):
+		print("BAKE: image engine down — run scripts/start-image-sdcpp.ps1"); get_tree().quit(1); return
 
 	var worlds: Array = Rules.builtin_worlds()
 	print("=== baking %d built-in worlds ===" % worlds.size())

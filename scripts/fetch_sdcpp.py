@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Fetch stable-diffusion.cpp (Vulkan, Windows) — the image engine.
 
-36 MB download, ~106 MB installed, and it replaces the entire ComfyUI + ZLUDA +
-Python tower: one native binary that serves the OpenAI image API directly.
+36 MB download, ~106 MB installed: one native binary that serves the OpenAI
+image API directly, so the game POSTs to it with nothing in between.
 
-Vulkan is the point. ZLUDA existed only because ComfyUI wants CUDA and this is
-an AMD card; a Vulkan backend needs no CUDA, so none of that scaffolding — the
-zluda.exe wrapper, the Defender exclusion, cuDNN forced off, Python pinned to
-3.11 — has anything left to hold up.
+Vulkan is the point — it needs no vendor SDK and no CUDA shim, so this works the
+same on either card.
 
     python scripts/fetch_sdcpp.py [--dest DIR] [--release TAG]
 """
@@ -19,9 +17,7 @@ import urllib.request
 import zipfile
 
 REPO = "leejet/stable-diffusion.cpp"
-# Sibling of the repo, matching where the supervisor and installer look for it.
-# Was hardcoded to one developer's home directory, which is fine for a spike and
-# wrong the moment install.ps1 calls it.
+# Sibling of the repo, matching where install.ps1 and the launcher look for it.
 DEFAULT_DEST = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "stable-diffusion.cpp")

@@ -118,7 +118,7 @@ func _ready() -> void:
 			_ck((parsed as Dictionary).has("name") and (parsed as Dictionary).has("mood"),
 				"and it has the keys the schema demanded")
 
-	# ── Chronicle's extractors, which now run here rather than on the backend ──
+	# ── Chronicle's extractors ──
 	# The point is the ENUM: an invalid disposition is not normalised afterwards,
 	# it is ungeneratable. maxItems is the other half — an unbounded array against
 	# a chatty model is how a codex becomes a novel.
@@ -189,9 +189,9 @@ func _ready() -> void:
 			"concurrent call B kept its own schema")
 
 	# ── The Worldsmith ──────────────────────────────────────────────────────
-	# Assert the sections the SERVER used to lose. The old route carried a retry
-	# loop and two rescue calls precisely because `locations` and `stories` went
-	# missing; if the grammar really makes that unreachable, these hold every run.
+	# Assert the sections an unconstrained ask used to lose. `locations` and
+	# `stories` went missing often enough to need rescue calls; if the grammar
+	# really makes that unreachable, these hold every run.
 	if LocalGM.available():
 		t0 = Time.get_ticks_msec()
 		var w := await Api.worldsmith({
@@ -216,7 +216,7 @@ func _ready() -> void:
 				kinds_ok = false
 		_ck(kinds_ok, "every location kind is one the enum allows")
 		_ck(w.get("reskins") is Dictionary and (w["reskins"]["names"] as Dictionary).size() == 12,
-			"all 12 classes got world-specific names (the server settled for 8)")
+			"all 12 classes got world-specific names")
 		if w.get("reskins") is Dictionary:
 			print("    reskins: %s" % JSON.stringify(w["reskins"]["names"]).left(180))
 

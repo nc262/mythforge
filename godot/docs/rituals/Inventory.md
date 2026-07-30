@@ -64,7 +64,7 @@ Focus order: portrait (1) → sockets (2) → goods (3) → strap (4)
 
 In-engine with fake data — the MDL gallery carries card/socket/gauge/portrait
 faces; this ritual composes them on the new leather material. Verified by
-screenshot before ship (see TestingChecklist).
+screenshot before ship (see Testing.md).
 
 ## 6-8. Polish, testing, documentation
 

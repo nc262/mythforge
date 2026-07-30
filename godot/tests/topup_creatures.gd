@@ -17,8 +17,8 @@ const FLOOR := 5
 
 
 func _ready() -> void:
-	if not await Api.auth_ok():
-		print("TOPUP: backend not reachable — aborting"); get_tree().quit(1); return
+	if not await Services.warm_art(15.0):
+		print("TOPUP: image engine down — run scripts/start-image-sdcpp.ps1"); get_tree().quit(1); return
 	for w in Rules.builtin_worlds():
 		var wid := str(w.get("id", ""))
 		if wid == "" or Compiler.compile_state(wid) == "":

@@ -193,7 +193,7 @@ Applies to every `Button`, card, socket, tab, map pin, and list row.
 | Words | one sentence, in the world's voice, saying *what* and *why*: "Not enough gold for the lantern — you carry 12, it asks 15." |
 
 - Never show HTTP codes, exception text, node paths, or "null" to a player.
-- System faults (backend down, art forge stalled) are phrased as the world faltering, with a retry — never blame the player.
+- System faults (no narrator model, the art forge stalled) are phrased as the world faltering, with a retry — never blame the player.
 - Rule refusals state the rule and point at the fix ("not your turn — press Next › to advance").
 
 ## 7. Loading and waiting

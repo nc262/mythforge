@@ -4,9 +4,6 @@
 # the project's own installer for the hard parts (GPU detection, the narrator /
 # encoder / voice models, the image engine) and adds the Godot game client.
 #
-# It used to say "the whole server-side stack": Ollama, ComfyUI, an app venv and
-# a FastAPI backend. There is no server side. The game is the application.
-#
 # Everything here is idempotent — safe to re-run as a "repair".
 #
 #   powershell -ExecutionPolicy Bypass -File .\installer\bootstrap.ps1
@@ -37,8 +34,8 @@ if ($Yes) { $installArgs += '-Yes' }
 & powershell @installArgs
 if ($LASTEXITCODE -ne 0) { throw "engine setup failed (exit $LASTEXITCODE) — see output above." }
 
-# 2. The desktop game client — the one thing the server installer doesn't know
-#    about. Ships with every world pre-baked, so it's the largest single file.
+# 2. The game itself. Ships with every world pre-baked, so it is by far the
+#    largest single file.
 Step 'Downloading the game'
 $client = Join-Path $Root 'Mythforge.exe'
 if (Test-Path $client) {

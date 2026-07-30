@@ -489,10 +489,8 @@ func _ready() -> void:
 	assert(Composer.scene_context().contains("not yet established"))
 
 	# Persistence: save_kind updates local state AND lands on disk, immediately.
-	# This used to assert that the write was QUEUED for a PUT — the save being on
-	# a server is what let three features silently never persist and what filed
-	# every save under "null" once auth was disabled. It is a file now, so the
-	# check is the one that actually matters: read it back.
+	# The check that matters is the one that reads it back — asserting a write was
+	# merely QUEUED is how three features silently never persisted.
 	var keep_char := GameState.character
 	GameState.character = {"id": "dm-selfcheck-persist"}
 	GameState.state = {}

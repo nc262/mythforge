@@ -1,74 +1,123 @@
-# Troubleshooting — Odysseus (local deployment)
+# Troubleshooting
 
-RCAs for the failures actually hit bringing up this stack. Each: symptom → root cause →
-fix.
+RCAs for failures actually hit on this stack. Each one: symptom → root cause →
+fix. A symptom with a guess instead of a root cause does not belong here.
 
-## ComfyUI won't start / `localhost:8188` won't load
+## The game says it has no narrator
 
-### `TypeError: init() got an unexpected keyword argument 'simple_vram_headroom'`
-- **Cause:** the stock launcher (`comfyui-n.bat`) auto-`git pull`ed an upstream ComfyUI
-  commit incompatible with installed components.
-- **Fix:** roll back to the known-good commit (`git reset --hard <commit>`) and launch
-  via the pinned `_run-comfy.bat` (no git pull). Update ComfyUI deliberately, not
-  automatically.
+> "The storyteller has no voice yet — the NobodyWho extension is not installed."
 
-### `OSError: [WinError 126] … cublas64_11.dll … or one of its dependencies`
-- **Cause:** ComfyUI was launched as plain `python main.py` (e.g. **ComfyUI Manager's
-  "Restart" button**), bypassing the ZLUDA wrapper, so the ZLUDA cublas stub can't
-  resolve HIP deps.
-- **Fix:** always launch via `.\zluda\zluda.exe -- python main.py` (i.e. via
-  `_run-comfy.bat` / `start-image-stack.ps1`). Don't use Manager's restart.
+- **Cause:** the GDExtension binary is gitignored (it is over GitHub's 100 MB
+  per-file limit), so a fresh clone has the manifest but no DLL.
+- **Fix:** `python scripts/fetch_nobodywho.py`, or run `scripts/install.ps1`,
+  which does it as step 3.
 
-### `tar: Error opening archive: Failed to open 'zluda.zip'` / `nccl.dll` missing
-- **Cause:** Windows Defender quarantined the ZLUDA download (known false positive).
-- **Fix:** add a Defender exclusion for `..\ComfyUI-Zluda`, then re-download/patch ZLUDA
-  (`scripts/fix-zluda-elevated.ps1`). Confirm `cublas64_11.dll` in
-  `venv\Lib\site-packages\torch\lib` is the small (~250 KB) ZLUDA stub, not the 88 MB
-  CUDA original.
+> "no .gguf model in …"
 
-## Image generation fails
+- **Cause:** nothing in `user://models`.
+- **Fix:** `scripts/install.ps1` downloads all three, or drop any chat `.gguf`
+  in that folder and restart.
 
-### `RuntimeError: cuDNN error: CUDNN_STATUS_EXECUTION_FAILED` (in UNet conv2d)
-- **Cause:** ZLUDA's cuDNN path is unreliable on AMD; `cudnn.dll` isn't patched on
-  purpose.
-- **Fix:** disable cuDNN. The bridge routes the model through
-  `CUDNNToggleAutoPassthrough(enable_cudnn=False)` in every workflow. For hand-built
-  ComfyUI workflows, add the **CFZ CUDNN Toggle** node (enable_cudnn=False).
+## The GM answers, but badly and instantly
 
-### First generation takes minutes / appears to hang
-- **Cause:** ZLUDA compiles kernels for each new op-shape on first use (logs show
-  "Compilation is in progress"). Not a hang — check CPU time + `%LOCALAPPDATA%\ZLUDA\
-  ComputeCache` growing.
-- **Fix:** wait it out once; subsequent gens for that shape are fast (cached). Give the
-  bridge a generous `--timeout` for first runs.
+- **Cause:** the 80 MB **encoder** got loaded as the narrator. Both live in
+  `user://models`, and if the narrator picker fell back to "first file found",
+  filesystem order would decide which one talks.
+- **Fix:** `LocalGM.chat_models()` skips anything matching the encoder hints
+  (`embed`, `minilm`, `nomic`, `bge`, `gte`, `e5-`), and Settings' picker lists
+  only the survivors. If you add a model whose name contains one of those, it
+  will be treated as an encoder — rename it.
+- **Why it is worth guarding:** this failure is silent. It does not error; it
+  just narrates worse, forever.
 
-### Bridge returns `TimeoutError` but ComfyUI keeps working
-- **Cause:** the client gave up before the (first-run) compile finished; ComfyUI still
-  completes the queued prompt.
-- **Fix:** raise the bridge `--timeout`; the next request is fast.
+## Turns are slow (tens of seconds)
 
-## Personas
+- **Cause, almost always:** the model is not fully resident on the GPU. A
+  llama.cpp GPU/CPU split is decided **once, at load time**, so anything holding
+  VRAM when the model loads costs you for the life of the process.
+- **Fix:** make sure nothing else is on the card when the game starts.
+  stable-diffusion.cpp idles at ~118 MB and loads per request, so it is not the
+  culprit; a resident image stack (7+ GB) absolutely is. Measured on this box:
+  19.3 s per turn with one resident, 3.7 s without.
+- See [godot/docs/Performance.md](../godot/docs/Performance.md).
 
-### Persona won't generate an image in chat
-- **Cause:** `gurubot/girl:latest` doesn't emit tool calls; there's no chat→image
-  auto-trigger. Expected.
-- **Fix:** generate explicitly via the bridge `character` param, or build a deterministic
-  chat trigger. Switching to a tool-capable model trades away the persona voice.
+## A structured call takes 90+ seconds and then fails
 
-### Persona prompt edits don't show up
-- **Cause:** `presets.json` is cached at startup; a UI preset-save can overwrite a file
-  edit with the stale cache.
-- **Fix:** edit the file then **restart Odysseus**, or edit via the UI/API. Don't do
-  both out of order.
+> `Error during context shift: not enough messages to shift`
 
-### Persona breaks character / contradicts canon
-- **Cause:** old `Brain → identity` memory entries recalled alongside the new World
-  Bible; or a tool-capable model pushed into "assistant" mode.
-- **Fix:** reconcile/remove the stale identity memories; keep canon in the prompt.
+- **Cause:** one call was asked to *invent* and *serialise* at the same time. A
+  grammar and a sampler chain **replace each other** in NobodyWho, so a
+  schema-constrained call runs with no top-k, top-p, temperature or repetition
+  penalty — and an unsampled model rambles until it runs out of context.
+- **Fix:** think in prose first (`LocalGM.prose()`), then hand that prose to
+  `complete_json()` with a small schema. Measured: 95.8 s failure → 1.5 s
+  success.
+- **Do not** "fix" this by raising the context or adding `maxLength` to the
+  schema. Both were tried. `maxLength: N` compiles to `char{0,N}` in GBNF, which
+  is extremely slow to sample, and at N ≥ 2000 it emits GBNF that does not
+  parse. Full detail in
+  [godot/docs/LocalLLM-Tuning.md](../godot/docs/LocalLLM-Tuning.md).
 
-## Launching scripts from automation
-- Background/detached `cmd` may not inherit a `cd`, and PowerShell mangles single-quoted
-  strings with embedded quotes passed to `cmd`. **Use a wrapper `.bat` that `cd /d`s and
-  calls the target by full path**, or `Start-Process -FilePath` with absolute paths.
-- ComfyUI's venv must be **Python 3.11** (triton/torch ZLUDA patches are cp311-only);
-  pre-create it with `py -3.11 -m venv venv` before running the installer.
+## Every GM reply opens the same way
+
+> "The smell of bread hangs in the air. The lamplight…"
+
+- **Cause:** two things at once. The extension's default sampler carries a fixed
+  seed, and "be vivid" means "paint the room" to an 8B model.
+- **Fix:** `LocalGM._tune_narrator()` sets an explicit sampler before every turn,
+  and CRAFT carries *"OPEN ON WHAT CHANGED — an action, a person, a consequence,
+  a line of speech. Do NOT open with weather, light, smell, or the time of
+  day."* That line alone took atmosphere openings from 3/3 to 0/3 in `bench_gm`.
+
+## An image takes ~50 s and most of it is the decode
+
+- **Cause:** without `--vae-tiling`, the VAE decode asks for a Vulkan buffer past
+  this device's limit, falls back to a slow path, and spends 36.2 s of a 50.4 s
+  image.
+- **Fix:** `--vae-tiling` in **every** launch path. Tiled: 3.1 s decode, 19.9 s
+  image, pixel-identical at the same seed. This is load-bearing, not tuning.
+- **Related:** sd-server **ignores `steps` in the request body**. Steps are a
+  launch flag or nothing.
+
+## A regex silently matches nothing
+
+- **Cause:** `\uXXXX` is a JavaScript escape. Godot's RegEx is **PCRE2**, where
+  it is not valid — the pattern compiles to something that never matches, with
+  no error.
+- **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
+  This was written twice before it stuck.
+
+## The exe won't copy to the Desktop
+
+> `Device or resource busy`
+
+- **Cause:** the game is running and holding the file.
+- **Fix:** close it first. Never skip the Desktop copy silently — a stale
+  Desktop build gets playtested by mistake, which wastes a whole session chasing
+  bugs that are already fixed.
+
+## The Desktop icon is still the old one
+
+- **Cause:** Windows caches icons per path.
+- **Fix:** `ie4uinit.exe -show`, or log out and back in.
+
+## An old image stack keeps coming back
+
+- **Cause:** something is supervising it. Two things have: a pm2 app that polled
+  the port and relaunched it (and `pm2 save` is needed, or `dump.pm2` restores it
+  on reboot), and a logon script in the Startup folder pointing at a *different*
+  checkout entirely.
+- **Fix:** check pm2's dump and the Startup folder before believing a kill
+  worked. Both are disabled here.
+
+## Method notes that keep earning their place
+
+- **A string search is not a dependency check.** A grep for a filename found 44
+  of 49 dependents; five more used path joins and were only caught by diffing
+  the test collection.
+- **Assert what the failure looks like, not what a good answer looks like.**
+  Three separate metrics in this repo's history passed broken output with
+  confidence.
+- **Ask the parser, not the text.** If you want to know whether the model
+  produced a valid object, parse it. Scoring the string is how you end up
+  measuring the wrong thing.

@@ -1,52 +1,46 @@
 name: Feature Request
-description: Propose a new feature or a concrete improvement to Odysseus.
+description: Propose a new feature or a concrete improvement to Mythforge.
 labels: ["enhancement"]
 
 body:
   - type: markdown
     attributes:
       value: |
-        **Before submitting:** search [open issues](https://github.com/pewdiepie-archdaemon/odysseus/issues)
-        and [discussions](https://github.com/pewdiepie-archdaemon/odysseus/discussions) first.
-        Feature requests that duplicate [ROADMAP.md](https://github.com/pewdiepie-archdaemon/odysseus/blob/main/ROADMAP.md)
-        or an existing open issue will be closed as duplicates.
+        **Before submitting:** check
+        [godot/docs/Backlog.md](https://github.com/nc262/mythforge/blob/main/godot/docs/Backlog.md)
+        and [FeatureMatrix.md](https://github.com/nc262/mythforge/blob/main/godot/docs/FeatureMatrix.md).
+        Most things are already tracked, including the ones deliberately not built.
 
-        If your idea needs community input before it becomes a concrete proposal,
-        start a [discussion](https://github.com/pewdiepie-archdaemon/odysseus/discussions/categories/ideas) instead.
+        If your idea needs discussion before it becomes a concrete proposal,
+        start a [discussion](https://github.com/nc262/mythforge/discussions/categories/ideas) instead.
 
   - type: checkboxes
     id: prerequisites
     attributes:
       label: Prerequisites
       options:
-        - label: I searched [open issues](https://github.com/pewdiepie-archdaemon/odysseus/issues?q=is%3Aissue+is%3Aopen) and this has not already been proposed.
+        - label: I checked the Backlog and the Feature Matrix and this is not already tracked.
           required: true
-        - label: I searched [discussions](https://github.com/pewdiepie-archdaemon/odysseus/discussions) and this is not already being debated there.
+        - label: This is a concrete, actionable proposal — not "it would be nice if…".
           required: true
-        - label: This is a concrete, actionable proposal — not a vague "it would be nice if..." request.
+        - label: This does not require the model to decide a mechanical outcome. The engine decides; the model narrates.
           required: true
 
   - type: dropdown
     id: area
     attributes:
       label: Area
-      description: Which part of the application does this affect?
       options:
         - "-- Please Select --"
-        - Chat / Agent
-        - Email
-        - Calendar
-        - Documents / RAG
-        - Memory
-        - Cookbook / Local Models / GPU
-        - Search
-        - Notes / Editor
-        - Auth / Security
-        - Docker / Deployment
-        - UI / Frontend
-        - API / Backend
-        - MCP
-        - Testing / CI
+        - Rules / combat / progression
+        - The Game Master (prompting, memory, pacing)
+        - World forging / the World Compiler
+        - Art and the image engine
+        - UI, the design system, a ritual screen
+        - Saves, chronicles, persistence
+        - Audio
+        - Accessibility
+        - Tooling / build / installer
         - Other
     validations:
       required: true
@@ -54,30 +48,30 @@ body:
   - type: textarea
     id: problem
     attributes:
-      label: Problem or Motivation
-      description: What problem does this solve, or what use case does it enable? Be specific — "it would be better" is not enough.
+      label: Problem or motivation
+      description: What does this solve at the table? "It would be better" is not enough — describe the moment in play where the current behaviour disappoints.
     validations:
       required: true
 
   - type: textarea
     id: solution
     attributes:
-      label: Proposed Solution
-      description: Describe the behaviour or change you want to see. Include API shape, UI sketch, or code snippets if that helps make it concrete.
+      label: Proposed solution
+      description: The behaviour you want. A UI sketch, a tag shape, or a snippet helps make it concrete.
     validations:
       required: true
 
   - type: textarea
-    id: alternatives
+    id: cost
     attributes:
-      label: Alternatives Considered
-      description: What other approaches did you consider and why did you rule them out? If there is an existing workaround, describe it.
+      label: What does it cost per turn?
+      description: If this adds a model call, an image, or work inside the turn loop, say so. Latency is a design constraint here, not a footnote.
 
   - type: textarea
-    id: prior-art
+    id: alternatives
     attributes:
-      label: Prior Art / Related Issues
-      description: Link any related issues, discussions, or external references that informed this proposal.
+      label: Alternatives considered
+      description: What else did you consider, and why rule it out? If there is a workaround today, describe it.
 
   - type: dropdown
     id: willing_to_implement

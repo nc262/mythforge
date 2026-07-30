@@ -18,16 +18,17 @@ Dependencies point **downward only**; nothing lower reaches up into a view.
    │ GameState · Combat · Rules · WorldSkin · Mode(FSM)            │
    └───────────────▲───────────────────────────────▲──────────────┘
                    │                                │
-   ┌───────────────┴──── AI ────┐   ┌── Generation ─┴──┐   ┌ Persist/Net ┐
-   │ Composer · Tags · Chronicle │  │ Art (ComfyUI)    │   │ Api (HTTP/SSE)│
-   └─────────────────────────────┘  └──────────────────┘   └──────────────┘
+   ┌───────────────┴──── AI ────┐   ┌── Generation ─┴──┐   ┌── Persist ──┐
+   │ Composer · Tags · Chronicle │  │ Art → sd.cpp     │   │ GameState   │
+   │ LocalGM · LocalMemory       │  │                  │   │ files       │
+   └─────────────────────────────┘  └──────────────────┘   └─────────────┘
 ```
 
 - **Views** may read Gameplay state and call services; services must NOT call
   back into a specific view (use signals, as the extracted windows already do).
 - **AI** (Composer/Tags/Chronicle) never mutates gameplay directly — only the
   `[[tag]]` protocol, applied by the engine, changes state. This is the invariant.
-- **Generation** (Art) and **Persistence/Net** (Api) are leaf services.
+- **Generation** (Art) is a leaf service and the only one that opens a socket.
 
 Known upward/cross reaches to unwind over time (tracked, not blocking):
 `Rules.attack_mod → GameState.inv` (pass inv explicitly), `Composer →
@@ -53,9 +54,9 @@ Lowest coupling first — do them in this order; each is one commit + a playtest
 | Extract → new scene | Lines (approx) | Couples to | Signal(s) back |
 |---|---|---|---|
 | `_open_shop` → `merchant_window.gd` | ~120 | GameState buy/sell/haggle, Rules stock | `traded(summary)` → GM note |
-| `_open_journal` → fold into `lore_book.gd` (Quests/Chronicle already there) | ~90 | Chronicle, snapshots API | — (retire the inline one) |
-| `_open_chronicle` / `_open_atlas` → `lore_book`/`world_map` | ~80 | snapshots, world.here | `travel(place)` |
-| `_tune_gm` / `_save_chapter` → `gm_panel.gd` | ~70 | gm kind, snapshots API | `retuned` |
+| `_open_journal` → fold into `lore_book.gd` (Quests/Chronicle already there) | ~90 | Chronicle, chapters | — (retire the inline one) |
+| `_open_chronicle` / `_open_atlas` → `lore_book`/`world_map` | ~80 | chapters, world.here | `travel(place)` |
+| `_tune_gm` / `_save_chapter` → `gm_panel.gd` | ~70 | gm kind, chapters | `retuned` |
 | `_level_up_ceremony` → `levelup_window.gd` | ~110 | Rules level tables, sheet | `chose(choices)` |
 | reactions overlay → `reaction_prompt.gd` | ~60 | Combat pending | `chose(kind)` |
 

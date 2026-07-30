@@ -49,7 +49,7 @@ partially-covered tile, so transitions are seamless by construction.
 
 This matters enormously for cost: the five shapes are **geometry, not art**.
 They are alpha masks. They can be drawn procedurally or generated once as small
-greyscale PNGs — no SDXL, no GPU hours. The 816 baked tiles stay exactly as they
+greyscale PNGs — no diffusion, no GPU hours. The 816 baked tiles stay exactly as they
 are and become the *base fills*; blending is a mask layer on top.
 
 ### Readability comes from the art, not from overlays

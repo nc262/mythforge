@@ -9,7 +9,7 @@ no commissioned meshes.
 ## The asset pipeline (the decision)
 
 **Assets are generated, cached, and skinned — never hand-authored or 3D.** The
-paper doll reuses the exact `Art.ensure → ComfyUI/SDXL → user://art` path that
+paper doll reuses the exact `Art.ensure → the image engine → user://art` path that
 already paints portraits, scenes, maps, and item icons:
 
 - **The body:** `herobody-<cid>` — a full-body figure prompted from the hero's

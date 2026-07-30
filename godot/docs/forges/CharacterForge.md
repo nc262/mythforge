@@ -60,12 +60,12 @@ Appearance        — describe them in words (feeds the portrait prompt);
   |                 art-style chips (painted/ink/noir…) — pays the
   |                 art-style-picker matrix row
   ↓
-The Portrait      — SDXL commission begins HERE, async; the anvil shows a
+The Portrait      — the commission begins HERE, async; the anvil shows a
   |                 cooling silhouette that resolves into the face when the
   |                 painting lands (evolving portrait, honest version);
   |                 ↻ re-strike (regenerate) with different style chips
   ↓
-The Voice         — ⛔ TTS provider disabled backend-side: stage EXISTS as a
+The Voice         — ⛔ no local voice engine yet: the stage EXISTS as a
   |                 dim rune-stone "awaiting the bards" (placeholder per the
   |                 no-simplification rule; wired when the provider wakes)
   ↓

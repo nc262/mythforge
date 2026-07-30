@@ -1,31 +1,20 @@
 extends Node
-## The Worldsmith, in-process — the last creative helper off the backend.
+## The Worldsmith — see docs/Architecture.md.
 ##
 ## Expands a one-line idea into a playable world (name, lore, locations, cast,
 ## campaigns, bestiary, class reskins), or crafts a single campaign for a world
 ## that already exists. Four call sites, all through `Api.worldsmith()`, which
 ## now delegates here.
 ##
-## WHAT THE SCHEMA DELETED. The server version was ~320 lines, and most of that
-## was defending against a model that drops sections:
-##
-##   - `_ask()` retried every call once with "your previous answer omitted
-##     required sections", doubling the wall clock on a bad box.
-##   - Two RESCUE CALLS existed solely to re-ask for `locations` and `stories`
-##     when the big call came back without them.
-##   - `_clean()` unwrapped fields the model returned as a repr'd dict —
-##     `"{'prompt': '…'}"` where a string was wanted.
-##   - `_reskins()` returned null unless at least 8 of the 12 classes came back,
-##     because they often did not.
-##
-## A grammar cannot omit a required key, cannot emit an object where a string
-## belongs, and cannot stop an array below `minItems`. Every one of those guards
-## was defending against a failure the constraint makes UNREACHABLE, so all four
-## are gone rather than ported. What remains is clamping lengths, which is a
+## WHY THERE ARE NO RETRIES OR RESCUE CALLS HERE. A grammar cannot omit a
+## required key, cannot emit an object where a string belongs, and cannot stop an
+## array below `minItems` — so the usual defences (re-ask for the missing
+## section, unwrap a repr'd dict, reject a partial answer) all guard failures the
+## constraint makes unreachable. What remains is clamping lengths, which is a
 ## taste decision the grammar has no opinion about.
 
-## Length caps, carried over from the server so a chatty model cannot push a
-## 4000-character "tagline" into a UI built for one line.
+## Length caps: a chatty model must not push a 4000-character "tagline" into a UI
+## built for one line.
 const CAP := {
 	"name": 60, "kind": 40, "tagline": 160, "lore": 1200, "backdrop": 400,
 	"title": 80, "premise": 500, "hook": 300, "role": 80, "appearance": 300,
@@ -142,8 +131,8 @@ func _pillars(fields: Dictionary) -> String:
 ##
 ## Two calls at ~2 s beat one at 98 s that fails. Returns {} when unusable, which
 ## the caller turns into a status the forge already knows how to show. No retry:
-## the server's retry existed to re-ask for dropped keys, and a required key
-## cannot be dropped.
+## a retry exists to re-ask for dropped keys, and a required key cannot be
+## dropped under a grammar.
 func _ask(prompt: String, schema: String) -> Dictionary:
 	var thought := await LocalGM.prose(prompt)
 	if thought.strip_edges() == "":

@@ -1,25 +1,23 @@
 Mythforge
 =========
 
-Mythforge is a self-hosted, AI-run tabletop RPG.
+Mythforge is a single-player, offline tabletop RPG whose Game Master is a
+language model running on your own machine.
 
-It is built on top of Odysseus, a third-party MIT-licensed self-hosted AI
-workspace. The platform code Mythforge retains (routing, chat streaming, auth,
-sessions, presets, model/endpoint management, image generation, galleries, and
-supporting services) originates from Odysseus and remains under its MIT license.
+It began as a fork of Odysseus, a third-party MIT-licensed self-hosted AI
+workspace. The MIT license that came with that work is preserved in LICENSE and
+this attribution is kept because the project's history derives from it.
 
   Odysseus — https://github.com/pewdiepie-archdaemon/odysseus
   Copyright (c) 2025 Odysseus Contributors
   MIT License (see LICENSE)
 
-The game itself (the "Character Studio" / Mythforge layer — worlds, campaigns,
-characters, the Game Master loop, dice and combat, pinpoint campaign memory) is
-the contribution built on top of that platform.
+What remains of that platform is nothing that runs. The server, chat streaming,
+auth, sessions, presets, model and endpoint management, galleries and their
+supporting services have been removed. What ships is a Godot game that runs its
+own language model in-process, and a small set of art tooling.
 
-Odysseus in turn adapts code from other open-source projects (opencode, llmfit,
-Tongyi DeepResearch). Those attributions and their full license texts are kept
-in ACKNOWLEDGMENTS.md and licenses/. All are permissively licensed (MIT /
-Apache-2.0); their copyright and license notices are preserved as required.
+Third-party runtime components are credited in ACKNOWLEDGMENTS.md.
 
 This NOTICE file is provided for attribution. It does not modify the terms of
 the MIT License under which this software is distributed.

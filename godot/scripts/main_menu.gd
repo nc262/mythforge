@@ -22,15 +22,11 @@ func _ready() -> void:
 	theme = Ui.theme
 	Ui.apply("")
 	Mode.enter("MainMenu")
-	# THIS IS THE FIRST SCREEN NOW. It used to be a login form, on a single-player
-	# desktop game, in front of a backend with no accounts configured at all — so
-	# the only way past the door was the `auth_enabled: false` escape hatch, and
-	# the thing being guarded was a save file already sitting in user://.
-	#
-	# The backend is still warmed here because art and the world-state import want
-	# it, but nothing WAITS on it: the Hall reads its shelf from disk, and a
-	# narrator that lives in this process does not need a server to be awake.
-	Services.await_backend()
+	# The Hall is the first screen and it opens immediately: the shelf comes off
+	# disk and the narrator lives in this process. The image engine is warmed in
+	# the background so the first portrait doesn't pay for the handshake — but
+	# nothing here awaits it, and a world with no art still plays.
+	Services.warm_art()
 	$Title/Box/Divider.draw.connect(func():
 		var d: Control = $Title/Box/Divider
 		var w := d.size.x
@@ -196,12 +192,11 @@ func _open_adventure_forge() -> void:
 	Ui.polish(_adv_forge)
 
 
-## Every tale the player has actually played, newest first. This used to
-## intersect local session ids with the PRESET TEMPLATE list — the same bug
-## that killed Continue — so custom-world tales were invisible here too.
+## Every tale the player has actually played, newest first — straight off the
+## adventure index, which is the only thing that knows what was played.
 func _open_chronicles() -> void:
 	var saved: Array = []
-	for a in await GameState.load_index():
+	for a in GameState.load_index():
 		if a is Dictionary and str(a.get("id", "")).begins_with("dm-"):
 			saved.append({"id": a.get("id"), "name": a.get("name"),
 				"world_id": a.get("world_id", ""), "hero": a.get("hero", ""),
@@ -234,17 +229,11 @@ func _boot_cinematic() -> void:
 		Art.ensure(str(k), str(Art.CINE_PROMPTS[k]), "1344x768")
 
 
-## The Hall paints from DISK first, and only then talks to anything.
-##
-## It used to open with `await Api.list_characters()`, so every local thing on
-## this screen — the resume shelf, the hero count, the custom worlds — waited
-## behind a network round trip. With the backend slow or not answering, the
-## Hall simply never reached the code that shows CONTINUE: no error, no status,
-## just a title screen that quietly pretends you have never played.
-##
-## Saves are local now, so nothing here needs the network at all. The one call
-## that still does (preset templates, for the Campaign shelf) happens last, and
-## the screen is already complete before it starts.
+## The Hall paints from DISK. Nothing on this screen waits on anything: the
+## resume shelf, the hero count and the custom worlds are all files. An earlier
+## version opened behind a network round trip, and when that hung the Hall never
+## reached the code that shows CONTINUE — no error, no status, just a title
+## screen quietly pretending you had never played.
 func _refresh() -> void:
 	_refresh_hero_count()
 	_paint_continue()
@@ -253,20 +242,15 @@ func _refresh() -> void:
 		WorldSkin.remember(w)
 	$Title/Box/Status.text = ""
 	_templates = _companions_from_worlds()
-	await GameState.import_global_once()   # first run only: seed the shelf, once
-	if _cworlds.is_empty():
-		_cworlds = GameState.global_get("cworlds", [])
-		for w in _all_worlds():
-			WorldSkin.remember(w)
 
 
 func _paint_continue() -> void:
 	# Continue: the newest record in the ADVENTURE INDEX. It used to match the
-	# last-played id against the preset-template list, which never contains a
-	# custom-world tale — so Continue died while the save sat safe on the
-	# server (playtest #1 RCA). The index is now the source of truth, and it
-	# also carries its own caption, so no second fetch is needed.
-	var index := await GameState.load_index()
+	# last-played id against a preset-template list, which never contains a
+	# custom-world tale — so Continue died while the save sat safe on disk
+	# (playtest #1 RCA). The index is the source of truth, and carries its own
+	# caption, so nothing else has to be read to draw this button.
+	var index := GameState.load_index()
 	var last: Dictionary = index[0] if not index.is_empty() and index[0] is Dictionary else {}
 	if not last.is_empty():
 		_btn_continue.set_engraving("CONTINUE — %s" % str(last.get("name", "?")).to_upper().left(24))
@@ -316,14 +300,10 @@ func _all_worlds() -> Array:
 ## The companions a player can sit down with: every named cast member of every
 ## world they have.
 ##
-## This list came from `/api/presets/templates` — the backend's user_templates —
-## and was ALWAYS EMPTY, on this install and on the running server both: the key
-## does not exist in either presets.json. The screen has never had anything to
-## show, and it said so ("No companions yet") while the worlds it was meant to
-## draw from were sitting in memory the whole time.
-##
-## The cast is already local, already used to build the GM's system prompt
-## (Composer.compose_world_gm), and already persisted with the world.
+## Built from the worlds themselves. An earlier version read a template
+## catalogue that was always empty, so the screen said "No companions yet" while
+## the cast it was meant to draw from sat in memory the whole time — already used
+## to build the GM's system prompt, already persisted with the world.
 func _companions_from_worlds() -> Array:
 	var out: Array = []
 	var seen := {}
@@ -658,11 +638,10 @@ func _show_settings() -> void:
 	_show_sub("Settings", "")
 	var cfg := ConfigFile.new()
 	cfg.load(Api.SETTINGS_FILE)
-	# THE NARRATOR IS A FILE ON THIS MACHINE. This control used to list models
-	# from the backend's /api/models — Ollama endpoints — and save the choice to
-	# a setting NOTHING read: `gm_model` was write-only and the function that
-	# would have consulted it had no callers. A player could pick a narrator and
-	# be narrated at by a different one.
+	# THE NARRATOR IS A FILE ON THIS MACHINE, so this lists the .gguf files that
+	# are actually loadable and LocalGM.model_file() honours the pick. An earlier
+	# picker wrote `gm_model` and nothing read it: a player could choose a
+	# narrator and be narrated at by a different one, silently.
 	_content.add_child(_section("GAME MASTER"))
 	var models := LocalGM.chat_models()
 	if models.is_empty():
@@ -723,10 +702,7 @@ func _show_settings() -> void:
 	contrast.button_pressed = bool(cfg.get_value("settings", "high_contrast", false))
 	contrast.toggled.connect(func(on): _set_setting("high_contrast", on); Ui.high_contrast = on)
 	_content.add_child(contrast)
-	# No ACCOUNT section. There is no account, and "Sign out" led to a login
-	# screen that no longer exists.
-	# Was "backend <version>", fetched over HTTP. The game's own version is the
-	# one a player can act on, and it is compiled in.
+	# The game's own version — the only one a player can act on, compiled in.
 	_content.add_child(_section("Mythforge · %s" % ProjectSettings.get_setting("application/config/version", "desktop")))
 
 
@@ -910,9 +886,8 @@ func _start_adventure(w: Dictionary, story: Dictionary) -> void:
 	await _seed_forge_defaults(w, adv_id)
 	_busy = false
 	var adv := {"id": adv_id, "name": name, "world_id": wid}
-	# A live save already? Continue it or start over. Asked of the SAVE FILE now:
-	# this used to ask the backend whether a chat session id still resolved, so a
-	# player whose server was down was offered a fresh start over a good save.
+	# A live save already? Continue it or start over — asked of the SAVE FILE,
+	# never of some other system's opinion about whether one should exist.
 	if GameState.has_save(str(adv["id"])):
 		_ask_continue_or_new(adv)
 	else:
@@ -956,16 +931,14 @@ func _ask_continue_or_new(adv: Dictionary) -> void:
 
 ## CONTINUE means continue. It did not.
 ##
-## This read the remembered SERVER SESSION IDS and cross-referenced them against
-## PRESET TEMPLATES, then showed a picker whenever more than one matched — so
-## with several tales on the shelf the button never continued anything, and the
-## picker it opened was built from templates, which carry no play state. That is
-## why every card read "a new hero · Level 1 · Day 1" for a hero on day 6.
+## It matched remembered ids against a PRESET TEMPLATE catalogue and showed a
+## picker whenever more than one matched — so with several tales on the shelf
+## the button never continued anything, and the picker it opened was built from
+## templates, which carry no play state. That is why every card read "a new hero
+## · Level 1 · Day 1" for a hero on day 6.
 ##
-## It is the same defect the button's CAPTION was fixed for (playtest #1 RCA,
-## see _paint_continue): the index is the source of truth, and this handler was
-## never moved over. Sessions are a server concept and templates are a catalogue;
-## neither knows what the player has played.
+## Same defect as the button's caption (playtest #1 RCA, see _paint_continue):
+## the index is the source of truth and this handler was never moved over.
 ## The button names a specific tale — "CONTINUE — FREE ROAM", with Drao's level
 ## and day underneath it. It should open THAT tale. Showing a picker instead was
 ## the old behaviour and it made the caption a lie; choosing among many is what
@@ -1103,8 +1076,7 @@ func _play(c: Dictionary) -> void:
 		str(c.get("name", "")).split(":")[0])
 	Sfx.music(WorldSkin.music_for_id(str(c.get("world_id", ""))))  # sound arrives before picture
 	curtain.step(0.15, "Opening the way…")
-	# The one thing a tale genuinely cannot open without is a narrator, and that
-	# is now a file on this disk rather than a server's permission.
+	# The one thing a tale genuinely cannot open without is a narrator.
 	if not LocalGM.available():
 		curtain.step(1.0, "The way will not open — no storyteller answered.")
 		MythLoading.lift()

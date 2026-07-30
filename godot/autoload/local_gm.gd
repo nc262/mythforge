@@ -1,34 +1,28 @@
 extends Node
-## The narrator, in-process — Stage 2 of docs/Architecture-InProcess.md.
+## The narrator — llama.cpp in the game's own process, via the NobodyWho
+## GDExtension, on the same Vulkan device that draws the frame. See
+## docs/Architecture.md.
 ##
-## Today a GM turn is an HTTP POST to a FastAPI server on this same desktop,
-## which forwards to Ollama, which runs llama.cpp. This runs llama.cpp directly,
-## in the game's own process, via the NobodyWho GDExtension.
+## Two things must be true for it to speak: the extension is installed and a
+## GGUF model sits in user://models. Neither is checked at import time, so the
+## game still opens without them — and says so, honestly, rather than falling
+## through to some quieter second path that hides the fault.
 ##
-## It is deliberately built to be INERT until two things are true: the extension
-## is installed, and a GGUF model is present. Neither is checked at import time,
-## so a copy of the game without them behaves exactly as before — the remote
-## path is not removed, it is simply not chosen. That keeps this shippable on
-## its own rather than as a flag day.
-##
-## The seam it plugs into already existed. `Api.stream_chat()` emits
-## `sse_delta` per batch and `sse_done` once, and already branches for
-## `test_mode`; this is a third branch answering the same contract. Nothing
-## downstream — the tag pipeline, the language gate, Chronicle — can tell which
-## narrator spoke.
+## Streaming keeps the old shape on purpose: tokens arrive on `response_updated`
+## and are re-emitted as `Api.sse_delta`, one `sse_done` at the end. The tag
+## pipeline, the language gate and Chronicle all sit downstream of that seam and
+## none of them need to know who is talking.
 
 ## Where a player's models live. Kept out of `res://` on purpose: a 4-8 GB GGUF
 ## has no business inside the exe, and the same file serves every adventure.
 const MODEL_DIR := "user://models"
 
-## llama.cpp accelerates on this AMD card through VULKAN, which is the whole
-## reason this path is attractive here — no ROCm, no CUDA, and therefore none of
-## the ZLUDA scaffolding the image stack still needs (see CLAUDE.md).
+## llama.cpp accelerates on this AMD card through VULKAN — no ROCm, no CUDA,
+## and so none of the shim scaffolding a CUDA-only runtime would drag in.
 const CLASS_CHAT := "NobodyWhoChat"
 const CLASS_MODEL := "NobodyWhoModel"
 
-## Context for a NARRATOR turn. The backend asked Ollama for `num_ctx=8192` and
-## this is the same number.
+## Context for a NARRATOR turn.
 const CTX := 8192
 
 ## Context for a STRUCTURED turn, which needs more, because the whole answer is
@@ -74,11 +68,10 @@ signal _json_done(text: String)
 
 ## Every narrator on this machine — filenames, not paths.
 ##
-## Settings offered a GAME MASTER picker listing models from the BACKEND's
-## /api/models, which is to say Ollama endpoints. The narrator has been a GGUF
-## file in this folder for weeks, so the control let a player choose a narrator
-## that was never consulted: `gm_model` was write-only, and `auto_gm_model()` —
-## the function that would have read it — had no callers at all.
+## Settings' GAME MASTER picker lists exactly these, and `model_file()` honours
+## the pick. That wiring is the whole point: an earlier picker wrote `gm_model`
+## and nothing ever read it, so a player could choose a narrator that was never
+## consulted and the game gave no sign.
 func chat_models() -> Array:
 	var out: Array = []
 	var d := DirAccess.open(MODEL_DIR)
@@ -165,8 +158,8 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	_chat.set("context_length", CTX)
 	add_child(_chat)
 	# NobodyWho streams tokens on `response_updated` and closes with
-	# `response_finished` — the same shape as the SSE contract, so the bridge is
-	# a rename rather than a buffer.
+	# `response_finished` — the same shape the rest of the game already listens
+	# for, so this is a rename rather than a buffer.
 	_chat.connect("response_updated", _on_token)
 	_chat.connect("response_finished", _on_finished)
 	# Load the weights NOW rather than on the first turn. Without this the
@@ -214,7 +207,7 @@ func _tune_narrator() -> void:
 ##
 ## 6.7x faster AND correct, because the grammar prunes the token space: the model
 ## cannot spend tokens on a fence or a preamble, so it does not. Without a schema
-## this is no better than the server path — the caller still has to dig the object
+## this is no better than asking in prose — the caller still has to dig the object
 ## out of the chatter (world_compiler._extract_json exists for precisely that).
 ##
 ## BUT A SCHEMA IS NOT FREE, and the cost is invisible until it is enormous.
@@ -282,13 +275,9 @@ func complete_json(prompt: String, schema := "") -> String:
 	return await _json_done
 
 
-## Speech to text, in this process. The last thing the game asked a server for.
-##
-## `/api/stt/transcribe` was multi-provider and 503'd without one configured —
-## and nothing is configured on this install, so push-to-talk answered "no speech
-## provider is configured on the server" every time. NobodyWhoSTT ships with the
-## same extension as the narrator and the encoder; it wants its own whisper GGUF,
-## matched by name for the same reason the encoder is.
+## Speech to text, in this process. NobodyWhoSTT ships with the same extension
+## as the narrator and the encoder; it wants its own whisper GGUF, matched by
+## name for the same reason the encoder is.
 const STT_HINTS := ["whisper", "stt", "ggml-base", "ggml-small", "ggml-tiny"]
 
 var _stt: Node = null
@@ -424,9 +413,9 @@ func _on_finished(_full: String) -> void:
 	Api.sse_done.emit(true)
 
 
-## Speak one turn. Answers `Api`'s signals so callers never learn which narrator
-## they got. Returns false if this path is not usable, so the caller falls
-## through to the server exactly as before.
+## Speak one turn, emitting `Api.sse_delta` / `sse_done` so every downstream
+## listener is unchanged. Returns false if no model is loadable — the caller
+## surfaces that, it does not paper over it.
 func stream(message: String, system_prompt := "") -> bool:
 	if _busy or not _ensure_nodes(system_prompt):
 		return false

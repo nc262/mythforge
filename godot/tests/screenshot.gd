@@ -1,6 +1,6 @@
 extends Node
 ## Dev harness: load a scene, wait for it to paint (and hydrate), save a PNG.
-##   MF_SHOT_SCENE=res://scenes/login.tscn MF_SHOT_OUT=C:/tmp/login.png \
+##   MF_SHOT_SCENE=res://scenes/game.tscn MF_SHOT_OUT=C:/tmp/game.png \
 ##   godot --path godot res://tests/screenshot.tscn
 
 func _ready() -> void:
@@ -8,7 +8,7 @@ func _ready() -> void:
 	var out := OS.get_environment("MF_SHOT_OUT")
 	if OS.get_environment("MF_SHOT_DEMO") == "1":
 		_seed_demo()
-		await get_tree().create_timer(1.0).timeout  # let the demo PUTs land
+		await get_tree().create_timer(1.0).timeout  # let the seeded state settle
 	var scene = load(scene_path).instantiate()
 	add_child(scene)
 	if OS.get_environment("MF_SHOT_DEMO") == "1" and scene_path.contains("game"):

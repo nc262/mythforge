@@ -37,4 +37,5 @@ FeatureMatrix row (with priority) → Roadmap milestone.
   campaign completed, death survived).
 - Steam Workshop for exported worlds (.world.json already portable).
 - Co-op party play over the existing polling protocol; voice via WebRTC.
-- Bundled backend installer (one-click: Ollama + models + server).
+- One-click installer that fetches the models and the image engine for a
+  machine that has neither.

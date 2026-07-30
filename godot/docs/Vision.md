@@ -13,8 +13,8 @@ are all real, narrated by an AI that never gets to cheat.
 ## Pillars (in priority order)
 1. **The engine is the source of truth.** Combat, inventory, dice, time,
    economy, saves — deterministic code. The AI narrates outcomes it is told;
-   it never invents them. (This is the founding decision — the original web
-   product's #1 failure driver was AI mechanical unreliability.)
+   it never invents them. This is the founding decision, and it exists because
+   the failure driver in every AI-GM attempt is mechanical unreliability.
 2. **The anti-amnesia campaign.** Pinpoint memory (embedded beats + recall),
    a cast codex, and a quest log keep long campaigns coherent. The GM
    remembers who you spared at the bridge.
@@ -28,13 +28,17 @@ are all real, narrated by an AI that never gets to cheat.
    and the Campaign Forge (the DM's war table) are cornerstone experiences
    with the weight of BG3's character creator — first-class on the main
    menu, each a full ritual (docs/forges/).
-6. **Fully local.** Ollama for text, ComfyUI-ZLUDA (SDXL) for images,
-   FastAPI for persistence — one Windows PC, no cloud, no subscription.
+6. **Fully local, and it is not a mode.** The narrator, campaign memory, the
+   forges and speech-to-text all run inside the game's own process on
+   llama.cpp; images come from stable-diffusion.cpp beside it; saves are files.
+   One PC, no cloud, no account, no subscription, and no second path that
+   quietly phones somewhere when the local one is missing.
 
 ## Player promise
 Nothing that matters is decided by vibes. Your HP, your gold, your death
 saves, your level — all engine-owned, all persistent, all recoverable.
 
 ## Ship target
-Steam-ready Windows desktop build (Godot 4.7 export), with the backend
-either bundled locally or one-click self-hosted.
+A Steam-ready Windows desktop build (Godot 4.7 export): one executable, an
+installer that fetches the models and the image engine, and nothing to run
+first.

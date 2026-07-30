@@ -8,7 +8,7 @@ persist in `_global/cworlds` with the same shape + `custom: true`.
 
 ## The World Forge
 Idea + five pillars (magic / technology / era / beasts / tone, with
-suggestion chips + surprise-me) → backend worldsmith (two constrained-JSON
+suggestion chips + surprise-me) → the Worldsmith (two constrained-JSON
 calls) → name, kind, tagline, lore, backdrop prompt, 5-7 locations, cast of
 3 (with personas), 2 campaigns, 3 setting-specific creatures. Preview →
 ✎ refine (revises the full prior) / ↻ another take / create. Key art

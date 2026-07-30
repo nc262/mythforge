@@ -1,7 +1,7 @@
 extends Node
-## Integration playthrough through the REAL UI — no live backend.
+## Integration playthrough through the REAL UI — no model, no GPU.
 ##   godot --headless --path godot res://tests/ui_playthrough.tscn
-## Api.test_mode feeds canned responses + scripted GM replies, so the actual
+## Api.test_mode feeds scripted GM replies, so the actual
 ## game scene runs its real send → stream → language-gate → [[tag]] → state
 ## pipeline. Catches real gameplay/logic bugs (a loot tag that doesn't add the
 ## item, a combat-start that doesn't start combat, a window that crashes on
@@ -72,19 +72,12 @@ func _seed() -> void:
 		"inventory": [], "conditions": [], "spells": [], "slots": {},
 		"profSkills": ["athletics"], "profSaves": ["STR", "CON"], "hitDie": 10, "hitDiceUsed": 0,
 	}
-	# SEED THE SAVE FILE, not a stubbed HTTP import. This used to hand the sheet
-	# back through a canned /characters/studio/state/ response, so the harness was
-	# exercising a one-time migration from a server — a path the game no longer
-	# has, and never really had (no install carries backend state). Writing the
-	# file is what the game actually reads.
+	# SEED THE SAVE FILE. Writing the file is what the game actually reads, so
+	# the harness must set up state the same way play does.
 	GameState.character = {"id": "dm-embervale-freeroam", "world_id": "embervale"}
 	GameState.state = {"sheet": sheet, "clock": {"day": 1, "ti": 1}}
 	GameState.save_kind("sheet", sheet)
 	GameState.save_kind("clock", {"day": 1, "ti": 1})
-	Api.test_json = {
-		"/generate": {"_status": 200, "image_url": ""},
-		"/memory/recall": {"_status": 200, "beats": []},
-	}
 	GameState.character = {"id": "dm-embervale-freeroam", "name": "Testwyn: Free Roam", "world_id": "embervale"}
 
 
@@ -189,11 +182,10 @@ func _turn_damage_heal() -> void:
 ## wins so prose quality isn't thrown away for speed.
 ## The narrator the player picks must be the narrator that speaks.
 ##
-## The check that lived here asserted `model_size_b()` parsed "14b" as 14 and
-## then RE-IMPLEMENTED the ranking inline — so it passed on a pure helper while
-## the feature it was named for sat disconnected: the Settings picker listed the
-## backend's Ollama models and saved to a key nothing read. A test that cannot
-## tell whether the feature is plugged in is not testing the feature.
+## The check that lived here re-implemented the ranking inline, so it passed on
+## a pure helper while the feature it was named for sat disconnected: the picker
+## saved to a key nothing read. A test that cannot tell whether the feature is
+## plugged in is not testing the feature.
 func _check_gm_model_pick() -> void:
 	var models := LocalGM.chat_models()
 	_ck(not models.has(""), "the narrator list holds filenames, not blanks")
@@ -436,8 +428,11 @@ const CUT_ALLOWED := {
 
 
 func _check_no_hard_cuts() -> void:
-	for path in ["res://scripts/main_menu.gd", "res://scripts/game.gd", "res://scripts/login.gd",
+	for path in ["res://scripts/main_menu.gd", "res://scripts/game.gd",
 			"res://autoload/skin.gd"]:
+		# A path that no longer exists reads as empty and PASSES — the law would
+		# quietly stop covering a file the day it moved.
+		_ck(FileAccess.file_exists(path), "MIL §12: %s exists to be checked" % path)
 		var src := FileAccess.get_file_as_string(path)
 		var cuts := 0
 		for line in src.split("\n"):
@@ -492,10 +487,18 @@ func _check_compiler() -> void:
 	GameState.character = {"id": "dm-x", "world_id": "cw-testrealm-abcd"}
 	_ck(Art.world_flavor() == Compiler.prompt_anchor("cw-testrealm-abcd"),
 		"compiler: the Style Guide's anchor isn't feeding image prompts")
-	# Profiles exist and pin a checkpoint (the photograph fix).
+	# Profiles exist and each declares the resolution it is seen at. The check
+	# that lived here asserted a `style` key that the engine never read — one
+	# checkpoint per launch means it could not act on one. A test that passes on
+	# a field nothing consumes is not testing anything.
 	for p in ["item", "scene", "showcase"]:
-		_ck(Art.PROFILES.has(p) and str(Art.PROFILES[p].get("style", "")) != "",
-			"compiler: art profile '%s' missing its checkpoint" % p)
+		_ck(Art.PROFILES.has(p) and str(Art.PROFILES[p].get("size", "")).find("x") > 0,
+			"compiler: art profile '%s' declares no size" % p)
+	# The real photograph defence: item prompts must refuse a scene and a person.
+	# Without it an item icon comes back as a photo of someone holding the thing.
+	for must in ["plain flat background", "no scene", "no people"]:
+		_ck(Compiler.ICON_TAIL.find(must) >= 0,
+			"compiler: item prompts dropped '%s' — icons will come back as photographs" % must)
 	# Tier C: the item catalogue explodes the asset language into a browsable
 	# spine and rolls loot deterministically (runs even headless).
 	var cat := Compiler.catalogue_for("cw-testrealm-abcd")

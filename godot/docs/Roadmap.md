@@ -28,8 +28,9 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
 - ✅ Banner chips: clock/weather · here · active quest · party HP
 - ✅ Ambient score: five looping synth pads crossfading with world & combat,
   volume + toggle in Settings
-- ⛔ TTS narration — BLOCKED: backend voice provider disabled (503); client
-  wiring resumes when a provider is enabled server-side
+- ⛔ TTS narration — NOT BUILT: client wiring exists; there is no local voice
+  engine in the stack. It needs one chosen and shipped the way the narrator and
+  whisper were
 - Remaining (each a full session of work, placeholders per the rules):
   controller navigation pass · drag-and-drop inventory + paper doll ·
   merchant window · quest journal window with search · world map + minimap
@@ -80,6 +81,14 @@ Cinematic opening (four worlds in one breath, the name forged from stars),
 handcrafted MythButton plates + the drawn Icon Library, the seven-option
 menu, and Begin a New Adventure orchestrating both Forges.
 
+## M10 — The game is the whole application ✅ COMPLETE
+The narrator, campaign memory, the codex, the quest log, the world tick, the
+Worldsmith, the World Compiler and speech-to-text all moved into the game's own
+process; the image engine became one native binary the game POSTs to directly.
+See [Architecture.md](Architecture.md) and [Performance.md](Performance.md) —
+a GM turn went 19.3 s → 3.7 s, and there is nothing to start first.
+
 ## Standing rules
-No milestone ships with a red harness. No feature leaves the matrix. The
-.exe export waits for explicit user approval of the ~500MB template download.
+No milestone ships with a red harness. No feature leaves the matrix. Re-export
+after any `godot/**` change, and copy the exe to the Desktop — a stale Desktop
+build gets playtested by mistake.

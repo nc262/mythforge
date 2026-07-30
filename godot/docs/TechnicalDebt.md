@@ -1,31 +1,30 @@
 # Technical Debt
 
-Deliberate shortcuts, each with its ceiling and upgrade path. (Grep
-`ponytail:` in sources for in-code markers.)
+Deliberate shortcuts, each with its ceiling and its upgrade path. Grep
+`ponytail:` in sources for the in-code markers.
 
-| Debt | Where | Ceiling | Upgrade path | When |
-|---|---|---|---|---|
-| ~~Implicit game modes~~ PAID M1: `Mode` FSM owns flow; `_streaming` remains as a local mirror of `Mode.busy` until the game.gd split | state_manager.gd | — | remove `_streaming` alias during M2 split | M2 |
-| game.gd is a god-script (~1.3k lines: chat+combat UI+sheet+shop+forge) | scripts/game.gd | hard to grow M2/M3 features | split: chat_view / panels / dialogs as child scenes under the FSM | M1–M2 |
-| State writes are fire-and-forget PUTs, no debounce/retry | GameState.save_kind | a dropped PUT silently loses a mutation until next write of that kind | write-through queue with retry + dirty flags (web had 600ms debounce) | M2 |
-| Enemy stats by name-regex tiers + level multiplier | Combat.enemy_hp_guess | flavorless foes vs rich bestiary data | stat blocks derived from bestiary tiers; per-world threat tables | M2 grid |
-| Companion kit generic (Fighter, AC 13) | GameState.add_companion | wrong flavor | class inference from codex role (web _companionClass) | M2 |
-| No debounced sheet edits (immediate PUT per mutation) | GameState | chatty under rapid UI edits | same write-queue as above | M2 |
-| Shop is a chat bubble, not a window; markup is session-local | game.gd _open_shop | fine until merchant window (M3) | merchant mode in FSM + window | M3 |
-| Art cache never evicts; portraits keyed by name slug | art_cache.gd | disk growth; renamed NPCs re-generate | manifest with sizes + LRU; key by codex identity | M3 |
-| SFX are 4 synthesized wavs, no bus/volume setting | sfx.gd | can't mix music later | AudioBus layout + settings volume sliders | M3 |
-| Tests hit the live backend (e2e/playthrough) | tests/ | can't run in CI without the stack | mock SSE server fixture for CI lane; live lane stays for the box | M3 |
-| cstories simplified into world graft (no global registry) | main_menu campaign smith | built-in worlds' crafted campaigns persist only as dm- templates | port `_global/cstories` map | M2 |
-| Envelope rebuilt as strings each turn | prompt_composer.gd | fine at 2.5k chars | context budgeter when sections grow (memory of web: llm num_ctx 8192) | M4 |
+Paying debt follows the same workflow as a feature: plan → document → land with
+a check. A new shortcut adds a row here in the same commit.
 
-Paying debt follows the same workflow as features: plan → document → land
-with a check. New shortcuts must add a row here in the same commit.
+| Debt | Where | Ceiling | Upgrade path |
+|---|---|---|---|
+| `game.gd` is a god-script (~2.8k lines: streaming, tags, combat view, panels) | `scripts/game.gd` | every new system lands in the one file that must stay correct | keep extracting windows — the seam and the order are in [EngineLayers.md](EngineLayers.md) |
+| `_streaming` mirrors `Mode.busy` | `scripts/game.gd` | two sources for one fact | delete the alias during the next `game.gd` extraction |
+| Mode drift self-heal | `game.gd._can_fight` | combat clicks force-enter Combat when the FSM has drifted; the real bug is hidden, not fixed | declare Combat a legal target from every in-game state |
+| The tile library is ~1.3 GB of `user://`, generated per install | `user://tiles` | a release either ships it or makes every player pour it | bake the library into a world package at release time. Deliberately **not** solved by shrinking tiles — see [Terrain.md](Terrain.md) |
+| Nothing warns when a bulk generation exceeds the art budget | `art_cache._enforce_budget` | the tile pour queued ~1.3 GB against a 700 MB LRU and churned for hours at net-zero growth, evicting every portrait on the way, silently | log evictions, and refuse a queue whose declared total exceeds the budget rather than thrashing |
+| Object tiles carry an opaque dark-grey background | tile bake | a boulder pasted into a snowfield brings its own grey square | composite the object over the cell's ground role at draw time, or key the flat background out at bake time |
+| The envelope is rebuilt as strings every turn | `prompt_composer.gd` | fine at today's size; grows with the campaign | the per-section budgeter is already in place — widen it when a section outgrows its cap |
+| Regenerating the opening video takes ~35 min/clip | `scripts/make_opening_video.py` | a developer cost only — the video ships pre-built, so no player ever pays it | none needed unless the opening changes |
 
-- ~~**Terrain sampler is a color heuristic** (combat.gd bake_terrain)~~ — **paid, R10.** Deleted along with the `[[terrain]]` GM tag. `lay_battlefield()` builds the field from roles and the painting follows the field, so there is nothing left to misread. See [Terrain.md](Terrain.md).
-- **The tile library is ~1.3 GB of `user://` data, generated per install** (PNGs are gitignored): fine on this machine, but a release either ships it or makes every player pour it. Upgrade path: bake the library into a world package at release time. Deliberately NOT solved by shrinking tiles — see [Terrain.md](Terrain.md).
-- **Nothing warns when a bulk generation exceeds the art budget** (art_cache.gd): the R10 tile pour queued ~1.3 GB against a 700 MB LRU and silently churned for hours at net-zero growth, evicting every portrait in the game on the way. `_enforce_budget()` evicts without a word. Upgrade path: log evictions, and refuse a queue whose declared total exceeds the budget rather than thrashing.
-- **Object tiles carry an opaque dark-grey background**: a boulder tile pasted into a snowfield brings its own grey square. Squat objects that generated their own ground fringe (firepit, chasm) blend; the rest do not. Upgrade path: composite the object over the cell's ground role at draw time, or key the flat background out at bake time.
-- **Mode drift self-heal** (game.gd _can_fight): combat clicks force-enter Combat if a fight is active but the FSM drifted (RCA: fight started from Dialogue state locked every combat action, silently). Real fix is declaring Combat as a legal target from every in-game state.
-- **world_map still carries its own pan/zoom** (predates MythCamera): duplicate of ui/myth_camera.gd. Upgrade: adopt MythCamera in world_map.gd next time that file is touched.
-- **Both forges duplicate the ~60-line stage scaffold** (rail/title/nav/clear): extract a ForgeFlow base when a third staged experience appears.
-- **SVD generation is ~35min/clip** under the stack's ZLUDA-stability flags (--use-quad-cross-attention): quad attention crawls on temporal layers. The video is pre-built and shipped, so players never pay this; regenerating (scripts/make_opening_video.py) does. Lever if ever needed: a separate ComfyUI launch profile with pytorch attention for video jobs.
+## Paid, kept for the pattern
+
+- **Terrain sampler was a colour heuristic.** `lay_battlefield()` builds the
+  field from roles and the painting follows the field, so there is nothing left
+  to misread. See [Terrain.md](Terrain.md).
+- **State writes were fire-and-forget with a retry queue.** A save is a file;
+  `save_kind` writes it, write-then-rename. The queue existed to survive a
+  network that was never there.
+- **Both forges duplicated a ~60-line stage scaffold.** `ui/forge_flow.gd` is
+  the base; every forge is stage content only.
+- **`world_map` carried its own pan/zoom.** It uses the shared `MythCamera`.

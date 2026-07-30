@@ -147,7 +147,7 @@ otherwise the first pour bakes incoherent pairs at scale.
 
 ## B2, measured — the 8B has a budget, and forms were the wrong thing to spend it on
 
-Run live against the real backend (`llama3.1:8b`, `complete_json`), 2026-07-23.
+Run live against the real model (`llama3.1:8b`, `complete_json`), 2026-07-23.
 
 **First attempt — ask for 10 materials + 10 treatments on the existing schema:**
 

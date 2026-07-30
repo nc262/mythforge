@@ -3,12 +3,7 @@ extends Node
 ## clock, combat, …). **A file on this machine is the source of truth**; every
 ## mutation writes `user://saves/<cid>.json`. Formulas live in Rules; this file
 ## owns state + the ported game procedures (rests, time).
-##
-## It used to be a server: each mutation was an HTTP PUT to
-## `state/{cid}/{kind}`, with a retrying queue in case "the network" blipped.
-## There is no network — game, server and save file all live on one desktop —
-## and the round trip bought nothing except three ways to lose data, all of
-## which happened. See docs/Architecture-InProcess.md.
+## See docs/Architecture.md.
 
 const DEFAULT_SHEET := {
 	"name": "", "cls": "Adventurer", "level": 1, "xp": 0, "hp": 10, "hpMax": 10,
@@ -144,22 +139,15 @@ func is_dm() -> bool:
 
 
 ## The save, from disk. There is nowhere else it could be.
-##
-## This used to fall back to a one-time import from the backend, for a player who
-## had been saving there before the game kept its own files. That server holds
-## nothing on any install I can see — no endpoints, no user templates, no state —
-## and the browser client that wrote it was deleted. A migration with nothing to
-## migrate is a network round trip on every first open of every adventure.
 func hydrate() -> void:
 	state = _read_local(cid())
 
 
 # ── The Adventure Index (_global.adventures) ────────────────────────────────
-## Playtest #1 RCA: "Continue" matched the last-played id against
-## Api.list_characters() — which returns PRESET TEMPLATES, not the player's
-## adventures. Any tale forged on a custom world could never match, so Continue
-## went dead even though every byte of state was safe on the server. The save
-## was never lost; the INDEX never existed.
+## Playtest #1 RCA: "Continue" matched the last-played id against a list of
+## PRESET TEMPLATES rather than the player's own adventures, so any tale forged
+## on a custom world could never match and Continue went dead. Every byte of
+## state was safe on disk. The save was never lost; the INDEX never existed.
 ##
 ## This is that index: one record per adventure the player has actually opened,
 ## newest first, so the Hall can offer Continue AND a real list of tales.
@@ -174,11 +162,9 @@ func adventures() -> Array:
 
 
 ## Read the index (once per Hall visit). Newest first.
-## The Hall's shelf, local. This index is the single most load-bearing record in
-## the game — it is what CONTINUE is built from — and it was the one the server
-## refused outright, because "adventures" was missing from an allow-list nobody
-## thought to keep in step. It lives in a file now.
-## Index and shelf follow the same drawer as the saves.
+## The Hall's shelf. This index is the single most load-bearing record in the
+## game — it is what CONTINUE is built from. Index and shelf follow the same
+## drawer as the saves.
 func _index_path() -> String:
 	return save_dir() + "/adventures.json"
 
@@ -229,25 +215,9 @@ func remember_adventure(extra := {}) -> void:
 
 ## ── Persistence: a file, on this machine ────────────────────────────────────
 ##
-## This used to be an HTTP PUT per mutation, with a coalescing queue and a
-## three-attempt backoff, because "a transient network blip" could lose a write.
-## There is no network. The server, the game and the save file are all on one
-## desktop, and the round trip bought nothing except the ways it could fail:
-##
-##   - the server refused kinds it had never been told about (`adventures`,
-##     `cast`, `lore`) with a 400 the fire-and-forget client never surfaced, so
-##     three features silently never persisted;
-##   - turning the login wall off left `get_current_user()` returning None, and
-##     every save was filed under the key "null" while the player's own sat
-##     under their username — invisible, not lost.
-##
-## Both are distributed-systems bugs in a single-player game. A file cannot have
-## them. See docs/Architecture-InProcess.md.
 ## The harness plays `dm-embervale-freeroam` — a REAL adventure id, because it is
-## meant to exercise the shipped scenes. While saves lived on a server that was
-## harmless (test_mode answered every call from a canned dictionary and nothing
-## was written). A file is not so forgiving: the first headless run overwrote a
-## live save, replacing Drao at day 6 with the harness's Testwyn.
+## meant to exercise the shipped scenes. The first headless run overwrote a live
+## save, replacing Drao at day 6 with the harness's Testwyn.
 ##
 ## So test runs get their own drawer. The alternative — teaching every harness to
 ## use fake ids — is a rule someone has to keep remembering, and this is one they
@@ -296,10 +266,9 @@ func _flush() -> void:
 
 ## ── The shared shelf (`_global`) ─────────────────────────────────────────────
 ## Custom worlds, GMs and personas are not owned by any one adventure, so they
-## lived under a `_global` pseudo-character on the server — and ten different
-## screens each did their own GET/PUT against it. That is exactly how the
-## state-kind contract drifted out of step in the first place: no single place
-## knew what was being written. One store, one door.
+## live here. One store, one door — ten screens each reading and writing their
+## own copy is exactly how a shared record drifts out of step, with no single
+## place that knows what was written.
 func _global_path() -> String:
 	return save_dir() + "/_global.json"
 
@@ -326,14 +295,6 @@ func global_set(key: String, value) -> void:
 	g[key] = value
 	_global_cache = g
 	_write_json(_global_path(), g)
-
-
-## Seed the shelf from the backend once, so a player who built custom worlds
-## before this change still has them. Called by the Hall on its first look.
-func import_global_once() -> void:
-	# Was a one-time import of the shared shelf from the backend. Kept as a no-op
-	# so the Hall's boot sequence reads the same; there is no server copy to take.
-	pass
 
 
 ## Another adventure's whole save, for captioning the Chronicles shelf.
@@ -392,12 +353,8 @@ func _write_json(path: String, value) -> void:
 		ProjectSettings.globalize_path(path))
 
 
-## Is there a save on this machine for this adventure?
-##
-## The Hall used to answer this by asking the BACKEND whether a chat session id
-## still resolved — so "do I have a save?" was a question about a server's
-## session table, and a player whose backend was down was offered a fresh start
-## on top of a perfectly good save. The save is a file; ask the file.
+## Is there a save on this machine for this adventure? The save is a file; ask
+## the file — never some other system's opinion about whether it should exist.
 func has_save(for_cid: String) -> bool:
 	return FileAccess.file_exists(_save_path(for_cid))
 

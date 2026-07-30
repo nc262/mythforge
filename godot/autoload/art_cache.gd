@@ -1,7 +1,7 @@
 extends Node
 ## Art — every generated image the game wears: world key art, hero and NPC
 ## portraits, item icons, battle-map underlays, parchment world maps. All
-## painted once through the ComfyUI bridge, cached in user://art/<key>.png.
+## painted once by the local image engine, cached in user://art/<key>.png.
 ## Keys: "<world_id>" · "hero-<cid>" · "npc-<slug>" · "item-<slug>" ·
 ## "map-<place-slug>" · "chart-<world_id>".
 
@@ -225,9 +225,9 @@ func round_tex(key: String, size := 128) -> ImageTexture:
 # and no gameplay system may POST to /generate — enforced by a harness law.
 #
 # RCA that made this an engine subsystem rather than a helper: three call sites
-# posted to /generate, two of them bypassing this queue, so a scene repaint ran
-# CONCURRENTLY with a queued portrait on one GPU. Concurrent jobs on a single
-# backend are how the wrong picture lands in the wrong frame — the player saw a
+# painted directly, two of them bypassing this queue, so a scene repaint ran
+# CONCURRENTLY with a queued portrait on one GPU. Concurrent jobs on one engine
+# are how the wrong picture lands in the wrong frame — the player saw a
 # stranger's photograph in their scene slot. One door, always.
 #
 # Responsibilities: queueing · prioritization · cancellation · progress
@@ -240,17 +240,16 @@ enum Lane {
 	IDLE = 2,   # backfill — menu key-art, warming the cache
 }
 
-## Generation PROFILES (docs/WorldCompiler.md): each content class gets its own
-## checkpoint, size and (later) matting. Passing a style ALSO ends the
-## stranger's-photograph bug — the backend no longer auto-picks a photoreal
-## checkpoint (playtest #15). "artwork" = DreamShaper Turbo (fast painterly),
-## "semireal" = Juggernaut (the quality showcase from the ladder).
+## Generation PROFILES (docs/WorldCompiler.md): each content class gets the
+## resolution it is actually seen at. That is the whole profile today — sd-server
+## runs one checkpoint and cannot switch, and there is no matting step, so a
+## `style` or `matte` field here would only record an intention nothing acts on.
 const PROFILES := {
-	"item":     {"style": "artwork",  "size": "1024x1024", "matte": true},
-	"prop":     {"style": "artwork",  "size": "512x512",   "matte": true},
-	"scene":    {"style": "artwork",  "size": "1024x1024", "matte": false},
-	"portrait": {"style": "artwork",  "size": "1024x1024", "matte": false},
-	"showcase": {"style": "semireal", "size": "1024x1024", "matte": false},
+	"item":     {"size": "1024x1024"},
+	"prop":     {"size": "512x512"},
+	"scene":    {"size": "1024x1024"},
+	"portrait": {"size": "1024x1024"},
+	"showcase": {"size": "1024x1024"},
 }
 const DEFAULT_PROFILE := "scene"
 
@@ -292,8 +291,7 @@ func request(key: String, prompt := "", opts := {}) -> void:
 	var prof: Dictionary = PROFILES.get(str(opts.get("profile", DEFAULT_PROFILE)), PROFILES[DEFAULT_PROFILE])
 	_generating[key] = true
 	_queue.append({"key": key, "prompt": prompt, "lane": lane,
-		"size": str(opts.get("size", prof["size"])),
-		"style": str(prof["style"]), "matte": bool(prof["matte"])})
+		"size": str(opts.get("size", prof["size"]))})
 	_sort_queue()
 	art_progress.emit(key, "queued")
 	if not _pumping:
@@ -354,24 +352,15 @@ func pending() -> int:
 	return _queue.size() + (1 if _painting != "" else 0)
 
 
-## While the GM is mid-stream the GPU belongs to the narrator. Ollama and
-## ComfyUI share one card on this box, so a queue of item icons starves the
-## turn: opening the shop enqueued ten icons that ran back-to-back at ~22–27s
-## each straight through a 53s narration call, and the player waited ~2 minutes
-## for one reply. game.gd raises this for the length of a stream.
-## `hold` pauses OUR queue so a burst of item icons cannot run back-to-back
-## through a narration call — measured: opening the shop enqueued ten icons at
-## ~22–27 s each straight across a 53 s turn, and the player waited ~2 minutes
-## for one reply. game.gd raises this for the length of a stream.
+## While the GM is mid-stream the GPU belongs to the narrator. The narrator and
+## the image engine share one card, so `hold` pauses OUR queue for the length of
+## a stream — measured: opening the shop enqueued ten icons at ~22–27 s each
+## straight across a 53 s turn, and the player waited ~2 minutes for one reply.
 ##
-## It used to do a second thing: on the rising edge it POSTed ComfyUI's `/free`
-## to make it unload, because idle ComfyUI held ~7.4 GB and capped llama3.1:8b at
-## 79 % on GPU. That call is gone with ComfyUI — sd-server has no `/free` (it
-## 404s) and no unload API at all, so the request was firing into nothing. There
-## is no equivalent lever to reach for: freeing sd-server's ~4.9 GB means
-## stopping the process, and a ~25 s checkpoint reload per story beat is a worse
-## trade than the contention it would relieve. Pausing our own queue is the whole
-## mechanism now.
+## Pausing our own queue is the whole mechanism. There is no lever on the other
+## side: sd-server has no unload API, and freeing its ~4.9 GB means stopping the
+## process, which buys a ~25 s checkpoint reload per story beat — a worse trade
+## than the contention it relieves.
 var hold := false
 const HOLD_MAX := 180.0   # ponytail: safety valve — a stuck flag must never freeze art for good
 
@@ -383,30 +372,16 @@ const IMAGE_PATH := "/v1/images/generations"
 const IMAGE_MODEL := "sd-cpp-local"
 
 
-## One picture, straight from the image server.
+## One picture, one request. Measured: 8.7 s for 512x512 cold, base64 PNG in the
+## response body.
 ##
-## This used to POST to the backend, which resolved a registered ModelEndpoint,
-## called src.ai_interaction.do_generate_image, saved a PNG to the server's disk
-## and handed back a URL for a SECOND request to fetch. Three hops and a file,
-## between a game and a diffusion server on the same machine.
-##
-## And it did not work: `do_generate_image` needs a ModelEndpoint row, and this
-## install has ZERO registered — so every generation failed at the proxy while
-## sd-server sat up and healthy on :8189 answering /v1/models. The fallback was
-## in front of the thing that worked.
-##
-## Measured direct: 8.7 s for 512x512, base64 PNG in the response body.
-##
-## NOT CARRIED OVER, and none of it was working through the proxy either:
-## `style` picked a checkpoint per art profile, but sd-server is launched with
-## one .safetensors and cannot switch; `steps`/`cfg` are launch flags it ignores
-## in the request body (CLAUDE.md); `matte`, `regions` and IP-Adapter `character`
-## went when ComfyUI did. If any of them come back they belong here, as a field
-## in this payload, not as an argument to a proxy that adds nothing else.
+## The payload is deliberately thin because the engine is: `steps` and `cfg` are
+## launch flags sd-server ignores in the body, and it is started with a single
+## .safetensors so it cannot switch checkpoints per style. Matting, regions and
+## character-consistency adapters do not exist here. When any of them become
+## possible they belong in this payload, as fields.
 func _paint(prompt: String, size: String) -> Dictionary:
-	# The harnesses drive the real game headless and must not reach a GPU. This
-	# used to come free because every call went through Api, which stubs itself
-	# in test_mode; talking to the image server directly means owning that here.
+	# The harnesses drive the real game headless and must not reach a GPU.
 	if Api.test_mode:
 		return {}
 	var req := HTTPRequest.new()

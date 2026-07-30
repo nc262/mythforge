@@ -3,13 +3,10 @@ extends Node
 ## beats + recall), the cast codex, and the quest log. Results persist in
 ## world-state kinds and fold back into the GM's context each turn.
 ##
-## ALL THREE RUN IN THIS PROCESS. They used to be three POSTs to the backend's
-## LLM extractor endpoints, which meant a session's whole cast list depended on
-## a FastAPI server and an Ollama daemon being up — for work the narrator's own
-## model can do. There is no HTTP path left here and deliberately no fallback to
-## one: the narrator already hard-fails without a local model (see
-## api_client.narrator_missing), so a second, quieter degradation path would only
-## hide the same fault.
+## All three run in this process, on the narrator's own model. There is
+## deliberately no second path: the narrator already fails loudly without a local
+## model (api_client.narrator_missing), so a quieter degradation here would only
+## hide the same fault twice.
 
 const CODEX_EVERY := 6  # player turns between codex/quest extractions
 

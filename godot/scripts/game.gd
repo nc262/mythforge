@@ -208,7 +208,7 @@ func _ready() -> void:
 	MythLoading.mark(0.9, "Setting the table…")
 	# The Hall must be able to find this tale again — stamp the index the moment
 	# it truly opens (playtest #1: Continue had no index to read).
-	await GameState.load_index()
+	GameState.load_index()
 	GameState.remember_adventure()
 	if str(GameState.sheet().get("name", "")) == "":
 		Mode.enter("CharacterForge")
@@ -266,8 +266,8 @@ func _iconify_toolbar() -> void:
 		btn.add_child(ic)
 
 
-## Leave to the Hall — the tale is already saved (every mutation mirrors to
-## the server), so this just returns to the main menu. Blocked mid-stream.
+## Leave to the Hall — the tale is already saved (every mutation writes the save
+## file), so this just returns to the main menu. Blocked mid-stream.
 func _add_leave_button() -> void:
 	var leave := Button.new()
 	leave.flat = true
@@ -286,9 +286,7 @@ func _add_leave_button() -> void:
 
 
 # ── STT push-to-talk: hold the quill, speak, release — words land in the box.
-## In this process (NobodyWhoSTT). It was a multi-provider server endpoint that
-## 503'd without one configured — and none is, on any install here, so speaking
-## always answered "no speech provider is configured on the server".
+## In this process (NobodyWhoSTT), on its own whisper GGUF.
 var _mic_player: AudioStreamPlayer
 var _rec: AudioEffectRecord
 
@@ -843,11 +841,6 @@ func _stream(framed: String) -> void:
 	# world's own voice, not three glyphs. Lifted when the first token lands.
 	_thinking = MythThinking.new()
 	_gm_rt.get_parent().add_child(_thinking)
-	# `Api.activate(...)` used to be awaited here, before EVERY turn. It set the
-	# backend's "custom" preset so the chat engine would speak as this persona —
-	# an engine that no longer exists. The narrator takes its system prompt from
-	# Composer.system_prompt(), so this was an HTTP round trip per turn that
-	# changed nothing.
 	Api.stream_chat(framed)
 
 
@@ -981,21 +974,18 @@ func _log_drift(snippet: String) -> void:
 	f.close()
 
 
-## The narrator's own error channel. `sse_event` used to also carry
-## `type: tool_output` with an image_url — the SERVER's agent loop calling its
-## image tool mid-answer. This game never used that: art is requested by the
-## CLIENT from the GM's `[[scene]]` / `[[portrait]]` tags via Art.ensure(), and
-## the GM system prompt does not mention tools at all. It came from the Odysseus
-## assistant and went with the agent loop.
+## The narrator's own error channel. Art is never pushed through here: it is
+## requested from the GM's `[[scene]]` / `[[portrait]]` tags via Art.ensure(),
+## and the GM system prompt does not mention tools at all.
 func _on_event(d: Dictionary) -> void:
 	if d.get("type", "") == "error" or d.has("error"):
 		if _gm_rt != null:
 			_gm_rt.append_text("[color=%s]%s[/color]" % [Ui.c("danger").to_html(false), _bb(str(d.get("error", "stream error")))])
 
 
-## The one failure that used to hide behind the server fallback. Name the missing
-## thing and where it goes, in the transcript where the player is already looking
-## — not a push_error only a developer reads.
+## No narrator, no second path — so say so where the player is already looking,
+## and name the missing thing and where it goes. Not a push_error only a
+## developer reads.
 func _on_narrator_missing(reason: String) -> void:
 	if _gm_rt == null:
 		return
@@ -1007,13 +997,12 @@ func _on_narrator_missing(reason: String) -> void:
 
 
 func _on_done(_ok: bool) -> void:
-	# R6 STR-28 — the stream carries whether it ever CONNECTED, and this dropped
-	# it on the floor. A backend that is down produced the same message as a
-	# model that answered with nothing: "the storyteller loses the thread — the
-	# local mind may be busy." That is a wrong diagnosis pointed at the wrong
-	# component, and for a friend running the installer it is the difference
-	# between "wait a moment" and "your engine is not running". Retrying a dead
-	# socket also just burns the empty-retry budget for nothing.
+	# The stream carries whether it ever STARTED, and this dropped it on the
+	# floor: an engine that never came up produced the same message as a model
+	# that answered with nothing ("the storyteller loses the thread"). That is a
+	# wrong diagnosis pointed at the wrong component — for someone who just ran
+	# the installer it is the difference between "wait a moment" and "your engine
+	# is not running". Retrying also burns the empty-retry budget for nothing.
 	if not _ok and _acc.strip_edges() == "":
 		_streaming = false
 		Art.hold = false
@@ -1432,9 +1421,7 @@ func _roll_pending() -> void:
 			if bool(GameState.rule("permadeath", false)):
 				# The table rule: the tale truly ends. The save is archived.
 				_say_system("Permadeath — this save is being sealed into the archive.", "skull")
-				# The save is a file; sealing it is a local act. This used to POST
-				# an archive request for a SERVER session id and leave the file
-				# exactly where it was.
+				# The save is a file; sealing it is a local act.
 				GameState.wipe_adventure(GameState.cid())
 			else:
 				_say_system("A long rest starts a new dawn… if the GM allows it.")

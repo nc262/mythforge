@@ -1,66 +1,67 @@
 name: Bug Report
-description: Report a reproducible bug in Odysseus.
+description: Report a reproducible bug in Mythforge.
 labels: ["bug"]
 
 body:
   - type: markdown
     attributes:
       value: |
-        **Before submitting:** search [open issues](https://github.com/pewdiepie-archdaemon/odysseus/issues)
-        and [discussions](https://github.com/pewdiepie-archdaemon/odysseus/discussions) first.
-        Duplicate reports slow things down.
+        **Before submitting:** search [open issues](https://github.com/nc262/mythforge/issues) first.
 
         For security vulnerabilities, **do not open a public issue** —
-        use [GitHub Security Advisories](https://github.com/pewdiepie-archdaemon/odysseus/security/advisories/new)
-        and read [SECURITY.md](https://github.com/pewdiepie-archdaemon/odysseus/blob/main/SECURITY.md) first.
+        use [GitHub Security Advisories](https://github.com/nc262/mythforge/security/advisories/new)
+        and read [SECURITY.md](https://github.com/nc262/mythforge/blob/main/SECURITY.md) first.
 
   - type: checkboxes
     id: prerequisites
     attributes:
       label: Prerequisites
       options:
-        - label: I searched [open issues](https://github.com/pewdiepie-archdaemon/odysseus/issues?q=is%3Aissue+is%3Aopen) and [discussions](https://github.com/pewdiepie-archdaemon/odysseus/discussions) and did not find an existing report of this bug.
+        - label: I searched [open issues](https://github.com/nc262/mythforge/issues?q=is%3Aissue+is%3Aopen) and did not find an existing report of this bug.
           required: true
-        - label: This is **not** a security vulnerability. (Vulnerabilities go to [GitHub Security Advisories](https://github.com/pewdiepie-archdaemon/odysseus/security/advisories/new) — see [SECURITY.md](https://github.com/pewdiepie-archdaemon/odysseus/blob/main/SECURITY.md).)
+        - label: This is **not** a security vulnerability.
           required: true
-        - label: I am running the latest code from the `dev` branch (the default branch you get on clone, where fixes land first) and the bug still reproduces there. Please `git pull` the latest `dev` before filing.
+        - label: I checked [godot/docs/Backlog.md](https://github.com/nc262/mythforge/blob/main/godot/docs/Backlog.md) and [KnownIssues.md](https://github.com/nc262/mythforge/blob/main/godot/docs/KnownIssues.md) — this is not already tracked.
           required: true
 
   - type: dropdown
     id: install-method
     attributes:
-      label: Install Method
+      label: How are you running it?
       options:
         - "-- Please Select --"
-        - Docker (docker compose up)
-        - Manual Python install (pip / venv)
-        - Windows native (launch-windows.ps1)
-        - macOS app (build-macos-app.sh / start-macos.sh)
-        - Other (describe in the reproduction steps below)
+        - The installer (Mythforge-Setup.exe)
+        - An exported exe I built myself
+        - From source, in the Godot editor
     validations:
       required: true
 
-  - type: dropdown
-    id: os
+  - type: input
+    id: model
     attributes:
-      label: Operating System
-      options:
-        - "-- Please Select --"
-        - Linux
-        - macOS
-        - Windows
-        - Other
+      label: Which narrator model?
+      description: The `.gguf` filename in `user://models`. This matters more than anything else in the report — a different model is a different Game Master.
+      placeholder: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: GPU and VRAM
+      description: Run `scripts/check-system.ps1` if you are not sure.
+      placeholder: "Radeon RX 7900 GRE, 16 GB"
     validations:
       required: true
 
   - type: textarea
     id: steps
     attributes:
-      label: Steps to Reproduce
-      description: Exact steps that reliably trigger the bug. The more specific, the faster this gets fixed.
+      label: Steps to reproduce
+      description: Exact steps that reliably trigger it. If it involves the GM, include the line you typed.
       placeholder: |
-        1. Go to ...
-        2. Click / type ...
+        1. Continue an adventure at day 4
+        2. Type "I attack the jotun"
         3. Observe ...
     validations:
       required: true
@@ -68,32 +69,24 @@ body:
   - type: textarea
     id: expected
     attributes:
-      label: Expected Behaviour
-      description: What should have happened?
+      label: Expected behaviour
     validations:
       required: true
 
   - type: textarea
     id: actual
     attributes:
-      label: Actual Behaviour
-      description: What actually happened? Include the full error message if there is one.
+      label: Actual behaviour
+      description: Include the full error if there is one. If the GM said something wrong, paste its whole reply — the surrounding text is usually where the cause is.
     validations:
       required: true
 
   - type: textarea
     id: logs
     attributes:
-      label: Logs / Screenshots
-      description: Paste relevant terminal output or attach screenshots. Remove API keys, passwords, and personal data before pasting.
+      label: Logs / screenshots
+      description: Console output or screenshots. Saves are plain JSON and may contain your campaign text — check before pasting one.
       render: text
-
-  - type: input
-    id: model-backend
-    attributes:
-      label: Model / Backend (if relevant)
-      description: "e.g. Ollama + llama3.2:latest, vLLM + mistral-7b, OpenAI API, Anthropic API"
-      placeholder: "Ollama + llama3.2:latest"
 
   - type: dropdown
     id: willing_to_fix
@@ -110,5 +103,5 @@ body:
   - type: textarea
     id: additional-info
     attributes:
-      label: Additional Information
-      description: Anything else that might help — browser console errors, related issues, things you already tried, or environment quirks.
+      label: Anything else
+      description: Related issues, things you already tried, environment quirks.

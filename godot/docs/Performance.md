@@ -1,206 +1,85 @@
-# Turn latency — what's actually slow, and what to do about it
+# Performance
 
-Measured 2026-07-23 on the shipped exe + the local stack. Written to be
-portable: **every fix here has to work on a friend's machine**, not just on the
-one AMD box this was measured on. Where a number is specific to this hardware
-it says so.
+Measured on a Radeon RX 7900 GRE with Llama 3.1 8B Instruct Q4_K_M, in-process
+through NobodyWho on Vulkan. Numbers are from `tests/bench_gm.tscn` and
+`tests/local_stack.tscn`, which drive the real model — the other harnesses are
+offline and cannot tell you anything about speed.
 
-Companion to [UIPolish.md](UIPolish.md) B8.
+## Where the time goes
 
----
+| | |
+|---|---|
+| GM turn, warm | **3.7 s** |
+| memory: store 3 beats / recall | 228 ms / 4 ms |
+| cast codex | 1.2 s |
+| quest log | 1.4 s |
+| world tick | 1.6 s |
+| Worldsmith `ask_back` | 1.5 s |
+| a whole world forged (six calls) | 56.6 s |
+| one 512×512 image | 4.8 s |
 
-## 1. The one measurement that explains most of it
+The first turn after launch is slower than 3.7 s: the ~4.6 GB model loads on the
+first call unless `start_worker()` has already run. `LocalGM._ensure_nodes()`
+calls it at construction for exactly that reason — a model load buried inside
+the player's first sentence is the one turn where the game most needs to look
+alive.
 
-```
-GET /api/ps  →  llama3.1:8b   size 5.86 GB   size_vram 3.96 GB   ctx 4096
-                → only 67 % of the model is on the GPU
-```
+## The two decisions that made the difference
 
-A third of the model is running **on the CPU**. That is why generation measures
-**6–9 tok/s** on a Radeon RX 7900 GRE, a card that should do several times that
-on an 8B. Everything else in this document is smaller than this.
+**Nothing resident on the card but the narrator.** A GM turn measured 19.3 s
+when a CUDA-shimmed image stack held ~7.4 GB of VRAM: the model loaded with a
+third of its layers on the CPU and stayed that way for the life of the process,
+because a llama.cpp GPU/CPU split is fixed at load time. stable-diffusion.cpp
+idles at **118 MB** — it loads its checkpoint per request instead of staying
+resident — and the same turn measures **3.7 s**. A fully-resident 8B beats a
+half-offloaded one by more than any prompt tuning can.
 
-Why it happens here: ComfyUI/ZLUDA holds the card.
+**Never one call that both invents and serialises.** The Worldsmith's world-core
+call took 95.8 s and failed; split into a prose call plus a schema call it takes
+1.5 s. The reason is in [LocalLLM-Tuning.md](LocalLLM-Tuning.md) and it is not a
+speed trick — a grammar and a sampler chain replace each other, so the slow path
+was also the bad one.
 
-```
-GET :8188/system_stats → vram_total 17.2 GB, vram_free 9.5 GB
-                       → the image stack is sitting on ~7.7 GB
-```
+## Prefill is not the bottleneck
 
-Ollama decides the CPU/GPU split **once, at load time**, and keeps it for the
-life of the loaded model. Our LLM loaded while the shop's icon flood had the
-card busy, so it settled at 67 % and stayed there — for every turn afterwards.
+Prompt evaluation measures ~0.15 s for a full envelope. Time-to-first-token is
+not spent on the prompt, which means prompt-shrinking and prefix-cache work are
+optimising the wrong end. What the player waits for is **generation**, and the
+lever on generation is output length: at the rate this box generates, 300 tokens
+*is* most of the turn. Shorter beats are both faster and better pacing, which is
+why reply length is a player-facing knob rather than a constant.
 
-**This is the portability problem in miniature.** A friend with one 8 GB card
-running only Ollama has a different split than a friend with 24 GB running
-Ollama and ComfyUI together. The fix cannot be a magic number; it has to be
-*measured on their machine at runtime*.
+Each turn is deliberately stateless — `LocalGM.stream()` resets the context and
+the envelope carries the whole situation. Letting the chat also accumulate
+history sends all of it twice: measured, turn 2 once cost *more* than turn 1
+(51.7 s vs 41.6 s) because the second envelope pushed past the context window.
 
-## 2. Second finding: we ask for a 128 000-token context window
+## The image engine
 
-`src/llm_core.py:1460` — the streaming chat path builds its Ollama payload with
+`--vae-tiling` is load-bearing, not tuning. Without it the VAE decode asks for a
+Vulkan buffer past this device's limit, falls back to a slow path, and spends
+36.2 s of a 50.4 s image. Tiled: 3.1 s decode, 19.9 s image, pixel-identical at
+the same seed. It must be set in every launch path.
 
-```python
-num_ctx=get_context_length(url, model)   # → 128000 for llama3.1:8b
-```
+sd-server also **ignores `steps` in the request body** — steps are a launch flag
+or nothing.
 
-The studio's JSON calls sensibly pass `num_ctx=8192`. Only the main narration
-path asks for the model's full advertised window. `num_ctx` sizes the KV cache
-allocation, so a 128 k request reserves VRAM we then cannot use for weights —
-which is exactly what pushes layers onto the CPU.
-
-Ollama clamped it to 4096 here (`ctx 4096` in `/api/ps`, i.e. a server-side
-`OLLAMA_CONTEXT_LENGTH`), so on **this** box we got away with it. On a machine
-without that env var set, the full 128 k request stands. That is a latent
-performance cliff for anyone who downloads this.
-
-**Fix:** size the window to the conversation — measure the prompt, round up,
-clamp to something sane (8–16 k). Never ask for the model's maximum.
-
-## 3. Prefill is not the problem; generation is
-
-Controlled A/B against Ollama directly, same prompt, same model, warm:
-
-| num_ctx | prompt tokens | prompt_eval | eval | tok/s |
-|---------|---------------|-------------|------|-------|
-| 128000  | 319 | 0.11 s | 17.3 s | 8.9 |
-| 8192    | 319 | 0.15 s | 36.3 s | 6.2 |
-| 4096    | 319 | 0.16 s | 50.7 s | 5.9 |
-
-Read this carefully: **the wall-clock differences here are output length, not
-speed** (154 / 224 / 297 tokens) — the runs are not comparable on wall time, and
-the tok/s spread is within the noise of a card being shared with ComfyUI. The
-one solid conclusion is the first column: **prompt evaluation is ~0.15 s.**
-
-So time-to-first-token is *not* being spent on the prompt. Whatever the player
-waits for, it is not prefill — which means **prompt-shrinking and prefix-cache
-work are not where the win is.** Worth knowing before optimising the wrong end.
-
-## 4. Prefix caching: real, but not our bottleneck
-
-Ollama does reuse the KV cache for a shared prompt prefix, which is the normal
-multi-turn shape (history stays, one message is appended). Our history *is* a
-stable prefix, so this already works for us.
-
-One thing that would hurt it if prefill ever mattered: `Composer.envelope()`
-rebuilds a large block every turn — sheet, scene, clock, inventory, spells,
-chronicle recall, codex, cast, quests, protocol — and puts the volatile parts
-(HP, scene, clock) near the **top**, with the big static `PROTOCOL` block at the
-bottom. If we ever need prefill wins, the move is to hoist everything static
-into the system message and leave only volatile state next to the player's line.
-**Not worth doing today** — 0.15 s is 0.15 s.
-
-## 5. What is left unproven
-
-Being honest about the edge of the evidence:
-
-- The `45.09 s` and `68.25 s` figures in UIPolish B8 come from
-  `src.llm_core - LLM async call … succeeded`, which is the **non-streaming**
-  helper. The narration route uses `stream_llm_with_fallback`. Those numbers may
-  therefore be a background extractor, not the narration itself. **The
-  narration's own timing is not yet instrumented** — that is the next thing to
-  measure, not to guess at.
-- The client is genuinely built to stream (`Api.sse_delta → _on_delta`) and its
-  language gate opens after only 40 visible characters, so the client is not
-  what withholds the reply. If the player still sees one static line for the
-  whole turn, the tokens are not arriving — worth confirming against the SSE
-  directly before changing anything.
-
-## 6. The plan, in order of (win ÷ effort), all portable
-
-**P1 — Give the LLM the card when it loads.** The single biggest lever. Ollama
-fixes its GPU split at load time, so what matters is the VRAM free *at that
-moment*. Free the image stack before the model loads (ComfyUI unload endpoint),
-or load the LLM first and keep it resident. Verify with `/api/ps`: `size_vram`
-should equal `size`. Works everywhere — the check is a ratio, not a number.
-
-**P2 — Stop asking for the model's maximum context.** Size `num_ctx` from the
-actual prompt, clamped to 8–16 k. Costs nothing on machines that were clamping
-anyway; prevents a cliff on machines that were not.
-
-**P3 — Pick the model from *free VRAM*, not from a hard-coded name.** Today
-`auto_gm_model()` picks the largest model ≤9 B, which is right for this box and
-wrong for an 8 GB laptop. It should ask the host what fits: read free VRAM,
-subtract KV-cache headroom, choose the largest model that fits **entirely** on
-the GPU, and fall back to a small one rather than half-offloading a big one.
-A fully-resident 3 B beats a half-offloaded 8 B by a wide margin.
-
-**P4 — Ship the Ollama env the stack wants.** `OLLAMA_FLASH_ATTENTION=1`,
-`OLLAMA_KV_CACHE_TYPE=q8_0` (~50 % less KV memory, needs flash attention),
-`OLLAMA_KEEP_ALIVE=30m`, `OLLAMA_CONTEXT_LENGTH=8192`. These help every machine
-and are the standard tuning set. Must be set for the friend's install too, not
-just ours — i.e. they belong in the launcher, not in one pm2 config.
-
-**P5 — Instrument the narration path** (§5) before optimising it further. One
-log line with TTFT and tok/s per turn ends all guessing.
-
-**P6 — Cap the reply.** GM turns run 3–4 paragraphs with no `num_predict`
-ceiling. At 6–9 tok/s, 300 tokens *is* the 45 seconds. Shorter beats are both
-faster and better pacing — this may be the cheapest real win after P1.
-
-**P7 — Make the wait honest.** Whatever the floor turns out to be, the player
-currently gets one static grey line. Stream visibly, show elapsed time, and let
-them queue the next action.
-
----
-
-## 7. The Director's call: nothing predictable paints during play
-
-Raised after reading §1 — *"shouldn't all these icons, backgrounds etc. be
-pre-rendered? those are all standard buttons and backgrounds… should all be part
-of the world build. or even a 30s load screen before the game drops you into an
-unready interface."*
-
-Correct, and the evidence is stronger than the hunch. The icons that flooded the
-GPU mid-combat were the **vendor's wares**, and vendor stock is not dynamic — it
-is a static table in `data/tables.json` (`vendor_stock`, `vendor_stock_cyber`,
-`vendor_stock_everyday`, …). Eleven fixed names per world family, identical for
-every player, fully known at build time. We paint them on the player's GPU, one
-at a time, at ~22–27 s each, the first time a shop opens.
-
-That is the root cause of §1: the LLM loaded at 67 % GPU **because of art we
-could have shipped**.
-
-### The rule
+## The rule that keeps it fast
 
 **If it can be known before play, it is painted before play.** Runtime
-`Art.ensure` is reserved for the genuinely emergent — a loot item the GM
-invented this turn, a scene of a place that did not exist a minute ago.
+`Art.ensure` is for the genuinely emergent: a loot item the GM invented this
+turn, a scene of a place that did not exist a minute ago.
 
-Everything else is world-build work, and the World Compiler already does exactly
-this for the world catalogue (~60 per-material item icons) and already ships
-four worlds pre-baked as zips. Vendor stock, standard kit, the UI's own
-furniture and the sheet/gear backdrops belong in that same pass — they are the
-easy half, because they are a constant.
+This is not a style preference. The jobs that once half-offloaded the model were
+**vendor stock icons** — eleven fixed names per world family, sitting in a static
+table, identical for every player, fully known at build time, painted one at a
+time on the player's GPU at ~22–27 s each the first time a shop opened. They are
+baked now. `Art.hold` covers what is left: the queue pauses for the length of a
+stream so a burst of icons cannot run across a narration call.
 
-### The second half: an honest load
+Still open on that rule:
 
-Today a forged world **backgrounds** its compile so play can start sooner
-(`SESSION-HANDOFF.md §1`, "play starts after worldsmith, the world fills in
-behind"). That trade is what produces the symptoms in the Round-5 audit: an
-empty minimap, a shop with three of eleven icons, art appearing minutes late,
-and generation competing with the narrator.
-
-The Director's alternative — a short, ceremonial "preparing the world" step, then
-a game that is *ready* — is the better trade for perceived quality. A 30-second
-forge ritual reads as craft. A game that dribbles its own furniture in over the
-first ten minutes reads as unfinished.
-
-### Work
-
-| # | Item | Effort |
-|---|------|--------|
-| A1 | Bake vendor stock icons per world family into the compile + the shipped zips (they are a constant — this is pure build work) | S |
-| A2 | Audit every runtime `Art.ensure` call and move each to the compiler unless it is genuinely emergent | M |
-| A3 | Replace the background compile with a "preparing the world" ceremony that finishes before play opens — with real per-stage progress, which the forge wait screen needs anyway (UIPolish B8 / VIS-09) | M |
-| A4 | Ship the pre-baked set with the exe so a friend's first shop is instant and their GPU is free for the narrator | S |
-
-A1+A4 alone remove the exact jobs that half-offloaded the model.
-
-## Sources
-
-- [Ollama Performance Tuning: Batching, KV Cache, and OOM](https://eastondev.com/blog/en/posts/ai/20260410-ollama-performance-optimization/)
-- [Ollama VRAM Requirements: 2026 Guide](https://localllm.in/blog/ollama-vram-requirements-for-local-llms)
-- [Optimizing Ollama VRAM Settings with KV cache quantization](https://blog.peddals.com/en/ollama-vram-fine-tune-with-kv-cache/)
-- [KV Cache System — ollama/ollama (DeepWiki)](https://deepwiki.com/ollama/ollama/5.3-kv-cache-system)
-- [Prefix caching — LLM Inference Handbook](https://bentoml.com/llm/inference-optimization/prefix-caching)
+| # | Item | E |
+|---|---|---|
+| A1 | Audit every runtime `Art.ensure` call and move each into the compiler unless it is genuinely emergent | M |
+| A2 | Replace the background compile with a "preparing the world" ceremony that finishes before play opens, with real per-stage progress | M |
