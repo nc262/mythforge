@@ -142,6 +142,54 @@ func _ready() -> void:
 	assert(cyber.any(func(g): return str(g).begins_with("Ration Bars")))
 	assert(Rules.starting_sundries("nonesuch") == Rules.starting_sundries("_"))
 
+	# UI-1 — TAG DEBRIS NEVER REACHES THE BUBBLE.
+	#
+	# `_tag_re` needs a closing "]]", so an unclosed "[[Perception" and a
+	# single-bracket "[Active Perception]" were invisible to the parser: it could
+	# neither act on them nor strip them, and they rendered verbatim.
+	var d1 := Tags.parse("You edge along the ledge.
+[[Perception")
+	assert(not d1["clean"].contains("[["))
+	assert(d1["clean"].contains("You edge along the ledge."))
+	var d2 := Tags.parse("The lock clicks. [Active Perception] The hall is quiet.")
+	assert(not d2["clean"].contains("["))
+	assert(d2["clean"].contains("The lock clicks.") and d2["clean"].contains("The hall is quiet."))
+	# A real tag still parses AND still leaves clean prose behind it.
+	var d3 := Tags.parse("You slip past. [[check ability=DEX skill=Stealth dc=13]]")
+	assert(d3["tags"].size() == 1 and str(d3["tags"][0]["name"]) == "check")
+	assert(d3["clean"] == "You slip past.")
+	# PROSE MUST SURVIVE. A bracket is legal English, and eating the player's
+	# aside would be a worse bug than the one being fixed.
+	var d4 := Tags.parse("She hands you the ledger [it is warm] and says nothing.")
+	assert(d4["clean"].contains("[it is warm]"))
+	var d5 := Tags.parse("The sign reads [CLOSED].")
+	assert(d5["clean"].contains("[CLOSED]"))
+	# And the cut must not leave a scar.
+	assert(not Tags.parse("A step. [[loot name=\"Rope\"]] Another.")["clean"].contains("  "))
+
+	# UI-2 — no two Destiny monuments may share a name. Five nodes all reading
+	# "Gift of Growth" is five nodes the player cannot tell apart. Asked of the
+	# REAL node list — a check that builds its own list proves nothing about the
+	# screen it is named for.
+	var keep_st := GameState.state
+	GameState.state = {"sheet": {"cls": "Fighter", "level": 20, "race": "Human",
+		"abilities": {"STR": 14, "DEX": 12, "CON": 13, "INT": 10, "WIS": 10, "CHA": 10}}}
+	var tree = load("res://scenes/ui/skill_tree.gd").new()
+	tree._build()
+	var labels := {}
+	var dupes: Array[String] = []
+	for n in tree._nodes:
+		if str(n.get("kind", "")) != "milestone":
+			continue
+		var lbl := str(n.get("label", ""))
+		if labels.has(lbl):
+			dupes.append(lbl)
+		labels[lbl] = true
+	tree.free()
+	GameState.state = keep_st
+	assert(dupes.is_empty())          # every monument is nameable
+	assert(labels.size() >= 6)        # 5 ASI + subclass + apotheosis, all distinct
+
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
 	assert(Combat.weapon_dmg_type("Longbow") == "piercing")

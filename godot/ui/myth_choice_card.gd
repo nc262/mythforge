@@ -7,10 +7,38 @@ class_name MythChoiceCard extends Button
 var payload: Dictionary = {}
 var selected := false
 
+## UI-3 — THE CARD GROWS TO HOLD ITS TEXT.
+##
+## 196x138 was a hard size and the content box is anchored FULL_RECT, so a body
+## that wrapped to three or four lines simply overflowed and was cut off. An
+## anchored child never reports a minimum upward, which is why nothing complained.
+##
+## The height has to be MEASURED and written into `custom_minimum_size`. Two
+## things make that the only route: an autowrapping Label reports its minimum
+## from its CURRENT width, which before layout is one line; and this card is a
+## Button, whose native get_minimum_size() never consults a script's
+## `_get_minimum_size()` — a virtual here is dead code that looks like a fix.
+const BODY_W := 170.0
+const FLOOR_H := 138.0
+
+
+## Body height at the width the body will actually get, or 0 if there is none.
+static func _body_overflow(text: String) -> float:
+	if text.strip_edges() == "":
+		return 0.0
+	var fnt: Font = Ui.sans
+	if fnt == null:
+		return 0.0
+	var fsz := 13
+	var wrapped: Vector2 = fnt.get_multiline_string_size(
+		text, HORIZONTAL_ALIGNMENT_CENTER, BODY_W, fsz)
+	# One line already fits inside the floor; only what spills past it counts.
+	return maxf(0.0, wrapped.y - float(fsz) * 1.4)
+
 
 func _init(p: Dictionary = {}) -> void:
 	payload = p
-	custom_minimum_size = Vector2(196, 138)
+	custom_minimum_size = Vector2(196, FLOOR_H + _body_overflow(str(p.get("body", ""))))
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(Control.PRESET_FULL_RECT)
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE

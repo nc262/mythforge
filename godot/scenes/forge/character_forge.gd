@@ -265,7 +265,7 @@ func _stage_heritage() -> void:
 		show_race.call(str(draft["race"]))
 	_nav(1, "Strike ›", func():
 		if str(draft["race"]) == "":
-			_status.text = "The metal needs a heritage — choose one."
+			_refuse("The metal needs a heritage — choose one.")
 			return
 		_enter_stage(3))
 
@@ -296,7 +296,7 @@ func _stage_class() -> void:
 	_stage_box.add_child(story)
 	_nav(2, "Strike ›", func():
 		if str(draft["cls"]) == "":
-			_status.text = "The blade needs a shape — choose a class."
+			_refuse("The blade needs a shape — choose a class.")
 			return
 		if _story_edit != null:
 			draft["cls_story"] = _story_edit.text.strip_edges()
@@ -320,7 +320,7 @@ func _stage_background() -> void:
 	_stage_box.add_child(story)
 	_nav(3, "Strike ›", func():
 		if str(draft["bg"]) == "":
-			_status.text = "Every legend was someone first — choose a background."
+			_refuse("Every legend was someone first — choose a background.")
 			return
 		if _story_edit != null:
 			draft["bg_story"] = _story_edit.text.strip_edges()
@@ -426,7 +426,7 @@ func _stage_nature() -> void:
 			var want := ARRAY_VALUES.duplicate()
 			want.sort()
 			if used != want:
-				_status.text = "Each array value must be used exactly once — %s remains unbalanced." % str(used)
+				_refuse("Each array value must be used exactly once — %s remains unbalanced." % str(used))
 				return
 			draft["assign"] = assign
 			draft["rolled"] = []
@@ -584,7 +584,15 @@ func _stage_quenching() -> void:
 	nc.add_child(name_in)
 	_stage_box.add_child(nc)
 	var epithet := Label.new()
+	# UI-10 — the Quenching's summary line sits over bright forge art, and
+	# HintLabel is ink_dim: grey-on-glow, the least readable text in the game at
+	# the moment the player is reading hardest. This is the one line that says
+	# what they just made, so it gets the gold the rest of the ceremony uses and
+	# an outline to hold it off whatever is burning behind it.
 	epithet.theme_type_variation = "HintLabel"
+	epithet.add_theme_color_override("font_color", Ui.c("gold_soft"))
+	epithet.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+	epithet.add_theme_constant_override("outline_size", 4)
 	epithet.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	# R9-08 — these came back through JSON as floats, so a 15 printed as "15.0"
 	# and the whole line read "destiny: 15.0, 14.0, 13.0, 10.0, 10.0, 9.0". An
@@ -624,10 +632,10 @@ func _stage_quenching() -> void:
 	_nav(8, "BEGIN THE ADVENTURE" if not menu_mode else "BANK THIS LEGEND", func():
 		draft["name"] = name_in.text.strip_edges()
 		if draft["name"] == "":
-			_status.text = "A legend needs a name — strike it."
+			_refuse("A legend needs a name — strike it.")
 			return
 		if str(draft["race"]) == "" or str(draft["cls"]) == "":
-			_status.text = "The metal is not ready — heritage and class await their strikes."
+			_refuse("The metal is not ready — heritage and class await their strikes.")
 			return
 		if draft["rolled"].is_empty() and draft["assign"].is_empty():
 			_roll_destiny()

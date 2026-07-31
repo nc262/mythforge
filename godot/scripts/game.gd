@@ -403,10 +403,26 @@ func _recap_line(raw: String) -> String:
 ## The pillar replaces the old hero-forge dialog: a full-screen ritual.
 ## A legend banked at the main menu resumes at the Quenching.
 func _open_character_forge() -> void:
+	# UI-4 — A LEGEND ALREADY FORGED DOES NOT NEED FORGING.
+	#
+	# Choosing a banked hero at the Adventure Forge used to open the anvil at the
+	# Quenching: a ceremony whose whole purpose is revealing a hero you have just
+	# made, staged for one you made weeks ago and have already played. Nothing on
+	# that screen is a decision — the name is struck, the face is painted, the
+	# numbers are rolled — so it is a toll between the player and the table.
+	#
+	# Picking them at the Adventure Forge WAS the decision. Honour it. The anvil
+	# is still one click away behind "Forge a Hero now" for anyone who wants it.
+	var pending := GameState.pending_hero
+	if not pending.is_empty() and str(pending.get("name", "")) != "":
+		GameState.pending_hero = {}
+		GameState.bank_hero(pending)   # keep the roster entry fresh
+		_create_hero_forged(pending)
+		return
 	var forge := preload("res://scenes/forge/character_forge.tscn").instantiate()
-	# A banked legend chosen at the Adventure Forge fills the Quenching.
-	if not GameState.pending_hero.is_empty():
-		forge.draft = GameState.pending_hero.duplicate(true)
+	if not pending.is_empty():
+		# Incomplete draft (no name yet) — the anvil still has work to do.
+		forge.draft = pending.duplicate(true)
 		forge.start_at_quench = true
 	forge.hero_forged.connect(func(d):
 		forge.queue_free()

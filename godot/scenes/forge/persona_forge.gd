@@ -69,7 +69,7 @@ func _stage_face() -> void:
 	_stage_box.add_child(kit_hint)
 	_nav(-1, "To their Story ›", func():
 		if str(draft["name"]).strip_edges() == "":
-			_status.text = "A companion needs a name."
+			_refuse("A companion needs a name.")
 			return
 		_enter_stage(1))
 

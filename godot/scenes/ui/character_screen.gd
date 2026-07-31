@@ -678,7 +678,7 @@ func _pack_menu(p: Dictionary) -> void:
 				Sfx.play("chime")
 			_refill_gear())
 	add_child(menu)
-	menu.popup(Rect2i(DisplayServer.mouse_get_position(), Vector2i.ZERO))
+	Ui.popup_at_mouse(menu)   # UI-6: flips at a screen edge instead of clipping
 
 
 ## Hold the piece up to the candlelight: big art and its story.
@@ -826,7 +826,7 @@ func _open_slot_picker(slot_key: String) -> void:
 			GameState.toggle_equip(chosen)
 		_refill_gear())
 	pop.close_requested.connect(pop.queue_free)
-	pop.popup(Rect2i(DisplayServer.mouse_get_position(), Vector2i(240, 10)))  # Window has no get_global_mouse_position
+	Ui.popup_at_mouse(pop, 240)   # UI-6: flips at a screen edge instead of clipping
 
 
 func _has_ci(arr: Array, needle: String) -> bool:

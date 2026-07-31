@@ -240,7 +240,7 @@ func _stage_theme() -> void:
 			if v != "":
 				draft["fields"][k] = v
 		if draft["theme"].is_empty() and draft["idea"] == "" and draft["fields"].is_empty():
-			_status.text = "Choose a theme — or open the pillars and write your own."
+			_refuse("Choose a theme — or open the pillars and write your own.")
 			return
 		_enter_stage(3))
 

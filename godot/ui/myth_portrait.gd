@@ -16,9 +16,17 @@ func _init(size_px := 96, ring := "gold", with_halo := false) -> void:
 	custom_minimum_size = Vector2(size_px, size_px)
 
 
+## UI-11 — A PORTRAIT IS NEVER NOTHING.
+##
+## The empty state below already draws a disc and a letter, so "no art" has
+## always been handled. What was not handled is a BLANK letter: eleven call
+## sites pass `str(name).left(1)`, which is "" for a hero who has not been named
+## yet, and an unnamed hero on a cold cache drew an empty ring — no face, no
+## initial, nothing. Guarding here rather than at eleven call sites, because the
+## next caller will make the same reasonable-looking mistake.
 func set_portrait(t: Texture2D, g := "?") -> void:
 	tex = t
-	glyph = g
+	glyph = g.strip_edges() if g.strip_edges() != "" else "?"
 	queue_redraw()
 
 

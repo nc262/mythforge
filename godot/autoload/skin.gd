@@ -727,6 +727,34 @@ func rise_text(parent: Node, text: String, color: Color, at: Vector2) -> void:
 	tw.chain().tween_callback(lab.queue_free)
 
 
+## UI-6 — OPEN A POPUP AT THE MOUSE WITHOUT LOSING HALF OF IT.
+##
+## `popup(Rect2i(mouse, ...))` puts the menu's top-left under the cursor and
+## Godot honours that literally: given an explicit rect it does NOT flip, so a
+## right-click near the right or bottom edge of the screen renders a menu that
+## runs off it. Half the items become unreachable, and "Sell" is usually one of
+## them because it sits last.
+##
+## Flip rather than clamp. A menu shoved back inside the screen would cover the
+## thing it was opened on; a menu that opens up-and-left from the cursor is the
+## behaviour every desktop context menu already has.
+func popup_at_mouse(pop: Popup, min_width := 0) -> void:
+	pop.reset_size()
+	var want: Vector2 = pop.get_contents_minimum_size()
+	if min_width > 0:
+		want.x = maxf(want.x, float(min_width))
+	want = want.max(Vector2(1, 1))
+	var mouse := DisplayServer.mouse_get_position()
+	var screen := DisplayServer.screen_get_usable_rect(
+		DisplayServer.window_get_current_screen())
+	var at := Vector2i(mouse)
+	if at.x + int(want.x) > screen.position.x + screen.size.x:
+		at.x = maxi(screen.position.x, at.x - int(want.x))
+	if at.y + int(want.y) > screen.position.y + screen.size.y:
+		at.y = maxi(screen.position.y, at.y - int(want.y))
+	pop.popup(Rect2i(at, Vector2i(int(want.x), int(want.y))))
+
+
 # ── MIL primitives (InteractionLanguage.md §14) ─────────────────────────────
 ## MIL §6 — refusal. The shake is the only thing reduce_motion removes; the
 ## colour pulse and the sound still say no.

@@ -463,6 +463,100 @@ func ", at + 10)
 		"kit: the commit no longer grants the world kit — the two paths have drifted (PS-3)")
 	print("  features: the forge grants level-1 features and floors the starting kit")
 	print("  kit: the Quenching promises what the commit delivers")
+	_check_refusals_land_near_the_button()
+
+
+## UI-8 — A REFUSAL MUST BE WHERE THE PLAYER IS LOOKING.
+##
+## `_status` is the last child of the forge column and `_stage_box` above it
+## expands to fill, so a hint set when NEXT was pressed printed at the bottom of
+## the window — measured ~250 px below the button that refused. Most players
+## never saw it and pressed again.
+##
+## Every guard that REFUSES to advance must go through `_refuse()`, which writes
+## beside the nav row and shakes it. Asked of the source: the defect is which
+## function a call site chose.
+func _check_refusals_land_near_the_button() -> void:
+	var flow := FileAccess.get_file_as_string("res://ui/forge_flow.gd")
+	_ck(flow.find("func _refuse(") >= 0, "refuse: forge_flow has no _refuse() — hints have no home")
+	_ck(flow.find("_nav_hint") >= 0, "refuse: no hint rides with the nav row (UI-8)")
+	# The refusal wording is distinctive: it tells the player to choose something.
+	for path in ["res://scenes/forge/adventure_forge.gd", "res://scenes/forge/character_forge.gd",
+			"res://scenes/forge/campaign_forge.gd", "res://scenes/forge/gm_forge.gd",
+			"res://scenes/forge/persona_forge.gd"]:
+		_ck(FileAccess.file_exists(path), "refuse: %s exists to be checked" % path)
+		var src := FileAccess.get_file_as_string(path)
+		# A REFUSAL HAS A SHAPE: set a message, then return without advancing.
+		# Matching on wording instead caught "X waits by the fire — choose them
+		# at the Party stage", which is a confirmation, and the check failed
+		# against correct code. Match the control flow, not the prose.
+		var lines := src.split("
+")
+		var stray := 0
+		for i in lines.size():
+			var t := str(lines[i]).strip_edges()
+			if t.begins_with("#") or not t.begins_with("_status.text = \""):
+				continue
+			for j in range(i + 1, mini(i + 3, lines.size())):
+				var nxt := str(lines[j]).strip_edges()
+				if nxt == "":
+					continue
+				if nxt == "return":
+					stray += 1
+				break
+		_ck(stray == 0,
+			"refuse: %s still prints %d refusal(s) into the far status line instead of _refuse() (UI-8)" % [path, stray])
+	print("  refuse: every forge refusal lands beside the button that refused")
+	# UI-11 — an unnamed hero on a cold cache must still show SOMETHING. Eleven
+	# call sites pass str(name).left(1), which is "" before a name is struck.
+	var probe := MythPortrait.new(64)
+	probe.set_portrait(null, "")
+	_ck(probe.glyph.strip_edges() != "", "portrait: a blank initial draws an empty ring (UI-11)")
+	probe.set_portrait(null, "   ")
+	_ck(probe.glyph.strip_edges() != "", "portrait: a whitespace initial draws an empty ring (UI-11)")
+	probe.set_portrait(null, "D")
+	_ck(probe.glyph == "D", "portrait: a real initial must survive untouched")
+	probe.free()
+	print("  portrait: never draws an empty ring, named or not")
+	# UI-6 — a context menu opened at the mouse must FLIP at a screen edge, not
+	# clip. Godot honours an explicit rect literally, so "Sell" (last in the
+	# list) fell off the bottom on a right-click near the edge.
+	_ck(FileAccess.get_file_as_string("res://autoload/skin.gd").find("func popup_at_mouse(") >= 0,
+		"popup: no shared edge-aware opener (UI-6)")
+	for path in ["res://scenes/ui/character_screen.gd"]:
+		var src2 := FileAccess.get_file_as_string(path)
+		_ck(src2.find("popup(Rect2i(DisplayServer.mouse_get_position") < 0,
+			"popup: %s still opens a menu at the raw cursor — it will clip at an edge (UI-6)" % path)
+	print("  popup: context menus flip at a screen edge instead of clipping")
+	# UI-9 — a row of choice cards must be distinguishable by picture alone. All
+	# four Difficulty cards wore the same glyph, so the art said nothing about
+	# which way was harder.
+	var advf = load("res://scenes/forge/adventure_forge.gd")
+	var glyphs := {}
+	for d in advf.DIFFICULTIES:
+		glyphs[str(d["glyph"])] = true
+		_ck(MythIcon.NAMES.has(str(d["glyph"])),
+			"glyph: Difficulty card '%s' names an icon the library does not draw" % str(d["title"]))
+	_ck(glyphs.size() == advf.DIFFICULTIES.size(),
+		"glyph: %d Difficulty cards share %d glyph(s) — the art says nothing (UI-9)" % [
+			advf.DIFFICULTIES.size(), glyphs.size()])
+	print("  glyph: every Difficulty card is told apart by its picture")
+	# UI-3 — a choice card must grow to hold its own text. It was a fixed 138 px
+	# with an anchored content box, and an anchored child never reports a minimum
+	# upward, so a body that wrapped to three lines was silently cut off.
+	var Card2 = load("res://ui/myth_choice_card.gd")
+	var short_card = Card2.new({"glyph": "die", "title": "Short", "body": "one line"})
+	var long_card = Card2.new({"glyph": "die", "title": "Long",
+		"body": "a body long enough to wrap across three or four lines in the narrow "
+		+ "column a choice card gives it, which is exactly the case that used to clip",
+		"foot": "and a footer under it"})
+	var h_short: float = short_card.get_combined_minimum_size().y
+	var h_long: float = long_card.get_combined_minimum_size().y
+	short_card.free()
+	long_card.free()
+	_ck(h_short >= 138.0, "card: the grid floor of 138 px was lost (UI-3)")
+	_ck(h_long > h_short, "card: a long body does not make the card taller — it is being clipped (UI-3)")
+	print("  card: choice cards grow to hold their text (%d px vs %d px)" % [int(h_long), int(h_short)])
 
 
 ## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no

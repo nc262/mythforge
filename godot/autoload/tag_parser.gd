@@ -8,6 +8,26 @@ var _tag_re := RegEx.create_from_string("\\[\\[(\\w[\\w-]*)([^\\]]*)\\]\\]")
 var _attr_re := RegEx.create_from_string("(\\w[\\w-]*)\\s*=\\s*(?:\"([^\"]*)\"|(\\S+))")
 var _dice_re := RegEx.create_from_string("(?i)\\b(\\d{1,2})d(\\d{1,3})\\b\\s*([+-]\\s*\\d+)?")
 
+## UI-1 - TAG DEBRIS. `_tag_re` needs a closing `]]`, so a model that writes
+## `[[Perception` (never closed) or `[Active Perception]` (single brackets)
+## produces something the parser can neither act on NOR remove: it carries no
+## reliable meaning, so it is not a tag, and it lands in the bubble verbatim.
+##
+## Two shapes, deliberately narrow. An unclosed `[[` is unambiguous debris and
+## dies to the end of its line. A SINGLE-bracket span is debris only when it
+## reads as game-speak - a tag name or a skill word - because prose is allowed
+## to contain a bracket and the player's own aside has to survive.
+var _open_tag_re := RegEx.create_from_string("\\[\\[[^\\]\\n]*(?=\\n|$)")
+var _pseudo_tag_re := RegEx.create_from_string(
+	"(?i)\\[\\s*(?:active\\s+|passive\\s+)?(?:check|attack|damage|heal|gold|loot|spell-learned|time|xp|"
+	+ "combat-start|combat-end|scene|companion|npc|terrain|mood|music|lore|portrait|"
+	+ "athletics|acrobatics|sleight of hand|stealth|arcana|history|investigation|nature|religion|"
+	+ "animal handling|insight|medicine|perception|survival|deception|intimidation|performance|persuasion)"
+	+ "[^\\]\\n]{0,40}\\]")
+## Left behind once spans are cut: doubled spaces and orphaned blank lines.
+var _gap_re := RegEx.create_from_string("[ \\t]{2,}")
+var _blank_re := RegEx.create_from_string("\\n{3,}")
+
 
 ## → {"clean": narration without tags, "tags": [{name, attrs:{k:v}}]}
 func parse(text: String) -> Dictionary:
@@ -17,8 +37,13 @@ func parse(text: String) -> Dictionary:
 		for a in _attr_re.search_all(m.get_string(2)):
 			attrs[a.get_string(1)] = a.get_string(2) if a.get_string(2) != "" else a.get_string(3)
 		tags.append({"name": m.get_string(1), "attrs": attrs})
-	var clean := _tag_re.sub(text, "", true).strip_edges()
-	return {"clean": clean, "tags": tags}
+	var clean := _tag_re.sub(text, "", true)
+	# Whatever the tag regex could not claim, but which is plainly not narration.
+	clean = _open_tag_re.sub(clean, "", true)
+	clean = _pseudo_tag_re.sub(clean, "", true)
+	clean = _gap_re.sub(clean, " ", true)
+	clean = _blank_re.sub(clean, "\n\n", true)
+	return {"clean": clean.strip_edges(), "tags": tags}
 
 
 ## First roll-requiring tag → a check dict Rules.resolve_check understands, or {}.

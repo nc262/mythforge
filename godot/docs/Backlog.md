@@ -11,16 +11,15 @@ effort **S/M/L**.
 | PS-4 | Each long rest costs a full dawn-to-dawn day; no way to rest without losing one | P4 | M |
 | PS-5 | Time divider printed for the first long rest only | P4 | S |
 
-Audited against the code 2026-07-30, high priority first. Every P1 (identity,
-rest-place continuity, invented consequences, the frozen backdrop) and the three
-P2 play-system gaps (level-1 class features, the starting-kit floor, the kit the
-Quenching promises) were confirmed still present, fixed, and each left a check
-behind that FAILS if the defect returns — verified by reverting each fix and
-watching it fail. See `_check_one_identity`, `_check_rest_place`,
-`_check_scene_follows_mood`, `_check_forge_grants_features` and the
-envelope/mood/feature/kit assertions in `self_check`.
-
-Still unaudited below this line.
+Audited against the code 2026-07-30/31, high priority first. Every P1 (identity,
+rest-place continuity, invented consequences, the frozen backdrop), the three P2
+play-system gaps (level-1 class features, the starting-kit floor, the kit the
+Quenching promises) and nine of the eleven presentation items were confirmed
+still present, fixed, and each left a check behind that FAILS if the defect
+returns — verified by reverting each fix and watching it fail. See
+`_check_one_identity`, `_check_rest_place`, `_check_scene_follows_mood`,
+`_check_forge_grants_features`, `_check_refusals_land_near_the_button` and the
+envelope/mood/feature/kit/tag assertions in `self_check`.
 
 ## The Atlas
 
@@ -28,21 +27,23 @@ Still unaudited below this line.
 |---|---|---|---|
 | AT-1 | **The Atlas is decoration, not a map** — no names, legend, compass, scale, roads or POIs; one unlabelled dot, and a fjord drawn as scattered lakes | P2 | L |
 
+Not attempted. "Make it a real map" is a design question before it is a code
+one, and it deserves its own session rather than a guess appended to a sweep.
+
 ## Presentation and copy
 
 | # | Item | P | E |
 |---|---|---|---|
-| UI-1 | Raw parser tags leak into prose — `[[Perception`, `[Active Perception]` rendered verbatim | P2 | S |
-| UI-2 | Destiny labels overlap their nodes; four nodes all named "Gift of Growth" | P2 | S |
-| UI-3 | Forge card text clipped in three places | P2 | S |
-| UI-4 | Choosing a banked hero still routes through The Quenching — a forge step where nothing is forged | P2 | S |
 | UI-5 | Skills / Powers / Story leave ~700 px empty below a cramped top block | P3 | S |
-| UI-6 | Item context menu spawns clipped at the window edge and does not flip | P3 | S |
 | UI-7 | Item icon contradicts the item — a "Shortblade" drawn as a cruciform arming sword | P3 | S |
-| UI-8 | The "choose a world" hint prints ~250 px below the button that refused | P3 | S |
-| UI-9 | The Party stage is one toggle on a full screen; all four Difficulty cards use the same sword glyph | P3 | S |
-| UI-10 | Quenching summary line is low-contrast grey over bright forge art | P3 | S |
-| UI-11 | `MythPortrait` has no empty state — an empty ring while unpainted | P3 | S |
+
+**These two need eyes, not a guess.** Skills is already a two-column grid, so
+the "cramped block" is not the layout defect the report implies — the empty
+space is short content in a tall panel, and what to put there is a design call.
+UI-7 is prompt fidelity: the compiled catalogue path already passes each form's
+own shape words, so the mismatch belongs to the legacy per-name icon path, and
+"make the model draw a short blade" is not something to fake a fix for. Both
+want a screenshot and a decision.
 
 ## Not built
 

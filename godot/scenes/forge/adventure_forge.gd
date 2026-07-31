@@ -14,11 +14,16 @@ signal adventure_ready(adv: Dictionary)
 ## Character Forge's Cold Anvil, same treatment. Cold start to play is now ~14
 ## screens instead of ~18.
 const STAGES := ["The Hero", "The Campaign", "The Party", "Difficulty", "House Rules", "The Preview"]
+## UI-9 — four cards wearing the same glyph is a choice the eye cannot make.
+## They all read "hero"; nothing about the picture said which way was harder.
+## The library already carries a ladder that does: a book for the tale that
+## leads, a sword for the intended fight, a shield for the longer war, a skull
+## for the world that does not blink.
 const DIFFICULTIES := [
-	{"glyph": "hero", "title": "Story", "body": "foes soften — the tale leads", "mult": 0.75},
-	{"glyph": "hero", "title": "Adventurer", "body": "the intended fight", "mult": 1.0},
-	{"glyph": "hero", "title": "Veteran", "body": "foes hit harder, last longer", "mult": 1.25},
-	{"glyph": "hero", "title": "Merciless", "body": "the world does not blink", "mult": 1.5},
+	{"glyph": "book", "title": "Story", "body": "foes soften — the tale leads", "mult": 0.75},
+	{"glyph": "sword", "title": "Adventurer", "body": "the intended fight", "mult": 1.0},
+	{"glyph": "shield", "title": "Veteran", "body": "foes hit harder, last longer", "mult": 1.25},
+	{"glyph": "skull", "title": "Merciless", "body": "the world does not blink", "mult": 1.5},
 ]
 
 const Card := preload("res://ui/myth_choice_card.gd")
@@ -193,7 +198,7 @@ func _stage_campaign_world() -> void:
 	_stage_box.add_child(_scrolled(grid))
 	_nav(0, "NEXT — THE PARTY", func():
 		if draft["adv"].is_empty():
-			_status.text = "Choose a world — or forge one at the war table."
+			_refuse("Choose a world — or forge one at the war table.")
 			return
 		_enter_stage(2))
 
@@ -233,7 +238,7 @@ func _stage_campaign_tale() -> void:
 		_enter_stage(1)
 	var to_party := func():
 		if draft["adv"].is_empty():
-			_status.text = "Choose a tale — free roam counts."
+			_refuse("Choose a tale — free roam counts.")
 			return
 		_enter_stage(2)
 	_nav(-1, "NEXT — THE PARTY", to_party, to_worlds)

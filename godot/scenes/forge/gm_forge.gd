@@ -68,7 +68,7 @@ func _stage_seat() -> void:
 			draft["title"] = str(a["title"]))
 	_nav(-1, "To the Tone ›", func():
 		if str(draft["title"]).strip_edges() == "":
-			_status.text = "Every GM needs a name."
+			_refuse("Every GM needs a name.")
 			return
 		_enter_stage(1))
 

@@ -48,9 +48,13 @@ func _build() -> void:
 	var subclass := str(s.get("subclass", ""))
 	_nodes.append({"kind": "milestone", "lv": 3, "label": subclass if subclass != "" else "Your path awaits",
 		"desc": "The level where your %s chooses its tradition." % cls, "side": 0, "rank": 0})
+	# UI-2 — five monuments all named "Gift of Growth" is five monuments the
+	# player cannot tell apart. In 5e these levels genuinely grant the same
+	# choice, so the honest differentiator is WHEN, not what.
 	for al in ASI_LEVELS:
-		_nodes.append({"kind": "milestone", "lv": al, "label": "Gift of Growth",
-			"desc": "A feat, or +2 to an ability — the ceremony asks when you arrive.", "side": 0, "rank": 0})
+		_nodes.append({"kind": "milestone", "lv": al, "label": "Gift of Growth · %d" % al,
+			"desc": "Level %d: a feat, or +2 to an ability — the ceremony asks when you arrive." % al,
+			"side": 0, "rank": 0})
 	_nodes.append({"kind": "milestone", "lv": 20, "label": "Apotheosis",
 		"desc": "The summit of the %s's road." % cls, "side": 0, "rank": 0})
 	# Feature stars branch from their level.
@@ -320,9 +324,17 @@ func _draw() -> void:
 					if bool(n.get("next", false)):
 						draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(34, 34), Vector2(68, 68)), false, Color(Ui.c("gold"), 0.12 + 0.14 * breathe))
 					draw_polyline(dia + PackedVector2Array([dia[0]]), Color(Ui.c("gold"), 0.55), 1.4, true)
+				# UI-2 — the label goes BESIDE the monument, not above it. Levels
+				# sit ~26 px apart on the spine and a 12 px line drawn at -15
+				# reaches to about -27, so every milestone's name was written
+				# across the node of the level above it. Milestones are the only
+				# nodes on the spine itself (side 0), so there is clear air to
+				# either side; feature stars have already branched away.
 				var ml := str(n["label"])
-				var ms := font.get_string_size(ml, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
-				draw_string(font, p + Vector2(-ms.x / 2.0, -15), ml, HORIZONTAL_ALIGNMENT_CENTER, -1, 12,
+				var ms := font.get_string_size(ml, HORIZONTAL_ALIGNMENT_LEFT, -1, 12)
+				var lean := 1.0 if _spine(int(n["lv"])).x < size.x * 0.5 else -1.0
+				var at := p + Vector2(16.0 if lean > 0.0 else -16.0 - ms.x, 4.0)
+				draw_string(font, at, ml, HORIZONTAL_ALIGNMENT_LEFT, -1, 12,
 					Ui.c("gold_soft") if earned else Color(Ui.c("gold"), 0.7))
 	# The ledger: the hovered star tells its story (screen-space).
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

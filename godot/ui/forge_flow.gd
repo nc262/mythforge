@@ -15,6 +15,8 @@ const CardT := preload("res://ui/myth_choice_card.gd")
 var _rail: MythStageRail
 var _stage_box: VBoxContainer
 var _status: Label
+## The same hint, beside the nav row — see _refuse(). Rebuilt per stage.
+var _nav_hint: Label = null
 var _col: VBoxContainer   # exposed so a forge can slot extra rows (the ledger)
 var _phase := 0.0
 var _busy := false
@@ -140,6 +142,30 @@ func _nav(back_to: int, fwd_text: String, fwd: Callable) -> void:
 	leave.pressed.connect(func(): closed.emit())
 	row.add_child(leave)
 	_stage_box.add_child(row)
+	# UI-8 — THE REFUSAL BELONGS TO THE BUTTON THAT REFUSED.
+	#
+	# `_status` is the last child of `_col`, and `_stage_box` above it expands to
+	# fill — so a hint set when NEXT is pressed printed at the very bottom of the
+	# window, measured ~250 px below the button the player was looking at. Most
+	# players never saw it and pressed again.
+	#
+	# This label rides WITH the nav row, is rebuilt with every stage (so it can
+	# never carry a stale complaint into the next one), and `_refuse()` writes to
+	# both: near the button for the eye, and in the old place for anything that
+	# still reads _status.
+	_nav_hint = Label.new()
+	_nav_hint.theme_type_variation = "HintLabel"
+	_nav_hint.add_theme_color_override("font_color", Ui.c("gold_soft"))
+	_nav_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_stage_box.add_child(_nav_hint)
+
+
+## Say no where the player is looking, and shake the control that said it.
+func _refuse(msg: String) -> void:
+	_status.text = msg
+	if is_instance_valid(_nav_hint):
+		_nav_hint.text = msg
+		Ui.shake(_nav_hint)
 
 
 ## A grid of choice cards with single-select behavior — the forge staple.
