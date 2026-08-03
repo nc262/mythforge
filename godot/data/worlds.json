@@ -37,7 +37,7 @@
    "kind": "Cyberpunk Dystopia",
    "tagline": "Rain, neon, and bad debts in a city that never sleeps or forgives.",
    "ambient": "neonspire",
-   "lore": "Neon Spire is a vertical megacity drowning in rain and advertising. Corporations own the sky; the streets below run on favors, implants, and black-market data. Everyone is hustling, surveilled, and one bad deal from the gutter — but the night is electric and anything can be bought.",
+   "lore": "Neon Spire is a vertical megacity drowning in rain and advertising. Corporations own the sky; the streets below run on favors, implants, and black-market data. Everyone is hustling, surveilled, and one bad deal from the gutter \u2014 but the night is electric and anything can be bought.",
    "cast": [
     {
      "slug": "vex",
@@ -66,7 +66,7 @@
    "id": "everyday",
    "name": "Everyday",
    "kind": "Modern / Slice-of-life",
-   "tagline": "No magic, no chrome — just real people, real days, real talk.",
+   "tagline": "No magic, no chrome \u2014 just real people, real days, real talk.",
    "ambient": "everyday",
    "lore": "An ordinary modern town. Coffee shops, apartments, jobs, weekends. The stories here are human-sized: friendships, worries, small wins, late-night conversations. Grounded and warm, with room for whatever life you want to live.",
    "cast": [
@@ -75,7 +75,7 @@
      "name": "Sam",
      "role": "Barista & easy friend",
      "appearance": "friendly person mid-20s, messy hair, apron, warm smile, cozy sunlit coffee shop, plants on the windowsill",
-     "persona": "You are Sam, a barista and the kind of friend everyone wishes they had. Easygoing, funny, genuinely curious about people, remembers the little things. You chat like a real friend — teasing, supportive, never preachy."
+     "persona": "You are Sam, a barista and the kind of friend everyone wishes they had. Easygoing, funny, genuinely curious about people, remembers the little things. You chat like a real friend \u2014 teasing, supportive, never preachy."
     },
     {
      "slug": "reyes",
@@ -146,7 +146,7 @@
    "tagline": "Iron, oath, and frost at the edge of the god-lit world.",
    "ambient": "embervale",
    "skin_family": "norse",
-   "lore": "Fimbulreach is a coast of black fjords and rune-carved longhouses where the winters run three seasons long and the old gods still answer — sometimes. Jarls feud over silver and salt-fish, draugr walk the barrow-mounds, and a warrior's worth is measured in oaths kept and blood spent. Beyond the last village lie the ice-jotun's lands, where no saga ends warm.",
+   "lore": "Fimbulreach is a coast of black fjords and rune-carved longhouses where the winters run three seasons long and the old gods still answer \u2014 sometimes. Jarls feud over silver and salt-fish, draugr walk the barrow-mounds, and a warrior's worth is measured in oaths kept and blood spent. Beyond the last village lie the ice-jotun's lands, where no saga ends warm.",
    "cast": [
     {
      "slug": "hild_ironvow",
@@ -157,17 +157,17 @@
     },
     {
      "slug": "volva_ingrid",
-     "name": "Ingrid the Völva",
+     "name": "Ingrid the V\u00f6lva",
      "role": "Seer of runes and bones",
      "appearance": "old woman wrapped in wolf-fur and blue-dyed wool, a staff hung with bird-skulls, one milk-pale blind eye, hearth-smoke and firelight",
-     "persona": "You are Ingrid the Völva, a seer who reads the runes and the bones and the way the smoke bends. Calm, cryptic, unafraid of gods or men. You speak in omens and half-answers, never quite say what you know, and treat fate as an old acquaintance you do not much like."
+     "persona": "You are Ingrid the V\u00f6lva, a seer who reads the runes and the bones and the way the smoke bends. Calm, cryptic, unafraid of gods or men. You speak in omens and half-answers, never quite say what you know, and treat fate as an old acquaintance you do not much like."
     },
     {
      "slug": "bjorn_skald",
-     "name": "Björn Salt-Tongue",
+     "name": "Bj\u00f6rn Salt-Tongue",
      "role": "Skald and keeper of the mead-hall",
      "appearance": "broad red-bearded man, arms ringed with hammered silver, a mead-horn in one fist, the longhouse hearth blazing behind him",
-     "persona": "You are Björn Salt-Tongue, skald and keeper of the mead-hall, who trades a warm bench and a strong horn for a good story. Loud, generous, quick to laugh and quicker to sing. You fold every rumour into a saga and believe no deed is real until it's been told well."
+     "persona": "You are Bj\u00f6rn Salt-Tongue, skald and keeper of the mead-hall, who trades a warm bench and a strong horn for a good story. Loud, generous, quick to laugh and quicker to sing. You fold every rumour into a saga and believe no deed is real until it's been told well."
     }
    ]
   },
@@ -209,13 +209,13 @@
    {
     "slug": "hollow-bell",
     "title": "The Hollow Bell",
-    "premise": "Each midnight the old chapel bell tolls though its rope rotted away years ago — and every dawn one more child is found walking the road to the Mournwood. Last night it was the innkeeper's niece.",
+    "premise": "Each midnight the old chapel bell tolls though its rope rotted away years ago \u2014 and every dawn one more child is found walking the road to the Mournwood. Last night it was the innkeeper's niece.",
     "hook": "the Ember & Oak common-room at dusk: Talia gripping your sleeve, lamplight trembling as the first cracked toll of a bell with no rope shivers the windows"
    },
    {
     "slug": "fae-debt",
     "title": "A Debt to the Fae",
-    "premise": "Long ago you accepted a stranger's gift on a moonlit road. The bill has come due, and the Thorn Court will collect in a memory, a true name, or a year of your life — unless you can outwit them.",
+    "premise": "Long ago you accepted a stranger's gift on a moonlit road. The bill has come due, and the Thorn Court will collect in a memory, a true name, or a year of your life \u2014 unless you can outwit them.",
     "hook": "a ring of pale mushrooms at moonrise on the valley's edge, where a too-elegant courier unrolls a sealed writ and bows far too low"
    }
   ],
@@ -223,13 +223,13 @@
    {
     "slug": "ghost-data",
     "title": "Ghost in the Spire",
-    "premise": "A fixer everyone swore was dead left behind a data-shard worth killing for — and somehow your name is burned into it. Corps, gangs, and something cold in the net all want it before dawn.",
+    "premise": "A fixer everyone swore was dead left behind a data-shard worth killing for \u2014 and somehow your name is burned into it. Corps, gangs, and something cold in the net all want it before dawn.",
     "hook": "a rain-lashed noodle bar at 1 a.m.: a dead-drop chip buzzing hot in your pocket, and two unmarked corporate sedans sliding to a stop at the curb outside"
    },
    {
     "slug": "mercer-job",
     "title": "The Mercer Job",
-    "premise": "Dr. Mercer needs a prototype cortex-chip stolen back from the clinic that stole it from him first. Simple work — except the clinic is six floors of corporate security and one very alert AI.",
+    "premise": "Dr. Mercer needs a prototype cortex-chip stolen back from the clinic that stole it from him first. Simple work \u2014 except the clinic is six floors of corporate security and one very alert AI.",
     "hook": "Mercer's neon-lit back-alley clinic at 2 a.m., stolen blueprints flickering on a cracked slate, the job clock already counting down"
    }
   ],
@@ -237,14 +237,14 @@
    {
     "slug": "new-in-town",
     "title": "New in Town",
-    "premise": "You just moved to the city with two suitcases and no plan. No quest, no villain — just the quiet adventure of building a life: finding your people, your places, your rhythm.",
+    "premise": "You just moved to the city with two suitcases and no plan. No quest, no villain \u2014 just the quiet adventure of building a life: finding your people, your places, your rhythm.",
     "hook": "your first morning in the new apartment, last box half-unpacked, the smell of fresh coffee drifting up from the shop on the corner"
    },
    {
     "slug": "the-reunion",
     "title": "The Reunion",
-    "premise": "An old friend you drifted apart from is back in town for one week only. You have a chance to mend something that broke years ago — or to finally, gently let it go.",
-    "hook": "your phone lighting up on a slow evening: 'I'm in town till Sunday. Coffee?' — from a name you haven't let yourself think about in years"
+    "premise": "An old friend you drifted apart from is back in town for one week only. You have a chance to mend something that broke years ago \u2014 or to finally, gently let it go.",
+    "hook": "your phone lighting up on a slow evening: 'I'm in town till Sunday. Coffee?' \u2014 from a name you haven't let yourself think about in years"
    }
   ],
   "saltmarsh": [
@@ -261,27 +261,27 @@
    {
     "slug": "barrow-oath",
     "title": "The Barrow-Wight's Oath",
-    "premise": "A long-dead jarl will not stay in his mound. He walks the barrow-field each night, cold and furious, and the völva says he cannot rest until an oath he swore in life is finally kept — an oath no living soul remembers.",
-    "hook": "the mead-hall gone silent at midnight as the frost creeps under the door, and Björn setting down his horn to whisper that the howe on the hill has opened again"
+    "premise": "A long-dead jarl will not stay in his mound. He walks the barrow-field each night, cold and furious, and the v\u00f6lva says he cannot rest until an oath he swore in life is finally kept \u2014 an oath no living soul remembers.",
+    "hook": "the mead-hall gone silent at midnight as the frost creeps under the door, and Bj\u00f6rn setting down his horn to whisper that the howe on the hill has opened again"
    },
    {
     "slug": "fimbulwinter",
     "title": "Fimbulwinter Comes",
-    "premise": "The sun has not risen in nine days. Ingrid reads the runes and goes grey: the ice-jotun have swallowed the light, and unless it is wrested back before the last hearth-fire dies, this winter will be the one the sagas warned of — the one with no spring.",
-    "hook": "a black noon on the White Fjord, breath freezing in the air, the völva casting bones onto the ice and refusing, for a long moment, to say what they show"
+    "premise": "The sun has not risen in nine days. Ingrid reads the runes and goes grey: the ice-jotun have swallowed the light, and unless it is wrested back before the last hearth-fire dies, this winter will be the one the sagas warned of \u2014 the one with no spring.",
+    "hook": "a black noon on the White Fjord, breath freezing in the air, the v\u00f6lva casting bones onto the ice and refusing, for a long moment, to say what they show"
    }
   ],
   "brasshaven": [
    {
     "slug": "aether-engine",
     "title": "The Aether Engine",
-    "premise": "Ada's prototype engine has been stolen — a machine that could light the whole city or level six blocks of it, depending on who winds the key. The guilds want it, the Baroness wants it, and something in the boiler-warrens wants it too, all before the exhibition deadline.",
+    "premise": "Ada's prototype engine has been stolen \u2014 a machine that could light the whole city or level six blocks of it, depending on who winds the key. The guilds want it, the Baroness wants it, and something in the boiler-warrens wants it too, all before the exhibition deadline.",
     "hook": "Gearwright's workshop at dawn, the safe hanging open and empty, a single greased bootprint on the sill and the far-off drone of a dirigible casting off"
    },
    {
     "slug": "dirigible-murder",
     "title": "Murder on the Dirigible",
-    "premise": "An aether-baron lies dead in the salon of a moored airship, and the gangway was sealed all night. No one came aboard; no one left. You were a guest when the constables locked the deck — which makes you a suspect, and the only one with reason to find the real one first.",
+    "premise": "An aether-baron lies dead in the salon of a moored airship, and the gangway was sealed all night. No one came aboard; no one left. You were a guest when the constables locked the deck \u2014 which makes you a suspect, and the only one with reason to find the real one first.",
     "hook": "the airship salon, gaslight swaying, the Baroness's rival slumped over his brandy, and Inspector Thorne's clockwork monocle clicking as it turns, slowly, toward you"
    }
   ]
@@ -293,8 +293,9 @@
     "kind": "tavern",
     "x": 42,
     "y": 58,
-    "lore": "Talia's lantern-lit tavern — the warm heart of the valley.",
-    "shop": "ale, hot meals, and the night's gossip"
+    "lore": "Talia's lantern-lit tavern \u2014 the warm heart of the valley.",
+    "shop": "ale, hot meals, and the night's gossip",
+    "region": "The Hearthwood Vale"
    },
    {
     "name": "Hearthwood Market",
@@ -302,7 +303,8 @@
     "x": 27,
     "y": 45,
     "lore": "Stalls of the valley folk under faded awnings.",
-    "shop": "general goods, rope, rations, lantern oil"
+    "shop": "general goods, rope, rations, lantern oil",
+    "region": "The Hearthwood Vale"
    },
    {
     "name": "Moonwhisper's Cottage",
@@ -310,35 +312,40 @@
     "x": 63,
     "y": 41,
     "lore": "Mira's crooked cottage, thick with drying herbs.",
-    "shop": "potions, charms, and hedge-remedies"
+    "shop": "potions, charms, and hedge-remedies",
+    "region": "The Hearthwood Vale"
    },
    {
     "name": "The Old Chapel",
     "kind": "landmark",
     "x": 50,
     "y": 25,
-    "lore": "Its cracked bell tolls though the rope rotted away years ago."
+    "lore": "Its cracked bell tolls though the rope rotted away years ago.",
+    "region": "The Hearthwood Vale"
    },
    {
     "name": "The Mournwood",
     "kind": "wilds",
     "x": 73,
     "y": 20,
-    "lore": "A dark, old forest where the lost children are said to walk."
+    "lore": "A dark, old forest where the lost children are said to walk.",
+    "region": "The Mournwood"
    },
    {
     "name": "The Fae Road",
     "kind": "landmark",
     "x": 17,
     "y": 73,
-    "lore": "A ring of pale mushrooms where the Thorn Court travels at moonrise."
+    "lore": "A ring of pale mushrooms where the Thorn Court travels at moonrise.",
+    "region": "The Fae Marches"
    },
    {
     "name": "Aldric's Watchpost",
     "kind": "landmark",
     "x": 81,
     "y": 63,
-    "lore": "The retired knight's lonely post on the valley road."
+    "lore": "The retired knight's lonely post on the valley road.",
+    "region": "The Fae Marches"
    }
   ],
   "neonspire": [
@@ -348,7 +355,8 @@
     "x": 40,
     "y": 62,
     "lore": "Steam, neon, and a stool that's always free at 1 a.m.",
-    "shop": "cheap noodles and cheaper information"
+    "shop": "cheap noodles and cheaper information",
+    "region": "The Sprawl"
    },
    {
     "name": "Mercer's Clinic",
@@ -356,7 +364,8 @@
     "x": 61,
     "y": 49,
     "lore": "A back-alley ripperdoc who installs what hospitals won't.",
-    "shop": "cyberware, patch-jobs, black-market meds"
+    "shop": "cyberware, patch-jobs, black-market meds",
+    "region": "The Sprawl"
    },
    {
     "name": "The Night Market",
@@ -364,35 +373,40 @@
     "x": 25,
     "y": 41,
     "lore": "A churning bazaar of bootleg everything under tarps and drones.",
-    "shop": "bootleg tech, weapons, fake IDs"
+    "shop": "bootleg tech, weapons, fake IDs",
+    "region": "The Sprawl"
    },
    {
     "name": "Corp Plaza",
     "kind": "landmark",
     "x": 52,
     "y": 19,
-    "lore": "Gleaming corporate spires. Smile — you're on a hundred cameras."
+    "lore": "Gleaming corporate spires. Smile \u2014 you're on a hundred cameras.",
+    "region": "Corp Tier"
    },
    {
     "name": "Vex's Den",
     "kind": "landmark",
     "x": 17,
     "y": 67,
-    "lore": "The fixer's back-room office, behind two locked doors."
+    "lore": "The fixer's back-room office, behind two locked doors.",
+    "region": "The Undercity"
    },
    {
     "name": "The Undercity",
     "kind": "wilds",
     "x": 74,
     "y": 75,
-    "lore": "Flooded service tunnels beneath the Spire; nothing legal lives here."
+    "lore": "Flooded service tunnels beneath the Spire; nothing legal lives here.",
+    "region": "The Undercity"
    },
    {
     "name": "Data Haven",
     "kind": "landmark",
     "x": 79,
     "y": 33,
-    "lore": "A netrunner hideout humming with stolen servers."
+    "lore": "A netrunner hideout humming with stolen servers.",
+    "region": "Corp Tier"
    }
   ],
   "everyday": [
@@ -402,28 +416,32 @@
     "x": 40,
     "y": 58,
     "lore": "The corner coffee shop where everyone seems to know your name.",
-    "shop": "coffee, pastries, and a friendly ear"
+    "shop": "coffee, pastries, and a friendly ear",
+    "region": "Downtown"
    },
    {
     "name": "Your Apartment",
     "kind": "home",
     "x": 22,
     "y": 47,
-    "lore": "Two suitcases and a half-unpacked life."
+    "lore": "Two suitcases and a half-unpacked life.",
+    "region": "The Neighborhood"
    },
    {
     "name": "The Office",
     "kind": "landmark",
     "x": 58,
     "y": 40,
-    "lore": "Open-plan desks, lukewarm coffee, and Jordan's schemes."
+    "lore": "Open-plan desks, lukewarm coffee, and Jordan's schemes.",
+    "region": "Downtown"
    },
    {
     "name": "Riverside Park",
     "kind": "wilds",
     "x": 71,
     "y": 66,
-    "lore": "Joggers, dogs, and quiet benches by the water."
+    "lore": "Joggers, dogs, and quiet benches by the water.",
+    "region": "Riverside"
    },
    {
     "name": "Corner Store",
@@ -431,65 +449,76 @@
     "x": 30,
     "y": 69,
     "lore": "Open late, fluorescent-lit, stocked with everything-ish.",
-    "shop": "snacks, essentials, lottery tickets"
+    "shop": "snacks, essentials, lottery tickets",
+    "region": "The Neighborhood"
    },
    {
     "name": "Dr. Reyes' Office",
     "kind": "landmark",
     "x": 66,
     "y": 22,
-    "lore": "A warm room with a plant by the window and good questions."
+    "lore": "A warm room with a plant by the window and good questions.",
+    "region": "Downtown"
    }
   ],
   "saltmarsh": [
    {
     "name": "The Leaning Lantern",
     "kind": "tavern",
-    "note": "A crooked dockside alehouse on stilts; the first dry floor a traveller finds."
+    "note": "A crooked dockside alehouse on stilts; the first dry floor a traveller finds.",
+    "region": "Gallows Quay"
    },
    {
     "name": "Gallows Quay",
     "kind": "settlement",
-    "note": "The pirate town proper — market, brig, and the harbourmaster who owns them both."
+    "note": "The pirate town proper \u2014 market, brig, and the harbourmaster who owns them both.",
+    "region": "Gallows Quay"
    },
    {
     "name": "The Sunken Fort",
     "kind": "ruin",
-    "note": "A drowned garrison; treasure and worse below the tideline."
+    "note": "A drowned garrison; treasure and worse below the tideline.",
+    "region": "The Drowned Reach"
    }
   ],
   "fimbulreach": [
    {
     "name": "Salt-Tongue's Mead-Hall",
     "kind": "tavern",
-    "note": "The longhouse hearth where Björn pours the horn and trades a bench for a tale."
+    "note": "The longhouse hearth where Bj\u00f6rn pours the horn and trades a bench for a tale.",
+    "region": "The Fjordlands"
    },
    {
     "name": "The Barrow-Field",
     "kind": "ruin",
-    "note": "Grass-grown mounds of dead jarls; the frost lies hard here even at noon."
+    "note": "Grass-grown mounds of dead jarls; the frost lies hard here even at noon.",
+    "region": "The Barrow-Field"
    },
    {
     "name": "The White Fjord",
     "kind": "wilds",
-    "note": "Black water under white cliffs, where the ice-jotun's cold rolls in off the sea."
+    "note": "Black water under white cliffs, where the ice-jotun's cold rolls in off the sea.",
+    "region": "The Fjordlands"
    }
   ],
   "brasshaven": [
    {
     "name": "The Sooty Cog",
     "kind": "tavern",
-    "note": "A gin-palace of brass and smoke where inventors and thieves drink at the same rail."
+    "note": "A gin-palace of brass and smoke where inventors and thieves drink at the same rail.",
+    "region": "The Works"
    },
    {
     "name": "Gearwright's Workshop",
     "kind": "shop",
-    "note": "Ada's cluttered marvel of gears and gauges; she'll build or mend near anything."
+    "note": "Ada's cluttered marvel of gears and gauges; she'll build or mend near anything.",
+    "region": "The Works"
    },
    {
     "name": "The Boiler-Warrens",
     "kind": "wilds",
-    "note": "The scalding under-city of pipes and machines no guild will admit to running."
+    "note": "The scalding under-city of pipes and machines no guild will admit to running.",
+    "region": "The Boiler-Warrens"
    }
   ]
  },
@@ -506,5 +535,79 @@
   "everyday": "a warm friendly storyteller host, cozy modern setting, soft light, approachable character portrait",
   "fimbulreach": "a grizzled norse skald and saga-teller, fur cloak and silver arm-rings, firelit longhouse, a weathered knowing face, warm character portrait",
   "brasshaven": "an enigmatic steampunk narrator in a brass-buttoned coat and goggles, gaslit fog, a clockwork monocle, a wry knowing look, character portrait"
+ },
+ "regions": {
+  "embervale": [
+   {
+    "name": "The Hearthwood Vale",
+    "lore": "The valley floor, where lamplight carries and everyone knows whose cow it is."
+   },
+   {
+    "name": "The Mournwood",
+    "lore": "Old trees that were old before the vale was settled, and are not fond of it."
+   },
+   {
+    "name": "The Fae Marches",
+    "lore": "The valley's edge, where the roads stop agreeing about where they go."
+   }
+  ],
+  "neonspire": [
+   {
+    "name": "Corp Tier",
+    "lore": "Above the smog line, where the rain is filtered and so is everything else."
+   },
+   {
+    "name": "The Sprawl",
+    "lore": "Street level: noodles, clinics, and whatever is being sold from a crate tonight."
+   },
+   {
+    "name": "The Undercity",
+    "lore": "Below the grid, lit by what people wire themselves. Nothing here is logged."
+   }
+  ],
+  "everyday": [
+   {
+    "name": "Downtown",
+    "lore": "Coffee, appointments, and the particular exhaustion of a weekday afternoon."
+   },
+   {
+    "name": "The Neighborhood",
+    "lore": "Where you actually live \u2014 the block that knows your car."
+   },
+   {
+    "name": "Riverside",
+    "lore": "The green strip along the water, best at dusk, empty when it rains."
+   }
+  ],
+  "saltmarsh": [
+   {
+    "name": "Gallows Quay",
+    "lore": "What is still above water, lashed together and stubbornly inhabited."
+   },
+   {
+    "name": "The Drowned Reach",
+    "lore": "The tide's country. It gives things back, but never the ones you wanted."
+   }
+  ],
+  "fimbulreach": [
+   {
+    "name": "The Fjordlands",
+    "lore": "Black water between white walls, where a hall's smoke is the only welcome."
+   },
+   {
+    "name": "The Barrow-Field",
+    "lore": "Mounds in rows, older than any name still spoken aloud here."
+   }
+  ],
+  "brasshaven": [
+   {
+    "name": "The Works",
+    "lore": "Where the city is made and repaired, loudly, at all hours."
+   },
+   {
+    "name": "The Boiler-Warrens",
+    "lore": "The hot dark under the works, mapped only by the people who crawl it."
+   }
+  ]
  }
 }

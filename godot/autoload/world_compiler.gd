@@ -56,15 +56,76 @@ var _unpacked := {}    # world_id → true, so the hot path checks a dict, not d
 
 func _ready() -> void:
 	_index_baked_worlds()
+	_answer_worlds_probe()
+
+
+## `Mythforge.exe --mf-worlds` prints the shipped worlds it can see, and exits.
+##
+## The zips ship BESIDE the exe now rather than inside it, and no harness can
+## check that: they all run from source, where `res://baked` exists regardless.
+## The one thing that would ruin a release — a build that finds no worlds — is
+## therefore the one thing nothing tested. This is how it gets tested, on the
+## actual artifact a player downloads.
+func _answer_worlds_probe() -> void:
+	if not OS.get_cmdline_args().has("--mf-worlds"):
+		return
+	var ids := _zips.keys()
+	ids.sort()
+	print("MF-WORLDS searched: %s" % ", ".join(baked_dirs()))
+	print("MF-WORLDS found %d: %s" % [ids.size(), ", ".join(ids)])
+	# Listing a filename proves nothing — the path has to resolve to an archive
+	# that actually OPENS and carries a world in it. A zip that is present but
+	# unreadable fails at the player's first click, not here, unless we look.
+	var bad := 0
+	for id in ids:
+		var zr := ZIPReader.new()
+		if zr.open(str(_zips[id])) != OK:
+			print("MF-WORLDS  %s: CANNOT OPEN %s" % [id, str(_zips[id])])
+			bad += 1
+			continue
+		var files := zr.get_files()
+		var has_world := false
+		for f in files:
+			if str(f).ends_with("world.json"):
+				has_world = true
+		zr.close()
+		print("MF-WORLDS  %-12s %5d files  world.json=%s" % [id, files.size(), has_world])
+		if not has_world:
+			bad += 1
+	get_tree().quit(1 if (ids.is_empty() or bad > 0) else 0)
+
+
+## WHERE THE SHIPPED WORLDS LIVE — inside the exe, or beside it.
+##
+## They used to be bundled into the pck (`include_filter="baked/*.zip"`), which
+## made one 3.02 GB executable. GitHub caps a release asset at 2 GiB, so the
+## game could not be published at all, and every new world made the single file
+## bigger. Shipped alongside instead, the exe is ~130 MB and each world is its
+## own ~500 MB download: the same bytes, none of them near a ceiling, and world
+## seven is a seventh file rather than a fatter one.
+##
+## Both locations are searched, because they are both real: `res://baked` is
+## what the editor and the harnesses see, and `<exe dir>/baked` is what a player
+## has. Searching both also means a player can drop a new world in beside the
+## game without anyone re-exporting anything.
+func baked_dirs() -> Array[String]:
+	var out: Array[String] = ["res://baked"]
+	var exe_dir := OS.get_executable_path().get_base_dir()
+	if exe_dir != "":
+		out.append(exe_dir.path_join("baked"))
+	return out
 
 
 func _index_baked_worlds() -> void:
-	var d := DirAccess.open("res://baked")
-	if d == null:
-		return
-	for f in d.get_files():
-		if f.ends_with(".zip"):
-			_zips[f.get_basename()] = "res://baked/%s" % f
+	for dir in baked_dirs():
+		var d := DirAccess.open(dir)
+		if d == null:
+			continue
+		for f in d.get_files():
+			# First location wins: a world bundled in the pck is not overridden
+			# by a stale zip someone left next to the exe.
+			if f.ends_with(".zip") and not _zips.has(f.get_basename()):
+				_zips[f.get_basename()] = dir.path_join(f)
 
 
 ## Unpack-on-demand. Called from world_dir(), which every accessor already goes

@@ -45,6 +45,14 @@ func world_locations(wid: String) -> Array:
 	return worlds_json.get("locations", {}).get(wid, [])
 
 
+## The regions a SHIPPED world is divided into. A forged world carries its own
+## (the Worldsmith authors them); these are the hand-written ones for the six
+## that ship, so the GM's place-creation has somewhere to attach in the worlds
+## people actually play rather than only in worlds they forge themselves.
+func world_regions(wid: String) -> Array:
+	return worlds_json.get("regions", {}).get(wid, [])
+
+
 ## The save-slot id for one tale in one world. Every caller used to read
 ## `story.slug` with "freeroam" as the fallback — but the built-in stories in
 ## worlds.json carry a title and NO slug, so every tale in a world collapsed

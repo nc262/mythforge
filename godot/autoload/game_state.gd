@@ -1136,7 +1136,21 @@ func _with_position(l: Dictionary, world: Dictionary) -> Dictionary:
 ## one unnamed region centred on the chart.
 func regions() -> Array:
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
-	var rs: Array = world.get("regions") if world.get("regions") is Array else []
+	var made: Array = world.get("regions") if world.get("regions") is Array else []
+	# Authored first (shipped gazetteer, or the ones a forged world rode in
+	# with), then whatever the story has since opened. Same order and the same
+	# reason as places(): a GM-created region can never shadow an authored one.
+	var rs: Array = []
+	var seen := {}
+	for src in [_authored_regions(), made]:
+		for r in src:
+			if not (r is Dictionary):
+				continue
+			var nm := str(r.get("name", ""))
+			if nm == "" or seen.has(nm.to_lower()):
+				continue
+			seen[nm.to_lower()] = true
+			rs.append(r)
 	var out: Array = []
 	for i in rs.size():
 		var r = rs[i]
@@ -1151,13 +1165,28 @@ func regions() -> Array:
 	return out
 
 
+## The regions this world SHIPPED with — the hand-written set for a built-in,
+## the Worldsmith's for a forged one.
+func _authored_regions() -> Array:
+	var built := Rules.world_regions(world_id())
+	if not built.is_empty():
+		return built
+	for w in global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == world_id():
+			return w.get("regions") if w.get("regions") is Array else []
+	return []
+
+
 ## Where a named region sits on the chart, or the chart's heart if it is unknown.
-func region_at(region_name: String, world := {}) -> Vector2:
+## `world` is accepted and ignored — callers had it to hand and passing it read
+## naturally, but the answer must come from the merged region list either way.
+func region_at(region_name: String, _world := {}) -> Vector2:
 	if region_name == "":
 		return Vector2(50, 50)
-	var w: Dictionary = world if not world.is_empty() else (
-		state.get("world", {}) if state.get("world") is Dictionary else {})
-	var rs: Array = w.get("regions") if w.get("regions") is Array else []
+	# The MERGED list, not raw state — the shipped regions live in the gazetteer
+	# and a forged world's rode in with it, so reading state alone found neither
+	# and every authored region silently positioned at the chart's centre.
+	var rs: Array = regions()
 	for i in rs.size():
 		var r = rs[i]
 		if r is Dictionary and str(r.get("name", "")).nocasecmp_to(region_name) == 0:

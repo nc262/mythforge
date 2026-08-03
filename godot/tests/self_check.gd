@@ -262,6 +262,56 @@ func _ready() -> void:
 	GameState.character = keep_c
 	GameState.state = keep_s
 
+	# EVERY SHIPPED WORLD HAS REGIONS, AND EVERY SHIPPED PLACE STANDS IN ONE.
+	#
+	# Place-creation attaches a new place to a region. Without regions in the six
+	# worlds people actually play, the whole mechanic is dead in exactly the
+	# content that ships — new places would hang off nothing and pile onto the
+	# chart's centre ring.
+	#
+	# Three of the six also had NO x/y at all (saltmarsh, fimbulreach,
+	# brasshaven), so they stacked before any of this was built.
+	var keep_c2 := GameState.character
+	var keep_s2 := GameState.state
+	for wid in ["embervale", "neonspire", "everyday", "saltmarsh", "fimbulreach", "brasshaven"]:
+		var regs: Array = Rules.world_regions(wid)
+		assert(regs.size() >= 2)                     # a world with one region has no shape
+		var rnames := {}
+		for r in regs:
+			assert(str(r.get("name", "")) != "" and str(r.get("lore", "")) != "")
+			rnames[str(r["name"])] = true
+		assert(rnames.size() == regs.size())          # no two regions share a name
+		# Every shipped place names a region that exists.
+		for l in Rules.world_locations(wid):
+			var rg := str(l.get("region", ""))
+			assert(rg != "")
+			assert(rnames.has(rg))
+		# ...and laid out through GameState, no two places share a pixel.
+		GameState.character = {"id": "dm-layout-%s" % wid, "world_id": wid}
+		GameState.state = {"sheet": {"level": 1}, "world": {}}
+		var pts2 := {}
+		for pl in GameState.places():
+			var k2 := "%d,%d" % [int(pl["x"]), int(pl["y"])]
+			assert(not pts2.has(k2))                  # stacked pins = the chart is a lie
+			pts2[k2] = true
+		assert(pts2.size() == Rules.world_locations(wid).size())
+	GameState.character = keep_c2
+	GameState.state = keep_s2
+
+	# THE SHIPPED WORLDS MUST BE FINDABLE BESIDE THE EXE, not only inside it.
+	# The zips are no longer bundled (a 3.02 GB single file cannot be published),
+	# so `res://baked` does not exist in an export and the game would ship with
+	# NO WORLDS if this search were pck-only. No other harness covers this: they
+	# all run from source, where res://baked is right there.
+	var dirs: Array[String] = Compiler.baked_dirs()
+	assert(dirs.has("res://baked"))                   # editor and harnesses
+	assert(dirs.size() >= 2)                          # and somewhere beside the exe
+	var beside := false
+	for dd in dirs:
+		if not dd.begins_with("res://") and dd.ends_with("baked"):
+			beside = true
+	assert(beside)
+
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
 	assert(Combat.weapon_dmg_type("Longbow") == "piercing")

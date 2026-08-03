@@ -11,9 +11,42 @@ Mythforge shortcut. No terminal, no account, no service to manage.
 | `bootstrap.ps1` | First-run "download & configure". Delegates the hard parts to [`scripts/install.ps1`](../scripts/install.ps1) — hardware check, the model runtime, the three models, the image engine — then downloads the game. Idempotent, so it doubles as a repair. |
 | `mythforge.ps1` | The launcher, and the only thing a player runs. Self-heals (runs `bootstrap` if the game is missing), starts the image engine in the background if it is installed, opens the game, and stops what it started on quit. |
 
-Nothing heavy is in the installer. The game (~1.6 GB, carrying the pre-baked
-worlds), the ~4.6 GB narrator model and the ~6.5 GB art checkpoint are all
-fetched at first run.
+Nothing heavy is in the installer. The game, the world packages, the ~4.6 GB
+narrator model and the ~6.5 GB art checkpoint are all fetched at first run.
+
+## Why the worlds ship beside the exe, not inside it
+
+The export used to bundle `baked/*.zip` into the pck, producing a single
+**3.02 GB** executable. GitHub caps a release asset at **2 GiB**, so the game
+could not be published at all — and every world added made the one file bigger.
+
+Shipped alongside, the exe is **131 MB** and each world is its own ~500 MB
+download. Same bytes, nothing near a ceiling, and world seven is a seventh
+asset rather than a fatter binary. `Compiler.baked_dirs()` searches
+`res://baked` (editor and harnesses) and `<exe dir>/baked` (a player), so a
+player can also drop a new world in beside the game with no re-export.
+
+**Install layout:**
+
+```
+Mythforge/
+├── Mythforge.exe
+└── baked/
+    ├── embervale.zip  neonspire.zip  everyday.zip
+    └── saltmarsh.zip  fimbulreach.zip  brasshaven.zip
+```
+
+Verify any build before publishing it — this is the one failure no harness can
+catch, because they all run from source where `res://baked` exists regardless:
+
+```
+Mythforge.exe --headless --mf-worlds
+```
+
+It prints every world it can see, opens each archive, checks for `world.json`,
+and exits non-zero if any of that fails. A build that finds 0 worlds is a game
+with nothing to play and it looks completely normal until you click New
+Adventure.
 
 ## Build it
 
