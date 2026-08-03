@@ -30,7 +30,10 @@ func _ready() -> void:
 			scene.call("_open_journal")
 		if OS.get_environment("MF_SHOT_HERO") == "1":
 			Combat.finish()
-			scene.call("_open_character_screen")
+			# MF_SHOT_TAB picks the page — the sheet has nine and they do not
+			# have the same problems, so a shot of whichever opens by default
+			# cannot answer a question about a specific one.
+			scene.call("_open_character_screen", OS.get_environment("MF_SHOT_TAB"))
 		if OS.get_environment("MF_SHOT_TREE") == "1":
 			Combat.finish()
 			scene.call("_open_skill_tree", 4)

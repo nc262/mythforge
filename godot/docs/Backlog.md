@@ -32,18 +32,23 @@ one, and it deserves its own session rather than a guess appended to a sweep.
 
 ## Presentation and copy
 
-| # | Item | P | E |
-|---|---|---|---|
-| UI-5 | Skills / Powers / Story leave ~700 px empty below a cramped top block | P3 | S |
-| UI-7 | Item icon contradicts the item — a "Shortblade" drawn as a cruciform arming sword | P3 | S |
+Empty. Both remaining items were settled by looking rather than reasoning —
+screenshots for the layout, generated icons for the art — and the screenshots
+disagreed with the report in ways that changed the fix. Notes kept because the
+method is the point:
 
-**These two need eyes, not a guess.** Skills is already a two-column grid, so
-the "cramped block" is not the layout defect the report implies — the empty
-space is short content in a tall panel, and what to put there is a design call.
-UI-7 is prompt fidelity: the compiled catalogue path already passes each form's
-own shape words, so the mismatch belongs to the legacy per-name icon path, and
-"make the model draw a short blade" is not something to fake a fix for. Both
-want a screenshot and a decision.
+**UI-5 was not an empty-space problem.** Centring the pages vertically is a
+no-op (a ScrollContainer sizes its child to the child's minimum, so there is no
+spare height to centre within) and would have been wrong anyway — a page of a
+book starts at the top. What actually read as broken was horizontal: a centred
+`MythHeader` at x=820 over left-aligned body text at x=400, so the heading
+floated free of the thing it was heading. A 620 px reading column fixed it.
+
+**UI-7 was two defects, and the reported one was the smaller.** Measured against
+the real engine: the shipped prompt drew *a lit candle mounted on a hilt*,
+because `world_flavor()` ends in "candlelit" and on a 512 px icon the atmosphere
+clause becomes the SUBJECT. Removing it produced a blade — with the wrong
+silhouette, which is the bug as filed. Both halves were needed.
 
 ## Not built
 

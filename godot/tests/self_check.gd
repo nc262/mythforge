@@ -312,6 +312,37 @@ func _ready() -> void:
 			beside = true
 	assert(beside)
 
+	# UI-7 — THE ITEM PROMPT MUST NAME THE THING, NOT THE WEATHER.
+	#
+	# Measured against the real image engine, one item, three prompts:
+	#   "…, high fantasy oil painting, candlelit"  → a lit CANDLE on a hilt
+	#   the same with "candlelit" removed          → a blade, wrong silhouette
+	#   plus a shape clause                        → a correct short blade
+	#
+	# So both halves are load-bearing: the atmosphere clause becomes the SUBJECT
+	# on a 512 px icon, and a vague name with no silhouette falls back to the
+	# model's prior. The compiler already learned the first half the hard way
+	# ("…lantern light" turned a sword into a lantern) and stopped appending the
+	# anchor; the legacy per-name path never got the same treatment.
+	assert(Rules.shape_clause("Shortblade").contains("SHORT"))
+	assert(Rules.shape_clause("Iron Dagger").contains("dagger"))
+	assert(Rules.shape_clause("Greataxe") != "")
+	assert(Rules.shape_clause("Healing Potion").contains("bottle"))
+	# Every clause must be derived from a word IN the name — a shape the item
+	# does not claim would be worse than no shape at all.
+	for pair in Rules.SHAPE_WORDS:
+		assert(str(pair[1]) != "")
+	assert(Rules.shape_clause("Widget of Nonsense") == "")   # unknown → say nothing
+	# And the item flavour must drop the atmosphere while keeping the medium.
+	var keep_w := GameState.character
+	GameState.character = {"id": "dm-flavor-probe", "world_id": "embervale"}
+	var flav_full := Art.world_flavor()
+	var item_f := Art.item_flavor()
+	assert(item_f != "")
+	assert(not item_f.contains(","))          # medium only, no trailing weather
+	assert(flav_full.begins_with(item_f))     # and it is genuinely the head of it
+	GameState.character = keep_w
+
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
 	assert(Combat.weapon_dmg_type("Longbow") == "piercing")

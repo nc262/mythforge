@@ -271,10 +271,49 @@ func _hero_panel() -> Control:
 
 
 # ── Shared page helpers ──────────────────────────────────────────────────────
+## UI-5 — the page itself is unchanged, and that turned out to be right.
+##
+## Measured at 1280x800: Skills used the top 200 px and left ~365 px of painting
+## under it; Powers ended at y=365; Story was two bullets and ~530 px of nothing.
+## The obvious read is "centre it vertically", and that was tried — it is a
+## no-op, because a ScrollContainer sizes its child to the child's minimum, so
+## there is no spare height to centre within.
+##
+## Worth not forcing. A page of a book starts at the top of the page; two
+## heritage traits floating in the middle of a fireplace would look stranded,
+## not balanced. The empty space is honest — a level-4 half-elf HAS two traits.
+## What actually read as broken was the HORIZONTAL mismatch below.
 func _page() -> VBoxContainer:
 	var v := VBoxContainer.new()
 	v.add_theme_constant_override("separation", Ui.SPACE["m"])
 	return v
+
+
+## A READING COLUMN — the second half of the same defect.
+##
+## `MythHeader` centres itself and its ornaments; body text is left-aligned. In a
+## ~880 px panel that put "CLASS FEATURES" at x=820 and "Arcane Recovery" at
+## x=400, so the heading floated free of the thing it was heading. Constraining
+## the column and centring THAT puts both in the same measure, which is what
+## makes a heading look attached to its text.
+##
+## 620 px is a line length, not a guess: much past it and prose gets hard to
+## track back to the next line.
+const READ_W := 620.0
+
+
+func _column() -> VBoxContainer:
+	var wrap := CenterContainer.new()
+	wrap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(READ_W, 0)
+	col.add_theme_constant_override("separation", Ui.SPACE["m"])
+	wrap.add_child(col)
+	_last_column_wrap = wrap
+	return col
+
+
+var _last_column_wrap: CenterContainer = null
 
 
 func _body(text: String, role := "ink_soft") -> Label:
@@ -410,7 +449,11 @@ func _page_skills() -> Control:
 # ── Page: Powers (spells, slots, features, feats) ───────────────────────────
 func _page_powers() -> Control:
 	var s := GameState.sheet()
-	var v := _page()
+	var page := _page()
+	# UI-5: a reading column, so the centred headers and the left-aligned
+	# text below them share one measure instead of drifting apart.
+	var v := _column()
+	page.add_child(_last_column_wrap)
 	var spells: Array = s.get("spells", [])
 	if not spells.is_empty():
 		v.add_child(MythHeader.new("Spell Slots"))
@@ -449,13 +492,17 @@ func _page_powers() -> Control:
 			v.add_child(_body("  ◆ " + str(f), "ink_soft"))
 	if spells.is_empty() and not feats_shown:
 		v.add_child(_body("This hero's power is in steel and grit — no spells or special features yet. They come with the levels.", "ink_dim"))
-	return v
+	return page
 
 
 # ── Page: Story (heritage, background, the player's own tale, companions) ───
 func _page_story() -> Control:
 	var s := GameState.sheet()
-	var v := _page()
+	var page := _page()
+	# UI-5: a reading column, so the centred headers and the left-aligned
+	# text below them share one measure instead of drifting apart.
+	var v := _column()
+	page.add_child(_last_column_wrap)
 	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(str(s.get("race", "")), {})
 	var traits: Array = heritage.get("traits", [])
 	if not traits.is_empty():
@@ -482,7 +529,7 @@ func _page_story() -> Control:
 			v.add_child(_body("  %s — %d/%d HP" % [str(cmp.get("name", "?")), int(cmp.get("hp", 0)), int(cmp.get("hpMax", 1))], "ink_soft"))
 	if v.get_child_count() == 0:
 		v.add_child(_body("The story is still being written.", "ink_dim"))
-	return v
+	return page
 
 
 # ── Page: Gear — the full-body paper doll (M-F Stage A) ─────────────────────

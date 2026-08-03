@@ -455,7 +455,12 @@ func _stage_vendor_icons(world_id: String, family: String) -> void:
 	stage_started.emit("wares", "Stocking the keeper's shelves…")
 	for nm in names:
 		await _await_art("ware-%s-%s" % [world_id.validate_filename(), icon_slug(str(nm))],
-			"a %s. fantasy RPG item icon, " % str(nm) + ICON_TAIL,
+			# UI-7: the wares path has only a NAME to go on — the armoury at least
+			# has its form's own prompt. Name the silhouette from the item's own
+			# words or the model falls back to its prior, which is how a
+			# "Shortblade" becomes a cruciform arming sword.
+			("a %s. %sfantasy RPG item icon, " % [str(nm),
+				(Rules.shape_clause(str(nm)) + ". ") if Rules.shape_clause(str(nm)) != "" else ""]) + ICON_TAIL,
 			{"profile": "item", "lane": Art.Lane.IDLE},
 			"art/icons/%s.png" % icon_slug(str(nm)))
 	stage_done.emit("wares", true)

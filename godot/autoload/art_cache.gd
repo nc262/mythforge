@@ -489,6 +489,30 @@ func subject_style(kind: String) -> String:
 	return str(WorldSkin.style_for_id(GameState.world_id()).get(kind, ""))
 
 
+## UI-7 — THE WORLD'S FLAVOUR, WITH ITS LIGHTING TAKEN OUT, FOR ITEMS ONLY.
+##
+## `world_flavor()` carries medium AND atmosphere: embervale's is "high fantasy
+## oil painting, candlelit". On a scene that is exactly right. On a 512 px item
+## icon the atmosphere stops being lighting and becomes SUBJECT.
+##
+## Measured, one item, three prompts:
+##   with "candlelit"          → a lit candle mounted on a sword hilt
+##   with "candlelit" removed  → a blade (silhouette still wrong — see below)
+##   plus a shape clause       → a correct short blade
+##
+## The compiler already knew: `_stage_parts` carries a note that appending the
+## scene anchor "turned a sword into a lantern", and it stopped appending it.
+## `ensure_item_icon` — the legacy per-name path — never got the same treatment.
+##
+## The first clause of a flavour is its MEDIUM ("high fantasy oil painting",
+## "cyberpunk neon concept render"); what follows is the weather. An item wants
+## the medium and nothing else.
+func item_flavor() -> String:
+	var full := world_flavor()
+	var head := full.split(",")[0].strip_edges()
+	return head if head != "" else full
+
+
 ## Role templates for non-fantasy skins: a room by what it's FOR, flavoured by
 ## the World Skin's setting, so a cyberpunk campaign gets a cyber war room, not
 ## a fantasy one (per-world EAS variants — the World Style Guide driving
@@ -615,8 +639,14 @@ func ensure_hero_portrait(cid: String, sheet: Dictionary, extra := "") -> void:
 func ensure_item_icon(nm: String) -> void:
 	if Compiler.named_icon(GameState.world_id(), nm) != null:
 		return
+	# The SILHOUETTE is named from the item's own words (Rules.shape_clause), and
+	# the flavour is stripped to its medium. Without the first, "Shortblade" came
+	# back as a cruciform arming sword — the reported bug. Without the second it
+	# came back as a candle.
+	var shape := Rules.shape_clause(nm)
 	ensure("item-" + nm.to_lower().replace(" ", "-"),
-		"game inventory icon of a %s of %s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [nm, subject_style("item"), world_flavor()], "1024x1024")
+		"game inventory icon of a %s of %s%s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [
+			nm, subject_style("item"), (" — " + shape) if shape != "" else "", item_flavor()], "1024x1024")
 
 
 func item_tex(nm: String) -> Texture2D:

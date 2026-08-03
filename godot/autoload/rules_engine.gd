@@ -319,6 +319,49 @@ func region_position(region_name: String, index: int, total: int) -> Vector2:
 	return Vector2(clampf(p.x, 12.0, 88.0), clampf(p.y, 14.0, 86.0))
 
 
+## UI-7 — NAME THE SILHOUETTE, using only the item's own words.
+##
+## A diffusion model given "Shortblade" has nothing to hold: the word is not a
+## real object, so it falls back to its prior for "blade" and draws a cruciform
+## arming sword — which is precisely the reported bug. Told the shape, it draws
+## the shape.
+##
+## Every clause here is derived from a word already IN the name. Nothing is
+## invented about the item, so this cannot contradict what the item is; it can
+## only stop the model guessing. An unmatched name returns "" and the prompt is
+## unchanged, because a wrong shape would be worse than no shape.
+const SHAPE_WORDS := [
+	["short", "a SHORT blade, forearm length, clearly shorter than a sword"],
+	["dagger", "a small dagger, blade no longer than a hand"],
+	["knife", "a small knife"],
+	["great", "an oversized two-handed weapon"],
+	["long", "a long straight blade"],
+	["axe", "an axe: a single bit on a haft"],
+	["hammer", "a hammer: a blunt head on a haft"],
+	["maul", "a heavy two-handed hammer"],
+	["mace", "a mace: a flanged head on a short haft"],
+	["spear", "a spear: a point on a long shaft"],
+	["bow", "a curved bow, strung"],
+	["staff", "a long straight wooden staff"],
+	["wand", "a short slender wand"],
+	["shield", "a shield seen face-on"],
+	["helm", "a helmet, empty, seen three-quarter"],
+	["boot", "a pair of boots"],
+	["cloak", "a hanging cloak"],
+	["ring", "a single finger ring"],
+	["potion", "a small stoppered glass bottle"],
+	["scroll", "a rolled parchment scroll"],
+]
+
+
+func shape_clause(item_name: String) -> String:
+	var low := item_name.to_lower()
+	for pair in SHAPE_WORDS:
+		if low.find(str(pair[0])) >= 0:
+			return str(pair[1])
+	return ""
+
+
 ## WHAT EVERY ADVENTURER CARRIES, whatever their class or world.
 ##
 ## PS-2 — a forged hero started with a weapon and nothing else: no armour, no
