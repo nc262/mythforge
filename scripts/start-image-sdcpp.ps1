@@ -10,32 +10,84 @@
   Idempotent: if something is already listening on the port, this returns.
 
 .PARAMETER Exe
-  sd-server.exe. Install it with scripts/fetch_sdcpp.py.
+  sd-server.exe. Left unset it is found where scripts/fetch_sdcpp.py installs
+  it — a sibling of the repo — which is also where install.ps1 puts it.
 
 .PARAMETER Checkpoint
   An SDXL .safetensors. Left unset, the first of the known model folders that
   has one wins — install.ps1 downloads into the engine's own models/ directory,
   but a machine that already keeps a model library elsewhere should not have to
   download 6.5 GB twice.
+
+.NOTES
+  EVERY PATH HERE IS DERIVED, never hardcoded. This script used to default to
+  one developer's home directory, so on any other machine it threw
+  "sd-server not found" before doing anything — and it is the script the docs,
+  the launcher and the README all tell a player to run.
 #>
 param(
-  [string]$Exe        = "C:\Users\cptahabb\Documents\Code\stable-diffusion.cpp\sd-server.exe",
+  [string]$Exe        = "",
   [string]$Checkpoint = "",
   [int]$Port          = 8189
 )
 
-if (-not (Test-Path $Exe)) { throw "sd-server not found: $Exe  (run scripts/fetch_sdcpp.py)" }
+# <repo>/scripts/this.ps1 → <repo> → its parent, where fetch_sdcpp.py installs.
+$repo = Split-Path -Parent $PSScriptRoot
+$sib  = Split-Path -Parent $repo
+
+if (-not $Exe) {
+  $hunt = @(
+    (Join-Path $sib 'stable-diffusion.cpp\sd-server.exe'),
+    (Join-Path $repo 'stable-diffusion.cpp\sd-server.exe')
+  )
+  # SDCPP_DIR is the same override fetch_sdcpp.py honours. Guarded, because
+  # Join-Path throws on a null path and an unset variable is the normal case.
+  if ($env:SDCPP_DIR) { $hunt += (Join-Path $env:SDCPP_DIR 'sd-server.exe') }
+  # A git WORKTREE sits two levels under the real checkout, so the sibling of
+  # `$repo` is not the sibling of the clone. Walk up a few parents and try the
+  # same layout — correct for a normal clone, and still right from a worktree.
+  $up = $repo
+  for ($i = 0; $i -lt 4 -and $up; $i++) {
+    $up = Split-Path -Parent $up
+    if ($up) { $hunt += (Join-Path $up 'stable-diffusion.cpp\sd-server.exe') }
+  }
+  foreach ($cand in $hunt) {
+    if ($cand -and (Test-Path $cand)) { $Exe = $cand; break }
+  }
+}
+if (-not $Exe -or -not (Test-Path $Exe)) {
+  throw "sd-server not found. Run: python scripts/fetch_sdcpp.py   (or pass -Exe)"
+}
 
 if (-not $Checkpoint) {
-  $candidates = @(
+  # The engine's own models/ first — that is where install.ps1 downloads to.
+  # A pre-existing library is honoured through SD_MODEL_DIR so nobody
+  # re-downloads 6.5 GB they already have, and so the path to somebody's
+  # personal collection lives in their environment instead of in this file.
+  $candidates = @()
+  if ($env:SD_MODEL_DIR) { $candidates += $env:SD_MODEL_DIR }
+  $candidates += @(
     (Join-Path (Split-Path $Exe -Parent) 'models'),
-    "C:\Users\cptahabb\Documents\Code\ComfyUI-Zluda\models\checkpoints"
+    (Join-Path $repo 'models'),
+    (Join-Path $sib 'models')
   )
+  # PREFER THE CHECKPOINT THIS GAME WAS TUNED FOR. Sorting by name and taking
+  # the first picked whatever sorted earliest — on a machine with a shared model
+  # library that was an anime checkpoint, which would have restyled every item,
+  # portrait and backdrop in the game without erroring once.
+  $prefer = @('dreamshaper', 'juggernaut')
   foreach ($dir in $candidates) {
-    if (-not (Test-Path $dir)) { continue }
-    $found = Get-ChildItem $dir -Filter *.safetensors -ErrorAction SilentlyContinue |
-             Sort-Object Name | Select-Object -First 1
-    if ($found) { $Checkpoint = $found.FullName; break }
+    if (-not $dir -or -not (Test-Path $dir)) { continue }
+    $all = @(Get-ChildItem $dir -Filter *.safetensors -ErrorAction SilentlyContinue | Sort-Object Name)
+    if (-not $all) { continue }
+    $pick = $null
+    foreach ($want in $prefer) {
+      $pick = $all | Where-Object { $_.Name -match $want } | Select-Object -First 1
+      if ($pick) { break }
+    }
+    if (-not $pick) { $pick = $all[0] }
+    $Checkpoint = $pick.FullName
+    break
   }
 }
 if (-not $Checkpoint -or -not (Test-Path $Checkpoint)) {

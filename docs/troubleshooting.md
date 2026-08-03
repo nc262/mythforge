@@ -101,6 +101,16 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Cause:** Windows caches icons per path.
 - **Fix:** `ie4uinit.exe -show`, or log out and back in.
 
+## The art is the wrong style entirely
+
+- **Cause:** the image engine loaded a different checkpoint. `start-image-sdcpp.ps1`
+  takes the first `.safetensors` it finds, and on a machine with a shared model
+  library that can be anything — an anime checkpoint restyles every item,
+  portrait and backdrop in the game without erroring once.
+- **Fix:** it now prefers a checkpoint whose name matches `dreamshaper` then
+  `juggernaut`. Point `SD_MODEL_DIR` at your library, or pass `-Checkpoint`
+  explicitly. The engine names the file it loaded on startup — read that line.
+
 ## An old image stack keeps coming back
 
 - **Cause:** something is supervising it. Two things have: a pm2 app that polled
