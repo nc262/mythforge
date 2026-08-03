@@ -81,14 +81,12 @@ func _draw() -> void:
 	# which under fog hid everything the `here` test did not already catch. The
 	# recorded places ARE the discovered ones — that is why they were recorded —
 	# so they count as seen.
-	var places: Array = world.get("places") if world.get("places") is Array else []
-	if places.is_empty():
-		places = Rules.world_locations(GameState.world_id())
+	var places: Array = GameState.places()
 	for l in places:
 		if not (l is Dictionary):
 			continue
 		var nm := str(l.get("name", ""))
-		var known: bool = seen.has(nm) or world.get("places") is Array
+		var known: bool = seen.has(nm)
 		if fog and nm != here and not known:
 			continue
 		var p := Vector2(float(l.get("x", 50)) / 100.0 * size.x, float(l.get("y", 50)) / 100.0 * size.y)

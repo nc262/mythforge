@@ -66,7 +66,7 @@ func _loc_schema() -> String:
 	# backfilled "odds & ends" / "food & drink" when a shop or tavern arrived
 	# without one; asking the model for it costs nothing and is better writing.
 	return _obj({"name": _s("name"), "kind": _enum(LOC_KINDS),
-		"lore": _s("loc_lore"), "shop": _s("shop")})
+		"lore": _s("loc_lore"), "shop": _s("shop"), "region": _s("name")})
 
 
 func _creature_schema() -> String:
@@ -87,7 +87,12 @@ const CORE_TASK := "You design original worlds for a tabletop-style roleplay adv
 	+ "generation prompt for an empty atmospheric establishing scene with no " \
 	+ "people; and `locations`, 5 to 7 places, each with a one-sentence `lore` and " \
 	+ "a `shop` naming what it trades (for a landmark, wilds or home, say what can " \
-	+ "be found or bartered there). Be specific and flavorful, never generic.\n\n"
+	+ "be found or bartered there); and `regions`, 3 to 5 named parts of this " \
+	+ "world (a coast, a range, a quarter, a belt of stars) each with one " \
+	+ "sentence of `lore`, and give every location a `region` naming which one " \
+	+ "it stands in. Regions are the world's coarse shape — the GM will hang " \
+	+ "new places off them as the story goes somewhere you did not plan. " \
+	+ "Be specific and flavorful, never generic.\n\n"
 
 
 func core_schema() -> String:
@@ -95,7 +100,22 @@ func core_schema() -> String:
 		"name": _s("name"), "kind": _s("kind"), "tagline": _s("tagline"),
 		"lore": _s("lore"), "backdrop": _s("backdrop"),
 		"locations": _arr(_loc_schema(), 5, 7),
+		"regions": _arr(_region_schema(), 3, 5),
 	})
+
+
+## THE WORLD'S COARSE SHAPE.
+##
+## Regions exist so the GM has somewhere to hang a place it invents mid-story.
+## Without them every created place attaches to nothing, lands on the chart's
+## centre ring, and the map is a bag of pins rather than a world with parts.
+##
+## Authored here rather than left to the GM because the forge is already making
+## one call about this world's shape — asking for regions in it costs nothing,
+## and it means a world has structure from its first minute instead of earning
+## structure only after somebody plays it for a while.
+func _region_schema() -> String:
+	return _obj({"name": _s("name"), "lore": _s("loc_lore")})
 
 
 func core_prompt_for(idea: String, pillar_line := "") -> String:
@@ -246,6 +266,7 @@ func _world(idea: String, payload: Dictionary) -> Dictionary:
 		"cast": _clean_cast(life.get("cast", [])),
 		"stories": _clean_stories(life.get("stories", [])),
 		"locations": _clean_locs(core.get("locations", [])),
+		"regions": _clean_regions(core.get("regions", [])),
 		"creatures": _clean_creatures(life.get("creatures", [])),
 		"reskins": null,
 		"_status": 200,
@@ -454,7 +475,25 @@ func _clean_locs(items) -> Array:
 				"kind": str(p.get("kind", "landmark")),
 				"lore": _cap(p.get("lore", ""), "loc_lore"),
 				"shop": _cap(p.get("shop", ""), "shop"),
+				"region": _cap(p.get("region", ""), "name"),
 			})
+	return out
+
+
+## Regions, deduped by name. Coordinates are NOT asked for and never will be —
+## a model is bad at them, they carry no meaning it can reason about, and a
+## wrong one is invisible until the chart looks wrong. GameState lays them out.
+func _clean_regions(items) -> Array:
+	var out: Array = []
+	var seen := {}
+	for r in (items if items is Array else []):
+		if not (r is Dictionary):
+			continue
+		var nm := str(r.get("name", "")).strip_edges()
+		if nm == "" or seen.has(nm.to_lower()):
+			continue
+		seen[nm.to_lower()] = true
+		out.append({"name": _cap(nm, "name"), "lore": _cap(r.get("lore", ""), "loc_lore")})
 	return out
 
 

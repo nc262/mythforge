@@ -190,6 +190,78 @@ func _ready() -> void:
 	assert(dupes.is_empty())          # every monument is nameable
 	assert(labels.size() >= 6)        # 5 ASI + subclass + apotheosis, all distinct
 
+	# ── THE WORLD GROWS: places, regions, scope ─────────────────────────────
+	#
+	# The map was three disagreeing answers to "what places exist", and for a
+	# FORGED world every pin defaulted to (50,50) and stacked on the chart's
+	# centre — the Worldsmith is never asked for x/y and nothing added them.
+	var keep_c := GameState.character
+	var keep_s := GameState.state
+	GameState.character = {"id": "dm-geo-probe", "world_id": "cw-geo-probe"}
+	GameState.state = {"sheet": {"name": "Probe", "level": 1,
+		"abilities": {"STR": 10, "DEX": 10, "CON": 10, "INT": 10, "WIS": 10, "CHA": 10}},
+		"world": {"here": "", "regions": [{"name": "The Reach"}, {"name": "The Deeps"}],
+			"places": [{"name": "Hollowmere", "kind": "settlement", "region": "The Reach"},
+				{"name": "Gull's Rest", "kind": "tavern", "region": "The Reach"},
+				{"name": "The Drowned Stair", "kind": "ruin", "region": "The Deeps"}]}}
+	# NO TWO PLACES MAY SHARE A PIXEL. This is the bug that made a forged world's
+	# Atlas one dot: assert the failure, not that coordinates merely exist.
+	var pts := {}
+	for pl in GameState.places():
+		var k := "%d,%d" % [int(pl["x"]), int(pl["y"])]
+		assert(not pts.has(k))          # stacked pins = the chart is a lie
+		pts[k] = true
+	assert(pts.size() == 3)
+	# Places of different regions must not land on top of each other either.
+	var reach := GameState.region_at("The Reach")
+	var deeps := GameState.region_at("The Deeps")
+	assert(reach.distance_to(deeps) > 5.0)
+	# Deterministic: the same world laid out twice is the same map.
+	var first := GameState.places()
+	var again := GameState.places()
+	for i in first.size():
+		assert(first[i]["x"] == again[i]["x"] and first[i]["y"] == again[i]["y"])
+
+	# SCOPE IS EARNED. A level-1 party may charter next door, not a continent.
+	assert(Rules.scope_allowed("local", 1))
+	assert(not Rules.scope_allowed("regional", 1))
+	assert(not Rules.scope_allowed("far", 1))
+	assert(Rules.scope_allowed("far", 7))
+	assert(Rules.scope_for_level(1) == "local")
+	assert(Rules.scope_for_level(20) == "far")
+	# The GM's power, and the engine's veto.
+	assert(GameState.add_place({"name": "Saltwick", "kind": "settlement",
+		"scope": "local", "region": "The Reach"}) == "")
+	assert(GameState.places().size() == 4)
+	assert(GameState.add_place({"name": "Saltwick"}) != "")        # no duplicates
+	assert(GameState.add_place({"name": ""}) != "")                # no nameless places
+	assert(GameState.add_place({"name": "The Far Waste", "scope": "far"}) != "")  # unearned
+	assert(GameState.add_region({"name": "Beyond"}) != "")         # regions are far-gated
+	# ...and a level-7 party opens the frontier.
+	GameState.state["sheet"]["level"] = 7
+	assert(GameState.add_place({"name": "The Far Waste", "scope": "far"}) == "")
+	assert(GameState.add_region({"name": "Beyond"}) == "")
+	assert(GameState.regions().size() == 3)
+	# DENSITY: a region fills up, or twenty sessions of GM whim become noise.
+	GameState.state["sheet"]["level"] = 20
+	var refused := ""
+	for i in 20:
+		var why := GameState.add_place({"name": "Filler %d" % i, "region": "The Reach"})
+		if why != "":
+			refused = why
+			break
+	assert(refused != "")
+	assert(GameState.region_place_count("The Reach") <= Rules.REGION_PLACE_CAP)
+	# DISTANCE COSTS TIME. It used to be one tick to anywhere.
+	GameState.state["world"]["here"] = "Hollowmere"
+	assert(GameState.travel_cost("Gull's Rest") >= 1)
+	# The GM is TOLD its reach, or it invents a continent and gets refused.
+	var geo := Composer.geography_context()
+	assert(geo.contains("The Reach") and geo.contains("REGIONS"))
+	assert(geo.contains("YOUR REACH"))
+	GameState.character = keep_c
+	GameState.state = keep_s
+
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
 	assert(Combat.weapon_dmg_type("Longbow") == "piercing")

@@ -557,6 +557,52 @@ func _check_refusals_land_near_the_button() -> void:
 	_ck(h_short >= 138.0, "card: the grid floor of 138 px was lost (UI-3)")
 	_ck(h_long > h_short, "card: a long body does not make the card taller — it is being clipped (UI-3)")
 	print("  card: choice cards grow to hold their text (%d px vs %d px)" % [int(h_long), int(h_short)])
+	_check_atlas_reads_as_a_map()
+
+
+## AT-1 — A CHART WITH NO KEY AND NO ROADS IS A PICTURE OF DOTS.
+##
+## The pins have always been coloured by kind and the map never said what the
+## colours meant; roads were drawn only to the place under the cursor, so with
+## the mouse anywhere else nothing joined anything.
+##
+## The legend must list what is ACTUALLY on the paper — an entry for a kind the
+## chart never draws is furniture, and a kind drawn with no entry is the gap
+## being fixed. That two-way check is the point.
+func _check_atlas_reads_as_a_map() -> void:
+	var Map = load("res://scenes/ui/world_map.gd")
+	# Every kind the shipped worlds use must be nameable and coloured.
+	var used := {}
+	for wid in ["embervale", "neonspire", "everyday"]:
+		for l in Rules.world_locations(wid):
+			if l is Dictionary and str(l.get("kind", "")) != "":
+				used[str(l["kind"])] = true
+	for k in used:
+		_ck(Map.KIND_COLOR.has(k), "atlas: location kind '%s' has no pin colour" % k)
+		_ck(Map.KIND_LABEL.has(k), "atlas: location kind '%s' has no legend entry — the key cannot explain the paper (AT-1)" % k)
+	# ...and nothing in the legend that the pins do not use.
+	for k in Map.KIND_LABEL:
+		_ck(Map.KIND_COLOR.has(str(k)), "atlas: legend names '%s' but no pin is drawn that colour" % str(k))
+	var src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+	_ck(src.find("func _draw_legend(") >= 0, "atlas: no legend is drawn (AT-1)")
+	_ck(src.find("func _draw_roads(") >= 0, "atlas: no road network is drawn (AT-1)")
+	# A CALL, not the definition. `src.find("_draw_roads()")` also matches
+	# `func _draw_roads() -> void:`, so deleting the call left this green — the
+	# "is it plugged in" check was answered by the thing it was checking.
+	var calls_roads := false
+	var calls_legend := false
+	for line in src.split("
+"):
+		var t := str(line).strip_edges()
+		if t.begins_with("func "):
+			continue
+		if t == "_draw_roads()":
+			calls_roads = true
+		if t.begins_with("_draw_legend("):
+			calls_legend = true
+	_ck(calls_roads, "atlas: the road network is defined but never called (AT-1)")
+	_ck(calls_legend, "atlas: the legend is defined but never called (AT-1)")
+	print("  atlas: %d location kinds, each with a pin colour and a legend entry; roads drawn" % used.size())
 
 
 ## Save-DC spells: a foe's saving-throw bonus is derived from tier (foes carry no

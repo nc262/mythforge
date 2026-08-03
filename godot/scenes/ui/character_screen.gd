@@ -849,11 +849,11 @@ func _fill_destiny() -> void:
 # ── Page: Atlas — the painted chart, a tab now, not two clicks deep ──────────
 func _fill_atlas() -> void:
 	var host: VBoxContainer = _pages["Atlas"]
-	var locs: Array = Rules.world_locations(GameState.world_id())
-	if locs.is_empty():
-		for w in GameState.global_get("cworlds", []):
-			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
-				locs = w.get("locations") if w.get("locations") is Array else []
+	# ONE STORE. This asked the built-in gazetteer, then fell back to the forged
+	# world's own list — which carries no x/y, so every pin of a forged world
+	# stacked on the chart's centre. GameState.places() merges authored and
+	# GM-created and guarantees coordinates.
+	var locs: Array = GameState.places()
 	if not is_instance_valid(host):
 		return
 	if locs.is_empty():

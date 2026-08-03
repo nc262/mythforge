@@ -45,7 +45,7 @@ func _ready() -> void:
 	MythEnvironment.mount(self, "env-merchant", "dust", [Vector2(0.12, 0.14), Vector2(0.88, 0.1)])
 	var here := str(GameState.state.get("world", {}).get("here", "")) if GameState.state.get("world") is Dictionary else ""
 	var here_shop := ""
-	for l in Rules.world_locations(GameState.world_id()):
+	for l in GameState.places():
 		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
 			here_shop = str(l.get("shop", ""))
 	title = here if here_shop != "" else "The trading post"

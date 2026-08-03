@@ -738,7 +738,7 @@ func _render_suggestions() -> void:
 	acts.append(["Look around", "I look around, taking in the details."])
 	if here != "":
 		acts.append(["Search this place", "I search %s carefully for anything of interest." % here])
-		for l in Rules.world_locations(GameState.world_id()):
+		for l in GameState.places():
 			if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
 				acts.append(["Browse the wares", "I ask to see what the keeper has for sale."])
 				break
@@ -1235,6 +1235,15 @@ func _apply_world_tags(tags: Array) -> void:
 					_track_here(place)  # prose moves the pin on the chart
 					if not _conjuring:
 						_repaint_scene(place)
+			# THE GM IS THE WORLD'S MINI-GOD. When the story walks somewhere
+			# nobody planned, a place comes into being — and the engine decides
+			# whether it may. Deliberately NOT folded into [[scene]]: moving to a
+			# place and creating one are different acts, and sharing a code path
+			# is how "go to the tavern" would quietly charter a second tavern.
+			"place":
+				_gm_makes_place(a)
+			"region":
+				_gm_makes_region(a)
 			"companion":
 				var cn := str(a.get("name", "")).strip_edges()
 				if not bool(GameState.rule("companions", true)):
@@ -2214,7 +2223,7 @@ func _repaint_scene(place: String) -> void:
 	# generates one. Nothing waits on the GPU to feel like somewhere new.
 	if not Art.has_art(key):
 		var kind := ""
-		for l in Rules.world_locations(GameState.world_id()):
+		for l in GameState.places():
 			if l is Dictionary and str(l.get("name", "")) == place:
 				kind = str(l.get("kind", ""))
 				break
@@ -2530,7 +2539,7 @@ func _recall_snapshot(id: String) -> void:
 ## 🗺 The painted map: the world's key art with its places marked.
 ## (The old text atlas bubble folded into this — the map IS the atlas.)
 func _open_world_map() -> void:
-	var locs: Array = Rules.world_locations(GameState.world_id())
+	var locs: Array = GameState.places()
 	if locs.is_empty():
 		for w in GameState.global_get("cworlds", []):
 			if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
@@ -2569,11 +2578,52 @@ func _on_mood_changed(_mood: String) -> void:
 		_repaint_scene(place)
 
 
+## [[place name="Saltwick" kind=settlement scope=local region="The Reach"]]
+##
+## The refusal is spoken, not swallowed. A GM that is told "Saltwick is beyond
+## this tale's reach for now" can write around it; a GM whose tag vanished
+## silently will keep emitting it, and the player will keep reading about a town
+## that never appears on their map.
+func _gm_makes_place(a: Dictionary) -> void:
+	var nm := str(a.get("name", "")).strip_edges()
+	if nm == "":
+		return
+	var why := GameState.add_place({
+		"name": nm,
+		"kind": str(a.get("kind", "landmark")),
+		"lore": str(a.get("lore", "")),
+		"shop": str(a.get("shop", "")),
+		"region": str(a.get("region", "")),
+		"scope": str(a.get("scope", "local")),
+	})
+	if why == "":
+		_say_system("%s is added to the chart." % nm, "compass")
+		Sfx.play("chime")
+	elif not why.begins_with(nm) or why.find("already") < 0:
+		# "already on the chart" is not worth a line — the world simply knew it.
+		_say_system(why, "compass")
+
+
+## [[region name="The Ashen Marches" lore="..."]] — the frontier opens.
+## Rare by construction (Rules.SCOPE_LEVEL.far), so it reads as an event.
+func _gm_makes_region(a: Dictionary) -> void:
+	var nm := str(a.get("name", "")).strip_edges()
+	if nm == "":
+		return
+	var why := GameState.add_region({"name": nm, "lore": str(a.get("lore", "")),
+		"biome": str(a.get("biome", ""))})
+	if why == "":
+		_say_system("A new region is charted: %s." % nm, "compass")
+		Sfx.play("sting")
+	elif why.find("already") < 0:
+		_say_system(why, "compass")
+
+
 ## Auto here-tracking: the GM's [[scene]] prose moves the pin when the place
 ## matches a charted location — the map follows the story without a click.
 func _track_here(place: String) -> void:
 	var pl := place.to_lower()
-	for l in Rules.world_locations(GameState.world_id()):
+	for l in GameState.places():
 		if not (l is Dictionary):
 			continue
 		var nm := str(l.get("name", ""))
@@ -2602,7 +2652,10 @@ func _travel_to(place: String) -> void:
 		seen.append(place)
 	world["seen"] = seen
 	GameState.save_kind("world", world)
-	GameState.advance_time(1)
+	# A journey costs what its distance costs. This was one tick to anywhere, so
+	# crossing a realm cost exactly what crossing a street did — and the clock is
+	# the only thing that made distance mean anything at all.
+	GameState.advance_time(GameState.travel_cost(place))
 	Sfx.ui("travel")   # MIL — departure has a sound; the road opens
 	_say_system("You set off for %s." % place, "compass")
 	_repaint_scene(place)

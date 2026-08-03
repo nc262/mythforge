@@ -15,6 +15,8 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. With it you MAY lay the battlefield: [[terrain block="3,4;5,2" water="8,8;9,8" cover="2,7;12,3"]] (a 16x10 grid, x,y pairs; block=walls, water=difficult, cover=+2 AC vs ranged — place a few cells that match the scene you described). [[combat-end]] only when foes flee or surrender (victory ends it automatically).
 [[npc name="Ser Aldric" role="knight" goal="reclaim his keep" fear="his own cowardice" faction="the Grey Watch" feeling="wary" voice="gravelly, clipped old-soldier cadence" secret="he betrayed his lord"]] when you introduce or reveal something lasting about a named character (include only the fields you're establishing; give recurring characters a voice and keep their dialogue in it). [[relate name="Ser Aldric" bond=+1 note="the player spared him"]] when the player's deeds shift how a character feels about them (bond −5..+5).
 [[scene place="the chapel crypt at midnight"]] whenever the player arrives somewhere visually new.
+[[place name="Saltwick" kind=settlement scope=local region="The Reach" lore="a fishing village that keeps its own tide-clock"]] when the story needs somewhere that is not yet on the chart. THIS IS YOURS TO CREATE — if the tale walks toward a village nobody has named, name it and it exists. kind: tavern/shop/landmark/wilds/home/settlement/ruin. scope: local (near, a walk) / regional (a journey) / far (the frontier) — reach beyond what the party has earned and the world will refuse you, so build outward from where they stand. Attach it to a region you know.
+[[region name="The Ashen Marches" lore="one sentence"]] ONLY when the story genuinely crosses into land the chart does not hold. A new region is an event, not a convenience — most tales never need one.
 [[lore cat="Places" title="The Sunken Vault" note="one vivid sentence of what was learned"]] when the player discovers a LASTING fact worth remembering — a place, person, creature, faction, history, or truth (cat: History/Places/People/Bestiary/Magic/Faction). Use sparingly, only for real discoveries.
 You MAY also SUGGEST presentation — these change only how the moment looks and sounds, NEVER the game state; use at most one or two, and only when the beat truly calls for it:
 [[mood tone=tense]] (tone: calm/warm/tense/eerie/somber/dread/triumphant) · [[music cue=battle]] (calm/tense/battle/sorrow/triumph) · [[sfx cue=impact]] (impact/chime/tension) · [[portrait expr=grim]] · [[camera move=in]].
@@ -117,7 +119,34 @@ func scene_context() -> String:
 			names.append(str(n["name"]))
 	var loc := here if here != "" else "not yet established — establish where the player is before acting"
 	var near := ", ".join(names.slice(0, 6)) if not names.is_empty() else "no one named yet — establish who, if anyone, is present"
-	return "SCENE — location: %s. Cast who may be near: %s" % [loc, near]
+	return "SCENE — location: %s. Cast who may be near: %s%s" % [loc, near, geography_context()]
+
+
+## WHAT THE WORLD IS MADE OF, and how far this party may reach into it.
+##
+## The GM can create places, so it has to know two things it was never told: the
+## regions a new place may attach to, and the scope its level has earned. Without
+## the reach it invents a continent at level 1 and the engine refuses it, which
+## reads to the player as the world glitching rather than the world having edges.
+func geography_context() -> String:
+	var regs: Array[String] = []
+	for r in GameState.regions():
+		if r is Dictionary and str(r.get("name", "")) != "":
+			regs.append(str(r["name"]))
+	var known: Array[String] = []
+	for p in GameState.places():
+		if p is Dictionary and str(p.get("name", "")) != "" and known.size() < 12:
+			known.append(str(p["name"]))
+	var lv := int(GameState.sheet().get("level", 1))
+	var reach := Rules.scope_for_level(lv)
+	var out := " CHARTED PLACES: %s." % (", ".join(known) if not known.is_empty() else "none yet")
+	if not regs.is_empty():
+		out += " REGIONS: %s — attach any new place to one of these." % ", ".join(regs)
+	out += " YOUR REACH: %s. You may charter a new place at that scope or nearer" % reach
+	if reach != "far":
+		out += " (farther land exists but this party has not earned the road to it yet)"
+	out += "; build outward from where they already stand rather than leaping."
+	return out
 
 
 ## Session Zero's tone knobs → one style line per turn (port of _gmDirective).

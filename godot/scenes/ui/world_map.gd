@@ -4,6 +4,11 @@ extends Control
 ## places sit lamp-lit and named; the unknown waits under fog. Quest
 ## destinations pulse gold; hovering a place draws the road from here.
 ## Draws entirely from data — no state of its own beyond the camera.
+##
+## NO SCALE BAR, on purpose. A location's x/y are percentages of the chart, not
+## distances — the worlds carry no unit of length at all. A scale would be a
+## drawn lie, and a map that lies about distance is worse than one that stays
+## quiet about it.
 
 signal travel_requested(place: String)
 
@@ -16,7 +21,20 @@ var _hover := -1
 var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog §3)
 var _phase := 0.0
 
-const KIND_COLOR := {"tavern": "gold", "shop": "gold_soft", "landmark": "amethyst", "wilds": "danger", "home": "ink_soft"}
+const KIND_COLOR := {"tavern": "gold", "shop": "gold_soft", "landmark": "amethyst",
+	"wilds": "danger", "home": "ink_soft", "settlement": "gold", "ruin": "amethyst"}
+
+## AT-1 — WHAT THE COLOURS MEAN.
+##
+## The chart has always coloured its pins by kind and never once said so: gold,
+## soft gold, amethyst and red, with nothing to read them by. A key is the
+## cheapest thing that turns a picture of dots into a map.
+##
+## Labels live beside the colours rather than in a second table, because two
+## tables drift and the drift is invisible — the legend would keep naming a
+## colour the pins had stopped using.
+const KIND_LABEL := {"tavern": "inn", "shop": "trade", "landmark": "landmark",
+	"wilds": "wilds", "home": "home", "settlement": "settlement", "ruin": "ruin"}
 
 
 func _ready() -> void:
@@ -101,6 +119,7 @@ func _draw() -> void:
 					continue
 				var p := here_p.lerp(target, t) + Vector2(0, -sin(t * PI) * 14.0)
 				draw_circle(p, 1.8, Color(Ui.c("gold_soft"), 0.75 * (1.0 - t * 0.3)))
+	_draw_roads()
 	for i in locations.size():
 		var l: Dictionary = locations[i]
 		if not (l is Dictionary):
@@ -155,4 +174,74 @@ func _draw() -> void:
 		draw_line(cpos, tip, Color(Ui.c("gold"), 0.8 if d == 0 else 0.4), 1.5 if d == 0 else 1.0)
 	var ns := font.get_string_size("N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11)
 	draw_string(font, cpos + Vector2(-ns.x / 2.0, -18), "N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(Ui.c("gold"), 0.85))
+	_draw_legend(font)
+
+
+## AT-1 — THE ROADS A TRAVELLER KNOWS.
+##
+## A dashed line was drawn only to the place under the cursor, so with the mouse
+## anywhere else the chart was pins on paper with nothing joining them. Roads are
+## what make a map read as a map.
+##
+## Drawn as a minimum spanning tree over the places the player has actually SEEN.
+## That is the honest network: it invents no topology the world never described,
+## it always connects (never a stray island), and it changes as the player learns
+## the land. A star from `here` to everywhere would be a lie about how they got
+## there; nearest-neighbour alone leaves disconnected pairs.
+func _draw_roads() -> void:
+	var pts: Array[Vector2] = []
+	for l in locations:
+		if l is Dictionary and _known(str(l.get("name", ""))):
+			pts.append(_pos_of(l))
+	if pts.size() < 2:
+		return
+	var linked := [0]
+	var loose := range(1, pts.size())
+	while not loose.is_empty():
+		var best_a := -1
+		var best_b := -1
+		var best_d := INF
+		for a in linked:
+			for b in loose:
+				var d: float = pts[a].distance_squared_to(pts[b])
+				if d < best_d:
+					best_d = d
+					best_a = a
+					best_b = b
+		if best_b < 0:
+			break
+		# Old ink: a road is quieter than the places it joins.
+		draw_line(pts[best_a], pts[best_b], Color(Ui.c("ink_soft"), 0.28), 1.6, true)
+		linked.append(best_b)
+		loose.erase(best_b)
+
+
+## The key. Only the kinds THIS world actually uses — a legend listing entries
+## the chart never draws is furniture, not information.
+func _draw_legend(font: Font) -> void:
+	var kinds: Array[String] = []
+	for l in locations:
+		if not (l is Dictionary):
+			continue
+		if fog and not _known(str(l.get("name", ""))):
+			continue
+		var k := str(l.get("kind", ""))
+		if k != "" and KIND_LABEL.has(k) and not kinds.has(k):
+			kinds.append(k)
+	if kinds.is_empty():
+		return
+	kinds.sort()
+	var pad := 8.0
+	var row := 14.0
+	var w := 96.0
+	var h := pad * 2.0 + row * kinds.size()
+	var at := Vector2(12, size.y - h - 12)
+	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("night"), 0.62))
+	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("gold"), 0.28), false, 1.0)
+	for i in kinds.size():
+		var k: String = kinds[i]
+		var cy := at.y + pad + row * float(i) + row * 0.5
+		draw_circle(Vector2(at.x + pad + 4.0, cy), 4.0, Ui.c(KIND_COLOR.get(k, "ink_soft")))
+		draw_string(font, Vector2(at.x + pad + 14.0, cy + 4.0), str(KIND_LABEL[k]),
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 2.0)

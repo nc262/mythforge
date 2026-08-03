@@ -181,7 +181,7 @@ func _style_tab(btn: Button, active: bool) -> void:
 
 # ── Category builders ────────────────────────────────────────────────────────
 func _places() -> void:
-	var locs: Array = _world.get("locations") if _world.get("locations") is Array else Rules.world_locations(GameState.world_id())
+	var locs: Array = GameState.places()
 	for l in locs:
 		if not (l is Dictionary):
 			continue

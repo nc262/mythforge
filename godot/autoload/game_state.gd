@@ -1060,6 +1060,222 @@ func here_pin() -> String:
 	return " I am at %s and I have not travelled — I wake exactly there. Do not move me to another place; if travel happens, it happens because I choose it." % h
 
 
+# ── The world's geography: one store, one writer ────────────────────────────
+## EVERY PLACE THIS WORLD HAS, authored or discovered, in one list.
+##
+## There were three answers to "what places exist" and they disagreed:
+##   * `Rules.world_locations()` — the built-in gazetteer, which knows only the
+##     six shipped worlds and returns [] for anything the player forged.
+##   * `cworlds[].locations` — a forged world's places, carrying no x/y at all,
+##     so every pin defaulted to (50,50) and stacked on the chart's centre.
+##   * `state.world.places` — read by the minimap, written by NOTHING. The
+##     comment there describes a save the old backend produced; on this build it
+##     is always empty, so the minimap silently fell back to the gazetteer.
+##
+## This is the one answer. It merges the authored gazetteer with whatever the
+## story has since created, gives every entry coordinates, and is the only thing
+## any screen should ask.
+func places() -> Array:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var made: Array = world.get("places") if world.get("places") is Array else []
+	var out: Array = []
+	var seen_names := {}
+	# Authored first, so a GM-created place can never shadow a shipped one.
+	for l in _authored_places():
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		if nm == "" or seen_names.has(nm.to_lower()):
+			continue
+		seen_names[nm.to_lower()] = true
+		out.append(_with_position(l, world))
+	for l in made:
+		if not (l is Dictionary):
+			continue
+		var nm2 := str(l.get("name", ""))
+		if nm2 == "" or seen_names.has(nm2.to_lower()):
+			continue
+		seen_names[nm2.to_lower()] = true
+		out.append(_with_position(l, world))
+	return out
+
+
+## The places the world SHIPPED with — gazetteer for a built-in, the forged
+## record for a custom world.
+func _authored_places() -> Array:
+	var built := Rules.world_locations(world_id())
+	if not built.is_empty():
+		return built
+	for w in global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == world_id():
+			return w.get("locations") if w.get("locations") is Array else []
+	return []
+
+
+## Give a place coordinates if it has none.
+##
+## A forged world's locations arrive with name/kind/lore/shop and nothing else,
+## because the Worldsmith is never asked for x/y — correctly, since a model is
+## bad at coordinates and a wrong one is invisible until the chart looks wrong.
+## The engine places them instead: deterministically, from the name, on their
+## region's ring.
+func _with_position(l: Dictionary, world: Dictionary) -> Dictionary:
+	if l.has("x") and l.has("y"):
+		return l
+	var out := l.duplicate(true)
+	var reg := str(l.get("region", ""))
+	var at := region_at(reg, world)
+	var pos := Rules.place_position(str(l.get("name", "")), str(l.get("scope", "local")), at)
+	out["x"] = pos.x
+	out["y"] = pos.y
+	return out
+
+
+## The regions this world is divided into — authored by the forge, extended by
+## the GM at the frontier. Empty is legal: a world with no regions behaves as
+## one unnamed region centred on the chart.
+func regions() -> Array:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var rs: Array = world.get("regions") if world.get("regions") is Array else []
+	var out: Array = []
+	for i in rs.size():
+		var r = rs[i]
+		if not (r is Dictionary) or str(r.get("name", "")) == "":
+			continue
+		var e: Dictionary = r.duplicate(true)
+		if not (e.has("x") and e.has("y")):
+			var p := Rules.region_position(str(e["name"]), i, rs.size())
+			e["x"] = p.x
+			e["y"] = p.y
+		out.append(e)
+	return out
+
+
+## Where a named region sits on the chart, or the chart's heart if it is unknown.
+func region_at(region_name: String, world := {}) -> Vector2:
+	if region_name == "":
+		return Vector2(50, 50)
+	var w: Dictionary = world if not world.is_empty() else (
+		state.get("world", {}) if state.get("world") is Dictionary else {})
+	var rs: Array = w.get("regions") if w.get("regions") is Array else []
+	for i in rs.size():
+		var r = rs[i]
+		if r is Dictionary and str(r.get("name", "")).nocasecmp_to(region_name) == 0:
+			if r.has("x") and r.has("y"):
+				return Vector2(float(r["x"]), float(r["y"]))
+			return Rules.region_position(region_name, i, rs.size())
+	return Vector2(50, 50)
+
+
+## How many places a region already holds — the density budget's numerator.
+func region_place_count(region_name: String) -> int:
+	var n := 0
+	for p in places():
+		if p is Dictionary and str(p.get("region", "")).nocasecmp_to(region_name) == 0:
+			n += 1
+	return n
+
+
+## What a journey to this place costs in time steps.
+##
+## Measured from where the party stands, on the chart's own percent scale, and
+## bucketed through the same scope rings the GM builds with — so the number the
+## clock spends and the number the engine validates come from one table.
+func travel_cost(place_name: String) -> int:
+	var from := Vector2(50, 50)
+	var to := Vector2(50, 50)
+	var h := here()
+	var found_to := false
+	for p in places():
+		if not (p is Dictionary):
+			continue
+		var nm := str(p.get("name", ""))
+		var at := Vector2(float(p.get("x", 50)), float(p.get("y", 50)))
+		if nm == h:
+			from = at
+		if nm.nocasecmp_to(place_name) == 0:
+			to = at
+			found_to = true
+	if not found_to:
+		return 1
+	var d := from.distance_to(to)
+	# Nearest ring wins; a journey is never free.
+	var best := "local"
+	var best_gap := INF
+	for sc in Rules.SCOPE_RING:
+		var gap: float = absf(d - float(Rules.SCOPE_RING[sc]))
+		if gap < best_gap:
+			best_gap = gap
+			best = str(sc)
+	return maxi(1, int(Rules.SCOPE_TIME.get(best, 1)))
+
+
+## THE GM CREATES A PLACE. Returns "" on success, or why it was refused.
+##
+## This is the mini-god's actual power, and the engine's veto is what keeps it
+## a power rather than a mess. Refusals are specific so the GM's next attempt
+## can be better — a bare "no" teaches it nothing.
+func add_place(spec: Dictionary) -> String:
+	var nm := str(spec.get("name", "")).strip_edges()
+	if nm == "":
+		return "a place needs a name"
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(nm) == 0:
+			return "%s is already on the chart" % nm
+	var scope := str(spec.get("scope", "local")).to_lower()
+	if not Rules.SCOPE_LEVEL.has(scope):
+		scope = "local"
+	var lv := int(sheet().get("level", 1))
+	if not Rules.scope_allowed(scope, lv):
+		return "%s is beyond this tale's reach for now (%s needs level %d)" % [
+			nm, scope, int(Rules.SCOPE_LEVEL[scope])]
+	var reg := str(spec.get("region", "")).strip_edges()
+	if reg != "" and region_place_count(reg) >= Rules.REGION_PLACE_CAP:
+		return "%s is full — %d places already stand there" % [reg, Rules.REGION_PLACE_CAP]
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var made: Array = world.get("places") if world.get("places") is Array else []
+	var at := region_at(reg, world)
+	var pos := Rules.place_position(nm, scope, at)
+	made.append({
+		"name": nm,
+		"kind": str(spec.get("kind", "landmark")),
+		"lore": str(spec.get("lore", "")),
+		"shop": str(spec.get("shop", "")),
+		"region": reg,
+		"scope": scope,
+		"x": pos.x, "y": pos.y,
+		"origin": "gm",   # authored places never carry this; the chart can tell them apart
+	})
+	world["places"] = made
+	save_kind("world", world)
+	return ""
+
+
+## THE GM CREATES A REGION. Rare on purpose — see Rules.SCOPE_LEVEL.
+##
+## A new region is the frontier opening, which should be an event in the story
+## rather than a Tuesday. Gating it at `far` is what makes it feel earned; the
+## alternative (regions on demand at any level) is how a chart becomes noise.
+func add_region(spec: Dictionary) -> String:
+	var nm := str(spec.get("name", "")).strip_edges()
+	if nm == "":
+		return "a region needs a name"
+	for r in regions():
+		if r is Dictionary and str(r.get("name", "")).nocasecmp_to(nm) == 0:
+			return "%s is already charted" % nm
+	var lv := int(sheet().get("level", 1))
+	if not Rules.scope_allowed("far", lv):
+		return "the frontier is out of reach for now (a new region needs level %d)" % int(Rules.SCOPE_LEVEL["far"])
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var rs: Array = world.get("regions") if world.get("regions") is Array else []
+	var p := Rules.region_position(nm, rs.size(), rs.size() + 1)
+	rs.append({"name": nm, "lore": str(spec.get("lore", "")),
+		"biome": str(spec.get("biome", "")), "x": p.x, "y": p.y, "origin": "gm"})
+	world["regions"] = rs
+	save_kind("world", world)
+	return ""
+
+
 ## Is there anyone HERE to trade with?
 ##
 ## R8-15 — the pack offered "Sell — 3 silver" inside a sealed barrow four days'
@@ -1069,7 +1285,7 @@ func shop_here() -> bool:
 	var h := here()
 	if h == "":
 		return false
-	for l in Rules.world_locations(world_id()):
+	for l in places():
 		if l is Dictionary and str(l.get("name", "")) == h and str(l.get("shop", "")) != "":
 			return true
 	return false

@@ -229,6 +229,88 @@ func class_features_upto(cls: String, level: int) -> Array:
 	return out
 
 
+# ── Geography: scope, regions, and where a new place lands ──────────────────
+## THE WORLD GROWS, BUT NOT ANYWHERE AND NOT ALL AT ONCE.
+##
+## The GM is the world's mini-god: when the story walks somewhere nobody planned,
+## a place should come into being. The engine's job is not to stop that — it is
+## to keep it honest. Three constraints, and only three, because they are the
+## only ones this game can actually check:
+##
+##   REGISTER — a space world gets a moon, not a hamlet. Carried by the world's
+##              family and its reskins; nothing here needs to re-derive it.
+##   BIOME    — one of the six the compiler already bakes art for. A place whose
+##              biome is not in that set has no picture and never will.
+##   DISTANCE — a number, owned here.
+##
+## Deliberately NOT checked: geological plausibility. There is no terrain model —
+## x/y are percentages of a painted chart, not positions on ground. Enforcing
+## "a fjord may not border a desert" would be the same drawn lie as a scale bar.
+
+## How far a quest may reach, and the level that earns it.
+##
+## Scope belongs to the QUEST, not to the player's level: if distance were a
+## function of level the world would inflate on a schedule, every campaign
+## expanding at the same rate regardless of its story. The GM proposes a scope;
+## this table says whether the party has earned it. Same boundary as everywhere
+## else — the model proposes, the engine disposes.
+const SCOPE_LEVEL := {"local": 1, "regional": 3, "far": 7}
+## Chart-percent distance a place of each scope sits from its region's heart.
+const SCOPE_RING := {"local": 9.0, "regional": 22.0, "far": 38.0}
+## Time steps a journey of each scope costs. Travel used to be one tick to
+## anywhere, so crossing a realm cost what crossing a street did.
+const SCOPE_TIME := {"local": 1, "regional": 3, "far": 6}
+
+## Past this many places, a region is full and the GM must reuse or nest rather
+## than add. The danger with a GM that CAN create places is not distance, it is
+## density: one new place a session and twenty sessions later the chart is noise.
+const REGION_PLACE_CAP := 8
+
+
+func scope_allowed(scope: String, level: int) -> bool:
+	return level >= int(SCOPE_LEVEL.get(scope, 99))
+
+
+## The furthest scope this party has earned — what the GM is told it may use.
+func scope_for_level(level: int) -> String:
+	var best := "local"
+	for s in SCOPE_LEVEL:
+		if level >= int(SCOPE_LEVEL[s]) and float(SCOPE_RING[s]) > float(SCOPE_RING[best]):
+			best = str(s)
+	return best
+
+
+## WHERE A NEW PLACE LANDS, deterministically.
+##
+## Seeded from the place's own name, so the same place forged twice sits in the
+## same spot and a save reloaded does not shuffle the map. Positioned on its
+## region's ring by scope, then clamped inside the chart with a margin so a pin
+## never rides the edge where its label would be cut off.
+##
+## The model is never asked for coordinates. It is bad at them, they carry no
+## meaning it can reason about, and a wrong number here is invisible until the
+## chart looks wrong.
+func place_position(place_name: String, scope: String, region_at: Vector2) -> Vector2:
+	var h: int = absi(hash(place_name))
+	var ang := float(h % 3600) / 3600.0 * TAU
+	# A little ring jitter so a region's places do not sit on a perfect circle.
+	var ring := float(SCOPE_RING.get(scope, 9.0)) * (0.72 + 0.56 * float((h >> 12) % 100) / 100.0)
+	var p := region_at + Vector2(cos(ang), sin(ang)) * ring
+	return Vector2(clampf(p.x, 6.0, 94.0), clampf(p.y, 8.0, 92.0))
+
+
+## Where a REGION sits. Regions spread around the chart's heart rather than
+## clustering, because they are the coarse structure everything else hangs on.
+func region_position(region_name: String, index: int, total: int) -> Vector2:
+	var h: int = absi(hash(region_name))
+	var span := maxi(total, 1)
+	var ang := (float(index) / float(span)) * TAU + float(h % 100) / 100.0 * 0.6
+	# The heart of the chart, with regions pushed out toward the frontier.
+	var r := 20.0 + float(h % 14)
+	var p := Vector2(50.0, 50.0) + Vector2(cos(ang), sin(ang)) * r
+	return Vector2(clampf(p.x, 12.0, 88.0), clampf(p.y, 14.0, 86.0))
+
+
 ## WHAT EVERY ADVENTURER CARRIES, whatever their class or world.
 ##
 ## PS-2 — a forged hero started with a weapon and nothing else: no armour, no

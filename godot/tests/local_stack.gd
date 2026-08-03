@@ -217,6 +217,32 @@ func _ready() -> void:
 		_ck(kinds_ok, "every location kind is one the enum allows")
 		_ck(w.get("reskins") is Dictionary and (w["reskins"]["names"] as Dictionary).size() == 12,
 			"all 12 classes got world-specific names")
+		# THE WORLD HAS PARTS. Regions are what a GM-created place attaches to;
+		# without them every later place hangs off nothing and lands on the
+		# chart's centre ring. Asked of the real model because a schema can force
+		# the FIELD but not whether the answers are usable.
+		var regs: Array = w.get("regions") if w.get("regions") is Array else []
+		_ck(regs.size() >= 3, "the world was forged with %d regions to hang new places on" % regs.size())
+		var rnames := {}
+		for r in regs:
+			if r is Dictionary:
+				rnames[str(r.get("name", "")).to_lower()] = true
+		_ck(rnames.size() == regs.size(), "every region has its own name")
+		# ...and the places must actually SIT in them, or the link is decorative.
+		var placed := 0
+		var orphaned: Array[String] = []
+		for l in (w.get("locations") if w.get("locations") is Array else []):
+			if not (l is Dictionary):
+				continue
+			var rg := str(l.get("region", "")).strip_edges().to_lower()
+			if rg != "" and rnames.has(rg):
+				placed += 1
+			else:
+				orphaned.append(str(l.get("name", "?")))
+		_ck(placed > 0, "the locations know which region they stand in")
+		print("    regions: %s" % ", ".join(rnames.keys()))
+		print("    placed %d/%d locations%s" % [placed, (w.get("locations") as Array).size(),
+			("; orphaned: " + ", ".join(orphaned)) if not orphaned.is_empty() else ""])
 		if w.get("reskins") is Dictionary:
 			print("    reskins: %s" % JSON.stringify(w["reskins"]["names"]).left(180))
 

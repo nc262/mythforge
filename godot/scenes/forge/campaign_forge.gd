@@ -642,6 +642,13 @@ func _begin_campaign() -> void:
 	if draft["gm"] is Dictionary and not draft["gm"].is_empty():
 		GameState.set_kind_for(adv_id, "gm", draft["gm"])
 	var world_kind := {"rules": draft["rules"]}
+	# The world's REGIONS ride into the save with it. The Worldsmith authors them
+	# (3-5 named parts), and they are what a GM-created place attaches to — left
+	# at the forge they would die there, every later place would hang off nothing,
+	# and the chart would be a bag of pins instead of a world with parts.
+	var regs = world.get("regions")
+	if regs is Array and not (regs as Array).is_empty():
+		world_kind["regions"] = regs
 	if _settlement != "":
 		world_kind["here"] = _settlement
 		world_kind["seen"] = [_settlement]
