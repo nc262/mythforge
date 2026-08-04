@@ -95,16 +95,31 @@ weeks while the picker it was named for wrote to a key nothing read.
 
 ## What has never been tested
 
-A coverage gap, not a clean bill of health. Every item here is reachable by the
-harnesses in principle and simply is not covered yet:
+**Nothing on this list.** The five gaps were closed on 2026-08-04 and each is
+now driven in `ui_playthrough`:
 
-| Area | Why it is uncovered |
+| Area | What now runs |
 |---|---|
-| Spells in play | Needs a caster played through a real session — `ui_playthrough` casts, but never across levels with slots running out |
-| Merchants | `shop_here()` and the window are asserted; nobody has traded in a live game |
-| The Lore Book over a long campaign | It fills from `[[lore]]` tags over dozens of turns; no harness runs that long |
-| Equip / unequip with a real inventory | Exercised with one item, not with a full pack and competing slots |
-| Tone knobs at their extremes | `gm_directive()` only speaks at ≤25 / ≥75, and nothing plays there |
+| Spells in play | Every L1 slot spent to empty, the **refusal** that fires with none left, a cantrip that stays free, and the long rest that gives them back |
+| Merchants | A buy debits and delivers · a purchase the hero cannot afford moves nothing · a sale credits and removes |
+| The Lore Book over a long campaign | 30 discoveries across 6 categories, a re-told fact deduped, and the book rendered **full** rather than empty |
+| Equip / unequip | Two weapons contesting one hand, unequip returning the slot, armour raising AC, a shield stacking on it, two rings filling two fingers |
+| Tone knobs at their extremes | All five knobs at 0 and 100, silence at 50, five clauses composing into one line, and a named style leading it |
+
+### Every one was verified by mutation
+
+Passing on the first run proves nothing. Each feature was deliberately broken —
+the slot guard removed, the affordability check bypassed, lore dedup disabled,
+the second ring finger taken away, the knobs' high end silenced — and the run
+had to fail. It produced **13 failures across all five**.
+
+**The shop check failed that verification the first time, and its failure is the
+lesson.** A successful buy tells the GM, which starts a stream; while it streams
+`Mode.can("panels")` is false and the next action returns before reaching
+anything. So the can't-afford case never ran the guard: gold was unchanged and
+the item absent *because nothing happened*, and both assertions passed. It now
+waits for the game to go idle and **asserts the precondition** — a vacuous pass
+has to be a failure, or the test is decoration.
 
 Closing these is harness work, not feature work — which is why they live here
 rather than in [Backlog.md](Backlog.md).

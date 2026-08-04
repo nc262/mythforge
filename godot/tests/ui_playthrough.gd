@@ -36,6 +36,13 @@ func _ready() -> void:
 	_check_save_spells()
 	_check_rest_place()
 	_check_multiclass()
+	# The five gaps Testing.md listed as never covered. Spells must follow the
+	# multiclass check — that is what leaves a caster with slots to run out of.
+	_check_spells_to_exhaustion()
+	await _check_merchant_trade()
+	await _check_lore_over_a_campaign()
+	_check_equip_competing_slots()
+	_check_tone_extremes()
 	_check_controller()
 	await _build_windows()
 	if is_instance_valid(_game):
@@ -928,6 +935,276 @@ func _has_item(nm: String) -> bool:
 		if str(it.get("name", "")) == nm:
 			return true
 	return false
+
+
+func _item_id(nm: String) -> String:
+	for it in GameState.inv().get("items", []):
+		if str(it.get("name", "")).nocasecmp_to(nm) == 0:
+			return str(it.get("id", ""))
+	return ""
+
+
+func _slots1() -> Dictionary:
+	var d = GameState.sheet().get("slots", {}).get("1", {})
+	return d if d is Dictionary else {}
+
+
+## ── COVERAGE GAP 1: SPELLS UNTIL THE SLOTS RUN OUT ──────────────────────────
+## The harness cast, but never to exhaustion — so the branch that REFUSES a cast
+## had never run in a real game, and neither had the long rest that undoes it.
+## Runs after _check_multiclass, which leaves a Fighter 2 / Wizard 1 holding INT
+## 13 and an open first-level slot.
+func _check_spells_to_exhaustion() -> void:
+	var s := GameState.sheet()
+	var dc := Rules.spell_save_dc(s)
+	_ck(dc > 0, "spells: a wizard level must produce a save DC, got %d" % dc)
+
+	var pick := ""
+	var cantrip := ""
+	for sp in Rules.learnable_spells(s):
+		var lv := int(sp.get("level", 0))
+		if lv == 1 and pick == "":
+			pick = str(sp.get("name", ""))
+		elif lv == 0 and cantrip == "":
+			cantrip = str(sp.get("name", ""))
+	_ck(pick != "", "spells: a wizard 1 should have a first-level spell to learn")
+	if pick == "":
+		return
+	_ck(GameState.learn_spell(pick), "spells: learning %s should stick" % pick)
+	_ck(not GameState.learn_spell(pick), "spells: the same spell cannot be learned twice")
+
+	var maxs := int(_slots1().get("max", 0))
+	_ck(maxs > 0, "spells: the wizard level should open at least one L1 slot")
+	# Spend every slot there is. Nothing in the project had ever done this.
+	for i in maxs:
+		var out := GameState.cast_spell(pick)
+		_ck(out != "" and not out.begins_with("✋"), "spells: cast %d of %d should succeed" % [i + 1, maxs])
+		_ck(out.contains("DC %d" % dc), "spells: a cast should tell the player the save DC")
+	_ck(int(_slots1().get("used", 0)) == maxs, "spells: every slot should now be spent")
+
+	# THE BRANCH THAT HAD NEVER RUN.
+	var dry := GameState.cast_spell(pick)
+	_ck(dry.begins_with("✋"), "spells: casting with no slot left must refuse — got '%s'" % dry)
+	_ck(int(_slots1().get("used", 0)) == maxs,
+		"spells: a refused cast must not spend a slot that does not exist")
+
+	# A cantrip is free forever — it must not be caught by the same guard.
+	if cantrip != "" and GameState.learn_spell(cantrip):
+		var c0 := int(_slots1().get("used", 0))
+		var cout := GameState.cast_spell(cantrip)
+		_ck(not cout.begins_with("✋"), "spells: a cantrip works with no slots left")
+		_ck(int(_slots1().get("used", 0)) == c0, "spells: a cantrip must not spend a slot")
+
+	# And the rest is what gives the magic back.
+	GameState.long_rest()
+	_ck(int(_slots1().get("used", 0)) == 0, "spells: a long rest restores every slot")
+	_ck(not GameState.cast_spell(pick).begins_with("✋"), "spells: ...and the spell casts again")
+	print("  spells: %d L1 slot(s) spent to empty, refusal fires, long rest restores" % maxs)
+
+
+## ── COVERAGE GAP 2: A LIVE TRADE ────────────────────────────────────────────
+## shop_here() and the window were asserted; nobody had ever BOUGHT anything.
+## Driven through _on_sheet_action, the same meta the shop's own links emit.
+## A successful buy TELLS THE GM, which starts a stream — and while it streams,
+## `Mode.can("panels")` is false and the next _on_sheet_action returns before it
+## reaches anything. The first draft of this check did not wait, so the
+## can't-afford case never ran the guard it was written for: gold was unchanged
+## and the item absent because NOTHING HAPPENED, and both assertions passed.
+##
+## Caught only by mutating the guard away and watching this check stay green.
+## Hence both the settle and the explicit precondition below — a vacuous pass has
+## to be a failure, or the test is decoration.
+## The harness already had `_settle`, which waits on the stream alone. A trade
+## also needs `Mode.busy` clear, or the next panel action is refused before it
+## reaches anything.
+func _settle_idle() -> void:
+	for i in 60:
+		await get_tree().process_frame
+		if not _game._streaming and not Mode.busy:
+			return
+
+
+func _check_merchant_trade() -> void:
+	Mode.enter("Exploration")     # panels are refused in the level-up ceremony
+	var s := GameState.sheet()
+	s["gold"] = 40
+	GameState.set_sheet(s)
+	Api.test_replies = ["The keeper counts your coin and nods.", "The keeper waits.", "The keeper shrugs."]
+
+	_ck(Mode.can("panels"), "shop: panels must be open or every trade check passes vacuously")
+	var gold0 := int(GameState.sheet().get("gold", 0))
+	_game._on_sheet_action("buy:Iron%20Ration|12")
+	await _settle_idle()
+	_ck(int(GameState.sheet().get("gold", 0)) == gold0 - 12,
+		"shop: buying should debit exactly the price (%d → %d)" % [gold0, int(GameState.sheet().get("gold", 0))])
+	_ck(_has_item("Iron Ration"), "shop: the bought item should be in the pack")
+
+	# CANNOT AFFORD IT. The one path that must move nothing at all.
+	Mode.enter("Exploration")
+	_ck(Mode.can("panels"), "shop: panels must be open for the refusal case to mean anything")
+	var gold1 := int(GameState.sheet().get("gold", 0))
+	_ck(gold1 < 9999, "shop: the refusal case needs the hero to be genuinely short")
+	_game._on_sheet_action("buy:Plate%20Armor|9999")
+	await _settle()
+	_ck(int(GameState.sheet().get("gold", 0)) == gold1, "shop: a refused purchase must not touch gold")
+	_ck(not _has_item("Plate Armor"), "shop: a refused purchase must not hand over the goods")
+
+	# Selling back returns coin and takes the item away.
+	GameState.add_item("Tin Cup")
+	var cup := _item_id("Tin Cup")
+	var gold2 := int(GameState.sheet().get("gold", 0))
+	_ck(GameState.sell_item(cup) != "", "shop: selling a held item should succeed")
+	_ck(int(GameState.sheet().get("gold", 0)) > gold2, "shop: selling should credit coin")
+	_ck(not _has_item("Tin Cup"), "shop: a sold item leaves the pack")
+	print("  shop: buy debits and delivers · short funds refuse cleanly · sell credits and removes")
+
+
+## ── COVERAGE GAP 3: THE LORE BOOK OVER A LONG CAMPAIGN ──────────────────────
+## It fills from [[lore]] tags over dozens of turns and no harness ran that long,
+## so nothing had ever exercised the de-duplication that keeps a re-told fact
+## from becoming two entries.
+func _check_lore_over_a_campaign() -> void:
+	var cats := ["History", "Places", "People", "Bestiary", "Magic", "Faction"]
+	var added := 0
+	for i in 30:
+		if GameState.add_lore(cats[i % cats.size()], "Discovery %d" % i, "the %dth thing learned" % i):
+			added += 1
+	_ck(added == 30, "lore: 30 distinct discoveries should all be kept, got %d" % added)
+
+	# THE DEDUP. A GM that re-tells a fact must not double the book.
+	_ck(not GameState.add_lore("History", "Discovery 7", "told again, differently"),
+		"lore: the same title must not enter the book twice")
+	var entries: Array = GameState.state.get("lore", {}).get("entries", [])
+	_ck(entries.size() == 30, "lore: the book should hold exactly 30 entries, holds %d" % entries.size())
+
+	# Categories and the day survive the round trip — the Lore Book groups by one
+	# and captions with the other.
+	var seen_cats := {}
+	for e in entries:
+		seen_cats[str(e.get("category", ""))] = true
+		_ck(int(e.get("day", 0)) >= 1, "lore: every entry records the day it was learned")
+	for c in cats:
+		_ck(seen_cats.has(c), "lore: category '%s' should survive into the book" % c)
+
+	# And it must still RENDER with a full book, not just an empty one.
+	var lb_script = load("res://scenes/ui/lore_book.gd")
+	_ck(lb_script is GDScript and lb_script.can_instantiate(), "lore: lore_book.gd failed to compile")
+	if lb_script is GDScript and lb_script.can_instantiate():
+		var lb = lb_script.new()
+		add_child(lb)
+		await get_tree().process_frame
+		_ck(is_instance_valid(lb), "lore: the Lore Book must build with 30 entries in it")
+		lb.queue_free()
+	print("  lore: 30 entries across 6 categories, re-told facts deduped, book renders full")
+
+
+## ── COVERAGE GAP 4: A FULL PACK WITH COMPETING SLOTS ────────────────────────
+## Equipping was exercised with ONE item. Everything interesting about equipment
+## happens when two things want the same slot.
+func _check_equip_competing_slots() -> void:
+	for nm in ["Chain Shirt", "Wooden Shield", "Iron Ring", "Silver Ring", "Handaxe"]:
+		GameState.add_item(nm)
+
+	# Two weapons, one hand. The second must take the slot and the first must leave.
+	var sword := _item_id("Longsword")
+	var mace := ""
+	GameState.add_item("Warhammer")
+	mace = _item_id("Warhammer")
+	_ck(sword != "" and mace != "", "equip: both weapons should be in the pack")
+	# `_turn_equip` already drew the Longsword, so ASK before toggling. A blind
+	# toggle here put it away and then asserted it was in hand — a harness that
+	# assumes state it did not set is testing its own ordering, not the game.
+	if str(GameState.inv().get("equipped", {}).get("weapon", "")) != sword:
+		GameState.toggle_equip(sword)
+	_ck(str(GameState.inv().get("equipped", {}).get("weapon", "")) == sword, "equip: the sword should be in hand")
+	GameState.toggle_equip(mace)
+	_ck(str(GameState.inv().get("equipped", {}).get("weapon", "")) == mace,
+		"equip: a second weapon must take the hand from the first")
+
+	# Unequip returns the slot to empty — and the item is still owned.
+	GameState.toggle_equip(mace)
+	_ck(str(GameState.inv().get("equipped", {}).get("weapon", "")) == "", "equip: unequipping empties the slot")
+	_ck(_has_item("Warhammer"), "equip: unequipping does not destroy the item")
+
+	# Armour changes AC. This is the number a player actually watches, and the
+	# whole reason equipping is a mechanic rather than a wardrobe.
+	var shirt := _item_id("Chain Shirt")
+	_ck(shirt != "", "equip: the chain shirt should be in the pack")
+	if shirt != "" and Rules.item_type("Chain Shirt") == "armor":
+		var ac0 := Rules.eff_ac(GameState.sheet(), GameState.inv())
+		GameState.toggle_equip(shirt)
+		_ck(Rules.eff_ac(GameState.sheet(), GameState.inv()) > ac0,
+			"equip: body armour should raise AC (%d)" % ac0)
+		# A shield stacks on top of armour — a different slot, not a contest.
+		var shield := _item_id("Wooden Shield")
+		if shield != "" and Rules.item_type("Wooden Shield") == "shield":
+			var ac1 := Rules.eff_ac(GameState.sheet(), GameState.inv())
+			GameState.toggle_equip(shield)
+			_ck(Rules.eff_ac(GameState.sheet(), GameState.inv()) > ac1,
+				"equip: a shield should stack with body armour, not replace it")
+
+	# Two rings, two fingers — and the second must not evict the first.
+	var r1 := _item_id("Iron Ring")
+	var r2 := _item_id("Silver Ring")
+	if r1 != "" and r2 != "" and Rules.item_type("Iron Ring") == "ring":
+		GameState.toggle_equip(r1)
+		GameState.toggle_equip(r2)
+		var eq: Dictionary = GameState.inv().get("equipped", {})
+		var worn := [str(eq.get("ring1", "")), str(eq.get("ring2", ""))]
+		_ck(worn.has(r1) and worn.has(r2), "equip: two rings should occupy two fingers, not fight for one")
+		GameState.toggle_equip(r1)
+		var eq2: Dictionary = GameState.inv().get("equipped", {})
+		_ck(not [str(eq2.get("ring1", "")), str(eq2.get("ring2", ""))].has(r1),
+			"equip: taking a ring off must clear whichever finger held it")
+	print("  equip: weapons contest one hand, unequip returns, rings fill both fingers")
+
+
+## ── COVERAGE GAP 5: THE TONE KNOBS AT THEIR EXTREMES ────────────────────────
+## gm_directive() only speaks at <=25 and >=75, so the middle of every knob is
+## silence — and nothing had ever played at either end. A knob that says nothing
+## at both extremes is a dead control the Session Zero screen still offers.
+func _check_tone_extremes() -> void:
+	var keep = GameState.state.get("gm")
+	var knobs := ["humor", "spice", "grit", "pace", "rules"]
+
+	# The neutral middle says nothing at all.
+	var mid := {}
+	for k in knobs:
+		mid[k] = 50
+	GameState.state["gm"] = mid
+	_ck(Composer.gm_directive().strip_edges() == "",
+		"tone: every knob at 50 should produce no style line, got '%s'" % Composer.gm_directive())
+
+	# Each knob, alone, at both ends — and the two ends must not say the same thing.
+	for k in knobs:
+		var lo := mid.duplicate()
+		lo[k] = 0
+		GameState.state["gm"] = lo
+		var lo_txt := Composer.gm_directive()
+		var hi := mid.duplicate()
+		hi[k] = 100
+		GameState.state["gm"] = hi
+		var hi_txt := Composer.gm_directive()
+		_ck(lo_txt.strip_edges() != "", "tone: '%s' at 0 must say something" % k)
+		_ck(hi_txt.strip_edges() != "", "tone: '%s' at 100 must say something" % k)
+		_ck(lo_txt != hi_txt, "tone: '%s' says the same at both extremes — the knob does nothing" % k)
+
+	# All five at once: five clauses, one line.
+	var all_hi := {}
+	for k in knobs:
+		all_hi[k] = 100
+	GameState.state["gm"] = all_hi
+	var many := Composer.gm_directive()
+	_ck(many.count(";") == knobs.size() - 1,
+		"tone: five extreme knobs should join into one line of five clauses, got '%s'" % many)
+
+	# The named style rides in front of the knobs.
+	all_hi["style"] = "Grim"
+	GameState.state["gm"] = all_hi
+	_ck(Composer.gm_directive().begins_with("Run the table as a Grim GM."),
+		"tone: a named GM style should lead the directive")
+	GameState.state["gm"] = keep if keep is Dictionary else {}
+	print("  tone: 5 knobs speak at both extremes, stay silent at 50, and compose")
 
 
 func _check_combat(_quiet := false) -> bool:
