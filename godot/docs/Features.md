@@ -52,6 +52,11 @@ places, fog, travel with distance cost, and a GM that can charter new places
 within a scope its level has earned — see [Backlog](Backlog.md) for what is
 still open there, and `Rules.SCOPE_LEVEL` for the gate.
 
+The Atlas draws two tiers: the realm, and one region within it. Region names are
+set wide across the country they describe, and clicking one focuses it and steps
+the rest back. There is no street tier because there is nothing inside a place —
+a place is a point, and inventing streets is a content project, not a map one.
+
 **Roads are named, and a name is a rule.** A road between two places on the
 chart can be `open`, `hard` (costs more hours), `dangerous` (three times as
 likely to meet you) or `blocked` (turns you back, and says which road). The GM

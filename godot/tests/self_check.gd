@@ -937,6 +937,20 @@ The term for spell slots is "Echoes."
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
 
+	# ── AT-3: the region tier is drawn AND wired ─────────────────────────────
+	var wm := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+	var drew_regions := false
+	for raw3 in wm.split("\n"):
+		if raw3.strip_edges() == "_draw_regions(font)":
+			drew_regions = true
+	assert(drew_regions, "the chart actually draws its region names")
+	assert(wm.contains("_in_focus("), "focusing a region actually changes what is drawn")
+	# The tier is worthless if nobody hands it the regions — the exact way the
+	# GM-model picker stayed broken for weeks, writing to a key nothing read.
+	var gsrc3 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(gsrc3.contains("map.regions = GameState.regions()"),
+		"the Atlas is given the world's regions, not just its places")
+
 	# ── KI-5: a size word must never shadow the category noun ────────────────
 	# `Shortbow` used to resolve to "a SHORT blade" and `Great Axe` to "an
 	# oversized two-handed weapon", because the size prefix matched first. The

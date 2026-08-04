@@ -21,6 +21,23 @@ var _hover := -1
 var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog §3)
 var _phase := 0.0
 
+## AT-3 — TWO TIERS: the realm, and one region within it.
+##
+## The backlog asked for realm → city → street. Two of those three exist in the
+## world model and the third does not: a place is a POINT with a region and a
+## kind, and there is no such thing as a street, a city interior, or anything
+## inside a place at all. Building a street tier would mean inventing the data
+## for it and then painting it, which is a content project, not a map feature.
+##
+## What was genuinely missing is the tier the data already has. Regions were
+## invisible on the chart — the GM can charter one with [[region]] and the
+## player would never see it appear. Now they are named on the paper, and
+## clicking one frames it and dims everything outside, which is what "zoom to a
+## region" actually means when the region is an area of the same chart.
+var regions: Array = []
+var _focus := ""              # region name, or "" for the whole realm
+var _region_hover := -1
+
 ## SEVEN KINDS, TOLD APART BY COLOUR **AND** SHAPE.
 ##
 ## This shipped with `tavern` and `settlement` both gold and `landmark` and
@@ -106,22 +123,88 @@ func _pos_of(l: Dictionary) -> Vector2:
 	return Vector2(float(l.get("x", 50)) / 100.0 * size.x, float(l.get("y", 50)) / 100.0 * size.y)
 
 
+## Where a region's name sits: the mean of its KNOWN places, so the label lands
+## on the land it describes rather than on a stored coordinate that fog may have
+## made meaningless. A region with nothing known yet is not drawn at all.
+func _region_anchor(rname: String) -> Vector2:
+	var sum := Vector2.ZERO
+	var n := 0
+	for l in locations:
+		if not (l is Dictionary) or str(l.get("region", "")).nocasecmp_to(rname) != 0:
+			continue
+		if not _known(str(l.get("name", ""))):
+			continue
+		sum += _pos_of(l)
+		n += 1
+	if n == 0:
+		return Vector2.INF
+	# Dropped below the cluster: place names draw ABOVE their pins, and a region
+	# with a single known place would otherwise print straight through it. The
+	# offset lives here rather than in the drawing so hit-testing and painting
+	# cannot drift apart — the click must land where the word is.
+	return sum / float(n) + Vector2(0, REGION_DROP)
+
+
+## Regions worth drawing, with where their name goes. Fog-gated like everything
+## else: a region you have not set foot in is not announced.
+func _visible_regions() -> Array:
+	var out: Array = []
+	for r in regions:
+		if not (r is Dictionary):
+			continue
+		var nm := str(r.get("name", ""))
+		if nm == "":
+			continue
+		var at := _region_anchor(nm)
+		if at != Vector2.INF:
+			out.append({"name": nm, "at": at})
+	return out
+
+
+## Is this place inside the focused region? True for everything when the whole
+## realm is in view, so callers need no second branch.
+func _in_focus(l: Dictionary) -> bool:
+	return _focus == "" or str(l.get("region", "")).nocasecmp_to(_focus) == 0
+
+
 func _gui_input(event: InputEvent) -> void:
 	if _camera.handle(event, self):
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed:
-		if not _camera.drag_moved and _hover >= 0:
+		if _camera.drag_moved:
+			return
+		# A place wins over a region: the pin is the smaller, more specific
+		# target, and travelling is what the player came here to do.
+		if _hover >= 0:
 			var nm := str(locations[_hover].get("name", ""))
 			if nm != here:
 				travel_requested.emit(nm)
+			return
+		var vis := _visible_regions()
+		if _region_hover >= 0 and _region_hover < vis.size():
+			var rn := str(vis[_region_hover]["name"])
+			_focus = "" if _focus == rn else rn   # clicking the focused one steps back out
+			Sfx.ui("page")
+			queue_redraw()
+		elif _focus != "":
+			_focus = ""                            # empty paper is the way back to the realm
+			Sfx.ui("page")
+			queue_redraw()
 	elif event is InputEventMouseMotion:
 		var mp := _camera.to_map(event.position)
 		var prev := _hover
+		var prev_r := _region_hover
 		_hover = -1
 		for i in locations.size():
 			if _pos_of(locations[i]).distance_to(mp) < 22.0 / _camera.zoom:
 				_hover = i
-		if _hover != prev:
+		_region_hover = -1
+		if _hover < 0:
+			var vis2 := _visible_regions()
+			for i in vis2.size():
+				if Vector2(vis2[i]["at"]).distance_to(mp) < 46.0 / _camera.zoom:
+					_region_hover = i
+		if _hover != prev or _region_hover != prev_r:
 			queue_redraw()
 
 
@@ -165,9 +248,17 @@ func _draw() -> void:
 				var p := here_p.lerp(target, t) + Vector2(0, -sin(t * PI) * 14.0)
 				draw_circle(p, 1.8, Color(Ui.c("gold_soft"), 0.75 * (1.0 - t * 0.3)))
 	_draw_roads()
+	_draw_regions(font)
 	for i in locations.size():
 		var l: Dictionary = locations[i]
 		if not (l is Dictionary):
+			continue
+		# AT-3 — outside the focused region, a place stays on the paper but
+		# steps back. Hiding it would be a different claim ("there is nothing
+		# there"); this one is "not what you are looking at".
+		if not _in_focus(l):
+			var dp := _pos_of(l)
+			draw_circle(dp, 2.5, Color(Ui.c("ink_dim"), 0.35))
 			continue
 		var p := _pos_of(l)
 		var nm := str(l.get("name", ""))
@@ -321,9 +412,65 @@ func _draw_roads() -> void:
 	_draw_named_roads()
 
 
-## The key. Only the kinds THIS world actually uses — a legend listing entries
-## the chart never draws is furniture, not information.
-func _draw_legend(font: Font) -> void:
+## AT-3 — THE REGION NAMES, and the tier they open.
+##
+## Set wide and small in the cartographic convention for an AREA: a region is
+## not a point, so it must not read as one. Drawn UNDER the pins (called before
+## them) because it labels the ground they stand on.
+##
+## Letterspacing is done by hand — Godot's draw_string has no tracking — and it
+## is what makes the difference between "a place called The Reach" and "this
+## whole stretch of country is The Reach".
+## Rendering it found both of this function's bugs. A region anchored on the
+## mean of its known places lands ON the pin when it has only one — and the
+## worst case is a region and its place sharing a name, so "THE MOURNWOOD" was
+## printed straight through "The Mournwood". Place names draw ABOVE their pins,
+## so the region name goes below the cluster.
+##
+## The second was the legend eating the label under it, leaving "…ARCHES" on
+## screen looking like a truncation bug. The legend is opaque and fixed, so a
+## label whose anchor is inside it is simply not drawn — there is no room for it
+## and half a word is worse than none.
+const REGION_DROP := 26.0
+
+func _draw_regions(font: Font) -> void:
+	var vis := _visible_regions()
+	var keep := _legend_rect(font).grow(6.0)
+	for i in vis.size():
+		var rn := str(vis[i]["name"]).to_upper()
+		var at: Vector2 = vis[i]["at"]
+		if keep.has_point(at):
+			continue
+		var focused := _focus != "" and str(vis[i]["name"]).nocasecmp_to(_focus) == 0
+		var lit: float = 0.95 if focused else (0.75 if i == _region_hover else 0.42)
+		var col := Color(Ui.c("gold_soft") if focused else Ui.c("ink_soft"), lit)
+		var track := 3.4
+		var wide := 0.0
+		for ch in rn:
+			wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + track
+		var x := at.x - wide * 0.5
+		for ch in rn:
+			draw_string(font, Vector2(x, at.y + 4.0), ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, col)
+			x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + track
+		# A hairline under a focused region, so "which one am I in" survives a
+		# glance without reading the word.
+		if focused:
+			draw_line(Vector2(at.x - wide * 0.5, at.y + 9.0), Vector2(at.x + wide * 0.5, at.y + 9.0),
+				Color(Ui.c("gold"), 0.5), 1.0, true)
+
+
+## What the key will list: only the kinds and road states actually ON this
+## chart, because a legend explaining a mark the player has never seen is
+## furniture, not information.
+##
+## Split out from the drawing so the region labels can ask where the legend will
+## be BEFORE it is painted. One geometry, two readers — computing the rect twice
+## is exactly how a legend and the thing dodging it drift apart.
+const LEGEND_PAD := 8.0
+const LEGEND_ROW := 14.0
+const LEGEND_W := 112.0
+
+func _legend_entries() -> Dictionary:
 	var kinds: Array[String] = []
 	for l in locations:
 		if not (l is Dictionary):
@@ -333,9 +480,6 @@ func _draw_legend(font: Font) -> void:
 		var k := str(l.get("kind", ""))
 		if k != "" and KIND_LABEL.has(k) and not kinds.has(k):
 			kinds.append(k)
-	# Only the road states actually ON this chart, for the same reason as kinds:
-	# a key explaining a dashed red line the player has never seen teaches them
-	# that roads can close, in the most boring way available.
 	var road_states: Array[String] = []
 	for r in GameState.roads():
 		if not (_known(str(r.get("from", ""))) and _known(str(r.get("to", "")))):
@@ -343,16 +487,32 @@ func _draw_legend(font: Font) -> void:
 		var st := str(r.get("state", Rules.ROAD_DEFAULT))
 		if st != "open" and not road_states.has(st):
 			road_states.append(st)
+	kinds.sort()
 	road_states.sort()
+	return {"kinds": kinds, "roads": road_states}
+
+
+func _legend_rect(_font: Font) -> Rect2:
+	var e := _legend_entries()
+	var rows: int = e["kinds"].size() + e["roads"].size()
+	if rows == 0:
+		return Rect2()
+	var h := LEGEND_PAD * 2.0 + LEGEND_ROW * float(rows)
+	return Rect2(Vector2(12, size.y - h - 12), Vector2(LEGEND_W, h))
+
+
+func _draw_legend(font: Font) -> void:
+	var e := _legend_entries()
+	var kinds: Array = e["kinds"]
+	var road_states: Array = e["roads"]
 	if kinds.is_empty() and road_states.is_empty():
 		return
-	kinds.sort()
-	var pad := 8.0
-	var row := 14.0
-	var w := 112.0
-	var rows := kinds.size() + road_states.size()
-	var h := pad * 2.0 + row * float(rows)
-	var at := Vector2(12, size.y - h - 12)
+	var pad := LEGEND_PAD
+	var row := LEGEND_ROW
+	var w := LEGEND_W
+	var rect := _legend_rect(font)
+	var h := rect.size.y
+	var at := rect.position
 	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("night"), 0.62))
 	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("gold"), 0.28), false, 1.0)
 	for i in kinds.size():

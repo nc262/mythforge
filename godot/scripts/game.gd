@@ -2622,6 +2622,7 @@ func _open_world_map() -> void:
 	Art.ensure_world_chart(GameState.world_id(), str(GameState.character.get("name", "")).split(":")[0], locs)
 	var map := preload("res://scenes/ui/world_map.gd").new()
 	map.locations = locs
+	map.regions = GameState.regions()   # AT-3: the tier above a place
 	var world_d: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	map.here = str(world_d.get("here", ""))
 	map.seen = world_d.get("seen") if world_d.get("seen") is Array else []

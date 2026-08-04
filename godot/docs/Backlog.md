@@ -22,14 +22,18 @@ unarmed number.
 
 ## The Atlas
 
-The map has names, a legend with distinct marks, a compass, fog, quest pull,
-click-to-travel, a painted chart, and **named roads that change what travel
-costs** (AT-2, done 2026-08-04). What follows would make it better; none of it
-is broken.
+Empty. The map has names, a legend with distinct marks, a compass, fog, quest
+pull, click-to-travel, a chart plate of its own, **named roads that change what
+travel costs**, and **region names you can focus** — AT-2, AT-3 and AT-4 all
+done 2026-08-04.
 
-| # | Item | P | E |
-|---|---|---|---|
-| AT-3 | No region zoom — the chart cannot go realm → city → street | P4 | L |
+**Realm → region, and no street tier.** AT-3 asked for realm → city → street.
+Two of those exist in the world model and the third does not: a place is a
+*point* with a region and a kind, and there is nothing inside a place at all. A
+street tier means inventing the data and then painting it, which is a content
+project rather than a map feature. What was genuinely missing was the tier the
+data already had — regions were invisible, so the GM could charter one with
+`[[region]]` and the player would never see it appear.
 
 **No scale bar, deliberately.** Locations are percentages of a painted chart,
 not positions on ground. A scale would be a drawn lie.
