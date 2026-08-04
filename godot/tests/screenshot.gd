@@ -39,6 +39,17 @@ func _ready() -> void:
 			scene.call("_open_skill_tree", 4)
 		if OS.get_environment("MF_SHOT_MAP") == "1":
 			Combat.finish()
+			# AT-2 — name a road in each state so the chart has something to draw
+			# and the legend something to explain. Through set_road(), not by
+			# poking state, so this shot proves the shipped path.
+			if OS.get_environment("MF_SHOT_ROADS") == "1":
+				var w2: Dictionary = GameState.state.get("world", {})
+				w2["seen"] = ["The Ember & Oak", "Hearthwood Market", "The Old Chapel", "The Mournwood", "The Fae Road"]
+				GameState.save_kind("world", w2)
+				assert(GameState.set_road({"from": "The Ember & Oak", "to": "Hearthwood Market", "state": "open"}) == "")
+				assert(GameState.set_road({"from": "Hearthwood Market", "to": "The Old Chapel", "state": "dangerous", "name": "the Weir Road"}) == "")
+				assert(GameState.set_road({"from": "The Ember & Oak", "to": "The Mournwood", "state": "blocked", "name": "the Ridge Pass"}) == "")
+				assert(GameState.set_road({"from": "Hearthwood Market", "to": "The Fae Road", "state": "hard"}) == "")
 			scene.call("_open_world_map")
 		scene.call("_say_system", "⚔️ Combat — Goblin Boss!")
 	# MF_SHOT_COACH — the first-run hints, rendered rather than reasoned about.

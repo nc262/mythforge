@@ -54,11 +54,22 @@ Sent in every DM envelope. The GM proposes; the engine disposes.
 [[xp delta=50 reason="…"]] (never for kills — combat XP is engine-paid)
 [[combat-start foes="goblin x3, boss"]]  [[combat-end]]
 [[scene place="the chapel crypt"]]    [[companion name="Ser Aldric"]]
+[[place name="Saltwick" kind=settlement scope=local region="The Reach"]]
+[[region name="The Ashen Marches"]]   [[lore cat=Places title="…" note="…"]]
+[[road from="Saltwick" to="The Weir" state=blocked name="the Weir Road"]]
 ```
 
 One tag per effect, on its own line, and never a dice result, HP total or
 success/failure in prose. `Tags.detect_check` and `detect_combat_start` catch
 turns where the model narrates a roll instead of calling for one.
+
+**The geography tags are the mini-god's real power, and the engine's veto is
+what keeps them a power rather than a mess.** `[[place]]` is refused beyond the
+scope the party's level has earned; `[[region]]` is `far`-gated so it reads as
+an event; `[[road]]` refuses either end that is not already on the chart —
+otherwise naming a road to Atlantis would put Atlantis on the map as a side
+effect, skipping `add_place` entirely. Every refusal states its reason, because
+a bare "no" teaches the model nothing about its next attempt.
 
 ## Envelope anatomy (per DM turn)
 

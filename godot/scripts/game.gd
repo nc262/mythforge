@@ -1301,6 +1301,8 @@ func _apply_world_tags(tags: Array) -> void:
 				_gm_makes_place(a)
 			"region":
 				_gm_makes_region(a)
+			"road":
+				_gm_makes_road(a)
 			"companion":
 				var cn := str(a.get("name", "")).strip_edges()
 				if not bool(GameState.rule("companions", true)):
@@ -2676,6 +2678,35 @@ func _gm_makes_place(a: Dictionary) -> void:
 		_say_system(why, "compass")
 
 
+## [[road from="Hearthwood Market" to="The Drowned Chapel" state="blocked"
+##   name="the Weir Road"]] — AT-2. The story closes a road, or opens one, or
+## admits that one has gone bad.
+##
+## Both ends must already be on the chart. Otherwise this is a second way to
+## create a place, one that skips add_place's veto entirely — the GM could name
+## a road to Atlantis and put Atlantis on the map as a side effect.
+func _gm_makes_road(a: Dictionary) -> void:
+	var from_ := str(a.get("from", "")).strip_edges()
+	var to_ := str(a.get("to", "")).strip_edges()
+	if from_ == "" or to_ == "":
+		return
+	var why := GameState.set_road({
+		"from": from_, "to": to_,
+		"state": str(a.get("state", Rules.ROAD_DEFAULT)),
+		"name": str(a.get("name", "")),
+	})
+	if why == "already":
+		return   # the road was already like that; the world simply knew
+	if why != "":
+		_say_system(why, "compass")
+		return
+	var st := str(a.get("state", Rules.ROAD_DEFAULT)).to_lower()
+	var road_name := str(a.get("name", ""))
+	var subject := road_name if road_name != "" else "The road between %s and %s" % [from_, to_]
+	Sfx.play("chime")
+	_say_system("%s is %s." % [subject, str(Rules.road_rule(st)["why"])], "compass")
+
+
 ## [[region name="The Ashen Marches" lore="..."]] — the frontier opens.
 ## Rare by construction (Rules.SCOPE_LEVEL.far), so it reads as an event.
 func _gm_makes_region(a: Dictionary) -> void:
@@ -2716,6 +2747,13 @@ func _track_here(place: String) -> void:
 func _travel_to(place: String) -> void:
 	if not Mode.can("send_message"):
 		return
+	# AT-2 — a closed road turns you back, and says which road and why. Checked
+	# BEFORE the clock moves: a journey you cannot make costs no hours.
+	var shut := GameState.travel_blocked(place)
+	if shut != "":
+		Sfx.ui("ui_deny")
+		_say_system(shut, "compass")
+		return
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	world["here"] = place
 	# The map remembers: fog burned away stays away.
@@ -2738,8 +2776,9 @@ func _travel_to(place: String) -> void:
 		"compass")
 	_repaint_scene(place)
 	_last_player_msg = "I travel to %s." % place
-	# The road is never guaranteed: 1-in-5 journeys meet something.
-	if randf() < 0.2:
+	# The road is never guaranteed — and how likely is now the ROAD's business:
+	# 1-in-5 on an open one, 3-in-5 on a road the story has called dangerous.
+	if randf() < GameState.travel_peril(place):
 		_stream(Composer.envelope("[I travel to %s — but something finds me on the road. Run a brief encounter (a threat, a stranger, or a wonder), then let me arrive.]" % place))
 	else:
 		_stream(Composer.envelope("[I travel to %s. Describe the journey briefly and my arrival — who is about, what I notice first.]" % place))

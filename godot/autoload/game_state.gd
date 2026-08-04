@@ -1251,6 +1251,108 @@ func region_place_count(region_name: String) -> int:
 ## Measured from where the party stands, on the chart's own percent scale, and
 ## bucketed through the same scope rings the GM builds with — so the number the
 ## clock spends and the number the engine validates come from one table.
+## ── Roads ────────────────────────────────────────────────────────────────────
+## AT-2. The chart used to infer its roads: a spanning tree over known places,
+## redrawn every frame. That is a picture of "these places are near each other",
+## which cannot be blocked, cannot be dangerous, and cannot change when the story
+## changes it. A named road can.
+##
+## Authored first, then the story's — same order and the same reason as places():
+## a GM cannot overwrite a shipped road, only add to the map.
+func _authored_roads() -> Array:
+	var built := Rules.world_roads(world_id())
+	if not built.is_empty():
+		return built
+	for w in global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == world_id():
+			return w.get("roads") if w.get("roads") is Array else []
+	return []
+
+
+## An unordered pair key: a road from A to B is the same road as B to A. Getting
+## this wrong would let the GM block one direction and leave the other open,
+## which is not a road, it is a turnstile.
+func _road_key(a: String, b: String) -> String:
+	var x := a.strip_edges().to_lower()
+	var y := b.strip_edges().to_lower()
+	return "%s%s" % [x, y] if x <= y else "%s%s" % [y, x]
+
+
+func roads() -> Array:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var made: Array = world.get("roads") if world.get("roads") is Array else []
+	var out: Array = []
+	var seen := {}
+	for src in [_authored_roads(), made]:
+		for r in src:
+			if not (r is Dictionary):
+				continue
+			var a := str(r.get("from", "")).strip_edges()
+			var b := str(r.get("to", "")).strip_edges()
+			if a == "" or b == "" or a.nocasecmp_to(b) == 0:
+				continue
+			var k := _road_key(a, b)
+			var st := str(r.get("state", Rules.ROAD_DEFAULT))
+			if not Rules.ROAD.has(st):
+				st = Rules.ROAD_DEFAULT
+			# A later entry UPDATES an earlier one rather than being dropped —
+			# that is how the story closes a shipped road for the winter.
+			if seen.has(k):
+				out[seen[k]]["state"] = st
+				continue
+			seen[k] = out.size()
+			out.append({"from": a, "to": b, "state": st, "name": str(r.get("name", ""))})
+	return out
+
+
+## The road joining two places, or {} if the map never named one.
+func road_between(a: String, b: String) -> Dictionary:
+	if a == "" or b == "":
+		return {}
+	var k := _road_key(a, b)
+	for r in roads():
+		if _road_key(str(r["from"]), str(r["to"])) == k:
+			return r
+	return {}
+
+
+## THE GM NAMES OR CHANGES A ROAD. Returns "" on success, else the refusal.
+## Both ends must already be on the chart — a road to nowhere is how the model
+## invents a place through the back door, bypassing add_place's veto entirely.
+func set_road(spec: Dictionary) -> String:
+	var a := str(spec.get("from", "")).strip_edges()
+	var b := str(spec.get("to", "")).strip_edges()
+	if a == "" or b == "":
+		return "A road needs both ends named."
+	if a.nocasecmp_to(b) == 0:
+		return "A road must join two different places."
+	var st := str(spec.get("state", Rules.ROAD_DEFAULT)).strip_edges().to_lower()
+	if not Rules.ROAD.has(st):
+		return "A road is %s." % ", ".join(Rules.road_states())
+	var known := {}
+	for p in places():
+		if p is Dictionary:
+			known[str(p.get("name", "")).to_lower()] = true
+	for end_ in [a, b]:
+		if not known.has(end_.to_lower()):
+			return "%s is not on the chart yet — put it there before joining a road to it." % end_
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var made: Array = world.get("roads") if world.get("roads") is Array else []
+	var k := _road_key(a, b)
+	for r in made:
+		if r is Dictionary and _road_key(str(r.get("from", "")), str(r.get("to", ""))) == k:
+			if str(r.get("state", "")) == st:
+				return "already"      # not worth a line; the world simply knew
+			r["state"] = st
+			world["roads"] = made
+			save_kind("world", world)
+			return ""
+	made.append({"from": a, "to": b, "state": st, "name": str(spec.get("name", ""))})
+	world["roads"] = made
+	save_kind("world", world)
+	return ""
+
+
 func travel_cost(place_name: String) -> int:
 	var from := Vector2(50, 50)
 	var to := Vector2(50, 50)
@@ -1277,7 +1379,33 @@ func travel_cost(place_name: String) -> int:
 		if gap < best_gap:
 			best_gap = gap
 			best = str(sc)
-	return maxi(1, int(Rules.SCOPE_TIME.get(best, 1)))
+	var hours := float(Rules.SCOPE_TIME.get(best, 1))
+	# AT-2 — a named road changes what the distance costs. A washed-out pass is
+	# further in hours than the map is in inches, which is the whole reason a
+	# road is worth naming.
+	var road := road_between(h, place_name)
+	if not road.is_empty():
+		hours *= float(Rules.road_rule(str(road["state"]))["cost"])
+	return maxi(1, int(round(hours)))
+
+
+## The chance this journey meets something, from the road rather than a constant.
+func travel_peril(place_name: String) -> float:
+	var road := road_between(here(), place_name)
+	if road.is_empty():
+		return float(Rules.ROAD[Rules.ROAD_DEFAULT]["peril"])
+	return float(Rules.road_rule(str(road["state"]))["peril"])
+
+
+## Why this journey cannot be made, or "" if it can. Only a road explicitly
+## named `blocked` refuses — see the note on Rules.ROAD.
+func travel_blocked(place_name: String) -> String:
+	var road := road_between(here(), place_name)
+	if road.is_empty() or str(road["state"]) != "blocked":
+		return ""
+	var nm := str(road.get("name", ""))
+	return "%s is closed — there is no way through to %s from here." % [
+		nm if nm != "" else "The road", place_name]
 
 
 ## THE GM CREATES A PLACE. Returns "" on success, or why it was refused.

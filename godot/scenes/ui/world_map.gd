@@ -234,12 +234,69 @@ func _draw() -> void:
 ## it always connects (never a stray island), and it changes as the player learns
 ## the land. A star from `here` to everywhere would be a lie about how they got
 ## there; nearest-neighbour alone leaves disconnected pairs.
+## AT-2 — NAMED ROADS, over the inferred web.
+##
+## The spanning tree below stays: it is the honest "these places are near each
+## other", and it is all most pairs will ever have. But an inferred edge cannot
+## be closed for the winter, and cannot be the reason a journey takes three days
+## instead of one. A named road can, so it is drawn heavier and in its own
+## state's colour, on top.
+##
+## Both ends must be KNOWN. A road to a place still under fog would otherwise
+## draw a line into blank paper and tell the player something they have not
+## earned — the same rule the pins already follow.
+func _draw_named_roads() -> void:
+	for r in GameState.roads():
+		var a := str(r.get("from", ""))
+		var b := str(r.get("to", ""))
+		if not (_known(a) and _known(b)):
+			continue
+		var pa := _pos_of_named(a)
+		var pb := _pos_of_named(b)
+		if pa == Vector2.INF or pb == Vector2.INF:
+			continue
+		var st := str(r.get("state", Rules.ROAD_DEFAULT))
+		var col := Ui.c(str(Rules.road_rule(st)["col"]))
+		if st == "blocked":
+			# A closed road is still a road — draw it, then strike it through, so
+			# the player can see the way they cannot take. Erasing it would read
+			# as "there was never a road here", which is a different fact.
+			_draw_dashed(pa, pb, Color(col, 0.55), 2.2)
+			var mid := (pa + pb) * 0.5
+			var n := (pb - pa).normalized().orthogonal() * 5.0
+			draw_line(mid - n, mid + n, Color(col, 0.9), 2.2, true)
+		else:
+			draw_line(pa, pb, Color(col, 0.75 if st == "dangerous" else 0.5), 2.4, true)
+
+
+## Where a place sits, by name — Vector2.INF if the chart does not carry it.
+func _pos_of_named(nm: String) -> Vector2:
+	for l in locations:
+		if l is Dictionary and str(l.get("name", "")).nocasecmp_to(nm) == 0:
+			return _pos_of(l)
+	return Vector2.INF
+
+
+func _draw_dashed(a: Vector2, b: Vector2, col: Color, w: float) -> void:
+	var span := a.distance_to(b)
+	if span <= 0.0:
+		return
+	var dir := (b - a) / span
+	var step := 7.0
+	var t := 0.0
+	while t < span:
+		var e: float = minf(t + 4.0, span)
+		draw_line(a + dir * t, a + dir * e, col, w, true)
+		t += step
+
+
 func _draw_roads() -> void:
 	var pts: Array[Vector2] = []
 	for l in locations:
 		if l is Dictionary and _known(str(l.get("name", ""))):
 			pts.append(_pos_of(l))
 	if pts.size() < 2:
+		_draw_named_roads()
 		return
 	var linked := [0]
 	var loose := range(1, pts.size())
@@ -260,6 +317,8 @@ func _draw_roads() -> void:
 		draw_line(pts[best_a], pts[best_b], Color(Ui.c("ink_soft"), 0.28), 1.6, true)
 		linked.append(best_b)
 		loose.erase(best_b)
+	# Named roads last, so they sit ON the web rather than under it.
+	_draw_named_roads()
 
 
 ## The key. Only the kinds THIS world actually uses — a legend listing entries
@@ -274,13 +333,25 @@ func _draw_legend(font: Font) -> void:
 		var k := str(l.get("kind", ""))
 		if k != "" and KIND_LABEL.has(k) and not kinds.has(k):
 			kinds.append(k)
-	if kinds.is_empty():
+	# Only the road states actually ON this chart, for the same reason as kinds:
+	# a key explaining a dashed red line the player has never seen teaches them
+	# that roads can close, in the most boring way available.
+	var road_states: Array[String] = []
+	for r in GameState.roads():
+		if not (_known(str(r.get("from", ""))) and _known(str(r.get("to", "")))):
+			continue
+		var st := str(r.get("state", Rules.ROAD_DEFAULT))
+		if st != "open" and not road_states.has(st):
+			road_states.append(st)
+	road_states.sort()
+	if kinds.is_empty() and road_states.is_empty():
 		return
 	kinds.sort()
 	var pad := 8.0
 	var row := 14.0
-	var w := 96.0
-	var h := pad * 2.0 + row * kinds.size()
+	var w := 112.0
+	var rows := kinds.size() + road_states.size()
+	var h := pad * 2.0 + row * float(rows)
 	var at := Vector2(12, size.y - h - 12)
 	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("night"), 0.62))
 	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("gold"), 0.28), false, 1.0)
@@ -289,5 +360,16 @@ func _draw_legend(font: Font) -> void:
 		var cy := at.y + pad + row * float(i) + row * 0.5
 		_draw_mark(Vector2(at.x + pad + 4.0, cy), kind_shape(k), Ui.c(kind_color(k)), 4.0)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy + 4.0), str(KIND_LABEL[k]),
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+	for j in road_states.size():
+		var st2: String = road_states[j]
+		var cy2 := at.y + pad + row * float(kinds.size() + j) + row * 0.5
+		var col2 := Ui.c(str(Rules.road_rule(st2)["col"]))
+		var x0 := at.x + pad
+		if st2 == "blocked":
+			_draw_dashed(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.0)
+		else:
+			draw_line(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.2, true)
+		draw_string(font, Vector2(at.x + pad + 14.0, cy2 + 4.0), str(Rules.road_rule(st2)["why"]),
 			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 2.0)

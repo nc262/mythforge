@@ -53,6 +53,13 @@ func world_regions(wid: String) -> Array:
 	return worlds_json.get("regions", {}).get(wid, [])
 
 
+## The named roads a SHIPPED world begins with. Empty for every world today —
+## the chart infers a web from proximity and that still works — but a road named
+## here is a road the story can close, and one a player can be turned back from.
+func world_roads(wid: String) -> Array:
+	return worlds_json.get("roads", {}).get(wid, [])
+
+
 ## The save-slot id for one tale in one world. Every caller used to read
 ## `story.slug` with "freeroam" as the fallback — but the built-in stories in
 ## worlds.json carry a title and NO slug, so every tale in a world collapsed
@@ -164,6 +171,35 @@ func _shelter_word(kind: String) -> String:
 		"ruin": return "inside a ruin that something else may still consider home"
 		"wilds": return "in the open wilds"
 	return "somewhere you do not know well"
+
+
+## ── Roads ────────────────────────────────────────────────────────────────────
+## What a named road DOES, so an edge on the chart is a rule and not an
+## illustration. `cost` multiplies the journey's hours; `peril` is the chance the
+## road meets you with something.
+##
+## The default when two places have no named road between them is `open` — 1.0
+## and the 0.20 the game already used. That is deliberate: roads MODIFY travel,
+## they never gate it. Requiring a road to move would let a GM that forgot to
+## build one strand the player in a room with no doors, and "the model forgot" is
+## not a failure mode the engine may have.
+##
+## `blocked` is the single exception, and it refuses out loud with a reason.
+const ROAD := {
+	"open":      {"cost": 1.0, "peril": 0.20, "col": "ink_soft",     "why": "open"},
+	"hard":      {"cost": 1.7, "peril": 0.30, "col": "ink_dim",      "why": "slow going"},
+	"dangerous": {"cost": 1.0, "peril": 0.60, "col": "ember",        "why": "dangerous"},
+	"blocked":   {"cost": 0.0, "peril": 0.00, "col": "danger",       "why": "impassable"},
+}
+const ROAD_DEFAULT := "open"
+
+
+func road_rule(state: String) -> Dictionary:
+	return ROAD.get(state, ROAD[ROAD_DEFAULT])
+
+
+func road_states() -> Array:
+	return ROAD.keys()
 
 
 const SMALL_NAME_HINT := "(?i)halfling|gnome|goblin|kobold|imp|sprite|fairy|pixie|homunculus"

@@ -52,6 +52,13 @@ places, fog, travel with distance cost, and a GM that can charter new places
 within a scope its level has earned — see [Backlog](Backlog.md) for what is
 still open there, and `Rules.SCOPE_LEVEL` for the gate.
 
+**Roads are named, and a name is a rule.** A road between two places on the
+chart can be `open`, `hard` (costs more hours), `dangerous` (three times as
+likely to meet you) or `blocked` (turns you back, and says which road). The GM
+closes and opens them with `[[road]]` as the story does. Roads only ever
+*modify* travel — never gate it — so a GM that forgets to build one cannot leave
+the player in a room with no doors; `Rules.ROAD` carries that reasoning.
+
 ## Teaching
 
 The forge ritual teaches hero-making. Four one-time hints teach what it cannot,

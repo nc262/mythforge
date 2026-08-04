@@ -935,6 +935,58 @@ The term for spell slots is "Echoes."
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
 
+	# ── AT-2: named roads ────────────────────────────────────────────────────
+	# A road is only worth naming if it CHANGES something, so every assertion
+	# here is about travel, not about storage.
+	GameState.state["world"] = {"here": "Alpha", "seen": ["Alpha", "Beta"], "roads": [],
+		"places": [{"name": "Alpha", "kind": "tavern", "x": 20, "y": 20},
+			{"name": "Beta", "kind": "ruin", "x": 60, "y": 60}]}
+	var open_cost := GameState.travel_cost("Beta")
+	assert(open_cost >= 1, "a journey is never free")
+	assert(is_equal_approx(GameState.travel_peril("Beta"), 0.20), "an unnamed way carries the old 1-in-5")
+	assert(GameState.travel_blocked("Beta") == "", "no road means no obstacle — roads modify travel, never gate it")
+
+	# Both ends must already exist, or [[road]] becomes a second way to create a
+	# place that skips add_place's veto.
+	assert(GameState.set_road({"from": "Alpha", "to": "Atlantis"}) != "", "a road to nowhere is refused")
+	assert(GameState.set_road({"from": "Alpha", "to": "Alpha"}) != "", "a road must join two different places")
+	assert(GameState.set_road({"from": "Alpha", "to": "Beta", "state": "nonsense"}) != "", "an unknown state is refused")
+
+	assert(GameState.set_road({"from": "Alpha", "to": "Beta", "state": "hard", "name": "the Weir Road"}) == "",
+		"the GM may name a road between two known places")
+	assert(GameState.travel_cost("Beta") > open_cost, "a hard road costs more hours than an open one")
+	assert(GameState.road_between("Beta", "Alpha").get("state") == "hard",
+		"a road is the same road from either end")
+
+	assert(GameState.set_road({"from": "Beta", "to": "Alpha", "state": "dangerous"}) == "",
+		"the story may spoil a road, naming its ends in either order")
+	assert(GameState.roads().size() == 1, "...and that updates the road rather than adding a second")
+	assert(GameState.travel_peril("Beta") > 0.5, "a dangerous road is far likelier to meet you")
+	assert(GameState.travel_blocked("Beta") == "", "dangerous is not impassable")
+
+	assert(GameState.set_road({"from": "Alpha", "to": "Beta", "state": "blocked"}) == "", "a road can close")
+	var shut_why := GameState.travel_blocked("Beta")
+	assert(shut_why != "" and shut_why.contains("Beta"), "a closed road turns you back, and says where to")
+	assert(GameState.set_road({"from": "Alpha", "to": "Beta", "state": "blocked"}) == "already",
+		"closing a closed road is not an event")
+	assert(GameState.set_road({"from": "Alpha", "to": "Beta", "state": "open"}) == "", "and a road can reopen")
+	assert(GameState.travel_blocked("Beta") == "", "...which lets the player through again")
+
+	# Wired, not merely defined — the same trap as the Atlas roads check.
+	var rsrc := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(rsrc.contains("GameState.travel_blocked("), "travel actually consults the road")
+	assert(rsrc.contains("GameState.travel_peril("), "the encounter roll actually consults the road")
+	assert(not rsrc.contains("randf() < 0.2"), "the hard-coded 1-in-5 is gone, not shadowed")
+	assert(rsrc.contains("_gm_makes_road("), "the [[road]] tag is handled")
+	var msrc2 := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+	var drew := false
+	for raw2 in msrc2.split("\n"):
+		if raw2.strip_edges() == "_draw_named_roads()":
+			drew = true
+	assert(drew, "the chart actually draws named roads")
+	assert(Composer.PROTOCOL.contains("[[road"), "the GM is told the road tag exists")
+	GameState.state.erase("world")
+
 	# ── The first-run tutorial ───────────────────────────────────────────────
 	# Fires once per player, survives a reset, and is actually WIRED.
 	GameState.coach_reset()

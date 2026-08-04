@@ -22,13 +22,13 @@ unarmed number.
 
 ## The Atlas
 
-The map has names, a legend with distinct marks, a compass, roads, fog, quest
-pull, click-to-travel and a painted chart. What follows would make it better;
-none of it is broken.
+The map has names, a legend with distinct marks, a compass, fog, quest pull,
+click-to-travel, a painted chart, and **named roads that change what travel
+costs** (AT-2, done 2026-08-04). What follows would make it better; none of it
+is broken.
 
 | # | Item | P | E |
 |---|---|---|---|
-| AT-2 | Roads are **inferred** (a spanning tree over known places), not authored. Real edges would let a road be blocked, dangerous, or seasonal | P4 | M |
 | AT-3 | No region zoom — the chart cannot go realm → city → street | P4 | L |
 | AT-4 | Chart art is generated from place **names**, so the painting and the pin positions are two independent inventions | P4 | L |
 
