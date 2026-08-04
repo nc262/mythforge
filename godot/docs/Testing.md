@@ -1,8 +1,9 @@
 # Testing
 
-Five headless harnesses. The first three are offline and deterministic; the last
-two drive the real model on the real GPU and are the only ones that can tell you
-an answer is *good* rather than merely well-shaped.
+Five headless harnesses over the game, plus one over the *published download*.
+The first three are offline and deterministic; the next two drive the real model
+on the real GPU and are the only ones that can tell you an answer is *good*
+rather than merely well-shaped.
 
 ```bash
 GODOT=".../Godot_v4.7-stable_win64_console.exe"
@@ -23,12 +24,38 @@ $GODOT --headless --path godot res://tests/bench_gm.tscn        # latency + repe
 | `ui_playthrough` | a scripted game through the real scenes: loot → equip → damage → combat → level-up → save | quality of the narration (there is none — replies are scripted) |
 | `local_stack` | the model actually answers, with schemas honoured and concurrent calls kept apart | timing under load |
 | `bench_gm` | turn latency and repetition across many turns | correctness of the rules underneath |
+| `clean-room` | that a **stranger** can fetch all 13 downloads a first run needs | that any of it runs — no GPU, no Vulkan, no Windows in the container |
 
 Image engine, when a harness needs art:
 
 ```bash
 pwsh scripts/start-image-sdcpp.ps1
 ```
+
+## The clean room
+
+```bash
+pwsh installer/clean-room/run.ps1              # the published release
+pwsh installer/clean-room/run.ps1 -Tag v1.0.0  # any tag
+```
+
+Docker, the stock PowerShell image, no Dockerfile. The container is the *point*,
+not a convenience: it has no GitHub credentials, no `gh`, no browser session and
+no cached tokens, so it fetches the release the way a stranger's machine will.
+Every one of these URLs works on the dev box even when the release is private —
+which is exactly the failure it exists to catch.
+
+It checks status, size floor, size **ceiling**, and the leading magic bytes,
+because a deleted asset or a typo'd name returns a 200 with an HTML error page
+that content-length alone happily calls a pass.
+
+**Why it exists.** On 2026-08-04 the repo's `latest` release was v1.0.0: a
+1525 MB pre-split exe and six world packages that predated the tile bake, ~220 MB
+lighter each. Every harness was green, the code was correct, and anyone following
+the README got a stale game with no terrain. The fault was in the *published
+artifacts*, which nothing in the repo builds or inspects. Run against v1.0.0 the
+clean room fails 7 of 13 — the ceiling catches the bundled exe, the floor catches
+all six tile-less worlds.
 
 ## What CI can honestly check
 

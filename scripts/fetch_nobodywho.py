@@ -35,9 +35,10 @@ def main() -> None:
         print("already present: %s (%.0f MB)" % (dll, os.path.getsize(dll) / 1048576))
         return
 
-    url = ("https://github.com/%s/releases/download/%s/%s-%s.zip"
-           % (REPO, args.version, "nobodywho-godot-" + args.version.replace("nobodywho-godot-", "nobodywho-godot-"), ""))
-    # The asset name repeats the tag: nobodywho-godot-<tag>.zip
+    # The asset name repeats the tag in full, so the tag appears twice:
+    #   .../download/nobodywho-godot-v9.5.0/nobodywho-godot-nobodywho-godot-v9.5.0.zip
+    # It looks like a bug and is not — installer/clean-room checks this exact URL
+    # anonymously, so if upstream ever renames it, that fails instead of a player.
     url = "https://github.com/%s/releases/download/%s/nobodywho-godot-%s.zip" % (REPO, args.version, args.version)
     print("downloading %s\n  (1.09 GB — every platform; we keep one file)" % url)
     try:

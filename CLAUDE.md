@@ -48,8 +48,8 @@ the game POSTs to it directly. See
 DISCOVER → PLAN → CHALLENGE → EXECUTE → VERIFY → REVIEW → IMPROVE.
 
 ## Verifying changes
-Five harnesses, run from the repo root. The first three are offline
-(`Api.test_mode`); the last two drive the real model.
+Five harnesses over the game, run from the repo root. The first three are
+offline (`Api.test_mode`); the last two drive the real model.
 
 ```
 <godot> --headless --path godot res://tests/self_check.tscn      # rules, prompts, parsers
@@ -63,6 +63,14 @@ Five harnesses, run from the repo root. The first three are offline
 *good*, not merely well-shaped. **Re-export after any `godot/**` change** or you
 are testing a stale exe, and copy it to the Desktop — that copy is the one that
 gets played.
+
+A sixth harness tests the **published download** rather than the game, in a
+container with no credentials — because none of the five can see a release whose
+*artifacts* are wrong. Run it before and after publishing:
+
+```
+pwsh installer/clean-room/run.ps1
+```
 
 Image engine: `pwsh scripts/start-image-sdcpp.ps1`; `curl :8189/v1/models`.
 
