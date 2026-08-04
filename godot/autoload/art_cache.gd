@@ -715,16 +715,50 @@ func ensure_battle_map(place: String) -> String:
 	return key
 
 
-## World-true chart: named after ITS OWN places and skinned to the family
-## ("map" for Everyday, "holo-map" for cyber…) — never a generic Earth map.
+## World-true chart: skinned to the family ("map" for Everyday, "holo-map" for
+## cyber…) — never a generic Earth map.
+##
+## AT-4 — THE PAINTING IS GROUND, NOT A MAP.
+##
+## This used to name up to six PLACES and ask for "landmarks drawn as small
+## painted vignettes, winding routes between them". The engine then drew its own
+## pins (Rules.place_position, deterministic from the name) and its own roads on
+## top — so the chart carried two independent inventions of where everything is,
+## and they never agreed. A painted tavern sat in the corner while the pin for
+## that same tavern sat somewhere else entirely.
+##
+## The fix is NOT to ask the model for a layout. Asking for a spatial
+## arrangement is strictly harder than asking for a silhouette, and the project
+## already knows how that ends — see KnownIssues #5, "the model can be asked for
+## a shape it will not draw". A prompt naming coordinates would fail quietly and
+## look like it had worked.
+##
+## So the painting stops making claims it cannot keep. It paints LAND — terrain,
+## water, the lie of the country — and the engine's pins and roads become the
+## only statement about where anything is. Same reasoning as the missing scale
+## bar: a chart that draws a position it cannot honour is a drawn lie.
+##
+## What it CAN take from the world honestly is its regions, because a region is
+## an area and an area can be painted. A place is a point, and the points are
+## ours.
 func ensure_world_chart(world_id2: String, world_name: String, locations: Array = []) -> String:
 	var key := "chart-" + world_id2.validate_filename()
-	var nms: Array[String] = []
-	for l in locations:
-		if l is Dictionary and str(l.get("name", "")) != "" and nms.size() < 6:
-			nms.append(str(l["name"]))
-	var places := (", its landmarks: " + ", ".join(nms)) if not nms.is_empty() else ""
+	var lands: Array[String] = []
+	for r in Rules.world_regions(world_id2):
+		if r is Dictionary and str(r.get("name", "")) != "" and lands.size() < 4:
+			lands.append(str(r["name"]))
+	# A forged world may have no gazetteer; its locations still imply terrain
+	# through their kind, which is a fact about ground rather than position.
+	if lands.is_empty():
+		var kinds := {}
+		for l in locations:
+			if l is Dictionary:
+				var k := str(l.get("kind", ""))
+				if k in ["wilds", "ruin", "settlement"] and not kinds.has(k):
+					kinds[k] = true
+		lands.assign(kinds.keys())
+	var country := (", country of " + ", ".join(lands)) if not lands.is_empty() else ""
 	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
-	ensure(key, "illustrated %s of the local region of %s%s, %s style, landmarks drawn as small painted vignettes, winding routes between them, cartography illustration, no text labels" % [
-		str(flavor.get("map", "chart")), world_name, places, str(flavor.get("world", "high fantasy"))])
+	ensure(key, "illustrated %s of the lands around %s%s, %s style, overhead view of open country — terrain, water, forest, hills and coast. empty wilderness, no buildings, no settlements, no landmarks, no roads or routes, no icons, no text labels, no border or frame" % [
+		str(flavor.get("map", "chart")), world_name, country, str(flavor.get("world", "high fantasy"))])
 	return key

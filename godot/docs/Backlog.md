@@ -30,10 +30,16 @@ is broken.
 | # | Item | P | E |
 |---|---|---|---|
 | AT-3 | No region zoom — the chart cannot go realm → city → street | P4 | L |
-| AT-4 | Chart art is generated from place **names**, so the painting and the pin positions are two independent inventions | P4 | L |
 
 **No scale bar, deliberately.** Locations are percentages of a painted chart,
 not positions on ground. A scale would be a drawn lie.
+
+**The chart plate is ground, not a map** (AT-4, done 2026-08-04). It paints
+terrain, water and coast and nothing that claims a position — so the engine's
+pins and named roads are the only statement about where anything is, and the
+paper cannot disagree with them. Asking the model for a *layout* was never the
+answer: a spatial arrangement is strictly harder than a silhouette, and
+[KnownIssues](KnownIssues.md) #5 already records how that ends.
 
 ## Distribution
 

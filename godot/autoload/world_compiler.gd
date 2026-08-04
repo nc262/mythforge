@@ -136,23 +136,39 @@ func _ensure_unpacked(world_id: String) -> void:
 	_unpacked[world_id] = true          # set first: _unpack_baked re-enters world_dir
 	if not _zips.has(world_id):
 		return
-	if FileAccess.file_exists("user://worlds/%s/world.json" % world_id.validate_filename()):
-		return   # already on disk (or the player recompiled it)
 	_unpack_baked(str(_zips[world_id]), world_id)
 
 
+## Unpack whatever is not already on disk.
+##
+## This used to return early the moment world.json existed, which meant a world
+## was extracted exactly ONCE, ever. A package that later GAINS a file — as every
+## one of them did when the Atlas got its own chart plate — was invisible to the
+## only people who matter: those who had already played it. They would download
+## the new ~500 MB zip and see nothing change, because the unpack never looked.
+##
+## Filling in only the missing files fixes the whole class rather than the one
+## symptom, costs one existence check per member on the first touch of a world
+## per session, and never overwrites — so a player who recompiled a world keeps
+## their own version of every file they have.
 func _unpack_baked(zip_path: String, id: String) -> void:
 	var zr := ZIPReader.new()
 	if zr.open(zip_path) != OK:
 		return
+	var wrote := 0
 	for inner in zr.get_files():
 		var out := "%s/%s" % [world_dir(id), inner]
+		if FileAccess.file_exists(out):
+			continue
 		DirAccess.make_dir_recursive_absolute(out.get_base_dir())
 		var fa := FileAccess.open(out, FileAccess.WRITE)
 		if fa != null:
 			fa.store_buffer(zr.read_file(inner))
 			fa.close()
+			wrote += 1
 	zr.close()
+	if wrote > 0:
+		print("MF-WORLDS unpacked %d new file(s) for %s" % [wrote, id])
 
 
 # ── Storage ────────────────────────────────────────────────────────────────
@@ -398,6 +414,27 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 				BIOMES[i], name, anchor],
 			{"profile": "scene", "lane": Art.Lane.IDLE})
 	stage_done.emit("biomes", true)
+
+	# AT-4 — THE ATLAS GETS ITS OWN PAPER, and it is ground rather than a map.
+	#
+	# The Atlas had no plate of its own, so chart_art() fell through to the
+	# biome-0 TACTICAL plate: a battle map, painted with buildings and tracks
+	# because a battlefield wants those. The engine then drew its pins and its
+	# roads on top, and the painted buildings sat wherever the model had put
+	# them — a second, contradictory claim about where the world is.
+	#
+	# This plate is deliberately EMPTY country: no buildings, no roads, no
+	# labels. The pins and the named roads are then the only statement about
+	# position, and they cannot disagree with the paper. Same reasoning as the
+	# absent scale bar — a chart that draws a position it cannot honour is a
+	# drawn lie. See Art.ensure_world_chart for the runtime twin of this prompt.
+	stage_started.emit("chart", "Drawing the paper…")
+	await _await_art("chart-" + world_id.validate_filename(),
+		"illustrated map of the lands around %s, %s. overhead view of open country — terrain, water, forest, hills and coast. empty wilderness, no buildings, no settlements, no landmarks, no roads or routes, no icons, no text labels, no border or frame" % [
+			name, anchor],
+		{"profile": "scene", "lane": Art.Lane.IDLE},
+		"art/chart.png")
+	stage_done.emit("chart", true)
 
 
 ## S8 (art half) — the ARMORY. One icon per (form × material), painted in

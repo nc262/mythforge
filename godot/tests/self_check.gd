@@ -935,6 +935,27 @@ The term for spell slots is "Echoes."
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
 
+	# ── AT-4: every shipped package carries its own chart plate ──────────────
+	# Without art/chart.png the Atlas falls through to the biome-0 TACTICAL map,
+	# which is painted with buildings because a battlefield wants them — and then
+	# the pins disagree with the paper. Skipped on a fresh clone, which has no
+	# baked/ at all (it is generated output, and gitignored).
+	var bdir := DirAccess.open("res://baked")
+	if bdir != null:
+		var checked_pkgs := 0
+		for zf in bdir.get_files():
+			if not zf.ends_with(".zip"):
+				continue
+			var zrr := ZIPReader.new()
+			if zrr.open("res://baked/" + zf) != OK:
+				continue
+			assert(zrr.file_exists("art/chart.png"),
+				"%s ships an Atlas plate of its own (else the chart is a battle map)" % zf)
+			zrr.close()
+			checked_pkgs += 1
+		if checked_pkgs > 0:
+			print("  chart plates verified in %d package(s)" % checked_pkgs)
+
 	# ── AT-2: named roads ────────────────────────────────────────────────────
 	# A road is only worth naming if it CHANGES something, so every assertion
 	# here is about travel, not about storage.
