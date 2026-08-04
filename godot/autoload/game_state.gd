@@ -20,6 +20,8 @@ const DEFAULT_SHEET := {
 	"look": "", "brush": "painted",
 }
 const TIMES := ["Dawn", "Morning", "Midday", "Afternoon", "Dusk", "Nightfall", "Deep Night"]
+## Eight hours of sleep, in a day of seven steps. See long_rest().
+const LONG_REST_STEPS := 3
 const WEATHERS := {
 	"embervale": [["☀️", "clear skies"], ["🌤", "drifting clouds"], ["🌧", "soft valley rain"], ["🌫", "low mist"], ["💨", "cold wind off the hills"], ["⛈", "a brewing storm"]],
 	"neonspire": [["🌧", "steady rain"], ["🌧", "acid drizzle"], ["🌫", "smog haze"], ["⛈", "an electric storm"], ["🌤", "a rare dry spell"]],
@@ -31,6 +33,17 @@ signal leveled_up(from_level: int, to_level: int)
 ## The light or the weather changed enough that the room should look different.
 ## Carries the new mood bucket (see scene_mood).
 signal mood_changed(mood: String)
+## PS-5 — a NEW DAY dawned. The engine owns the clock, so the engine says so.
+##
+## The day divider was printed only by the `[[time]]` TAG handler, which means it
+## appeared when the GM remembered to emit one. Rests advance time inside
+## GameState and printed nothing, so a player who slept saw the day silently
+## change — and the reported "divider on the first long rest only" is exactly
+## what that looks like: the GM tagged time once and then stopped bothering.
+##
+## Every path that moves the clock goes through advance_time(), so this fires
+## from all of them for free: rests, travel, tags, the world tick.
+signal day_changed(day: int, time_of_day: String)
 
 var character: Dictionary = {}
 var state: Dictionary = {}
@@ -1021,6 +1034,9 @@ func advance_time(steps := 1) -> Dictionary:
 	var mood_now := scene_mood()
 	if mood_now != mood_before:
 		mood_changed.emit(mood_now)
+	if int(c.get("day", 1)) != prev_day:
+		day_changed.emit(int(c["day"]),
+			TIMES[clampi(int(c.get("ti", 0)), 0, TIMES.size() - 1)])
 	# Timed sheet conditions wane as in-world time passes.
 	var s := sheet()
 	var conds: Array = s.get("conditions", [])
@@ -1387,10 +1403,21 @@ func long_rest() -> Dictionary:
 	set_sheet(s)
 	_recharge_features("long")
 	var c := clock()
-	var steps := TIMES.size() if int(c.get("ti", 0)) == 0 else TIMES.size() - int(c.get("ti", 0))
-	advance_time(steps)
+	# PS-4 — A LONG REST IS EIGHT HOURS, NOT "UNTIL DAWN".
+	#
+	# This advanced to the next Dawn from wherever you were, so a rest begun at
+	# Midday burned the entire afternoon, evening and night and handed back a
+	# fresh day. There was no way to rest and keep the day you were having —
+	# which also meant every rest reset the clock to the same hour, so time of
+	# day stopped meaning anything across a campaign.
+	#
+	# Seven steps make a day here, so three is about eight hours. Rest at
+	# Midday and you wake at Nightfall with the day still yours; rest at Dusk
+	# and you wake at Dawn as before, because that is where three steps land.
+	advance_time(LONG_REST_STEPS)
+	var woke: String = TIMES[clampi(int(clock().get("ti", 0)), 0, TIMES.size() - 1)]
 	var note := ("*You make camp — but something finds you in the night. You wake half-rested at %d/%d HP.*" % [int(s["hp"]), int(s["hpMax"])]) if interrupted \
-		else ("*You make camp and sleep. You wake at dawn, fully restored — %d/%d HP.*" % [int(s["hpMax"]), int(s["hpMax"])])
+		else ("*You make camp and sleep. You wake at %s, fully restored — %d/%d HP.*" % [woke.to_lower(), int(s["hpMax"]), int(s["hpMax"])])
 	var gm := ("[My rest is interrupted in the night — I slept %s, so run a short encounter that fits that ground.%s I woke at %d/%d HP, only half-rested. Open on the moment I startle awake.]" % [str(risk["shelter"]), here_pin(), int(s["hp"]), int(s["hpMax"])]) if interrupted \
-		else ("[I take a long rest through the night, %s, and wake at dawn fully healed.%s Narrate the new morning where I am, then continue.]" % [str(risk["shelter"]), here_pin()])
+		else ("[I take a long rest, %s, and wake at %s fully healed.%s Narrate the waking and what has changed while I slept, then continue.]" % [str(risk["shelter"]), woke.to_lower(), here_pin()])
 	return {"note": note, "gm": gm}

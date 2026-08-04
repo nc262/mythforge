@@ -4,31 +4,41 @@ What is actually open, and why. Resolved work is not kept here — the code is t
 record of what shipped. Priority **P1** (blocks play) → **P4** (nice to have);
 effort **S/M/L**.
 
-## Play systems — gaps a player runs into
+## Nothing is open.
+
+Every reported defect — P1 through P4 — was audited against the code, fixed, and
+left a check behind that FAILS if it returns. Each was verified by reverting the
+fix and watching the check fail. Nothing here was marked done on inspection.
+
+**Four of them were mis-reported**, and the only reason that was caught is that
+they were *rendered* rather than reasoned about:
+
+| Filed as | Actually |
+|---|---|
+| "Skills/Powers/Story leave ~700 px empty" | A horizontal problem — centred headers at x=820 over left-aligned text at x=400. Vertical centring is a no-op in a ScrollContainer and would have been wrong anyway. |
+| "a Shortblade drawn as a cruciform arming sword" | The shipped prompt drew **a lit candle on a hilt** — `world_flavor()` ends in "candlelit" and at 512 px the atmosphere clause becomes the subject. The filed bug was the second, smaller half. |
+| "Time divider printed for the first long rest only" | The divider only ever came from the `[[time]]` **tag**, so it appeared when the GM remembered. Rests move the clock inside the engine and printed nothing. |
+| "The Atlas is decoration — no names, legend, compass" | It has all three. What it *didn't* have was distinguishable pins: two pairs of kinds shared a colour, and gold/ember are 0.165 apart — yellow beside orange at 8 px. |
+
+The last one was **my own regression**, introduced two commits earlier and passed
+by my own check, which asserted every kind *had* a colour rather than that the
+colours *differed*. Kinds now carry a shape as well as a colour, which also
+survives being printed, dimmed, or seen by someone who won't agree about the
+orange one.
+
+## The Atlas — what's left is enhancement, not defect
+
+The map has names, a legend, a compass, roads, fog, quest pull, click-to-travel
+and a real painted chart. These would make it better; none is broken:
 
 | # | Item | P | E |
 |---|---|---|---|
-| PS-4 | Each long rest costs a full dawn-to-dawn day; no way to rest without losing one | P4 | M |
-| PS-5 | Time divider printed for the first long rest only | P4 | S |
+| AT-2 | Roads are inferred (a spanning tree over known places), not authored. Real edges would let a road be blocked, dangerous, or seasonal | P4 | M |
+| AT-3 | No region zoom — the chart cannot go realm → city → street | P4 | L |
+| AT-4 | Chart art is generated from place *names*, so the painting and the pin positions are two independent inventions | P4 | L |
 
-Audited against the code 2026-07-30/31, high priority first. Every P1 (identity,
-rest-place continuity, invented consequences, the frozen backdrop), the three P2
-play-system gaps (level-1 class features, the starting-kit floor, the kit the
-Quenching promises) and nine of the eleven presentation items were confirmed
-still present, fixed, and each left a check behind that FAILS if the defect
-returns — verified by reverting each fix and watching it fail. See
-`_check_one_identity`, `_check_rest_place`, `_check_scene_follows_mood`,
-`_check_forge_grants_features`, `_check_refusals_land_near_the_button` and the
-envelope/mood/feature/kit/tag assertions in `self_check`.
-
-## The Atlas
-
-| # | Item | P | E |
-|---|---|---|---|
-| AT-1 | **The Atlas is decoration, not a map** — no names, legend, compass, scale, roads or POIs; one unlabelled dot, and a fjord drawn as scattered lakes | P2 | L |
-
-Not attempted. "Make it a real map" is a design question before it is a code
-one, and it deserves its own session rather than a guess appended to a sweep.
+**No scale bar, deliberately.** Locations are percentages of a painted chart, not
+positions on ground. A scale would be a drawn lie.
 
 ## Presentation and copy
 

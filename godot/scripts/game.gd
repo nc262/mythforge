@@ -51,6 +51,8 @@ func _ready() -> void:
 	# ever repainted on a [[scene]] tag, so a player who did not MOVE never saw
 	# the world change. GameState fires this only when the look actually shifts.
 	GameState.mood_changed.connect(_on_mood_changed)
+	# PS-5 — the day divider, from the engine that actually moved the clock.
+	GameState.day_changed.connect(_on_day_changed)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
 	_build_suggestions()   # R6 PLAY-04 — verbs above the box, before the box is empty
@@ -1218,9 +1220,15 @@ func _apply_world_tags(tags: Array) -> void:
 			"relate":
 				GameState.relate(str(a.get("name", "")), int(str(a.get("bond", a.get("delta", "0"))).replace("+", "")), str(a.get("note", "")))
 			"time":
+				# The divider is no longer printed here: advance_time() emits
+				# day_changed and _on_day_changed draws it, so a rest and a
+				# travel get the same line this tag used to get alone. Time that
+				# passes WITHIN a day still says so, because that is news too.
+				var before_day := int(GameState.clock().get("day", 1))
 				GameState.advance_time(maxi(1, int(a.get("advance", 1))))
 				var c: Dictionary = GameState.clock()
-				_say_system("%s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])], "hourglass")
+				if int(c.get("day", 1)) == before_day:
+					_say_system("%s, day %d" % [GameState.TIMES[int(c["ti"])], int(c["day"])], "hourglass")
 			"xp":
 				var r: Dictionary = GameState.award_xp(int(str(a.get("delta", a.get("amount", "0"))).replace("+", "")), str(a.get("reason", "")))
 				if str(r["note"]) != "":
@@ -2566,6 +2574,12 @@ func _open_world_map() -> void:
 	add_child(dlg)
 	dlg.popup_centered()
 	Ui.ritual_open(dlg)
+
+
+## A new day. Drawn once, by whoever moved the clock — never by the GM
+## remembering to tag it.
+func _on_day_changed(day: int, time_of_day: String) -> void:
+	_say_system("%s — day %d" % [time_of_day, day], "hourglass")
 
 
 ## The light or the weather turned. Repaint where we already are — no tag, no

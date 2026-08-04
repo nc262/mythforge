@@ -21,8 +21,53 @@ var _hover := -1
 var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog §3)
 var _phase := 0.0
 
-const KIND_COLOR := {"tavern": "gold", "shop": "gold_soft", "landmark": "amethyst",
-	"wilds": "danger", "home": "ink_soft", "settlement": "gold", "ruin": "amethyst"}
+## SEVEN KINDS, TOLD APART BY COLOUR **AND** SHAPE.
+##
+## This shipped with `tavern` and `settlement` both gold and `landmark` and
+## `ruin` both amethyst — pairs the legend listed twice in one colour, which is
+## worse than no legend because it looks like information. The check that let it
+## through asserted every kind HAD a colour, not that the colours DIFFERED.
+##
+## Measuring them then showed the palette simply does not hold seven separable
+## hues: gold and ember land 0.165 apart, which is yellow beside orange at 8 px.
+## Rather than force seven colours nobody can name, each kind carries a MARK as
+## well — and a shape survives being printed, dimmed, or seen by the ~8% of men
+## who will not agree with us about the orange one.
+const KIND_MARK := {
+	"tavern":     {"col": "gold",          "shape": "dot"},      # the hearth
+	"shop":       {"col": "ember",         "shape": "ring"},     # trade
+	"settlement": {"col": "ink",           "shape": "square"},   # walls and numbers
+	"landmark":   {"col": "amethyst",      "shape": "diamond"},  # the notable thing
+	"ruin":       {"col": "amethyst_deep", "shape": "diamond"},  # what is left of one
+	"wilds":      {"col": "danger",        "shape": "dot"},      # the road with teeth
+	"home":       {"col": "ink_dim",       "shape": "square"},   # where you are welcome
+}
+
+
+func kind_color(kind: String) -> String:
+	var m = KIND_MARK.get(kind)
+	return str(m["col"]) if m is Dictionary else "ink_soft"
+
+
+func kind_shape(kind: String) -> String:
+	var m = KIND_MARK.get(kind)
+	return str(m["shape"]) if m is Dictionary else "dot"
+
+
+## One marker, drawn the same on the chart and in the legend — so the key is
+## literally a picture of the thing it explains.
+func _draw_mark(at: Vector2, shape: String, col: Color, r: float) -> void:
+	match shape:
+		"ring":
+			draw_arc(at, r, 0, TAU, 20, col, maxf(1.5, r * 0.42), true)
+		"square":
+			draw_rect(Rect2(at - Vector2(r, r) * 0.86, Vector2(r, r) * 1.72), col)
+		"diamond":
+			draw_colored_polygon(PackedVector2Array([
+				at + Vector2(0, -r * 1.2), at + Vector2(r * 1.1, 0),
+				at + Vector2(0, r * 1.2), at + Vector2(-r * 1.1, 0)]), col)
+		_:
+			draw_circle(at, r, col)
 
 ## AT-1 — WHAT THE COLOURS MEAN.
 ##
@@ -136,7 +181,8 @@ func _draw() -> void:
 			var qs := font.get_string_size(q, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
 			draw_string(font, p + Vector2(-qs.x / 2.0, -10), q, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(Ui.c("ink_dim"), 0.9))
 			continue
-		var col: Color = Ui.c(KIND_COLOR.get(str(l.get("kind", "")), "ink_soft"))
+		var kind_s := str(l.get("kind", ""))
+		var col: Color = Ui.c(kind_color(kind_s))
 		var pulse := (0.5 + 0.5 * sin(_phase * 2.2)) if not Ui.reduce_motion else 0.5
 		# Quest pull: the destination beats gold on the paper.
 		if _questward(nm) and not is_here:
@@ -146,7 +192,7 @@ func _draw() -> void:
 			draw_string(font, p + Vector2(-ss.x / 2.0, -16), star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(Ui.c("gold"), 0.8 + 0.2 * pulse))
 		# The lamp of a known place.
 		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(20, 20), Vector2(40, 40)), false, Color(col, 0.22))
-		draw_circle(p, 7.0 if i == _hover else 5.0, Color(col, 0.95))
+		_draw_mark(p, kind_shape(kind_s), Color(col, 0.95), 7.0 if i == _hover else 5.0)
 		draw_arc(p, 9.0, 0, TAU, 24, Color(col, 0.5), 1.5)
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
@@ -241,7 +287,7 @@ func _draw_legend(font: Font) -> void:
 	for i in kinds.size():
 		var k: String = kinds[i]
 		var cy := at.y + pad + row * float(i) + row * 0.5
-		draw_circle(Vector2(at.x + pad + 4.0, cy), 4.0, Ui.c(KIND_COLOR.get(k, "ink_soft")))
+		_draw_mark(Vector2(at.x + pad + 4.0, cy), kind_shape(k), Ui.c(kind_color(k)), 4.0)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy + 4.0), str(KIND_LABEL[k]),
 			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 2.0)

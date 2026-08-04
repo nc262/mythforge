@@ -391,7 +391,38 @@ func _check_rest_place() -> void:
 		"rest: an hour's pause is not a journey either — the short rest lost the place")
 	GameState.character = keep_char
 	GameState.state = keep_state
-	print("  rest: risk follows the ground, and the place rides the instruction")
+	# PS-4 — a long rest is eight hours, not "until dawn". It advanced to the
+	# next Dawn from wherever you were, so resting at Midday burned the whole
+	# day and handed back a fresh one; there was no way to rest and keep the day.
+	GameState.state["clock"] = {"day": 3, "ti": 2, "wx": {"ico": "*", "name": "clear skies"}}
+	GameState.state["sheet"]["hp"] = 1
+	GameState.long_rest()
+	var after: Dictionary = GameState.clock()
+	_ck(int(after["day"]) == 3,
+		"rest: a midday rest still burned the whole day (day %d, expected 3) — PS-4" % int(after["day"]))
+	_ck(int(after["ti"]) == 5, "rest: eight hours from Midday should land at Nightfall, got %s" % GameState.TIMES[int(after["ti"])])
+	# ...and one begun late still rolls into the next day, which is correct.
+	GameState.state["clock"] = {"day": 3, "ti": 5, "wx": {"ico": "*", "name": "clear skies"}}
+	GameState.state["sheet"]["hp"] = 1
+	GameState.long_rest()
+	_ck(int(GameState.clock()["day"]) == 4, "rest: a rest begun at Nightfall should reach the next day")
+
+	# PS-5 — the DAY DIVIDER comes from the engine that moved the clock, not
+	# from the GM remembering to emit [[time]]. Rests advance time inside
+	# GameState and printed nothing, which is what "divider on the first long
+	# rest only" looks like from the player's chair.
+	var days: Array[int] = []
+	var probe := func(d: int, _t: String): days.append(d)
+	GameState.day_changed.connect(probe)
+	GameState.state["clock"] = {"day": 7, "ti": 6, "wx": {"ico": "*", "name": "clear skies"}}
+	GameState.advance_time(2)                       # rolls past Deep Night
+	GameState.state["clock"] = {"day": 8, "ti": 1, "wx": {"ico": "*", "name": "clear skies"}}
+	GameState.advance_time(1)                       # within a day — no new day
+	GameState.day_changed.disconnect(probe)
+	_ck(days.size() == 1, "rest: day_changed fired %d times for one rollover (PS-5)" % days.size())
+	_ck(days.size() > 0 and days[0] == 8, "rest: day_changed reported the wrong day")
+	print("  rest: risk follows the ground, the place rides the instruction,")
+	print("        eight hours is eight hours, and the engine announces the day")
 	_check_scene_follows_mood()
 
 
@@ -537,6 +568,35 @@ func _check_refusals_land_near_the_button() -> void:
 		glyphs[str(d["glyph"])] = true
 		_ck(MythIcon.NAMES.has(str(d["glyph"])),
 			"glyph: Difficulty card '%s' names an icon the library does not draw" % str(d["title"]))
+	# AT-1 — the legend's colours must be TELLABLE APART, not merely present.
+	# Two kinds sharing a colour is worse than no legend: it looks like
+	# information. The first version of this check asked whether every kind had
+	# a colour, which two duplicated pairs passed without complaint.
+	# Every pair of kinds must differ by COLOUR or by SHAPE. The palette does not
+	# hold seven separable hues — gold and ember land 0.165 apart, yellow beside
+	# orange at 8 px — so the shape carries what the colour cannot, and it
+	# survives being printed, dimmed, or seen by someone who will not agree with
+	# us about the orange one.
+	var Map2 = load("res://scenes/ui/world_map.gd")
+	var probe_map = Map2.new()
+	var kinds_seen: Array[String] = []
+	for k in Map2.KIND_MARK:
+		kinds_seen.append(str(k))
+	for i in kinds_seen.size():
+		for j in range(i + 1, kinds_seen.size()):
+			var ka: String = kinds_seen[i]
+			var kb: String = kinds_seen[j]
+			var ca: Color = Ui.c(probe_map.kind_color(ka))
+			var cb: Color = Ui.c(probe_map.kind_color(kb))
+			var dist: float = absf(ca.r - cb.r) + absf(ca.g - cb.g) + absf(ca.b - cb.b)
+			var same_shape: bool = probe_map.kind_shape(ka) == probe_map.kind_shape(kb)
+			_ck(dist > 0.18 or not same_shape,
+				"atlas: '%s' and '%s' share a shape AND a colour (%.3f apart) — the legend lies" % [
+					ka, kb, dist])
+			# Sharing a shape is only allowed if the colours are genuinely apart.
+			if same_shape:
+				_ck(dist > 0.18, "atlas: '%s' and '%s' are the same mark (%.3f apart)" % [ka, kb, dist])
+	probe_map.free()
 	_ck(glyphs.size() == advf.DIFFICULTIES.size(),
 		"glyph: %d Difficulty cards share %d glyph(s) — the art says nothing (UI-9)" % [
 			advf.DIFFICULTIES.size(), glyphs.size()])
@@ -578,11 +638,11 @@ func _check_atlas_reads_as_a_map() -> void:
 			if l is Dictionary and str(l.get("kind", "")) != "":
 				used[str(l["kind"])] = true
 	for k in used:
-		_ck(Map.KIND_COLOR.has(k), "atlas: location kind '%s' has no pin colour" % k)
+		_ck(Map.KIND_MARK.has(k), "atlas: location kind '%s' has no pin mark" % k)
 		_ck(Map.KIND_LABEL.has(k), "atlas: location kind '%s' has no legend entry — the key cannot explain the paper (AT-1)" % k)
 	# ...and nothing in the legend that the pins do not use.
 	for k in Map.KIND_LABEL:
-		_ck(Map.KIND_COLOR.has(str(k)), "atlas: legend names '%s' but no pin is drawn that colour" % str(k))
+		_ck(Map.KIND_MARK.has(str(k)), "atlas: legend names '%s' but no pin is drawn for it" % str(k))
 	var src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
 	_ck(src.find("func _draw_legend(") >= 0, "atlas: no legend is drawn (AT-1)")
 	_ck(src.find("func _draw_roads(") >= 0, "atlas: no road network is drawn (AT-1)")
