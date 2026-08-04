@@ -42,6 +42,12 @@ Download **`Mythforge-Setup.exe`** from the
 downloads the game, the models and the art engine for your machine — budget a
 one-time ~10 GB and a coffee. After that it opens straight into the Hall.
 
+> **Windows will warn you, and it is right to.** The installer is not
+> code-signed — a certificate costs a few hundred dollars a year, which this
+> project does not have. SmartScreen shows *"Windows protected your PC"*; click
+> **More info → Run anyway**. If that trade is not one you want to make, build
+> from source below — it is the same game, and you can read every line first.
+
 Everything fetched comes from official sources: HuggingFace for the models,
 GitHub for stable-diffusion.cpp and the NobodyWho extension.
 

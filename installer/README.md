@@ -61,15 +61,16 @@ NobodyWho extension — so those two files are the only ones you host.
 
 ### The baked worlds are release assets too, not git
 
-`godot/baked/*.zip` (~1.4 GB, six worlds) is **gitignored on purpose**. The exe
-bundles them at export time, so players get them inside `Mythforge.exe` and a
-clone never needs them. Rebuild locally with `tests/bake_worlds.tscn` +
-`scripts/bake_zip.py` (see [AssetBake.md](../godot/docs/AssetBake.md)), or attach
-them to the release if you want them downloadable on their own.
+`godot/baked/*.zip` (~2.9 GB, six worlds) is **gitignored on purpose** — it is
+generated output, and it is larger than the repo. Each zip is published as its
+own release asset and `bootstrap.ps1` fetches all six into `baked/` beside the
+exe. Rebuild locally with `tests/bake_worlds.tscn` + `scripts/bake_zip.py` (see
+[AssetBake.md](../godot/docs/AssetBake.md)).
 
-**Consequence to know:** a fresh clone has no `godot/baked/`, so an export from
-it produces an exe with **no pre-baked worlds** until you either bake them or
-drop the release zips into `godot/baked/`.
+**Consequence to know:** a fresh clone has no `godot/baked/`, so the harnesses
+and the editor see zero worlds until you bake them or drop the release zips into
+`godot/baked/`. The exported exe no longer bundles them either way — that is the
+whole point of the split — so `--mf-worlds` is the check that matters.
 
 ## What is verified, and what is not
 
@@ -86,8 +87,14 @@ Verified on the dev machine (AMD, Vulkan):
 - An NVIDIA card. Both engines are Vulkan, so there is no vendor branch left to
   get wrong — but "should work" is not "was run".
 - Compiling the `.iss` — needs Inno Setup 6 installed.
-- Windows SmartScreen: an unsigned installer shows a warning. Code-sign
-  `Mythforge-Setup.exe`, or document the "More info → Run anyway" click.
+
+**Decided, not open:** the installer is shipped **unsigned**. An OV certificate
+is a few hundred dollars a year and this project has no revenue, so SmartScreen's
+*"Windows protected your PC"* is documented rather than removed — the top-level
+[README](../README.md#install--play) tells a player to click **More info → Run
+anyway**, and says why. A self-signed certificate is not an option: it does not
+raise SmartScreen reputation, so it adds a build step and changes nothing a
+player sees.
 
 If the art engine does not come up on a given machine, the game is still fully
 playable: the shipped worlds carry their art pre-baked.

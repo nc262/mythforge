@@ -701,7 +701,10 @@ func check_mod(sheet: Dictionary, check: Dictionary) -> int:
 	return mod
 
 
-func attack_mod(sheet: Dictionary, inv: Dictionary = {}) -> int:
+# `inv` is required on purpose. It used to default to {}, which meant a caller
+# who forgot it got the unarmed number back with no error — the weapon bonus
+# just quietly went missing. Pass {} explicitly to mean "no gear".
+func attack_mod(sheet: Dictionary, inv: Dictionary) -> int:
 	var abilities: Dictionary = sheet.get("abilities", {})
 	var s := ability_mod(int(abilities.get("STR", 10)))
 	var d := ability_mod(int(abilities.get("DEX", 10)))

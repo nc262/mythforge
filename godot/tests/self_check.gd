@@ -17,7 +17,7 @@ func _ready() -> void:
 	assert(Rules.check_mod(sheet, {"ability": "DEX", "skill": "save"}) == 6)     # save prof
 	assert(Rules.check_mod(sheet, {"ability": "WIS", "skill": "Insight"}) == 2)  # untrained
 	assert(Rules.passive_perception(sheet) == 15)  # 10 + 2 + prof 3
-	assert(Rules.attack_mod(sheet) == 6)  # max(STR,DEX) + prof
+	assert(Rules.attack_mod(sheet, {}) == 6)  # max(STR,DEX) + prof; {} = no gear, said out loud
 
 	# d20 bounds + advantage takes the max
 	for i in 200:

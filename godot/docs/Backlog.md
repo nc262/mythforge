@@ -15,11 +15,10 @@ Priority **P1** (blocks play) → **P4** (nice to have); effort **S/M/L**.
 
 ## Play and correctness
 
-| # | Item | P | E |
-|---|---|---|---|
-| PL-1 | **Tale and world are coupled** — you cannot pick a tale and then choose its world. Free Roam lets you pick any world, so the flow exists but not the order players expect. Needs a design call: world-agnostic tales the GM re-skins, vs an explicit two-step world→tale | P2 | M |
-| PL-2 | `Rules.attack_mod` falls back to `GameState.inv()` when a caller omits `inv`. Every known call site passes it, so this is latent rather than live — but a future caller that forgets gets a subtly wrong bonus and no error | P3 | S |
-| PL-3 | The `everyday` world is content-thin — 2 weapon forms yield 30 items and 6 icons. Fine-ish for a modern setting, poor next to its siblings. `Compiler.reforge` its assets, or hand-author more `weapon_forms` | P3 | M |
+Empty. All three items were audited on 2026-08-04 and none survived — see the
+mis-reported table below. `Rules.attack_mod` now requires its `inv` argument, so
+a caller that forgets it fails to compile rather than silently returning the
+unarmed number.
 
 ## The Atlas
 
@@ -42,8 +41,6 @@ not positions on ground. A scale would be a drawn lie.
 |---|---|---|---|
 | DI-1 | **The installer has never run on a clean machine.** The biggest risk in the download, and not something the harnesses can reach | P2 | M |
 | DI-2 | `Mythforge-Setup.iss` has never been compiled — needs Inno Setup 6 | P3 | S |
-| DI-3 | The tile library is ~1.3 GB generated per install. A release either ships it or makes every player pour it. Upgrade: bake it into a world package at release time (see [Terrain.md](Terrain.md) for why shrinking tiles is the wrong answer) | P3 | L |
-| DI-4 | An unsigned installer trips SmartScreen. Code-sign it, or document the "More info → Run anyway" click | P4 | S |
 
 ## Not built
 
@@ -79,8 +76,9 @@ Every reported defect — P1 through P4 — was audited against the code between
 Each was verified by reverting the fix and watching the check fail. Nothing was
 marked done on inspection.
 
-**Five were mis-reported**, and the only reason that was caught is that they
-were *rendered* rather than reasoned about:
+**Eight were mis-reported**, and the only reason that was caught is that they
+were *rendered or measured* rather than reasoned about. The whole Play section
+was stale: all three of its rows described code that had already changed.
 
 | Filed as | Actually |
 |---|---|
@@ -89,6 +87,10 @@ were *rendered* rather than reasoned about:
 | "Time divider on the first long rest only" | The divider only ever came from the `[[time]]` **tag**, so it appeared when the GM remembered. Rests move the clock inside the engine and printed nothing. |
 | "The Atlas is decoration — no names, legend, compass" | It had all three. What it lacked was distinguishable pins — and that was a regression introduced during this very audit. |
 | "Two front-ends, 9% of the repo is the game" | True at the time, and the workspace it measured is gone. |
+| "The `everyday` world is content-thin — 2 weapon forms, 30 items, 6 icons" | Measured against the shipped packs: **1310 catalogue entries** (2nd of six), 9 creatures (tied 1st), 25 icons, 471 images. `weapon_forms` is not in *any* pack — forms stopped being the seed's job, and 30 handcrafted weapon shapes across 7 families now always apply. The row was describing a world format that no longer exists. |
+| "Tale and world are coupled — you cannot pick a tale then choose its world" | Fixed on 2026-07-22 by `913184a`, *before the audit that filed the row*. Both entrances are world-first: the menu's `_show_worlds()` announces "Step 1 of 3 — world › campaign › hero", and the Adventure Forge runs `_stage_campaign_world()` → `_stage_campaign_tale()`. The one tale-first path is the Campaign Shelf, which exists **on purpose** to browse premises across every world, and whose cards carry their world. |
+| "`Rules.attack_mod` falls back to `GameState.inv()`" | It defaulted to `{}` — so a caller who forgot `inv` got the *unarmed* number, not a stale one. Real bug, wrong mechanism. Fixed by making `inv` required; the check is the compiler. |
+| "The tile library is ~1.3 GB generated per install — ship it or make every player pour it" | Already shipped. Every world package carries **272 tiles across 170 roles, ~220 MB**; six worlds is the 1.3 GB the row was counting. `bootstrap.ps1` already downloads them and `board_paint._tile()` reads the package first. `user://tiles` fills only for a world the **player forges**, where generation is the only option there is. |
 
 ## The method notes worth keeping
 

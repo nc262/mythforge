@@ -14,6 +14,7 @@ not slowly fill with things nobody intends to do.
 | 5 | The model can be asked for a shape it will not draw | Prompt fidelity has a ceiling. Item icons name their silhouette (`Rules.shape_clause`) and drop the atmosphere clause, which is as far as prompting goes — the rest needs a different image engine |
 | 6 | No scale bar on the Atlas | Locations are percentages of a painted chart, not positions on ground. A scale would be a drawn lie |
 | 7 | Flanking is not implemented | An optional 5e rule that makes positioning strictly worse for a solo player with engine-moved companions, and that every table argues about. Not an oversight |
+| 8 | The installer is unsigned, so SmartScreen warns | An OV certificate is a few hundred dollars a year against no revenue. Documented instead: the [README](../../README.md#install--play) tells a player to click **More info → Run anyway**, and says why. Self-signing is not a cheaper version of this — it earns no SmartScreen reputation, so it changes nothing a player sees |
 
 ## Kept for the pattern, not for the bug
 
