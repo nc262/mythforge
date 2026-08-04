@@ -366,12 +366,30 @@ func region_position(region_name: String, index: int, total: int) -> Vector2:
 ## invented about the item, so this cannot contradict what the item is; it can
 ## only stop the model guessing. An unmatched name returns "" and the prompt is
 ## unchanged, because a wrong shape would be worse than no shape.
+## NO SIZE WORDS. This list held "short", "great" and "long" and they did two
+## kinds of damage, both measured on 2026-08-04.
+##
+## First, they did not work. An icon is ONE object centred on an empty
+## background: there is no forearm in frame and no sword to be shorter than, so
+## there is nothing to measure against. Three strategies were rendered for
+## "Shortblade" — the relative clause, "a gladius: a short broad stabbing
+## sword", and "a wakizashi" — and all three came back a full-length sword. The
+## last drew TWO of them. Naming a real short-sword class does not help; the
+## model has one strong prior for "sword" and it wins.
+##
+## Second, and far worse, they matched BEFORE the category noun and shadowed it.
+## `Shortbow` resolved to "a SHORT blade", `Longbow` to "a long straight blade",
+## `Great Axe` to "an oversized two-handed weapon" and `Long Spear` to a blade
+## again. The clause added to stop wrong silhouettes was the thing producing
+## them, on four of the commonest names in the game.
+##
+## So every entry left is a CATEGORY — an object the model can draw because it
+## is a thing, not a comparison. Size within a category is the ceiling, and it
+## is written down in KnownIssues rather than papered over with a clause that
+## reads as though it works.
 const SHAPE_WORDS := [
-	["short", "a SHORT blade, forearm length, clearly shorter than a sword"],
 	["dagger", "a small dagger, blade no longer than a hand"],
 	["knife", "a small knife"],
-	["great", "an oversized two-handed weapon"],
-	["long", "a long straight blade"],
 	["axe", "an axe: a single bit on a haft"],
 	["hammer", "a hammer: a blunt head on a haft"],
 	["maul", "a heavy two-handed hammer"],

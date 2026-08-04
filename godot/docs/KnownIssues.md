@@ -11,7 +11,7 @@ not slowly fill with things nobody intends to do.
 | 2 | Godot 4.7 prints benign RID/StringName leak noise at headless shutdown | Upstream, cosmetic, grep-filtered in the harnesses |
 | 3 | A cold forge is a real minute — six sequential model calls, ~57 s measured | Hardware-bound. Play a pre-baked world for an instant start; see [Performance.md](Performance.md) |
 | 4 | The Pack's leather surface reads flat at 1× — the stitch detail is subtle | Polish against a bar the other rituals set. Real, and not worth a pass on its own |
-| 5 | The model can be asked for a shape it will not draw | Prompt fidelity has a ceiling. Item icons name their silhouette (`Rules.shape_clause`) and drop the atmosphere clause, which is as far as prompting goes — the rest needs a different image engine |
+| 5 | **Size within a category cannot be drawn.** A short sword comes back a sword | Measured 2026-08-04, not assumed. An icon is one object on an empty background, so there is no forearm in frame and no sword to be shorter than — there is nothing to measure against. Three clauses were rendered for "Shortblade": the relative one, "a gladius: a short broad stabbing sword", and "a wakizashi". All three returned a full-length sword; the last returned two. Category shapes DO work (axe, bow, shield, bottle, ring — 6 of 8 correct), so `Rules.shape_clause` now names only those. A LoRA might fix it, at multi-GB of download, for a distinction ~20 px wide in a socket |
 | 6 | No scale bar on the Atlas | Locations are percentages of a painted chart, not positions on ground. A scale would be a drawn lie |
 | 7 | Flanking is not implemented | An optional 5e rule that makes positioning strictly worse for a solo player with engine-moved companions, and that every table argues about. Not an oversight |
 | 8 | The chart plate still paints faint decorative text on some worlds | Same ceiling as #5, and measured: "no text labels" produced text on **three of six** worlds, twice misspelled (`FIMBULACH`, `BRASHEVEN`). Negative instructions inside a positive prompt do not work. Positive framing ("pristine untouched wilderness, ages before anyone settled it") plus a 13 % margin crop killed the painted **city**, the frames and the corner cartouches — the parts that actually contradicted the pins. What is left is small, low-contrast and reads as cartographic character. Prompting further does not converge |
@@ -28,6 +28,18 @@ rectangle" over the minimap. The screenshot harness catches it now.
 **A `ScrollContainer` sizes its child to the child's minimum.** So
 `ALIGNMENT_CENTER` on a page inside one does nothing, and any layout fix that
 assumes spare vertical space is a no-op that looks like a change.
+
+**A negative instruction inside a positive prompt does not work.** "no text
+labels" produced text on three of six charts, twice misspelled; "no buildings,
+no settlements" produced a whole painted city. What works is describing the
+thing you want as a positive subject ("pristine untouched wilderness, ages
+before anyone settled it") and then removing the rest deterministically — a
+crop, a mask — rather than asking the model to withhold it.
+
+**A modifier that matches before the noun shadows it.** `Rules.shape_clause`
+scanned its list in order, so `Shortbow` matched "short" and was described as a
+blade. A lookup table keyed on substrings has an implicit priority, and it is
+list order — which is invisible at the call site and looks like nothing at all.
 
 **A child that fills leaves nothing to centre.** A glyph-led system line put an
 `EXPAND_FILL` Label beside its icon in an `ALIGNMENT_CENTER` HBox — so the label

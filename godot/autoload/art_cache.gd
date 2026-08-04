@@ -643,10 +643,22 @@ func ensure_item_icon(nm: String) -> void:
 	# the flavour is stripped to its medium. Without the first, "Shortblade" came
 	# back as a cruciform arming sword — the reported bug. Without the second it
 	# came back as a candle.
+	# LEAD WITH THE SHAPE. A diffusion model paints the first concrete noun it is
+	# given, so the silhouette has to be the subject and the item's name the
+	# modifier — not the other way round. Measured against the old wording on
+	# eight items: plainer, truer objects (a staff without invented foliage, a
+	# ring without invented gems) and a genuinely flat background, which is what
+	# keeps an icon readable at 64 px.
+	#
+	# The background is described POSITIVELY. "no text, no hands" is a negative
+	# instruction inside a positive prompt, which does not work — the chart bake
+	# proved that at scale, producing a painted city and two misspelled
+	# cartouches from a prompt that forbade both.
 	var shape := Rules.shape_clause(nm)
+	var subject: String = shape if shape != "" else nm
 	ensure("item-" + nm.to_lower().replace(" ", "-"),
-		"game inventory icon of a %s of %s%s, %s style, single item centered on a plain dark background, painted RPG item icon, no text, no hands" % [
-			nm, subject_style("item"), (" — " + shape) if shape != "" else "", item_flavor()], "1024x1024")
+		"%s, made of %s. a single %s, alone, floating centered against a flat empty black background. %s, game inventory icon, sharp silhouette, whole object in frame" % [
+			subject, subject_style("item"), nm, item_flavor()], "1024x1024")
 
 
 func item_tex(nm: String) -> Texture2D:

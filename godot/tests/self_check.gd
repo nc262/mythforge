@@ -317,16 +317,18 @@ func _ready() -> void:
 	# Measured against the real image engine, one item, three prompts:
 	#   "…, high fantasy oil painting, candlelit"  → a lit CANDLE on a hilt
 	#   the same with "candlelit" removed          → a blade, wrong silhouette
-	#   plus a shape clause                        → a correct short blade
+	#   plus a shape clause                        → a blade
 	#
-	# So both halves are load-bearing: the atmosphere clause becomes the SUBJECT
-	# on a 512 px icon, and a vague name with no silhouette falls back to the
-	# model's prior. The compiler already learned the first half the hard way
-	# ("…lantern light" turned a sword into a lantern) and stopped appending the
-	# anchor; the legacy per-name path never got the same treatment.
-	assert(Rules.shape_clause("Shortblade").contains("SHORT"))
+	# The atmosphere clause becomes the SUBJECT on a 512 px icon; the compiler
+	# learned that the hard way ("…lantern light" turned a sword into a lantern)
+	# and the legacy per-name path had to learn it too.
+	#
+	# The third line originally read "a correct short blade". It was not. Rendered
+	# again on 2026-08-04 it is a full-length cruciform sword, and so are a
+	# gladius clause and a wakizashi clause — see KI-5 below. The clause helps
+	# when it names a CATEGORY and cannot help when it names a size.
 	assert(Rules.shape_clause("Iron Dagger").contains("dagger"))
-	assert(Rules.shape_clause("Greataxe") != "")
+	assert(Rules.shape_clause("Greataxe").contains("axe"))
 	assert(Rules.shape_clause("Healing Potion").contains("bottle"))
 	# Every clause must be derived from a word IN the name — a shape the item
 	# does not claim would be worse than no shape at all.
@@ -934,6 +936,20 @@ The term for spell slots is "Echoes."
 		for o in q["options"]:
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
+
+	# ── KI-5: a size word must never shadow the category noun ────────────────
+	# `Shortbow` used to resolve to "a SHORT blade" and `Great Axe` to "an
+	# oversized two-handed weapon", because the size prefix matched first. The
+	# clause meant to fix wrong silhouettes was causing them.
+	for pair in Rules.SHAPE_WORDS:
+		assert(not str(pair[0]) in ["short", "long", "great", "greater", "lesser", "small", "large"],
+			"'%s' is a size, not a shape — it shadows the category noun" % str(pair[0]))
+	assert(Rules.shape_clause("Shortbow").contains("bow"), "a shortbow is a BOW")
+	assert(Rules.shape_clause("Longbow").contains("bow"), "a longbow is a BOW")
+	assert(Rules.shape_clause("Great Axe").contains("axe"), "a great axe is an AXE")
+	assert(Rules.shape_clause("Long Spear").contains("spear"), "a long spear is a SPEAR")
+	# No clause at all beats a wrong one: nothing in the picture gives scale.
+	assert(Rules.shape_clause("Shortblade") == "", "a size-only name earns no clause")
 
 	# ── AT-4: every shipped package carries its own chart plate ──────────────
 	# Without art/chart.png the Atlas falls through to the biome-0 TACTICAL map,
