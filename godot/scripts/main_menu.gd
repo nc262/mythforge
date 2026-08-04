@@ -702,6 +702,16 @@ func _show_settings() -> void:
 	contrast.button_pressed = bool(cfg.get_value("settings", "high_contrast", false))
 	contrast.toggled.connect(func(on): _set_setting("high_contrast", on); Ui.high_contrast = on)
 	_content.add_child(contrast)
+	# The first-time hints fire once per PLAYER, not per campaign — so without
+	# this the second person to sit at one machine never gets taught anything.
+	_content.add_child(_section("TEACHING"))
+	var coach := _big_card("Show the first-time hints again",
+		"The handful of lines that explain who rolls, what the board owns, and what the chart remembers.",
+		Ui.pal["ink_soft"])
+	coach.pressed.connect(func():
+		GameState.coach_reset()
+		_sub_status.text = "The first-time hints will show again on your next turn.")
+	_content.add_child(coach)
 	# The game's own version — the only one a player can act on, compiled in.
 	_content.add_child(_section("Mythforge · %s" % ProjectSettings.get_setting("application/config/version", "desktop")))
 

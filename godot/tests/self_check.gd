@@ -935,5 +935,32 @@ The term for spell slots is "Echoes."
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
 
+	# ── The first-run tutorial ───────────────────────────────────────────────
+	# Fires once per player, survives a reset, and is actually WIRED.
+	GameState.coach_reset()
+	assert(GameState.coach_once("probe"), "a first-time hint fires the first time")
+	assert(not GameState.coach_once("probe"), "...and never again")
+	assert(GameState.coach_once("probe2"), "each beat is taught on its own")
+	GameState.coach_reset()
+	assert(GameState.coach_once("probe"), "Settings can bring the hints back")
+	GameState.coach_reset()
+
+	# The lesson from the Atlas roads check: `src.find("_coach(")` matches the
+	# FUNCTION DEFINITION too, so deleting every call site still passes. Count
+	# lines whose stripped form STARTS a call, and require the four beats by key.
+	var gsrc := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(gsrc != "", "game.gd is readable")
+	var calls := 0
+	for raw in gsrc.split("\n"):
+		if raw.strip_edges().begins_with("_coach("):
+			calls += 1
+	assert(calls >= 4, "every teaching beat is wired, not merely defined (found %d)" % calls)
+	# `_coach("<key>"` cannot match `func _coach(key: String`, so this is exact.
+	for beat in ["check", "combat", "travel", "contract"]:
+		assert(gsrc.contains("_coach(\"%s\"" % beat), "the '%s' beat is taught" % beat)
+	# A hint nobody can replay is a bug for the second player on one machine.
+	var msrc := FileAccess.get_file_as_string("res://scripts/main_menu.gd")
+	assert(msrc.contains("coach_reset()"), "Settings can replay the hints")
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

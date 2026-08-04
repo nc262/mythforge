@@ -28,6 +28,13 @@ rectangle" over the minimap. The screenshot harness catches it now.
 `ALIGNMENT_CENTER` on a page inside one does nothing, and any layout fix that
 assumes spare vertical space is a no-op that looks like a change.
 
+**A child that fills leaves nothing to centre.** A glyph-led system line put an
+`EXPAND_FILL` Label beside its icon in an `ALIGNMENT_CENTER` HBox — so the label
+ate the row, its text centred in the middle, and the glyph stranded at the far
+edge. The code reads as though the pair is centred. `SHRINK` is not the fix
+either: an autowrapped Label's minimum width is its longest **word**, so the text
+collapses to a column. Give it an explicit width and left-align inside it.
+
 **`Button` never consults a script's `_get_minimum_size()`.** Its native
 implementation wins, so a `class_name X extends Button` that overrides the
 virtual has written dead code. Set `custom_minimum_size` instead.

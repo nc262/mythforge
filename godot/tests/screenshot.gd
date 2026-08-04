@@ -41,6 +41,20 @@ func _ready() -> void:
 			Combat.finish()
 			scene.call("_open_world_map")
 		scene.call("_say_system", "⚔️ Combat — Goblin Boss!")
+	# MF_SHOT_COACH — the first-run hints, rendered rather than reasoned about.
+	# It drives the REAL call sites (_set_check raises the bar AND fires the
+	# hint), so what lands in the PNG is the shipped text at the shipped moment.
+	# Printing the strings here would prove only that I can print strings.
+	if OS.get_environment("MF_SHOT_COACH") == "1":
+		_seed_demo()
+		await get_tree().create_timer(1.5).timeout
+		GameState.coach_reset()
+		# A SHORT glyph line and a long one, because they fail differently: the
+		# short one strands its glyph, the long one has to wrap under it.
+		scene.call("_say_system", "You set off for The Ember & Oak.", "compass")
+		var gm2: RichTextLabel = scene.call("_bubble", "gm")
+		gm2.append_text("The warden's ledger is chained to the lectern, but the lock is old and the chapel is dark. [i]You could try the pins.[/i]")
+		scene.call("_set_check", {"ability": "DEX", "skill": "Sleight of Hand", "dc": 14})
 	await get_tree().create_timer(2.5).timeout
 	var img := get_viewport().get_texture().get_image()
 	img.save_png(out)

@@ -320,6 +320,31 @@ func global_set(key: String, value) -> void:
 	_write_json(_global_path(), g)
 
 
+## ── Teaching once ────────────────────────────────────────────────────────────
+## True the FIRST time a beat happens to this player, false ever after.
+##
+## Global, not per-campaign, and that is the whole design: the thing being taught
+## is how Mythforge works, which you learn once. Storing it on the save would
+## re-teach the d20 bar at the top of every new adventure, which is how a
+## tutorial turns into nagging.
+##
+## The forge ritual already teaches hero-making. What nothing taught was the
+## moment the narrator first asks for a roll — see `Game._coach`.
+func coach_once(key: String) -> bool:
+	var seen: Array = global_get("coached", [])
+	if not (seen is Array) or seen.has(key):
+		return false
+	seen.append(key)
+	global_set("coached", seen)
+	return true
+
+
+## Settings' "show the first-time hints again" — the second person to play on one
+## machine is not the same player as the first.
+func coach_reset() -> void:
+	global_set("coached", [])
+
+
 ## Another adventure's whole save, for captioning the Chronicles shelf.
 func state_for(adv_id: String) -> Dictionary:
 	return state if adv_id == cid() and not state.is_empty() else _read_local(adv_id)

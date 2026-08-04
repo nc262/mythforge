@@ -629,6 +629,11 @@ func _bubble(kind: String) -> RichTextLabel:
 func _say_me(bb: String) -> void:
 	_bubble("me").append_text(bb)
 
+## How wide a glyph-led system line reads before it wraps. Narrower than the
+## thread on purpose: a centred line that spans the full width is a scan, not a
+## read, and these are the lines that teach.
+const SYS_READ_W := 560.0
+
 func _say_system(text: String, glyph := "") -> void:
 	var l := Label.new()
 	l.theme_type_variation = "HintLabel"
@@ -645,14 +650,51 @@ func _say_system(text: String, glyph := "") -> void:
 		_thread.add_child(_sys_plate(l))
 	else:
 		# a hand-drawn glyph leads the line — never an emoji
+		#
+		# The label was EXPAND_FILL, which ate the whole plate and left the glyph
+		# stranded at the far edge with its own text centred hundreds of px away —
+		# on every glyph line in the game, not just the long ones. Found by
+		# screenshotting a first-run hint; invisible in the code, which reads as
+		# though ALIGNMENT_CENTER centres the pair. It cannot: a child that fills
+		# leaves nothing to centre.
+		#
+		# SHRINK is not the fix either — an autowrapped Label's minimum width is
+		# its longest WORD, so the text would collapse into a narrow column. Give
+		# it an explicit reading width instead and left-align the text inside it,
+		# so short lines sit right against the glyph and long ones wrap under it.
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		l.custom_minimum_size.x = SYS_READ_W
+		l.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.add_theme_constant_override("separation", 7)
-		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 		row.add_child(MythIcon.new(MythIcon.resolve(glyph), 18, "gold_soft"))
 		row.add_child(l)
 		_thread.add_child(_sys_plate(row))
 	_scroll_bottom()
+
+
+## ── The first-run tutorial ───────────────────────────────────────────────────
+## Not a tutorial scene, and deliberately not one. A guided sandbox teaches you
+## its own sandbox; what a new player actually needs is a sentence at the moment
+## the thing first happens to them, in the game they chose to play.
+##
+## This is the same argument the suggestion row already won (see
+## `_build_suggestions`): the fix for "the player does not know what is possible"
+## was context, not a manual. The forge ritual teaches hero-making well and
+## teaches nothing else, because a forge is over before the first check is
+## called for.
+##
+## Each line fires ONCE per player — `coach_once` is global, not per-save, so a
+## second campaign does not re-explain the d20 bar. Settings can reset it.
+##
+## Every line here has one job: say who owns the outcome. A player cannot infer
+## from prose that the model is forbidden to decide a roll, and that single fact
+## is what makes the numbers on their sheet worth trusting.
+func _coach(key: String, text: String, glyph := "die") -> void:
+	if GameState.coach_once(key):
+		_say_system(text, glyph)
 
 
 ## R6 FUN-20 — the hero the player invented was never on screen while they
@@ -1102,6 +1144,13 @@ func _on_done(_ok: bool) -> void:
 	if not GameState.is_dm():
 		_scroll_bottom()  # pure conversation: no tags, no rolls, no chronicling
 		return
+	# The founding contract, once, right after the narrator first speaks — and
+	# only for a reply that actually arrived, so a failed engine never teaches.
+	if _acc.strip_edges() != "":
+		_coach("contract",
+			"The narrator writes what happens; the table owns every number. "
+			+ "It cannot set your HP, decide a roll or declare a success — which is why the numbers on your sheet can be trusted.",
+			"scroll")
 	var parsed: Dictionary = Tags.parse(_acc)
 	_apply_world_tags(parsed["tags"])          # state — the deterministic domain
 	_apply_presentation_tags(parsed["tags"])   # presentation only — never state
@@ -1347,6 +1396,10 @@ func _start_combat(foes: String) -> void:
 				var line := Combat.enter(label)
 				if line != "":
 					_say_system(line.replace("*", ""))
+				_coach("combat",
+					"Steel is out. From here the board keeps initiative, reach and armour — "
+					+ "pick a target on it rather than describing the swing, and the table works out the rest.",
+					"sword")
 				first = false
 			else:
 				Combat.add_foe(label)
@@ -1432,6 +1485,11 @@ func _set_check(check: Dictionary) -> void:
 	_roll_bar.visible = not check.is_empty()
 	if check.is_empty():
 		return
+	# The beat the backlog named: the narrator has just asked for something the
+	# player has never been asked for, and a bar appeared. Say who rolls.
+	_coach("check",
+		"The narrator may ask for a roll — it is not allowed to decide one. "
+		+ "Press the bar (or Space): the table rolls the d20 and adds the bonus your sheet earned.")
 	var sheet := GameState.sheet()
 	if check.get("type", "") == "attack":
 		_roll_bar.icon = Ui.ico_tex("sword")
@@ -2672,6 +2730,12 @@ func _travel_to(place: String) -> void:
 	GameState.advance_time(GameState.travel_cost(place))
 	Sfx.ui("travel")   # MIL — departure has a sound; the road opens
 	_say_system("You set off for %s." % place, "compass")
+	# Distance is the one cost that is invisible in the prose — the clock moved,
+	# and nothing on screen says a far road spent more of the day than a near one.
+	_coach("travel",
+		"The chart remembers every place you reach. Ctrl+M opens the Atlas — "
+		+ "and distance is paid in hours, so a far road costs more of the day than a near one.",
+		"compass")
 	_repaint_scene(place)
 	_last_player_msg = "I travel to %s." % place
 	# The road is never guaranteed: 1-in-5 journeys meet something.

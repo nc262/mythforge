@@ -51,9 +51,6 @@ Each with the reason it is not merely undone:
 - **A true 3D character** ([CharacterRender.md](CharacterRender.md), Stage C).
   Paused on an asset-sourcing decision: commissioned, generated, or a bought
   pack. `spike3d/` holds the experiments; nothing in the shipped path uses them.
-- **A first-run tutorial.** There is a how-to card. The forge ritual carries the
-  teaching today, which works for making a hero and not at all for the first
-  check the GM calls for.
 - **World Skin palette from the model.** Families are deterministic; the
   Worldsmith could emit palette hexes and merge them through the contrast clamp
   that already exists.

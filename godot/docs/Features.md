@@ -52,6 +52,14 @@ places, fog, travel with distance cost, and a GM that can charter new places
 within a scope its level has earned — see [Backlog](Backlog.md) for what is
 still open there, and `Rules.SCOPE_LEVEL` for the gate.
 
+## Teaching
+
+The forge ritual teaches hero-making. Four one-time hints teach what it cannot,
+each at the moment the thing first happens: who rolls, what the board owns, what
+the chart remembers, and the founding contract that the narrator may not decide a
+number. `GameState.coach_once` is global rather than per-save, so a second
+campaign does not re-explain the d20 bar; Settings can replay them.
+
 ## The shell
 
 The Hall · five forges (hero, world, campaign, GM, companion) built on one
@@ -69,4 +77,4 @@ it all. [DesignSystem.md](DesignSystem.md) is law for anything that renders.
 ## Not built
 
 Listed with the reason, in [Backlog.md](Backlog.md) — TTS, true 3D characters,
-a first-run tutorial, model-authored palettes, and co-op.
+model-authored palettes, and co-op.
