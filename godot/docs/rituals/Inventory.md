@@ -73,4 +73,4 @@ screenshot before ship (see Testing.md).
 - Testing: self_check (state logic unchanged), gallery screenshot, inventory
   screenshot at 1280 and 1024×600, mouse + keyboard paths.
 - Documentation: DesignSystem.md (leather material, ritual_open primitive),
-  FeatureMatrix U1 row, Roadmap, KnownIssues.
+  Features.md, Roadmap, KnownIssues.

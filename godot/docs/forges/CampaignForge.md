@@ -129,7 +129,7 @@ before the Forging sequence is built.
   (envelope text). Each engine-enforced where the engine owns the lever.
 - The Forging: existing endpoints — /worldsmith (world, story),
   /save (cworld + dm- adventure), Art.ensure (key art, chart, cast
-  portraits — pays the forge-art-queue matrix row).
+  portraits — pays the forge-art-queue item).
 - Outputs: campaign · world seed · map seed (chart art + locations) ·
   settlement seed (first here + seen) · NPC seeds (cast + codex entries)
   · quest seed (hook → first quest) · AI campaign prompt · save slot ·
@@ -143,7 +143,7 @@ before the Forging sequence is built.
   if a step fails — a failed step re-strikes without redoing the others).
 - `Mode` gains declared `CampaignForge` state.
 - main_menu's ⚒ World Forge + Campaign Smith + Session Zero are ABSORBED:
-  their entry points route here (matrix rows updated, nothing deleted).
+  their entry points route here (entry points updated, nothing deleted).
 
 ## 8. Component requirements
 

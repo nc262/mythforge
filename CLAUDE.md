@@ -82,6 +82,21 @@ The game itself listens on nothing.
 | [godot/docs/Performance.md](godot/docs/Performance.md) | Where the time goes, measured |
 | [godot/docs/Testing.md](godot/docs/Testing.md) | The five harnesses, and what each can and cannot prove |
 | [godot/docs/DesignSystem.md](godot/docs/DesignSystem.md) | The visual contract. Law for anything that renders |
-| [godot/docs/Backlog.md](godot/docs/Backlog.md) | What is actually open |
+| [godot/docs/Features.md](godot/docs/Features.md) | The coarse map of what the game has |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | RCAs, symptom → root cause → fix |
 | [docs/code-style.md](docs/code-style.md) | Conventions for the game and the tooling |
+
+## Where a piece of work belongs
+One home each, so nothing is tracked twice or lost between two lists:
+
+| | |
+|---|---|
+| [Backlog.md](godot/docs/Backlog.md) | **Everything open.** If it could be worked on, it is here |
+| [KnownIssues.md](godot/docs/KnownIssues.md) | Limitations that will **not** be fixed, with the reason |
+| [TechnicalDebt.md](godot/docs/TechnicalDebt.md) | Deliberate shortcuts, each with its ceiling and upgrade path |
+| [Testing.md](godot/docs/Testing.md) | What the harnesses prove, and the coverage gaps |
+
+A 107-row feature matrix used to sit alongside these. It was audited on
+2026-08-04 and six of its eight "not started" rows were wrong — the code is the
+record of what exists, and a hand-maintained tracker that drifts is worse than
+none, because it looks like information.

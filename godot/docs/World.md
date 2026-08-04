@@ -19,7 +19,7 @@ onto any world.
 7-step day clock (`clock` kind), per-world weather tables rolled each dawn,
 timed conditions wane as hours pass; long rest sleeps to next dawn.
 `[[time advance=N]]` from the GM; auto-advance every 3 turns is a parity
-gap (FeatureMatrix). The **worldtick** endpoint ("Meanwhile…" off-screen
+gap (Features.md). The **worldtick** endpoint ("Meanwhile…" off-screen
 events between days) exists server-side — client wiring roadmapped M3.
 
 ## Scenes & art

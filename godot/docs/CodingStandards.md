@@ -30,7 +30,7 @@
 - [ ] `tests/self_check.tscn` green (extend it when logic is added)
 - [ ] Live path exercised (e2e/playthrough harness or manual) when it
       touches streaming/state
-- [ ] FeatureMatrix.md row updated; Architecture.md if a boundary moved
+- [ ] Backlog.md updated if it opened or closed work; Architecture.md if a boundary moved
 - [ ] Committed with a message that explains *why*
 - [ ] Claude memory updated when an architectural decision was made
 

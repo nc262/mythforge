@@ -53,4 +53,4 @@ Choosing where to go next should feel like adventure, not selection.
 Mockup = screenshot harness on the demo world. Implementation entirely in
 `world_map.gd` (+ `world.seen` written on travel in game.gd). Polish: pulse
 phases via one `_process` clock; clip_contents (the overdraw lesson).
-Docs: FeatureMatrix U3, KnownIssues if anything deferred.
+Docs: Features.md, KnownIssues if anything deferred.

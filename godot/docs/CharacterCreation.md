@@ -9,7 +9,7 @@ CON), rerollable. Derived: HP = hit die + CON, 10+1d20 gold, class+heritage
 skill proficiencies, heritage traits as features, level-1 slots + starting
 spells for casters. Then Session Zero (tone), then the GM's opening scene.
 
-## Original-parity gaps (FeatureMatrix rows, M3)
+## Original-parity gaps (Backlog, M3)
 - **Prebuilt heroes**: Brakka Ironhide / Elara Venn / Finch / Sister Maren
   one-click fills + "start fresh"
 - **Backgrounds** (8, each +2 skills + a story hook) — data already in

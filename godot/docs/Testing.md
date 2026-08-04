@@ -37,6 +37,22 @@ on a runner. CI checks that the Python and PowerShell tooling parses and that
 nothing has reintroduced a server: an `"/api/` string in any `.gd` file, or a
 launcher starting a web app, fails the build.
 
+## Verifying a SHIPPED build
+
+The harnesses all run from source, where `res://baked` exists whatever the
+export settings say. So the one failure they structurally cannot see is a build
+that ships without its worlds — and it fails silently: the game boots, the menu
+draws, and New Adventure is empty.
+
+```
+Mythforge.exe --headless --mf-worlds
+```
+
+Prints the search paths, lists what it found, opens each archive, checks for
+`world.json`, and exits non-zero if any of that fails. Run it on every artifact
+before publishing; `installer/bootstrap.ps1` runs it after a first-run install
+for the same reason.
+
 ## Two laws that came from being burned
 
 **Assert what the failure looks like, not what a good answer looks like.** Three
@@ -49,6 +65,22 @@ wrong thing confidently.
 **A test that cannot tell whether the feature is plugged in is not testing the
 feature.** The GM-model check re-implemented the ranking inline and passed for
 weeks while the picker it was named for wrote to a key nothing read.
+
+## What has never been tested
+
+A coverage gap, not a clean bill of health. Every item here is reachable by the
+harnesses in principle and simply is not covered yet:
+
+| Area | Why it is uncovered |
+|---|---|
+| Spells in play | Needs a caster played through a real session — `ui_playthrough` casts, but never across levels with slots running out |
+| Merchants | `shop_here()` and the window are asserted; nobody has traded in a live game |
+| The Lore Book over a long campaign | It fills from `[[lore]]` tags over dozens of turns; no harness runs that long |
+| Equip / unequip with a real inventory | Exercised with one item, not with a full pack and competing slots |
+| Tone knobs at their extremes | `gm_directive()` only speaks at ≤25 / ≥75, and nothing plays there |
+
+Closing these is harness work, not feature work — which is why they live here
+rather than in [Backlog.md](Backlog.md).
 
 ## Manual playthrough (milestone gate)
 

@@ -23,7 +23,7 @@ Disposition lives per-NPC in the codex (extractor-maintained from actual
 play). Global relationship tracking (`rel` kind) and reputation systems are
 target-game features — roadmapped M4, design in FutureIdeas.md.
 
-## Parity gaps (FeatureMatrix)
+## Parity gaps (Features.md)
 Party chips with HP bars in the banner · 25% companion banter injections ·
 dismiss/part-ways flow · NPC speaker portraits decorating GM dialogue ·
 guest heroes (multiplayer party seats).

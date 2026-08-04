@@ -1,7 +1,7 @@
 # Roadmap
 
-Milestones are shippable; each ends with the harnesses green, FeatureMatrix
-updated, and a playable build. Order chosen by play-impact per the matrix.
+Milestones are shippable; each ends with the harnesses green, the Backlog
+reconciled, and a playable build. Order chosen by play-impact.
 
 ## M1 — Foundations for scale ✅ COMPLETE
 - ✅ **Finite state machine** (`Mode` autoload): MainMenu, CharacterCreation,
@@ -12,7 +12,7 @@ updated, and a playable build. Order chosen by play-impact per the matrix.
 - ✅ ↻ retell button surfaced in the input row
 - ✅ Prebuilt heroes + backgrounds in the hero forge
 - ✅ Reactions overlay (Shield / Uncanny Dodge / Parry / take the hit)
-- Docs system (this set) + FeatureMatrix as living truth ✅
+- Docs system (this set) + Features.md as the coarse map ✅
 
 ## M2 — Combat & progression complete ✅ COMPLETE
 - ✅ **Tactical battle grid**: 16×10 board, tokens, movement budgets,

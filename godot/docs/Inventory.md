@@ -33,6 +33,6 @@ links, slot count. Target (M3): drag-and-drop grid + paper-doll equipment
 window per the production UI spec (see UI.md); the data model already
 supports it — this is presentation work only.
 
-## Not yet ported (tracked in FeatureMatrix)
+## Not yet ported (tracked in Features.md)
 Encumbrance/carry capacity, item weight halving when worn, item icons/art,
 crafting (`_craftItem`), give-to-companion, use-item (potions as effects).

@@ -20,7 +20,7 @@ speak: ≤25 / ≥75). Re-tunable mid-campaign via the GM panel — parity gap,
 M2 (knobs persist in the `gm` kind already).
 
 ## Voice — not built
-Narrator voice, speed and per-turn playback are FeatureMatrix rows waiting on a
+Narrator voice, speed and per-turn playback are Backlog items waiting on a
 local voice engine. Speech goes IN today (NobodyWhoSTT, push-to-talk); nothing
 comes out.
 

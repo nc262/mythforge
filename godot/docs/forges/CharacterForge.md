@@ -58,7 +58,7 @@ Nature            — 4d6 destiny (the dice moment, 6 tumbling) OR the standard
   ↓
 Appearance        — describe them in words (feeds the portrait prompt);
   |                 art-style chips (painted/ink/noir…) — pays the
-  |                 art-style-picker matrix row
+  |                 art-style-picker (Backlog)
   ↓
 The Portrait      — the commission begins HERE, async; the anvil shows a
   |                 cooling silhouette that resolves into the face when the
@@ -168,6 +168,6 @@ component gallery gains MythChoiceCard and MythStageRail first.
 | **F4** | Nature stage: 4d6 dice moment + standard array assignable grid | self-check rows |
 | **F5** | Voice placeholder stage, cinematic Quenching polish (steam/flash/sting), memory + relationship seeds | full ritual review |
 
-Outputs registry (FeatureMatrix rows): character · portrait · starting
+Outputs registry (Backlog): character · portrait · starting
 inventory · stats · background · relationships seed · memory seed ·
 3D model (future, FutureIdeas).

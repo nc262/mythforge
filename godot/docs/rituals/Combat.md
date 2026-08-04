@@ -55,5 +55,5 @@ Focus: rail (1) → board (2) → tracker actions (3)
 Mockup = the combat demo screenshot harness. MythPortrait grows an optional
 vitals arc + turn state (system-first — the same chip serves dialogue and
 party rails later). Token art mapping moves to `Art.combatant_tex` so rail
-and board share one source. Docs: FeatureMatrix U2, DesignSystem (component
+and board share one source. Docs: Features.md, DesignSystem (component
 growth), KnownIssues for anything deferred.

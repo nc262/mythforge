@@ -107,7 +107,7 @@ illustrated environment, not floated over chrome.
   Forge) · env-forge (Character Forge) · env-pack (inventory) ·
   env-merchant (trading post) · env-journal (the manuscript) ·
   env-maptable (the living map's table) · env-fireside (the Hero's Record;
-  dialogue later). Per-world variants are a matrix row.
+  dialogue later). Per-world variants are a Backlog item.
 - **Procedural backdrops are the fallback only** — first run, while the
   painting is on the easel; never the destination.
 - **Camera thinking**: background (the painting) · midground (scrim,

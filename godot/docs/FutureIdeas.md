@@ -1,7 +1,7 @@
 # Future Ideas
 
 Not commitments — a parking lot so ideas survive. Promotion path: idea →
-FeatureMatrix row (with priority) → Roadmap milestone.
+Backlog row (with priority) → Roadmap milestone.
 
 ## Systems
 - **Relationship & reputation web**: per-NPC disposition already extracts;

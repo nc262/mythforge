@@ -62,5 +62,5 @@ level bursts alight.
 ## 5-8
 
 MythCamera extracted to ui/ (world_map adopts it as a debt row — one camera,
-two skies). Harness MF_SHOT_TREE. Docs: FeatureMatrix U5, TechnicalDebt
+two skies). Harness MF_SHOT_TREE. Docs: Features.md, TechnicalDebt
 (world_map camera adoption), Roadmap M5 tick.
