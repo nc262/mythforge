@@ -38,6 +38,41 @@ var regions: Array = []
 var _focus := ""              # region name, or "" for the whole realm
 var _region_hover := -1
 
+## ── ROADS THAT FOLLOW THE LAND ───────────────────────────────────────────────
+##
+## Roads were straight lines between pins, which is a spider-web rather than a
+## road network: no road in any world runs dead straight across a bay and over a
+## mountain because those were the two ends. Baking the chart plate made it
+## worse — now there is visible country for a straight line to ignore.
+##
+## So the road is ROUTED across the paper: an A* over a coarse cost grid sampled
+## from the chart, cheap around open ground and expensive through water and dark
+## high land. It bends around the bay because the bay costs more, not because a
+## wobble was added to make it look bent.
+##
+## THIS IS A COLOUR HEURISTIC OVER GENERATED ART, which [Terrain.md] deleted for
+## the battle map. Two of its three objections do not apply here and the third is
+## avoided on purpose:
+##
+##  · AMBIGUITY was fatal there because the read drove MECHANICS — open snow
+##    classified impassable. Here it drives nothing but the shape of a drawn
+##    line. Travel cost and peril come from Rules.ROAD and GameState.roads(); a
+##    misread bends a road and can never change what a journey costs.
+##  · COORDINATE MISMATCH was the real bug: the board drew cover-fit and sampled
+##    stretched, so the overlay described part of a painting that was off screen.
+##    The chart is drawn `draw_texture_rect(art, Rect2(ZERO, size))` — the whole
+##    image stretched — and is sampled the same way, so the grid and the picture
+##    cannot disagree. Keep those two together if either ever changes.
+##  · WALLS ARE NOT CELLS is a battle-map problem; a chart has no walls.
+##
+## Sampled ONCE per (world, size) and every route cached — `_draw` runs every
+## frame for the cloud shadows, and re-routing there would be a per-frame A*.
+const LAND_W := 56
+const LAND_H := 36
+var _land: AStarGrid2D = null
+var _land_key := ""
+var _routes := {}             # "ax,ay|bx,by" → PackedVector2Array
+
 ## SEVEN KINDS, TOLD APART BY COLOUR **AND** SHAPE.
 ##
 ## This shipped with `tavern` and `settlement` both gold and `landmark` and
@@ -121,6 +156,106 @@ func _questward(nm: String) -> bool:
 
 func _pos_of(l: Dictionary) -> Vector2:
 	return Vector2(float(l.get("x", 50)) / 100.0 * size.x, float(l.get("y", 50)) / 100.0 * size.y)
+
+
+## Read the chart into a walkable cost grid. Water is dear, dark high ground is
+## dear, open country is cheap. Nothing is marked SOLID — a road must always be
+## drawable between two places the engine says you can travel between, so the
+## worst land is expensive rather than impossible. An unroutable pair would mean
+## a pin with no line to it, which reads as a bug.
+func _ensure_land() -> void:
+	var key := "%s@%dx%d" % [GameState.world_id(), int(size.x), int(size.y)]
+	if _land != null and _land_key == key:
+		return
+	_land_key = key
+	_routes.clear()
+	_land = AStarGrid2D.new()
+	_land.region = Rect2i(0, 0, LAND_W, LAND_H)
+	_land.cell_size = Vector2(size.x / float(LAND_W), size.y / float(LAND_H))
+	_land.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
+	_land.update()
+	var art: Texture2D = Compiler.chart_art(GameState.world_id())
+	if art == null:
+		return                       # no paper to read: routes fall back to straight
+	var img := art.get_image()
+	if img == null:
+		return
+	if img.is_compressed():
+		img.decompress()
+	# Stretched exactly as _draw stretches it — see the note on LAND_W.
+	img.resize(LAND_W, LAND_H, Image.INTERPOLATE_LANCZOS)
+	for y in LAND_H:
+		for x in LAND_W:
+			var c := img.get_pixel(x, y)
+			# Blue running ahead of both other channels is water on every one of
+			# these plates, fantasy or neon. Darkness is ridge and deep forest.
+			var wet := clampf((c.b - maxf(c.r, c.g)) * 5.0, 0.0, 1.0)
+			var steep := clampf((0.26 - c.get_luminance()) * 4.0, 0.0, 1.0)
+			_land.set_point_weight_scale(Vector2i(x, y), 1.0 + wet * 14.0 + steep * 5.0)
+
+
+func _cell_of(p: Vector2) -> Vector2i:
+	return Vector2i(
+		clampi(int(p.x / maxf(size.x, 1.0) * LAND_W), 0, LAND_W - 1),
+		clampi(int(p.y / maxf(size.y, 1.0) * LAND_H), 0, LAND_H - 1))
+
+
+## Chaikin: two passes turn an A* staircase into something drawn by a hand that
+## was following a valley. Endpoints are pinned so the road still meets its pins.
+func _smooth(pts: PackedVector2Array) -> PackedVector2Array:
+	for _pass in 2:
+		if pts.size() < 3:
+			return pts
+		var out := PackedVector2Array([pts[0]])
+		for i in range(pts.size() - 1):
+			out.append(pts[i].lerp(pts[i + 1], 0.25))
+			out.append(pts[i].lerp(pts[i + 1], 0.75))
+		out.append(pts[pts.size() - 1])
+		pts = out
+	return pts
+
+
+## The line a road actually takes. Cached, because _draw runs every frame.
+func _route(a: Vector2, b: Vector2) -> PackedVector2Array:
+	_ensure_land()
+	var key := "%d,%d|%d,%d" % [int(a.x), int(a.y), int(b.x), int(b.y)]
+	if _routes.has(key):
+		return _routes[key]
+	var line := PackedVector2Array([a, b])
+	if _land != null:
+		var path := _land.get_point_path(_cell_of(a), _cell_of(b))
+		if path.size() >= 2:
+			# The grid gives cell centres; the road must meet the pins exactly.
+			path[0] = a
+			path[path.size() - 1] = b
+			line = _smooth(path)
+	_routes[key] = line
+	return line
+
+
+func _draw_path(pts: PackedVector2Array, col: Color, w: float) -> void:
+	if pts.size() < 2:
+		return
+	draw_polyline(pts, col, w, true)
+
+
+## A point a fraction `t` ALONG a road, measured by length rather than by index.
+## Indexing would bunch the walking dots wherever Chaikin left dense points —
+## which is exactly at the bends, the places the eye is already watching.
+func _along(pts: PackedVector2Array, t: float) -> Vector2:
+	if pts.size() < 2:
+		return pts[0] if pts.size() == 1 else Vector2.ZERO
+	var total := 0.0
+	for i in range(pts.size() - 1):
+		total += pts[i].distance_to(pts[i + 1])
+	var want := clampf(t, 0.0, 1.0) * total
+	var run := 0.0
+	for i in range(pts.size() - 1):
+		var seg := pts[i].distance_to(pts[i + 1])
+		if run + seg >= want:
+			return pts[i].lerp(pts[i + 1], 0.0 if seg <= 0.001 else (want - run) / seg)
+		run += seg
+	return pts[pts.size() - 1]
 
 
 ## Where a region's name sits: the mean of its KNOWN places, so the label lands
@@ -239,13 +374,17 @@ func _draw() -> void:
 	if _hover >= 0 and here_p != Vector2.ZERO:
 		var target := _pos_of(locations[_hover])
 		if target.distance_to(here_p) > 8.0:
+			# The walking dots follow the ROAD now. They used to arc over a
+			# straight chord, which drew a route no traveller could take and
+			# disagreed with the road already painted underneath them.
+			var road := _route(here_p, target)
 			var steps := int(target.distance_to(here_p) / 14.0) + 2
 			var walk := fmod(_phase * 0.8, 1.0)
 			for i in steps:
 				var t := (float(i) + walk) / float(steps)
 				if t > 1.0:
 					continue
-				var p := here_p.lerp(target, t) + Vector2(0, -sin(t * PI) * 14.0)
+				var p := _along(road, t)
 				draw_circle(p, 1.8, Color(Ui.c("gold_soft"), 0.75 * (1.0 - t * 0.3)))
 	_draw_roads()
 	_draw_regions(font)
@@ -348,16 +487,22 @@ func _draw_named_roads() -> void:
 			continue
 		var st := str(r.get("state", Rules.ROAD_DEFAULT))
 		var col := Ui.c(str(Rules.road_rule(st)["col"]))
+		var line := _route(pa, pb)
 		if st == "blocked":
-			# A closed road is still a road — draw it, then strike it through, so
-			# the player can see the way they cannot take. Erasing it would read
-			# as "there was never a road here", which is a different fact.
-			_draw_dashed(pa, pb, Color(col, 0.55), 2.2)
-			var mid := (pa + pb) * 0.5
-			var n := (pb - pa).normalized().orthogonal() * 5.0
+			# A closed road is still a road — draw it, then bar it, so the player
+			# can see the way they cannot take. Erasing it would read as "there
+			# was never a road here", which is a different fact.
+			_draw_dashed_path(line, Color(col, 0.55), 2.2)
+			# The bar sits at the road's own midpoint along its length, not at
+			# the midpoint of the straight line between the ends — on a road that
+			# bends around a bay those are nowhere near each other.
+			var m := int(line.size() / 2)
+			var mid: Vector2 = line[m]
+			var tang: Vector2 = (line[mini(m + 1, line.size() - 1)] - line[maxi(m - 1, 0)])
+			var n := (tang.normalized().orthogonal() if tang.length() > 0.01 else Vector2.UP) * 5.0
 			draw_line(mid - n, mid + n, Color(col, 0.9), 2.2, true)
 		else:
-			draw_line(pa, pb, Color(col, 0.75 if st == "dangerous" else 0.5), 2.4, true)
+			_draw_path(line, Color(col, 0.75 if st == "dangerous" else 0.5), 2.4)
 
 
 ## Where a place sits, by name — Vector2.INF if the chart does not carry it.
@@ -368,17 +513,28 @@ func _pos_of_named(nm: String) -> Vector2:
 	return Vector2.INF
 
 
-func _draw_dashed(a: Vector2, b: Vector2, col: Color, w: float) -> void:
-	var span := a.distance_to(b)
-	if span <= 0.0:
-		return
-	var dir := (b - a) / span
-	var step := 7.0
-	var t := 0.0
-	while t < span:
-		var e: float = minf(t + 4.0, span)
-		draw_line(a + dir * t, a + dir * e, col, w, true)
-		t += step
+## Dashes along a ROUTED road, not a straight one — a closed road bends exactly
+## as the open one it replaced did, so the eye reads the same line struck out.
+func _draw_dashed_path(pts: PackedVector2Array, col: Color, w: float) -> void:
+	var on := true
+	var carry := 0.0
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var seg := a.distance_to(b)
+		if seg <= 0.001:
+			continue
+		var dir := (b - a) / seg
+		var t := 0.0
+		while t < seg:
+			var run: float = minf((4.0 if on else 3.0) - carry, seg - t)
+			if on:
+				draw_line(a + dir * t, a + dir * (t + run), col, w, true)
+			t += run
+			carry += run
+			if carry >= (4.0 if on else 3.0):
+				on = not on
+				carry = 0.0
 
 
 func _draw_roads() -> void:
@@ -404,8 +560,9 @@ func _draw_roads() -> void:
 					best_b = b
 		if best_b < 0:
 			break
-		# Old ink: a road is quieter than the places it joins.
-		draw_line(pts[best_a], pts[best_b], Color(Ui.c("ink_soft"), 0.28), 1.6, true)
+		# Old ink: a road is quieter than the places it joins — and it goes the
+		# way the land allows, not the way a ruler would.
+		_draw_path(_route(pts[best_a], pts[best_b]), Color(Ui.c("ink_soft"), 0.28), 1.6)
 		linked.append(best_b)
 		loose.erase(best_b)
 	# Named roads last, so they sit ON the web rather than under it.
@@ -527,7 +684,8 @@ func _draw_legend(font: Font) -> void:
 		var col2 := Ui.c(str(Rules.road_rule(st2)["col"]))
 		var x0 := at.x + pad
 		if st2 == "blocked":
-			_draw_dashed(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.0)
+			_draw_dashed_path(PackedVector2Array([Vector2(x0, cy2), Vector2(x0 + 9.0, cy2)]),
+				Color(col2, 0.9), 2.0)
 		else:
 			draw_line(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.2, true)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy2 + 4.0), str(Rules.road_rule(st2)["why"]),

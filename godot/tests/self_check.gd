@@ -945,6 +945,20 @@ The term for spell slots is "Echoes."
 			drew_regions = true
 	assert(drew_regions, "the chart actually draws its region names")
 	assert(wm.contains("_in_focus("), "focusing a region actually changes what is drawn")
+	# Roads must be ROUTED across the land, not ruled between the pins. Every
+	# road-drawing site goes through _route(); a bare draw_line between two place
+	# positions is the straight-line spider-web this replaced.
+	assert(wm.contains("_route(pts[best_a], pts[best_b])"), "the inferred web follows the land")
+	assert(wm.contains("_route(pa, pb)"), "a named road follows the land")
+	assert(wm.contains("_route(here_p, target)"), "the hovered road follows the land")
+	assert(wm.contains("AStarGrid2D"), "routing uses the engine's own grid solver")
+	# The read is COSMETIC. If a pixel ever decides a journey's cost or peril,
+	# the Terrain.md heuristic is back and it is back in the place that matters.
+	var gs_src := FileAccess.get_file_as_string("res://autoload/game_state.gd")
+	for fn in ["func travel_cost", "func travel_peril", "func travel_blocked"]:
+		var seg := gs_src.substr(gs_src.find(fn), 900)
+		assert(not seg.contains("get_pixel") and not seg.contains("chart_art"),
+			"%s decides from rules, never from the painting" % fn)
 	# The tier is worthless if nobody hands it the regions — the exact way the
 	# GM-model picker stayed broken for weeks, writing to a key nothing read.
 	var gsrc3 := FileAccess.get_file_as_string("res://scripts/game.gd")

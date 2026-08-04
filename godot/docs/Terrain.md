@@ -26,6 +26,25 @@ Every cell and every edge knows what it is **because it was placed**. The
 heuristic is deleted, not tuned, and the coordinate mismatch cannot exist
 because there is no separate painting to align against.
 
+## The one place a colour read is still allowed
+
+The Atlas routes its roads with an A* over a cost grid sampled from the chart
+plate, so a road bends around a bay instead of ruling straight across it
+(`world_map._ensure_land`). That is this same rejected heuristic, and it is
+allowed there for reasons that do **not** generalise back to the board:
+
+- **It decides nothing.** Travel cost, peril and passability come from
+  `Rules.ROAD` and `GameState.roads()`. A misread bends a drawn line and cannot
+  change what a journey costs. `self_check` asserts the three `travel_*`
+  functions never touch a pixel — if that ever fails, the heuristic is back in
+  the place that mattered.
+- **The coordinates cannot drift.** Failure 2 above was cover-fit drawing against
+  stretched sampling. The chart is drawn `draw_texture_rect(art, Rect2(ZERO,
+  size))` and sampled the same way. Change either and you must change both.
+- **Nothing is impassable.** The worst land is expensive, never solid, so a road
+  always exists between two places the engine says you may travel between. An
+  unroutable pair would be a pin with no line to it, which reads as a bug.
+
 ## The two layers
 
 ### Cells — what is *in* the square
