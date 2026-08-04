@@ -937,6 +937,55 @@ The term for spell slots is "Echoes."
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
 
+	# ── STAGE C: the modular doll ────────────────────────────────────────────
+	# Driven against the REAL CC0 body in the repo, not a stub — the whole point
+	# is that the slot wiring and the body-zone occlusion agree with geometry
+	# that actually exists.
+	if ResourceLoader.exists("res://spike3d/models/Knight.glb"):
+		var doll := ModularDoll.new()
+		add_child(doll)
+		doll.build(load("res://spike3d/models/Knight.glb"))
+		assert(doll.skeleton != null, "doll: the body must bring a skeleton")
+		# A doll starts BARE, whatever the source scene shipped wearing.
+		assert(doll.hidden_zones().is_empty(), "doll: nothing is covered before anything is worn")
+		assert(doll.worn("head") == "", "doll: the head slot starts empty")
+
+		# A helm covers the head; the head mesh goes away so it cannot poke out.
+		assert(doll.equip("head", "knight_helm"), "doll: the helm should go on")
+		assert(doll.hidden_zones() == ["head"], "doll: a helm hides the head zone")
+		# Two pieces, two zones — and taking one off must not un-hide the other.
+		assert(doll.equip("cloak", "knight_cape"), "doll: the cape should go on")
+		assert(doll.equip("head", ""), "doll: the helm should come off")
+		assert(doll.hidden_zones().is_empty(), "doll: bare head shows again once the helm is off")
+
+		# The order-of-undressing bug the refresh exists to prevent: recomputing
+		# from the whole loadout, never toggling per change.
+		doll.equip("head", "knight_helm")
+		doll.equip("cloak", "")
+		assert(doll.hidden_zones() == ["head"], "doll: removing the cape must not reveal a helmeted head")
+
+		# One slot holds ONE thing: a second weapon replaces the first.
+		assert(doll.equip("weapon", "sword_1h"), "doll: a sword should draw")
+		assert(doll.equip("weapon", "sword_2h"), "doll: a greatsword should replace it")
+		assert(doll.worn("weapon") == "sword_2h", "doll: the slot holds the newer weapon")
+		assert(not doll.equip("weapon", "not_a_thing"), "doll: an unknown part is refused, not drawn")
+		assert(doll.worn("weapon") == "sword_2h", "doll: ...and a refusal leaves the slot alone")
+
+		# Every rendered slot the game can fill must be a slot this rig answers
+		# for, or a player equips something and nothing happens on the doll.
+		var prof: Dictionary = doll.profile()
+		for slot in ["head", "cloak", "weapon", "offhand", "shield"]:
+			assert(prof["parts"].has(slot) or prof["sockets"].has(slot),
+				"doll: rig '%s' has no answer for the '%s' slot" % [doll.rig, slot])
+		# Sockets must name bones the skeleton actually has — a typo here fails
+		# silently, hanging the sword on nothing.
+		for slot2 in prof.get("sockets", {}):
+			var bone := str(prof["sockets"][slot2])
+			assert(doll.skeleton.find_bone(bone) >= 0,
+				"doll: socket bone '%s' for '%s' is not on this skeleton" % [bone, slot2])
+		doll.queue_free()
+		print("  doll: helm/cape/weapon slots wired, body zones hide, sockets resolve")
+
 	# ── THE CONTRAST GATE ────────────────────────────────────────────────────
 	# InteractionLanguage.md has always required body text at >= 4.5:1 "measured
 	# per palette". Nothing measured it, and `horror` shipped `danger` at 3.74:1
