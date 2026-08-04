@@ -34,12 +34,15 @@ if ($Yes) { $installArgs += '-Yes' }
 & powershell @installArgs
 if ($LASTEXITCODE -ne 0) { throw "engine setup failed (exit $LASTEXITCODE) — see output above." }
 
-# 2. The game itself. Ships with every world pre-baked, so it is by far the
-#    largest single file.
+# 2. The game itself — now a ~130 MB executable, because the worlds ship BESIDE
+#    it rather than inside it (a bundled build was 3.02 GB, over GitHub's 2 GiB
+#    asset cap). Which means step 3 is no longer optional: an exe on its own is
+#    a game with nothing to play, and it looks completely normal until you click
+#    New Adventure.
 Step 'Downloading the game'
 $client = Join-Path $Root 'Mythforge.exe'
 if (Test-Path $client) {
-    Write-Host "  already present ($([math]::Round((Get-Item $client).Length/1GB,2)) GB) — skipping"
+    Write-Host "  already present ($([math]::Round((Get-Item $client).Length/1MB)) MB) — skipping"
 } elseif (-not $ReleaseUrl) {
     Write-Warning "  no client URL given. Set -ReleaseUrl or `$env:MYTHFORGE_CLIENT_URL to the"
     Write-Warning "  Mythforge.exe release asset, then re-run this bootstrap."
@@ -48,7 +51,45 @@ if (Test-Path $client) {
     curl.exe -L --fail -o "$client.part" $ReleaseUrl
     if ($LASTEXITCODE -ne 0) { throw "client download failed." }
     Move-Item "$client.part" $client -Force
-    Write-Host "  game ready ($([math]::Round((Get-Item $client).Length/1GB,2)) GB)"
+    Write-Host "  game ready ($([math]::Round((Get-Item $client).Length/1MB)) MB)"
+}
+
+# 3. THE WORLDS. Six ~500 MB packages, fetched from the same release as the exe
+#    and dropped in `baked/` beside it. Resumable, because ~2.9 GB over a bad
+#    line should not start over, and skipped individually if already present so
+#    a re-run repairs one world rather than re-fetching all six.
+Step 'Downloading the worlds (~2.9 GB)'
+$worlds = @('embervale', 'neonspire', 'everyday', 'saltmarsh', 'fimbulreach', 'brasshaven')
+$bakedDir = Join-Path $Root 'baked'
+New-Item -ItemType Directory -Force $bakedDir | Out-Null
+$base = if ($ReleaseUrl) { Split-Path $ReleaseUrl -Parent } else { '' }
+$missing = @()
+foreach ($w in $worlds) {
+    $zip = Join-Path $bakedDir "$w.zip"
+    if (Test-Path $zip) { Write-Host "  $w — already present"; continue }
+    if (-not $base) { $missing += $w; continue }
+    # Split-Path mangles the scheme's double slash; rebuild the URL by name.
+    $url = ($ReleaseUrl -replace '/[^/]+$', "/$w.zip")
+    Write-Host "  $w …"
+    curl.exe -L --fail --retry 5 --retry-delay 3 -C - -o "$zip.part" $url
+    if ($LASTEXITCODE -ne 0) { $missing += $w; continue }
+    Move-Item "$zip.part" $zip -Force
+}
+if ($missing.Count -gt 0) {
+    Write-Warning "  could not fetch: $($missing -join ', ')"
+    Write-Warning "  download those .zip files from the release into: $bakedDir"
+}
+
+# 4. PROVE IT. An exe that finds no worlds boots, draws its menu, and offers an
+#    empty New Adventure — the failure is invisible until someone plays. This is
+#    the one check that catches it, so the installer runs it rather than hoping.
+if (Test-Path $client) {
+    Step 'Checking the game can see its worlds'
+    & $client --headless --mf-worlds
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning '  the game found no playable worlds — see the list above.'
+        Write-Warning "  Put the six .zip files in $bakedDir and run this again."
+    }
 }
 
 Step 'Done'
