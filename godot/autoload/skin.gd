@@ -905,14 +905,65 @@ func apply(wid: String) -> void:
 	# Duplicate so a per-world overlay never mutates the shared const palette.
 	pal = (PALETTES[pkey] if PALETTES.has(pkey) else PALETTES["arcane"]).duplicate()
 	_overlay_world_palette(wid)
+	_enforce_contrast()
 	_build()
 	changed.emit()
 
 
+## Which roles carry TEXT, and which are the grounds they are read against.
+const TEXT_ROLES := ["ink", "ink_soft", "ink_dim", "gold", "gold_soft",
+	"amethyst", "amethyst_deep", "ember", "danger"]
+const SURFACE_ROLES := ["night", "night2", "surface", "surface2", "sheet"]
+
+
+## THE DESIGN GATE, ENFORCED RATHER THAN ASSUMED.
+##
+## InteractionLanguage.md has always required body text at ≥ 4.5:1 "measured per
+## palette", and nothing measured it. Measuring all eight found `horror` shipping
+## `danger` at **3.74:1** on `surface2` — an error message a player is meant to
+## read at the moment something has gone wrong.
+##
+## Every text role is now walked away from the LIGHTEST surface it could sit on
+## (these palettes are dark, so that is the worst case) until it clears the bar.
+## A colour that already passes is untouched, so this changes as little as it can
+## — and it runs AFTER the world overlay, which is what lets a world colour the
+## UI at all without being able to make it unreadable.
+## Static and pure, so the design gate can measure EVERY palette rather than only
+## the families the six shipped worlds happen to use. The first version of the
+## check walked shipped world ids — which covers six of eight and misses
+## `horror`, the only one that was actually broken.
+static func clamp_palette(p: Dictionary) -> Dictionary:
+	var out := p.duplicate()
+	var worst_bg: Color = out[SURFACE_ROLES[0]]
+	for s in SURFACE_ROLES:
+		if out.has(s) and relative_luminance(out[s]) > relative_luminance(worst_bg):
+			worst_bg = out[s]
+	for t in TEXT_ROLES:
+		if out.has(t):
+			# amethyst_deep is a MARK colour (map pins, rules), never body copy —
+			# it is held to the large-text bar so a deep accent stays deep.
+			out[t] = readable_on(out[t], worst_bg, LARGE_MIN if t == "amethyst_deep" else TEXT_MIN)
+	return out
+
+
+func _enforce_contrast() -> void:
+	pal = clamp_palette(pal)
+
+
 ## S10 — a compiled world's own Style Guide colours refine its family palette, so
-## each world's UI carries its specific identity, not just its family's. Only the
-## accent (and a soft variant) are overlaid — surface/ink/text stay the family's,
-## so contrast can never regress (design gate).
+## each world's UI carries its specific identity, not just its family's.
+##
+## The model authors three colours and, until now, two of them were read by
+## nothing: `dominant` and `shadow` were asked for, stored in every compiled
+## world, and thrown away. Only `accent` was used.
+##
+## They are used now — but the world may choose the HUE, never the darkness. A
+## surface takes the model's hue and saturation and keeps the family's value, so
+## a world cannot wash the app pale by naming a bright dominant, and the contrast
+## clamp above then guarantees the text on top regardless of what it picked.
+## That is the whole bargain: the world colours it, the engine keeps it readable.
+const WORLD_SAT_CAP := 0.55
+
 func _overlay_world_palette(wid: String) -> void:
 	if wid == "" or not Compiler.is_compiled(wid):
 		return
@@ -923,6 +974,62 @@ func _overlay_world_palette(wid: String) -> void:
 	if acc != null:
 		pal["gold"] = acc
 		pal["gold_soft"] = acc.lightened(0.28)
+	var dom = _hex(str(cols.get("dominant", "")))
+	if dom != null:
+		for k in ["surface", "surface2", "sheet"]:
+			pal[k] = _hued(pal[k], dom)
+	var shd = _hex(str(cols.get("shadow", "")))
+	if shd != null:
+		for k in ["night", "night2"]:
+			pal[k] = _hued(pal[k], shd)
+
+
+## `base` re-hued toward `want`, keeping base's value (darkness) exactly.
+func _hued(base: Color, want: Color) -> Color:
+	return Color.from_hsv(want.h, minf(want.s, WORLD_SAT_CAP), base.v, base.a)
+
+
+## ── CONTRAST, MEASURED ───────────────────────────────────────────────────────
+## InteractionLanguage.md sets the bar — body text ≥ 4.5:1, large ≥ 3:1,
+## "measured per palette" — and nothing measured it. The palette overlay stayed
+## safe by refusing to touch any surface, which is safety by omission: it works
+## right up until someone widens the overlay, and then it fails silently in a
+## way only a person with a colorimeter would notice.
+##
+## WCAG 2.1 relative luminance and contrast ratio, so the bar is the real one
+## rather than a feel for it.
+const TEXT_MIN := 4.5      # body text
+const LARGE_MIN := 3.0     # headings, and the accent roles used at size
+
+static func relative_luminance(col: Color) -> float:
+	var ch := func(v: float) -> float:
+		return v / 12.92 if v <= 0.03928 else pow((v + 0.055) / 1.055, 2.4)
+	return 0.2126 * ch.call(col.r) + 0.7152 * ch.call(col.g) + 0.0722 * ch.call(col.b)
+
+
+static func contrast_ratio(a: Color, b: Color) -> float:
+	var la := relative_luminance(a)
+	var lb := relative_luminance(b)
+	return (maxf(la, lb) + 0.05) / (minf(la, lb) + 0.05)
+
+
+## The nearest version of `fg` that reads at `want` against `bg`, walking it away
+## from the background rather than replacing it — a world's colour survives as
+## far as legibility allows, and no further. Returns `fg` unchanged when it
+## already passes, and the best reachable colour when even white or black cannot
+## (which the check below refuses to let ship).
+static func readable_on(fg: Color, bg: Color, want := TEXT_MIN) -> Color:
+	if contrast_ratio(fg, bg) >= want:
+		return fg
+	var toward_light := relative_luminance(bg) < 0.18
+	var best := fg
+	for i in 40:
+		var t := float(i + 1) / 40.0
+		var tried := fg.lerp(Color.WHITE if toward_light else Color.BLACK, t)
+		best = tried
+		if contrast_ratio(tried, bg) >= want:
+			return tried
+	return best
 
 
 ## Parse a #rrggbb string to a Color, or null if it isn't a valid opaque hex.

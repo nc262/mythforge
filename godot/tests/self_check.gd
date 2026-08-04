@@ -937,6 +937,52 @@ The term for spell slots is "Echoes."
 			assert(str(o.get("rule", "")).strip_edges() != "",
 				"every option states the rule it puts into the world")
 
+	# ── THE CONTRAST GATE ────────────────────────────────────────────────────
+	# InteractionLanguage.md has always required body text at >= 4.5:1 "measured
+	# per palette". Nothing measured it, and `horror` shipped `danger` at 3.74:1
+	# on surface2 — the colour of an error message, at the moment it matters.
+	#
+	# EVERY palette, not the six the shipped worlds happen to use. The first draft
+	# of this gate walked world ids and so never touched `horror` — the only one
+	# that was broken. A gate that misses the failing case is decoration.
+	var pal_checked := 0
+	for pkey in Ui.PALETTES:
+		var clamped: Dictionary = Ui.clamp_palette(Ui.PALETTES[pkey])
+		var lightest: Color = clamped[Ui.SURFACE_ROLES[0]]
+		for s in Ui.SURFACE_ROLES:
+			if Ui.relative_luminance(clamped[s]) > Ui.relative_luminance(lightest):
+				lightest = clamped[s]
+		for t in Ui.TEXT_ROLES:
+			if not clamped.has(t):
+				continue
+			var want: float = Ui.LARGE_MIN if t == "amethyst_deep" else Ui.TEXT_MIN
+			var got := Ui.contrast_ratio(clamped[t], lightest)
+			assert(got >= want - 0.01,
+				"contrast: '%s' on the lightest surface of '%s' is %.2f:1, under %.1f" % [t, pkey, got, want])
+		pal_checked += 1
+	assert(pal_checked >= 8, "contrast: every palette must be gated, checked %d" % pal_checked)
+	print("  contrast: %d palettes clamped and measured against 4.5:1 body / 3.0:1 large" % pal_checked)
+
+	# The clamp must be a no-op on a colour that already passes — a gate that
+	# repaints everything is a restyle wearing a gate's clothes.
+	var fine := Color("efeafb")
+	var dark := Color("0c0a1c")
+	assert(Ui.readable_on(fine, dark) == fine, "contrast: a passing colour is left alone")
+	# ...and must actually move one that does not.
+	var faint := Color("1a1636")
+	assert(Ui.contrast_ratio(faint, dark) < Ui.TEXT_MIN, "contrast: the probe colour should start too faint")
+	assert(Ui.contrast_ratio(Ui.readable_on(faint, dark), dark) >= Ui.TEXT_MIN,
+		"contrast: a failing colour is walked until it reads")
+
+	# A world may choose the HUE and never the darkness — otherwise a model that
+	# names a bright dominant washes the whole app pale.
+	var deep := Color.from_hsv(0.7, 0.4, 0.12)
+	var glare := Color.from_hsv(0.1, 1.0, 1.0)
+	var mixed := Ui._hued(deep, glare)
+	assert(is_equal_approx(mixed.v, deep.v), "skin: a world's colour must not change a surface's darkness")
+	assert(is_equal_approx(mixed.h, glare.h), "skin: ...but it does set the hue")
+	assert(mixed.s <= Ui.WORLD_SAT_CAP + 0.001, "skin: saturation is capped so surfaces stay surfaces")
+
 	# ── AT-3: the region tier is drawn AND wired ─────────────────────────────
 	var wm := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
 	var drew_regions := false

@@ -427,7 +427,12 @@ in 17 files — MIL extends the contract.
 
 **Additional requirements**
 - Every state carried by **at least two channels** — never colour alone.
-- Body text ≥ **4.5:1**, large text ≥ **3:1**, measured per palette.
+- Body text ≥ **4.5:1**, large text ≥ **3:1**, measured per palette — **enforced**
+  by `Ui.clamp_palette`, which walks every text role away from the lightest
+  surface until it clears the bar, and gated by `self_check` across all eight
+  palettes. This line was aspirational until 2026-08-04: measuring found four
+  real violations, including `horror`'s `danger` at **3.74:1** — the colour an
+  error message is printed in.
 - Sound is never the only signal of anything.
 - Focus always visible — the amethyst ring, keyboard and pad alike.
 

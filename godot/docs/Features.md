@@ -86,6 +86,13 @@ library, a drawn icon library with no fonts or emoji, motion with a
 reduce-motion path for every animation, and the Environmental Art System behind
 it all. [DesignSystem.md](DesignSystem.md) is law for anything that renders.
 
+**A world colours the UI; the engine keeps it readable.** The Worldsmith emits
+three hexes and all three are now used — the accent becomes the gold roles, the
+dominant and shadow re-hue the surfaces. A world may choose the *hue* and never
+the darkness, and `Ui.clamp_palette` then walks every text role away from the
+lightest surface until it clears WCAG 4.5:1. So no world, forged or shipped, can
+produce an unreadable interface.
+
 ## Not built
 
 Listed with the reason, in [Backlog.md](Backlog.md) — TTS, true 3D characters,

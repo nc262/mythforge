@@ -61,9 +61,6 @@ Each with the reason it is not merely undone:
 - **A true 3D character** ([CharacterRender.md](CharacterRender.md), Stage C).
   Paused on an asset-sourcing decision: commissioned, generated, or a bought
   pack. `spike3d/` holds the experiments; nothing in the shipped path uses them.
-- **World Skin palette from the model.** Families are deterministic; the
-  Worldsmith could emit palette hexes and merge them through the contrast clamp
-  that already exists.
 - **Co-op.** No networking design exists, and the local-first architecture is
   not obviously compatible with one.
 
