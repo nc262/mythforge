@@ -50,8 +50,10 @@ Adventure.
 
 ## Build it
 
+Inno Setup **6 or 7** — nothing in the script uses a 7-only directive.
+
 ```
-iscc /DClientUrl="https://github.com/<you>/mythforge/releases/download/vX/Mythforge.exe" installer\Mythforge-Setup.iss
+iscc /DClientUrl="https://github.com/nc262/mythforge/releases/download/vX/Mythforge.exe" installer\Mythforge-Setup.iss
 ```
 
 → `installer\Output\Mythforge-Setup.exe`. Publish that plus `Mythforge.exe` (the
@@ -79,14 +81,28 @@ Verified on the dev machine (AMD, Vulkan):
 - Every PowerShell script parses clean.
 - `scripts/install.ps1` and `scripts/check-system.ps1` are the paths actually in
   use here.
+- **The installer compiles and round-trips.** 2026-08-04: compiled with Inno
+  Setup 7, silent-installed to a scratch directory, inspected (21 files, the
+  layout below), then uninstalled — leaving no files, no Start Menu group and no
+  `HKCU` uninstall key.
 
-**Not exercised on a clean machine — validate before shipping wide:**
+Compiling it first time found four things that reading it had not:
 
-- A full first-run `bootstrap` on a fresh box (it pulls ~10 GB; not run here so
-  as not to disturb the dev install).
+| Found | Why it mattered |
+|---|---|
+| `__pycache__/*.pyc` was being packaged | `recursesubdirs` swept this box's compiled bytecode into the installer a stranger downloads |
+| `{commondesktop}` under `PrivilegesRequired=lowest` | The all-users desktop needs admin this install does not ask for. Now `{autodesktop}` |
+| `[UninstallDelete]` never named `baked\` | **Uninstall orphaned ~2.9 GB of worlds.** Verified by building the pre-fix script and watching it leave them behind |
+| The header still said the exe carries the worlds | The release split removed exactly that |
+
+**Still not exercised — validate before shipping wide:**
+
+- **A full first-run `bootstrap` on a fresh box.** This is the remaining risk and
+  it is the big one: ~10 GB of downloads, GPU detection, three models and the
+  image engine, none of it run here so as not to disturb the dev install. What is
+  proven above is the *installer*; `bootstrap.ps1` is still unproven.
 - An NVIDIA card. Both engines are Vulkan, so there is no vendor branch left to
   get wrong — but "should work" is not "was run".
-- Compiling the `.iss` — needs Inno Setup 6 installed.
 
 **Decided, not open:** the installer is shipped **unsigned**. An OV certificate
 is a few hundred dollars a year and this project has no revenue, so SmartScreen's

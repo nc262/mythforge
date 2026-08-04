@@ -39,8 +39,7 @@ not positions on ground. A scale would be a drawn lie.
 
 | # | Item | P | E |
 |---|---|---|---|
-| DI-1 | **The installer has never run on a clean machine.** The biggest risk in the download, and not something the harnesses can reach | P2 | M |
-| DI-2 | `Mythforge-Setup.iss` has never been compiled — needs Inno Setup 6 | P3 | S |
+| DI-1 | **`bootstrap.ps1` has never run on a clean machine** — ~10 GB of downloads, GPU detection, three models and the image engine. Narrowed on 2026-08-04: the *installer* is now proven (compile → silent install → uninstall, no residue), so what is left is specifically the first-run fetch. Still the biggest risk in the download, and still not something the harnesses can reach | P2 | M |
 
 ## Not built
 

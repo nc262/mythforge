@@ -8,14 +8,14 @@
 ; It lays down the launcher and the setup scripts; a first-run step then fetches
 ; the game, its models and the image engine for their machine.
 ;
-; Everything heavy — the game (which carries the pre-baked worlds), the ~4.6 GB
-; narrator model and the ~6.5 GB art checkpoint — is fetched at first run from
-; official sources, so this installer itself stays in the tens of MB.
+; Everything heavy — the ~131 MB game, its six ~500 MB world packages, the
+; ~4.6 GB narrator model and the ~6.5 GB art checkpoint — is fetched at first
+; run from official sources, so this installer itself stays in the tens of MB.
+;
+; The worlds are SEPARATE downloads that land in {app}\baked, not cargo inside
+; the exe. A bundled build was 3.02 GB, over GitHub's 2 GiB asset cap.
 
-; NOTE: while the repo is PRIVATE, this URL needs an authenticated fetch — a
-; plain download returns 404 for anyone without access. Make the repo public, or
-; host the game somewhere the player can reach, before handing the installer to
-; a friend. (Everything else it downloads is from public official sources.)
+; Compiles with Inno Setup 6 or 7 — nothing here uses a 7-only directive.
 #ifndef ClientUrl
   #define ClientUrl "https://github.com/nc262/mythforge/releases/latest/download/Mythforge.exe"
 #endif
@@ -46,7 +46,9 @@ Name: "setupnow";    Description: "Download & configure everything now (game, mo
 ; The launcher and the setup scripts, and nothing heavy. The Godot project is
 ; excluded because players get the exported exe, not the source — but its icon
 ; ships, because the shortcuts point at it.
-Source: "..\scripts\*"; DestDir: "{app}\scripts"; Flags: recursesubdirs createallsubdirs
+; Excludes __pycache__: `recursesubdirs` otherwise sweeps compiled bytecode from
+; whatever this dev box last ran into the installer a stranger downloads.
+Source: "..\scripts\*"; DestDir: "{app}\scripts"; Flags: recursesubdirs createallsubdirs; Excludes: "__pycache__,*.pyc"
 Source: "..\installer\*.ps1"; DestDir: "{app}\installer"
 Source: "..\godot\icon.ico"; DestDir: "{app}"
 Source: "..\LICENSE"; DestDir: "{app}"
@@ -60,7 +62,10 @@ Source: "..\README.md"; DestDir: "{app}"
 Name: "{group}\Mythforge"; Filename: "powershell.exe"; \
   Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\mythforge.ps1"""; \
   WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"
-Name: "{commondesktop}\Mythforge"; Filename: "powershell.exe"; \
+; {autodesktop}, not {commondesktop}: the all-users desktop needs admin, and this
+; is a PrivilegesRequired=lowest install. {auto*} resolves to the per-user
+; location when not elevated, which is the only one we can actually write.
+Name: "{autodesktop}\Mythforge"; Filename: "powershell.exe"; \
   Parameters: "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File ""{app}\installer\mythforge.ps1"""; \
   WorkingDir: "{app}"; IconFilename: "{app}\icon.ico"; Tasks: desktopicon
 Name: "{group}\Uninstall Mythforge"; Filename: "{uninstallexe}"
@@ -78,7 +83,11 @@ Filename: "powershell.exe"; \
   Description: "Launch Mythforge now"; Flags: postinstall nowait skipifsilent
 
 [UninstallDelete]
-; What the app fetched at runtime. NOT the sibling image engine — the player may
-; be using it for something else; leave that for them to remove.
-Type: files; Name: "{app}\Mythforge.exe"
-Type: files; Name: "{app}\launcher.log"
+; What the app fetched at runtime. Inno only removes what it installed itself, so
+; every first-run download has to be named here or it is orphaned — the worlds
+; alone are ~2.9 GB, which is a rude thing to leave on someone's disk.
+; NOT the sibling image engine, and NOT the models under {userappdata}\Godot —
+; the player may be using either for something else; leave those for them.
+Type: files;          Name: "{app}\Mythforge.exe"
+Type: files;          Name: "{app}\launcher.log"
+Type: filesandordirs; Name: "{app}\baked"

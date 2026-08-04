@@ -74,3 +74,6 @@ godot/addons/nobodywho/*.dll
 godot/addons/nobodywho/*.so
 godot/addons/nobodywho/*.dylib
 godot/addons/nobodywho/*.pdb
+
+# Inno Setup build output — a ~10 MB binary, rebuilt by iscc on demand
+installer/Output/
