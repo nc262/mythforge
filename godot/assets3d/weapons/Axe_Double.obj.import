@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://bpmku70he403v"
+path="res://.godot/imported/Axe_Double.obj-aa2c313d732baa85589b68bd74fa57fa.mesh"
+
+[deps]
+
+files=["res://.godot/imported/Axe_Double.obj-aa2c313d732baa85589b68bd74fa57fa.mesh"]
+
+source_file="res://assets3d/weapons/Axe_Double.obj"
+dest_files=["res://.godot/imported/Axe_Double.obj-aa2c313d732baa85589b68bd74fa57fa.mesh", "res://.godot/imported/Axe_Double.obj-aa2c313d732baa85589b68bd74fa57fa.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

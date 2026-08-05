@@ -121,20 +121,57 @@ const RIGS := {
 		# every pack sharing one skeleton.
 		"anim": "res://assets3d/anim/UAL2_Standard.glb",
 		# UAL2 is a SITUATIONAL library — farming, zombies, sword combos — with no
-		# plain "Idle". Folded arms is the one unambiguous standing pose in it.
-		"stand": ["Idle_FoldArms", "Idle_Rail", "Idle_No", "Idle_Shield"],
+		# plain "Idle". The first pick here was Idle_FoldArms, which reads well
+		# right up until the figurine holds something: crossed arms tuck both
+		# hands into the chest and hide the weapon completely, which defeats the
+		# entire purpose of a doll that shows what you equipped. A guard stance
+		# keeps the hands out where the gear is visible.
+		"stand": ["Sword_Block", "Idle_Shield", "Idle_Rail", "Idle_FoldArms"],
 		"sockets": {"weapon": "hand_r", "offhand": "hand_l", "shield": "hand_l",
 			"head": "Head", "cloak": "spine_03"},
 		"zones": {},
 		"hides": {},
 		"parts": {},
-		# NO WEAPONS OR SHIELDS. The outfit pack is clothing only, so `weapon`,
-		# `offhand` and `shield` have sockets waiting on the right bones and no
-		# geometry to hang on them — those slots resolve to "" and the figurine
-		# goes unarmed. Weapons are RIGID props: they ride a BoneAttachment3D and
-		# never need matching skin weights, so any CC0 weapon mesh can fill them
-		# later without touching the rig. Tracked in the backlog, not pretended
-		# away with a stand-in sword from the other rig at the wrong scale.
+		# RIGID props — weapons and shields. They ride a BoneAttachment3D on the
+		# hand bone and never need skin weights, which is exactly why a pack
+		# built for no particular skeleton can fill these slots: a sword is a
+		# sword whatever the rig underneath it.
+		#
+		# These are OBJ, so they arrive as a bare Mesh with no scene, no
+		# material and no rig — the doll wraps each in a MeshInstance3D itself.
+		"props": {
+			"weapon": {"sword": "res://assets3d/weapons/Sword.obj",
+				"sword_big": "res://assets3d/weapons/Sword_Big.obj",
+				"claymore": "res://assets3d/weapons/Claymore.obj",
+				"dagger": "res://assets3d/weapons/Dagger.obj",
+				"axe": "res://assets3d/weapons/Axe.obj",
+				"axe_big": "res://assets3d/weapons/Axe_Double.obj",
+				"hammer": "res://assets3d/weapons/Hammer_Small.obj",
+				"maul": "res://assets3d/weapons/Hammer_Double.obj",
+				"spear": "res://assets3d/weapons/Spear.obj",
+				"scythe": "res://assets3d/weapons/Scythe.obj",
+				"bow": "res://assets3d/weapons/Bow_Wooden.obj"},
+			"offhand": {"dagger": "res://assets3d/weapons/Dagger_2.obj",
+				"sword": "res://assets3d/weapons/Sword_2.obj",
+				"axe": "res://assets3d/weapons/Axe_Small.obj"},
+			"shield": {"heater": "res://assets3d/weapons/Shield_Heater.obj",
+				"round": "res://assets3d/weapons/Shield_Round.obj",
+				"celtic": "res://assets3d/weapons/Shield_Celtic_Golden.obj"},
+		},
+		# How a prop sits in the hand. `len` is a TARGET LENGTH in world units for
+		# the mesh's longest axis, not a scale factor — the first version guessed
+		# a factor and produced a sword bigger than the man holding it, because a
+		# pack's authored scale is nothing you can reason about from here.
+		# Measuring the mesh and scaling to a known size works for any pack.
+		#
+		# Per slot, because a shield is held flat against the forearm and a sword
+		# points along it. Numbers set by rendering and looking; a 1.8 m figure
+		# carries a ~0.85 m arming sword and a ~0.6 m shield.
+		"prop_fit": {
+			"weapon":  {"len": 0.85, "rot": Vector3(0, 0, -90), "pos": Vector3(0, 0.02, 0)},
+			"offhand": {"len": 0.55, "rot": Vector3(0, 0, -90), "pos": Vector3(0, 0.02, 0)},
+			"shield":  {"len": 0.60, "rot": Vector3(0, 90, 0),  "pos": Vector3(0, 0.03, 0)},
+		},
 		"scenes": {
 			"armor":  {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Body.gltf",
 				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Body.gltf"},
@@ -169,6 +206,24 @@ const RIGS := {
 			"head":  [["hood", "hood"], ["cowl", "hood"], ["hat", "hood"], ["cap", "hood"],
 				["helm", "hood"], ["", "hood"]],
 			"cloak": [["", "pauldrons"]],
+			# Specific before generic, and the two-handers before their family —
+			# "Greataxe" must reach the big axe before "axe" claims it. Same
+			# ordering rule the item-icon table learned the hard way.
+			"weapon": [["claymore", "claymore"], ["greatsword", "claymore"],
+				["longsword", "sword_big"], ["bastard", "sword_big"],
+				["greataxe", "axe_big"], ["battleaxe", "axe_big"],
+				["maul", "maul"], ["warhammer", "maul"],
+				["hammer", "hammer"], ["mace", "hammer"],
+				["axe", "axe"], ["hatchet", "axe"],
+				["scythe", "scythe"], ["glaive", "scythe"],
+				["spear", "spear"], ["pike", "spear"], ["lance", "spear"], ["halberd", "spear"],
+				["bow", "bow"], ["sling", "bow"],
+				["dagger", "dagger"], ["knife", "dagger"], ["dirk", "dagger"],
+				["", "sword"]],
+			"offhand": [["axe", "axe"], ["sword", "sword"], ["", "dagger"]],
+			"shield": [["round", "round"], ["buckler", "round"],
+				["kite", "heater"], ["tower", "heater"], ["heater", "heater"],
+				["gold", "celtic"], ["ornate", "celtic"], ["", "heater"]],
 		},
 	},
 }
@@ -215,7 +270,8 @@ func wear_inventory(inv: Dictionary) -> void:
 
 func _rig_has_slot(slot: String) -> bool:
 	var prof := profile()
-	return prof.get("parts", {}).has(slot) or prof.get("scenes", {}).has(slot)
+	return prof.get("parts", {}).has(slot) or prof.get("scenes", {}).has(slot) \
+		or prof.get("props", {}).has(slot)
 
 var rig := "quaternius"
 var skeleton: Skeleton3D = null
@@ -300,9 +356,14 @@ func stand() -> void:
 	if ap == null:
 		return
 	var want: Array = profile().get("stand", ["Idle", "Idle_Loop", "1H_Melee_Idle"])
-	for lib in ap.get_animation_library_list():
-		for nm in ap.get_animation_library(lib).get_animation_list():
-			for w in want:
+	# PREFERENCE OUTERMOST. The first version looped clips on the outside and
+	# preferences on the inside, so whichever clip came first ALPHABETICALLY and
+	# appeared anywhere in the list won — `Idle_FoldArms` beat `Sword_Block`
+	# every time and the priority order was decoration. The list looked obeyed
+	# and was not, which is the worst kind of wrong.
+	for w in want:
+		for lib in ap.get_animation_library_list():
+			for nm in ap.get_animation_library(lib).get_animation_list():
 				if str(nm).nocasecmp_to(str(w)) != 0:
 					continue
 				ap.play((str(lib) + "/" + str(nm)) if str(lib) != "" else str(nm))
@@ -342,6 +403,13 @@ func equip(slot: String, part_id: String) -> bool:
 		_worn[slot] = ""
 		_refresh_zones()
 		return true
+	var props: Dictionary = prof.get("props", {}).get(slot, {})
+	if props.has(part_id):
+		if not _hold_prop(slot, str(props[part_id])):
+			return false
+		_worn[slot] = part_id
+		_refresh_zones()
+		return true
 	if files.has(part_id):
 		# A garment carries its own copy of the skeleton; it is worn by borrowing
 		# THIS doll's pose, so one animation drives body and clothing together.
@@ -361,6 +429,52 @@ func equip(slot: String, part_id: String) -> bool:
 	m.visible = true
 	_worn[slot] = part_id
 	_refresh_zones()
+	return true
+
+
+## Put a RIGID prop in the hand. No skinning: it hangs off one bone through a
+## BoneAttachment3D and inherits that bone's motion for free, which is why a
+## weapon pack built for no particular skeleton works here at all.
+##
+## An OBJ loads as a bare Mesh — no scene, no material, no rig — so it is wrapped
+## in a MeshInstance3D here. The fit (scale, rotation, offset) comes from the
+## rig profile because it is a property of THIS pack meeting THIS rig, not of
+## either alone.
+func _hold_prop(slot: String, path: String) -> bool:
+	if not ResourceLoader.exists(path):
+		return false
+	var res = load(path)
+	var mesh: Mesh = res if res is Mesh else null
+	if mesh == null and res is PackedScene:
+		var tmp = res.instantiate()
+		for mi in _all_meshes(tmp):
+			mesh = mi.mesh
+			break
+		tmp.queue_free()
+	if mesh == null:
+		return false
+	var bone := str(profile().get("sockets", {}).get(slot, ""))
+	var att := _socket(bone)
+	if att == null:
+		return false
+	var held := MeshInstance3D.new()
+	held.mesh = mesh
+	var fit: Dictionary = profile().get("prop_fit", {}).get(slot, {})
+	# Scale DERIVED from the mesh, not asserted: measure its longest axis and
+	# shrink it to the target length. A pack's authored units are arbitrary, so
+	# a hard factor is a guess that happens to work for one pack — this one held
+	# a sword three times the height of the man carrying it.
+	var box := mesh.get_aabb()
+	var longest: float = maxf(box.size.x, maxf(box.size.y, box.size.z))
+	var want := float(fit.get("len", 0.8))
+	held.scale = Vector3.ONE * (want / maxf(longest, 0.0001))
+	held.rotation_degrees = fit.get("rot", Vector3.ZERO)
+	held.position = fit.get("pos", Vector3.ZERO)
+	var holder := Node3D.new()
+	holder.name = "held_" + slot
+	att.add_child(holder)
+	holder.add_child(held)
+	_extern[slot] = holder
 	return true
 
 

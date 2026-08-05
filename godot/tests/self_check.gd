@@ -1069,6 +1069,30 @@ The term for spell slots is "Echoes."
 			assert(qd.worn(bare_slot) != "",
 				"q-doll: '%s' must fall back to underclothes, not skin" % bare_slot)
 		assert(qd.worn("head") == "", "q-doll: bare-headed is fine and stays bare")
+
+		# ── Rigid props: weapons and shields ─────────────────────────────────
+		# A different attach path from garments — one bone, no skin weights —
+		# which is why a weapon pack built for no particular rig works at all.
+		assert(qd.equip("weapon", "sword"), "q-doll: a sword goes in the hand")
+		assert(qd.equip("shield", "heater"), "q-doll: a shield goes on the arm")
+		assert(qd.worn("weapon") == "sword" and qd.worn("shield") == "heater",
+			"q-doll: both hands hold what they were given")
+		assert(qd.part_for("weapon", "Greataxe") == "axe_big", "q-doll: a greataxe is the big axe")
+		assert(qd.part_for("weapon", "Hand Axe") == "axe", "q-doll: ...and a hand axe is not")
+		assert(qd.part_for("weapon", "Oak Longbow") == "bow", "q-doll: a longbow is a bow, not a sword")
+		assert(qd.part_for("weapon", "Rusty Thing") == "sword", "q-doll: an unknown weapon still arms the hand")
+		assert(qd.part_for("shield", "Tower Shield") == "heater", "q-doll: a tower shield is the big one")
+		# A prop is SCALED FROM ITS OWN MESH to a target length. The first version
+		# used a fixed factor and produced a sword taller than the man; a pack's
+		# authored units are not something you can reason about from here.
+		var fitw: Dictionary = qd.profile().get("prop_fit", {}).get("weapon", {})
+		assert(fitw.has("len") and not fitw.has("scale"),
+			"q-doll: props are fitted by target LENGTH, never by a guessed scale factor")
+		# And the stance must not hide them. Folded arms tucks both hands into the
+		# chest, which makes a figurine that shows your gear show nothing.
+		var stance: Array = qd.profile().get("stand", [])
+		assert(stance.size() > 0 and str(stance[0]).to_lower() != "idle_foldarms",
+			"q-doll: the default stance must leave the hands visible")
 		qd.queue_free()
 		print("  q-doll: chest/hands/legs/feet wear real garments, swap cleanly, and stand")
 

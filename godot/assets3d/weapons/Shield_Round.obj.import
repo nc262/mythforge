@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://by7m0w8omqhrk"
+path="res://.godot/imported/Shield_Round.obj-309e598d8f68ef3cc7117f051fb9090e.mesh"
+
+[deps]
+
+files=["res://.godot/imported/Shield_Round.obj-309e598d8f68ef3cc7117f051fb9090e.mesh"]
+
+source_file="res://assets3d/weapons/Shield_Round.obj"
+dest_files=["res://.godot/imported/Shield_Round.obj-309e598d8f68ef3cc7117f051fb9090e.mesh", "res://.godot/imported/Shield_Round.obj-309e598d8f68ef3cc7117f051fb9090e.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false

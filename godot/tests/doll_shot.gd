@@ -15,7 +15,10 @@ const SHOTS := [
 	["dressed", {"armor": "peasant", "legs": "peasant", "feet": "peasant", "hands": "peasant"}],
 	["ranger", {"armor": "ranger", "legs": "ranger", "feet": "ranger",
 		"hands": "ranger", "head": "hood"}],
-	["stripped", {"legs": "ranger"}],
+	["armed", {"armor": "ranger", "legs": "ranger", "feet": "ranger",
+		"weapon": "sword", "shield": "heater"}],
+	["twohand", {"armor": "ranger", "legs": "ranger", "feet": "ranger",
+		"weapon": "claymore"}],
 ]
 
 

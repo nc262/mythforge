@@ -1,0 +1,25 @@
+[remap]
+
+importer="wavefront_obj"
+importer_version=1
+type="Mesh"
+uid="uid://6shtkl7m1gnt"
+path="res://.godot/imported/Shield_Heater.obj-f6846b667d51bbe935a0f10a46d4631f.mesh"
+
+[deps]
+
+files=["res://.godot/imported/Shield_Heater.obj-f6846b667d51bbe935a0f10a46d4631f.mesh"]
+
+source_file="res://assets3d/weapons/Shield_Heater.obj"
+dest_files=["res://.godot/imported/Shield_Heater.obj-f6846b667d51bbe935a0f10a46d4631f.mesh", "res://.godot/imported/Shield_Heater.obj-f6846b667d51bbe935a0f10a46d4631f.mesh"]
+
+[params]
+
+generate_tangents=true
+generate_lods=true
+generate_shadow_mesh=true
+generate_lightmap_uv2=false
+generate_lightmap_uv2_texel_size=0.2
+scale_mesh=Vector3(1, 1, 1)
+offset_mesh=Vector3(0, 0, 0)
+force_disable_mesh_compression=false
