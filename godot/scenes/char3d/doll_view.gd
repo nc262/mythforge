@@ -90,47 +90,8 @@ func _ready() -> void:
 	var cam := Camera3D.new()
 	cam.fov = 34.0
 	_vp.add_child(cam)
-	_frame(cam)
-
-
-## Pull back until the whole figurine is in shot, with a margin. Uses the union
-## of every visible mesh's AABB: bone positions alone sit inside the silhouette
-## and miss a held sword entirely — the token spike had exactly that bug.
-func _frame(cam: Camera3D) -> void:
-	var box := AABB()
-	var first := true
-	for mi in _all_meshes(doll):
-		if not mi.visible:
-			continue
-		var world: AABB = mi.global_transform * mi.get_aabb()
-		if first:
-			box = world
-			first = false
-		else:
-			box = box.merge(world)
-	if first:
-		cam.position = Vector3(0, 0.9, 3.2)
-		cam.look_at(Vector3(0, 0.85, 0), Vector3.UP)
-		return
-	var mid := box.get_center()
-	# Frame on HEIGHT, with the width only able to push it further back. A chibi
-	# body is wider than it is tall once the arms are out, so framing on the
-	# largest axis alone left the figure small in a tall box with dead air above.
-	var tall := box.size.y
-	var wide: float = maxf(box.size.x, box.size.z)
-	var reach: float = maxf(tall, wide * (custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0)))
-	var back: float = (reach * 0.54) / tan(deg_to_rad(cam.fov) * 0.5) + wide * 0.5
-	cam.position = Vector3(mid.x, mid.y, mid.z + back)
-	cam.look_at(mid, Vector3.UP)
-
-
-func _all_meshes(n: Node) -> Array:
-	var out: Array = []
-	if n is MeshInstance3D:
-		out.append(n)
-	for c in n.get_children():
-		out.append_array(_all_meshes(c))
-	return out
+	if doll != null:
+		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0))
 
 
 ## Show what the hero is actually wearing. Safe to call before the view is in

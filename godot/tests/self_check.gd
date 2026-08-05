@@ -1048,6 +1048,45 @@ The term for spell slots is "Echoes."
 		dv.queue_free()
 		print("  gear: figurine dressed from a pre-tree loadout, standing, framed")
 
+	# ── The board token ──────────────────────────────────────────────────────
+	# The mini is re-rendered per LOADOUT, so the key has to move when the gear
+	# does. A key that ignores a slot means you swap your shield and the figurine
+	# on the table keeps the old one — and nothing anywhere would report it.
+	var kit_a := {"items": [{"id": "w1", "name": "Iron Sword"}, {"id": "s1", "name": "Round Shield"}],
+		"equipped": {"weapon": "w1"}}
+	var kit_b := {"items": [{"id": "w1", "name": "Iron Sword"}, {"id": "s1", "name": "Round Shield"}],
+		"equipped": {"weapon": "w1", "shield": "s1"}}
+	assert(Art._loadout_key(kit_a) != Art._loadout_key(kit_b),
+		"figurine: taking up a shield must produce a different token")
+	assert(Art._loadout_key(kit_a) == Art._loadout_key(kit_a.duplicate(true)),
+		"figurine: the same kit must reuse its token rather than re-render forever")
+	# The helm has to be IN the pack. Equipping an id the pack does not hold is
+	# not a loadout, it is a corrupt save — and the key rightly ignores it, which
+	# is what the first version of this assertion mistook for a bug.
+	var kit_c := {"items": kit_a["items"] + [{"id": "h1", "name": "Iron Helm"}],
+		"equipped": {"weapon": "w1", "head": "h1"}}
+	assert(Art._loadout_key(kit_a) != Art._loadout_key(kit_c), "figurine: a helm changes the token")
+	var kit_ghost := kit_a.duplicate(true)
+	kit_ghost["equipped"] = {"weapon": "w1", "head": "nonesuch"}
+	assert(Art._loadout_key(kit_a) == Art._loadout_key(kit_ghost),
+		"figurine: wearing an item the pack does not hold changes nothing")
+	# Headless cannot render, so it must decline rather than cache a blank square
+	# and call it a token — the harnesses would then "pass" on an empty mini.
+	assert(Art.figurine_tex(kit_a) == null, "figurine: headless declines instead of caching a blank")
+	var asrc := FileAccess.get_file_as_string("res://autoload/art_cache.gd")
+	assert(asrc.contains("figurine_tex(GameState.inv())"),
+		"figurine: the board's PC token actually asks for the figurine")
+	assert(asrc.contains("UPDATE_DISABLED"),
+		"figurine: the offscreen viewport is not left rendering forever")
+	# A face that lands LATE must reach the initiative rail too. The board
+	# repaints every frame and picks it up alone; the rail is built once per
+	# roster change, so without this the same combatant wore a figurine on the
+	# board and a letter on the rail, on the same screen.
+	var gsrc4 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(gsrc4.contains("Art.art_ready.connect(func(_k):"),
+		"figurine: late art must refresh the initiative rail, not just the board")
+	print("  figurine: loadout key tracks gear, headless declines, board and rail agree")
+
 	# ── THE CONTRAST GATE ────────────────────────────────────────────────────
 	# InteractionLanguage.md has always required body text at >= 4.5:1 "measured
 	# per palette". Nothing measured it, and `horror` shipped `danger` at 3.74:1

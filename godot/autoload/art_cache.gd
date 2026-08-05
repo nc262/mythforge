@@ -677,12 +677,116 @@ func item_tex_for(it: Dictionary) -> Texture2D:
 	return item_tex(str(it.get("name", "")))
 
 
+## ── THE FIGURINE ON THE BOARD ────────────────────────────────────────────────
+## The hero's token is a rendered MINIATURE, wearing what the player equipped.
+##
+## Rendered ONCE per loadout into an ImageTexture, not drawn live: the board
+## repaints every frame for the shake and the cloud shadows, and a 3D viewport
+## kept alive behind it would be a permanent tax on the one card the narrator
+## also wants. Change your gear and exactly one new render happens.
+##
+## Nothing is written to disk. This is not commissioned art — it is a picture of
+## geometry the game already ships, reproducible in a frame, so the art cache's
+## LRU has no business evicting it and no reason to store it.
+const FIG_PX := 256
+const FIG_BODY := "res://spike3d/models/Knight.glb"
+var _fig_vp: SubViewport = null
+var _fig_doll = null
+var _fig_cache := {}     # loadout key → ImageTexture
+var _fig_busy := {}      # loadout key → true while a render is in flight
+
+
+## What makes one figurine different from another: the gear, and who is wearing
+## it. Two heroes in identical kit legitimately share a token.
+func _loadout_key(inv: Dictionary) -> String:
+	var eq: Dictionary = inv.get("equipped", {}) if inv.get("equipped") is Dictionary else {}
+	var by_id := {}
+	for it in inv.get("items", []):
+		if it is Dictionary:
+			by_id[str(it.get("id", ""))] = str(it.get("name", ""))
+	var bits: Array[String] = [hero_body_key()]
+	for slot in ["head", "cloak", "weapon", "offhand", "shield"]:
+		bits.append("%s=%s" % [slot, str(by_id.get(str(eq.get(slot, "")), ""))])
+	return "|".join(bits)
+
+
+## The token for this loadout, or null while it is still being made. Callers
+## already handle null — the board draws its coloured disc until art arrives.
+func figurine_tex(inv: Dictionary) -> Texture2D:
+	# Headless has a dummy rasterizer: every capture is a blank square. Returning
+	# null keeps the painted face in the harnesses instead of caching an empty
+	# token and calling it a pass.
+	if DisplayServer.get_name() == "headless":
+		return null
+	var key := _loadout_key(inv)
+	if _fig_cache.has(key):
+		return _fig_cache[key]
+	if not _fig_busy.has(key):
+		_fig_busy[key] = true
+		_render_figurine(key, inv.duplicate(true))
+	return null
+
+
+func _render_figurine(key: String, inv: Dictionary) -> void:
+	if _fig_vp == null:
+		_fig_vp = SubViewport.new()
+		_fig_vp.size = Vector2i(FIG_PX, FIG_PX)
+		_fig_vp.transparent_bg = true
+		_fig_vp.msaa_3d = Viewport.MSAA_4X
+		# UPDATE_ONCE, driven per render. An offscreen viewport on ALWAYS is the
+		# most expensive thing in this file and the least visible.
+		_fig_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		add_child(_fig_vp)
+		var holder = load("res://scenes/char3d/modular_doll.gd").new()
+		_fig_vp.add_child(holder)
+		_fig_doll = holder
+		if ResourceLoader.exists(FIG_BODY):
+			_fig_doll.build(load(FIG_BODY))
+		var key_light := DirectionalLight3D.new()
+		key_light.rotation_degrees = Vector3(-40, 30, 0)
+		key_light.light_energy = 1.7
+		_fig_vp.add_child(key_light)
+		var cam := Camera3D.new()
+		cam.fov = 32.0
+		cam.name = "FigCam"
+		_fig_vp.add_child(cam)
+	if _fig_doll == null:
+		_fig_busy.erase(key)
+		return
+	_fig_doll.wear_inventory(inv)
+	# Re-framed per loadout, and TIGHT — this ends up ~40 px inside a ring on the
+	# board, so the margin that reads well on the Gear page leaves a figure too
+	# small to recognise. Re-framing also matters because the bounds move: a
+	# greatsword is wider than a dagger.
+	var fcam: Camera3D = _fig_vp.get_node_or_null("FigCam")
+	if fcam != null:
+		_fig_doll.frame_camera(fcam, 1.0, 0.40)
+	_fig_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := _fig_vp.get_texture().get_image()
+	_fig_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_fig_busy.erase(key)
+	if img == null or img.is_empty():
+		return
+	_fig_cache[key] = ImageTexture.create_from_image(img)
+	art_ready.emit("figurine")   # the board repaints and picks it up
+
+
 ## The face a combatant wears everywhere (board token, initiative rail):
 ## hero portrait / companion npc portrait / bestiary painting (commissioned
 ## from the entry's art prompt on first sight).
 func combatant_tex(m: Dictionary) -> Texture2D:
 	var id := str(m.get("id", ""))
 	if id == "pc":
+		# YOUR MINIATURE, not your portrait. The board is the table, and what
+		# stands on a table is a figurine wearing what you actually equipped —
+		# the same doll the Gear page fits, at token distance. Falls back to the
+		# painted face only while the first render is still in flight, or where
+		# there is no renderer at all (headless).
+		var fig := figurine_tex(GameState.inv())
+		if fig != null:
+			return fig
 		return round_tex(hero_key())
 	if id.begins_with("cmp"):
 		return round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))

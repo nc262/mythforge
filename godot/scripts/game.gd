@@ -60,6 +60,13 @@ func _ready() -> void:
 	# runs at boot BEFORE the mode settles on Exploration — so without this the
 	# row builds once, decides it is hidden, and never reconsiders.
 	Mode.changed.connect(func(_p, _n): _render_suggestions())
+	# A face that lands LATE has to reach the rail. The board repaints every
+	# frame and picked the hero's figurine up on its own; the rail is built once
+	# per roster change and kept the letter, so one combatant wore two different
+	# faces on the same screen until the next turn rebuilt it.
+	Art.art_ready.connect(func(_k):
+		if Combat.active():
+			_render_combat())
 	# The Sheet button opens THE MENU (the Record and its tabs) — the sidebar
 	# stays as the at-a-glance HUD, toggled with Ctrl+S.
 	var sheet_btn: Button = $Margin/Split/ChatBox/Input/SheetBtn
@@ -2163,11 +2170,19 @@ func _render_init_rail(c: Dictionary, cur: Dictionary) -> void:
 			_init_rail.add_child(chip)
 			_rail_chips[id] = chip
 		_rail_ids = ids
+	# The chips are built ONCE per roster change, so a face that arrives later —
+	# a commissioned beast portrait, or the hero's figurine, which is rendered
+	# asynchronously the first time a loadout is seen — never reached the rail.
+	# The board picked it up on its next repaint and the rail kept the letter,
+	# so the same combatant wore two different faces on one screen.
 	for m in order:
 		var id := str(m.get("id", ""))
 		var chip: MythPortrait = _rail_chips.get(id)
 		if chip == null:
 			continue
+		var late := Art.combatant_tex(m)
+		if late != null:
+			chip.set_portrait(late, str(m.get("name", "?")).left(1).to_upper())
 		chip.set_vitals(clampf(float(m.get("hp", 0)) / maxf(1.0, float(m.get("hpMax", 1))), 0.0, 1.0), id == cur_id)
 		chip.modulate = Color(1, 1, 1, 0.32) if int(m.get("hp", 0)) <= 0 else Color.WHITE
 		chip.tooltip_text = "%s — %d/%d" % [str(m.get("name", "?")), int(m.get("hp", 0)), int(m.get("hpMax", 1))]

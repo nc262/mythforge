@@ -290,6 +290,43 @@ func apply_world_material(tex: Texture2D, shader: Shader, tri_scale := 0.25) -> 
 		mi.material_override = mat
 
 
+## Pull a camera back until the whole figurine is in shot.
+##
+## Lives here rather than in a view because BOTH views need it and they must not
+## drift: the Gear page frames it loosely at 230x336, the board token frames it
+## tight and square. A second copy of this is how one of them silently starts
+## cropping an arm off after a rig swap.
+##
+## Uses the union of every VISIBLE mesh's AABB. Bone positions alone sit inside
+## the silhouette and miss a held sword entirely — the token spike had that exact
+## bug, and it is invisible until someone equips a greatsword.
+func frame_camera(cam: Camera3D, aspect := 1.0, margin := 0.54) -> void:
+	var box := AABB()
+	var first := true
+	for mi in _all_meshes(self):
+		if not mi.visible:
+			continue
+		var world: AABB = mi.global_transform * mi.get_aabb()
+		if first:
+			box = world
+			first = false
+		else:
+			box = box.merge(world)
+	if first:
+		cam.position = Vector3(0, 0.9, 3.2)
+		cam.look_at(Vector3(0, 0.85, 0), Vector3.UP)
+		return
+	var mid := box.get_center()
+	# Frame on HEIGHT, letting width only push it further back. A chibi body is
+	# wider than it is tall with the arms out, so framing on the largest axis
+	# alone left the figure small in a tall box with dead air above it.
+	var wide: float = maxf(box.size.x, box.size.z)
+	var reach: float = maxf(box.size.y, wide * aspect)
+	var back: float = (reach * margin) / tan(deg_to_rad(cam.fov) * 0.5) + wide * 0.5
+	cam.position = Vector3(mid.x, mid.y, mid.z + back)
+	cam.look_at(mid, Vector3.UP)
+
+
 func _socket(bone_name: String) -> BoneAttachment3D:
 	if skeleton == null or bone_name == "":
 		return null
