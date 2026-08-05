@@ -47,6 +47,7 @@ const RIGS := {
 	# attachments, so "equipping" here is showing the right child — which is the
 	# cheapest possible proof that the slot/occlusion wiring is correct.
 	"kaykit": {
+		"body": "res://spike3d/models/Knight.glb",
 		"sockets": {"head": "head", "cloak": "chest", "weapon": "handslot.r",
 			"offhand": "handslot.l", "shield": "handslot.l"},
 		"zones": {
@@ -96,6 +97,80 @@ const RIGS := {
 				["spike", "spike"], ["", "badge"]],
 		},
 	},
+
+	# THE SHIPPING RIG. Quaternius Universal Base Characters + Modular Character
+	# Outfits + Universal Animation Library 2 — measured at 65 shared bones,
+	# 100 %, across all three. See assets3d/SOURCE.md.
+	#
+	# Structurally different from kaykit in one way that matters: every garment
+	# is its OWN scene carrying its own copy of the skeleton, so it is worn by
+	# instancing and re-pointing its skin at this doll's skeleton, not by
+	# unhiding a mesh that was already inside the body. `scenes` below is that
+	# list; `parts` stays empty.
+	#
+	# And the body is ONE mesh, not a set of zones — so there is nothing to hide
+	# under a sleeve. `hides` is empty on purpose: these garments are authored
+	# for this exact body and enclose it. If poke-through ever shows, the fix is
+	# an alpha mask on the body texture, NOT a fake zone split.
+	"quaternius": {
+		"body": "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+		# The clips live in their OWN file on this rig, so they are attached at
+		# build time. Track paths read `Armature/Skeleton3D:pelvis` and the body
+		# has exactly that shape, so an AnimationPlayer rooted at the body root
+		# resolves them with no retargeting at all — which is the dividend of
+		# every pack sharing one skeleton.
+		"anim": "res://assets3d/anim/UAL2_Standard.glb",
+		# UAL2 is a SITUATIONAL library — farming, zombies, sword combos — with no
+		# plain "Idle". Folded arms is the one unambiguous standing pose in it.
+		"stand": ["Idle_FoldArms", "Idle_Rail", "Idle_No", "Idle_Shield"],
+		"sockets": {"weapon": "hand_r", "offhand": "hand_l", "shield": "hand_l",
+			"head": "Head", "cloak": "spine_03"},
+		"zones": {},
+		"hides": {},
+		"parts": {},
+		# NO WEAPONS OR SHIELDS. The outfit pack is clothing only, so `weapon`,
+		# `offhand` and `shield` have sockets waiting on the right bones and no
+		# geometry to hang on them — those slots resolve to "" and the figurine
+		# goes unarmed. Weapons are RIGID props: they ride a BoneAttachment3D and
+		# never need matching skin weights, so any CC0 weapon mesh can fill them
+		# later without touching the rig. Tracked in the backlog, not pretended
+		# away with a stand-in sword from the other rig at the wrong scale.
+		"scenes": {
+			"armor":  {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Body.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Body.gltf"},
+			"hands":  {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Arms.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Arms.gltf"},
+			"legs":   {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Legs.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Legs.gltf"},
+			"feet":   {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Feet_Boots.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Feet.gltf"},
+			"head":   {"hood": "res://assets3d/outfits/Modular Parts/Male_Ranger_Head_Hood.gltf"},
+			"cloak":  {"pauldrons": "res://assets3d/outfits/Modular Parts/Male_Ranger_Acc_Pauldron.gltf"},
+		},
+		# UNDERCLOTHES. A hero with no leggings equipped is not naked, they are in
+		# whatever they own — so an empty slot falls back to the peasant set
+		# rather than to skin. Without this the figurine stands in its underwear
+		# any time the player has not found trousers yet, which is most of act
+		# one. `head` and `cloak` are absent on purpose: bare-headed and
+		# cloakless are normal, bare-legged is not.
+		"default": {"armor": "peasant", "hands": "peasant", "legs": "peasant", "feet": "peasant"},
+		# Two archetypes is what the pack actually ships (see SOURCE.md), so the
+		# match table sorts every item name into one of them. Leather, hide and
+		# studded read as the ranger; cloth and common wear read as the peasant.
+		"match": {
+			"armor": [["leather", "ranger"], ["hide", "ranger"], ["studded", "ranger"],
+				["scale", "ranger"], ["chain", "ranger"], ["plate", "ranger"],
+				["mail", "ranger"], ["", "peasant"]],
+			"hands": [["gauntlet", "ranger"], ["bracer", "ranger"], ["vambrace", "ranger"],
+				["leather", "ranger"], ["", "peasant"]],
+			"legs":  [["greave", "ranger"], ["leather", "ranger"], ["chain", "ranger"],
+				["plate", "ranger"], ["", "peasant"]],
+			"feet":  [["boot", "ranger"], ["greave", "ranger"], ["", "peasant"]],
+			"head":  [["hood", "hood"], ["cowl", "hood"], ["hat", "hood"], ["cap", "hood"],
+				["helm", "hood"], ["", "hood"]],
+			"cloak": [["", "pauldrons"]],
+		},
+	},
 }
 
 
@@ -122,18 +197,33 @@ func wear_inventory(inv: Dictionary) -> void:
 	for it in inv.get("items", []):
 		if it is Dictionary:
 			by_id[str(it.get("id", ""))] = str(it.get("name", ""))
-	# Slots the game fills → slots this rig can show. `armor`, `hands`, `legs`
-	# and `feet` are deliberately absent from kaykit: it has no geometry for
-	# them, and silently doing nothing is better than pretending.
-	for slot in ["head", "cloak", "weapon", "offhand", "shield"]:
+	# Every slot this rig can actually show, asked from the rig rather than
+	# hard-coded: kaykit answers for five, quaternius for nine. A slot with no
+	# geometry resolves to "" and the doll simply does not wear it — silently
+	# doing nothing beats pretending.
+	for slot in RENDERED_SLOTS:
+		if not _rig_has_slot(slot):
+			continue
 		var iid := str(equipped.get(slot, ""))
 		if iid == "" or not by_id.has(iid):
-			equip(slot, "")
+			# Nothing equipped → the rig's underclothes, or truly bare if it
+			# names none for this slot.
+			equip(slot, str(profile().get("default", {}).get(slot, "")))
 			continue
 		equip(slot, part_for(slot, str(by_id[iid])))
 
-var rig := "kaykit"
+
+func _rig_has_slot(slot: String) -> bool:
+	var prof := profile()
+	return prof.get("parts", {}).has(slot) or prof.get("scenes", {}).has(slot)
+
+var rig := "quaternius"
 var skeleton: Skeleton3D = null
+
+
+## The body this rig dresses, so a caller does not have to know the path.
+func body_path() -> String:
+	return str(profile().get("body", "res://spike3d/models/Knight.glb"))
 
 var _body: Node3D = null
 var _zone_meshes := {}    # zone → Array[MeshInstance3D]
@@ -151,6 +241,7 @@ func profile() -> Dictionary:
 ## never actually took effect.
 func build(body_scene: PackedScene) -> void:
 	if _body != null and is_instance_valid(_body):
+		remove_child(_body)      # same reason as unequip_scene: not next frame, now
 		_body.queue_free()
 	_zone_meshes.clear()
 	_worn.clear()
@@ -173,20 +264,93 @@ func build(body_scene: PackedScene) -> void:
 			if m != null:
 				m.visible = false
 		_worn[slot] = ""
+	_attach_anim(prof)
+	stand()
 	_refresh_zones()
 
 
-## Wear a part that already lives inside the body scene. "" bares the slot.
+## Borrow a shared animation library. Only needed where the clips ship apart from
+## the body — the KayKit rig carries its own, so this is a no-op there.
+func _attach_anim(prof: Dictionary) -> void:
+	var path := str(prof.get("anim", ""))
+	if path == "" or _body == null or not ResourceLoader.exists(path):
+		return
+	if _find_anim(_body) != null:
+		return                       # the body already brought clips of its own
+	var src = load(path).instantiate()
+	var sap := _find_anim(src)
+	if sap == null:
+		src.queue_free()
+		return
+	var ap := AnimationPlayer.new()
+	_body.add_child(ap)
+	# Rooted at the body, because the clips' track paths are written relative to
+	# the glTF root they came from and both files share that shape.
+	ap.root_node = ap.get_path_to(_body)
+	for lib in sap.get_animation_library_list():
+		ap.add_animation_library(str(lib), sap.get_animation_library(lib))
+	src.queue_free()
+
+
+## Put the figurine on its feet and FREEZE it there. A looping animation in a
+## menu is a viewport that never stops redrawing, which is GPU the narrator
+## wants — and a miniature does not fidget.
+func stand() -> void:
+	var ap := _find_anim(_body)
+	if ap == null:
+		return
+	var want: Array = profile().get("stand", ["Idle", "Idle_Loop", "1H_Melee_Idle"])
+	for lib in ap.get_animation_library_list():
+		for nm in ap.get_animation_library(lib).get_animation_list():
+			for w in want:
+				if str(nm).nocasecmp_to(str(w)) != 0:
+					continue
+				ap.play((str(lib) + "/" + str(nm)) if str(lib) != "" else str(nm))
+				ap.advance(0.35)   # a step in, past any wind-up on frame zero
+				ap.pause()
+				return
+
+
+func _find_anim(n: Node) -> AnimationPlayer:
+	if n == null:
+		return null
+	if n is AnimationPlayer:
+		return n
+	for c in n.get_children():
+		var f := _find_anim(c)
+		if f != null:
+			return f
+	return null
+
+
+## Wear a part. Two shapes, one entry point, because the caller should not have
+## to know how a rig happens to package its clothes:
+##   `parts`  the mesh is already inside the body scene → unhide it (kaykit)
+##   `scenes` the garment is its own file → instance and skin it (quaternius)
+## "" bares the slot either way.
 func equip(slot: String, part_id: String) -> bool:
 	var prof := profile()
 	var table: Dictionary = prof.get("parts", {}).get(slot, {})
+	var files: Dictionary = prof.get("scenes", {}).get(slot, {})
 	var prev := str(_worn.get(slot, ""))
 	if prev != "" and table.has(prev):
 		var old := _find_mesh(_body, str(table[prev]))
 		if old != null:
 			old.visible = false
+	unequip_scene(slot)
 	if part_id == "":
 		_worn[slot] = ""
+		_refresh_zones()
+		return true
+	if files.has(part_id):
+		# A garment carries its own copy of the skeleton; it is worn by borrowing
+		# THIS doll's pose, so one animation drives body and clothing together.
+		var path := str(files[part_id])
+		if not ResourceLoader.exists(path):
+			return false
+		if not _wear_file(slot, load(path)):
+			return false
+		_worn[slot] = part_id
 		_refresh_zones()
 		return true
 	if not table.has(part_id):
@@ -197,6 +361,30 @@ func equip(slot: String, part_id: String) -> bool:
 	m.visible = true
 	_worn[slot] = part_id
 	_refresh_zones()
+	return true
+
+
+## Instance a garment scene and re-point its meshes at this doll's skeleton.
+func _wear_file(slot: String, scene: PackedScene) -> bool:
+	if skeleton == null or scene == null:
+		return false
+	var inst := scene.instantiate()
+	# Its own Skeleton3D comes along in the scene and must NOT drive anything —
+	# the meshes are re-parented under ours so there is exactly one pose in play.
+	var meshes := _all_meshes(inst)
+	if meshes.is_empty():
+		inst.queue_free()
+		return false
+	var holder := Node3D.new()
+	holder.name = "worn_" + slot
+	skeleton.add_child(holder)
+	for mi in meshes:
+		mi.get_parent().remove_child(mi)
+		mi.owner = null   # else it still belongs to the scene we are about to free
+		holder.add_child(mi)
+		mi.skeleton = mi.get_path_to(skeleton)
+	inst.queue_free()
+	_extern[slot] = holder
 	return true
 
 
@@ -230,9 +418,16 @@ func equip_scene(slot: String, scene: PackedScene, fitted := false) -> bool:
 	return true
 
 
+## Off-tree NOW, then freed. `queue_free` alone defers to the end of the frame,
+## so a swapped shirt is still hanging on the doll for the rest of it — two
+## garments in one slot, briefly, and a re-query in the same frame counts both.
+## `character_screen._refill_gear` carries this same note about the same trap.
 func unequip_scene(slot: String) -> void:
 	if _extern.has(slot) and is_instance_valid(_extern[slot]):
-		_extern[slot].queue_free()
+		var old: Node = _extern[slot]
+		if old.get_parent() != null:
+			old.get_parent().remove_child(old)
+		old.queue_free()
 	_extern.erase(slot)
 	if str(_worn.get(slot, "")) == "scene":
 		_worn[slot] = ""

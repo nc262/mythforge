@@ -14,6 +14,8 @@ class_name DollView extends SubViewportContainer
 ## 28 mm mini to be photoreal, and the low-poly CC0 body reads as a deliberate
 ## sculpt at this size rather than as a cheap character.
 
+## Kept only so callers that referenced it still resolve; the body a doll wears
+## is the RIG's business now (`ModularDoll.body_path`), not this view's.
 const BODY := "res://spike3d/models/Knight.glb"
 
 ## A stance, not a T-pose. The bind pose is a mannequin on a rack; a miniature
@@ -62,9 +64,9 @@ func _ready() -> void:
 	_vp.add_child(_pivot)
 	doll = ModularDoll.new()
 	_pivot.add_child(doll)
-	if ResourceLoader.exists(BODY):
-		doll.build(load(BODY))
-		_stand()
+	var body := doll.body_path()
+	if ResourceLoader.exists(body):
+		doll.build(load(body))   # build() stands the figure itself
 	_built = true
 	if not _pending.is_empty():
 		doll.wear_inventory(_pending)

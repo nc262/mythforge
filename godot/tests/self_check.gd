@@ -943,8 +943,9 @@ The term for spell slots is "Echoes."
 	# that actually exists.
 	if ResourceLoader.exists("res://spike3d/models/Knight.glb"):
 		var doll := ModularDoll.new()
-		add_child(doll)
-		doll.build(load("res://spike3d/models/Knight.glb"))
+		doll.rig = "kaykit"   # the legacy fixture, kept because it proves the
+		add_child(doll)       # in-scene "unhide a part" path the new rig does not use
+		doll.build(load(doll.body_path()))
 		assert(doll.skeleton != null, "doll: the body must bring a skeleton")
 		# A doll starts BARE, whatever the source scene shipped wearing.
 		assert(doll.hidden_zones().is_empty(), "doll: nothing is covered before anything is worn")
@@ -1015,6 +1016,62 @@ The term for spell slots is "Echoes."
 		doll.queue_free()
 		print("  doll: helm/cape/weapon slots wired, body zones hide, sockets resolve, items map")
 
+	# ── The SHIPPING rig: separate garment files, skinned onto one skeleton ───
+	if ResourceLoader.exists("res://assets3d/bodies/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf"):
+		var qd := ModularDoll.new()
+		qd.rig = "quaternius"
+		add_child(qd)
+		qd.build(load(qd.body_path()))
+		assert(qd.skeleton != null and qd.skeleton.get_bone_count() == 65,
+			"q-doll: the shipping body is the 65-bone rig")
+		# THE SLOTS THAT WERE MISSING. These are the whole reason for the pack —
+		# on the old fixture every one of them resolved to nothing.
+		for slot in ["armor", "hands", "legs", "feet"]:
+			assert(qd.equip(slot, "ranger"), "q-doll: '%s' must have geometry now" % slot)
+			assert(qd.worn(slot) == "ranger", "q-doll: '%s' stays worn" % slot)
+		assert(qd.equip("head", "hood"), "q-doll: a hood goes on")
+		# A garment is its own FILE here, so wearing it must actually add meshes
+		# to the doll — and taking it off must remove them, or the figurine keeps
+		# every shirt it ever wore, invisibly stacked.
+		var meshes_on := qd._all_meshes(qd).size()
+		assert(meshes_on > 3, "q-doll: garments add real geometry, got %d meshes" % meshes_on)
+		qd.equip("armor", "")
+		assert(qd._all_meshes(qd).size() < meshes_on, "q-doll: undressing REMOVES the garment")
+		assert(qd.worn("armor") == "", "q-doll: ...and the slot reads bare")
+		# Swapping within a slot must not stack either.
+		qd.equip("armor", "ranger")
+		var one := qd._all_meshes(qd).size()
+		qd.equip("armor", "peasant")
+		assert(qd._all_meshes(qd).size() <= one,
+			"q-doll: swapping a garment replaces it rather than layering it")
+		# Item names must reach the right archetype.
+		assert(qd.part_for("armor", "Studded Leather") == "ranger", "q-doll: leather reads as the ranger")
+		assert(qd.part_for("armor", "Homespun Tunic") == "peasant", "q-doll: cloth reads as the peasant")
+		assert(qd.part_for("feet", "Riding Boots") == "ranger", "q-doll: boots are boots")
+		# Sockets must name real bones on THIS skeleton, or a sword hangs on air.
+		for qslot in qd.profile().get("sockets", {}):
+			var bn := str(qd.profile()["sockets"][qslot])
+			assert(qd.skeleton.find_bone(bn) >= 0,
+				"q-doll: socket '%s' -> bone '%s' is not on this rig" % [qslot, bn])
+		# And it must STAND — the clips live in a separate file on this rig, so a
+		# broken attach shows up as a T-posed mannequin and nothing else.
+		var posed2 := 0
+		for bi2 in qd.skeleton.get_bone_count():
+			if not qd.skeleton.get_bone_pose_rotation(bi2).is_equal_approx(
+					qd.skeleton.get_bone_rest(bi2).basis.get_rotation_quaternion()):
+				posed2 += 1
+		assert(posed2 > 0, "q-doll: the borrowed animation library never reached the skeleton")
+		# NOBODY STANDS IN THEIR UNDERWEAR. An empty slot falls back to the rig's
+		# underclothes, because a hero who has not found trousers yet is dressed
+		# poorly, not undressed — and that is most of act one.
+		qd.wear_inventory({"items": [], "equipped": {}})
+		for bare_slot in ["armor", "legs", "feet", "hands"]:
+			assert(qd.worn(bare_slot) != "",
+				"q-doll: '%s' must fall back to underclothes, not skin" % bare_slot)
+		assert(qd.worn("head") == "", "q-doll: bare-headed is fine and stays bare")
+		qd.queue_free()
+		print("  q-doll: chest/hands/legs/feet wear real garments, swap cleanly, and stand")
+
 	# The Gear page shows the FIGURINE, not a commissioned painting — the whole
 	# point is that equipping answers now instead of queueing a GPU job.
 	var cs_src := FileAccess.get_file_as_string("res://scenes/ui/character_screen.gd")
@@ -1028,13 +1085,16 @@ The term for spell slots is "Echoes."
 	# happily through it. Drive the real order.
 	if ResourceLoader.exists("res://spike3d/models/Knight.glb"):
 		var dv := DollView.new()
-		dv.wear({"items": [{"id": "w1", "name": "Iron Sword"}, {"id": "h1", "name": "Iron Helm"}],
-			"equipped": {"weapon": "w1", "head": "h1"}})   # BEFORE add_child, as the page does
+		# Chest and boots, because those are slots the SHIPPING rig has geometry
+		# for. Weapons are not among them — see the note in ModularDoll — so
+		# asserting on a sword here would only test the fixture.
+		dv.wear({"items": [{"id": "a1", "name": "Studded Leather"}, {"id": "b1", "name": "Riding Boots"}],
+			"equipped": {"armor": "a1", "feet": "b1"}})   # BEFORE add_child, as the page does
 		add_child(dv)
 		assert(dv.doll != null, "gear: the view must own a doll once it enters the tree")
-		assert(dv.doll.worn("weapon") == "sword_1h",
+		assert(dv.doll.worn("armor") == "ranger",
 			"gear: a loadout set before _ready must still reach the figurine")
-		assert(dv.doll.worn("head") == "knight_helm", "gear: ...for every slot, not just one")
+		assert(dv.doll.worn("feet") == "ranger", "gear: ...for every slot, not just one")
 		# And it must STAND, not hang in the bind pose like a mannequin on a rack.
 		# Asserted on the skeleton rather than on AnimationPlayer bookkeeping:
 		# "some bone is off its rest transform" is the actual property, and it

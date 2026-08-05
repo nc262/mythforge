@@ -3,19 +3,19 @@ extends Node
 ## boolean and "the helmet does not float above a headless neck" is a picture.
 ## Windowed only; headless uses a dummy rasterizer and every capture is blank.
 ##   Godot_v4.7-stable_win64.exe --path godot res://tests/doll_shot.tscn
-const BODY := "res://spike3d/models/Knight.glb"
 const OUT := "user://doll"
 const SIZE := 640
 
 ## Each frame: a label and the loadout to wear. The bare pass is first on
-## purpose — if the doll cannot be UNDRESSED the rest proves nothing.
+## purpose — if the doll cannot be UNDRESSED the rest proves nothing, and with
+## this rig "bare" is the question: does clothing actually cover the skin?
 const SHOTS := [
 	["bare", {}],
-	["helm", {"head": "knight_helm"}],
-	["helm_cape", {"head": "knight_helm", "cloak": "knight_cape"}],
-	["full", {"head": "knight_helm", "cloak": "knight_cape",
-		"weapon": "sword_1h", "shield": "round"}],
-	["undressed", {"cloak": "knight_cape"}],
+	["shirt", {"armor": "peasant"}],
+	["dressed", {"armor": "peasant", "legs": "peasant", "feet": "peasant", "hands": "peasant"}],
+	["ranger", {"armor": "ranger", "legs": "ranger", "feet": "ranger",
+		"hands": "ranger", "head": "hood"}],
+	["stripped", {"legs": "ranger"}],
 ]
 
 
@@ -29,16 +29,18 @@ func _ready() -> void:
 
 	var doll := ModularDoll.new()
 	vp.add_child(doll)
-	doll.build(load(BODY))
+	doll.build(load(doll.body_path()))
 
 	var key := DirectionalLight3D.new()
 	key.rotation_degrees = Vector3(-35, 35, 0)
 	key.light_energy = 1.5
 	vp.add_child(key)
+	# add_child BEFORE look_at: look_at resolves against the tree, and off-tree it
+	# errors and leaves the camera pointing wherever it started.
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, 1.0, 3.2)
-	cam.look_at(Vector3(0, 0.9, 0), Vector3.UP)
 	vp.add_child(cam)
+	cam.fov = 34.0
+	doll.frame_camera(cam, 1.0, 0.52)
 
 	for shot in SHOTS:
 		for slot in ModularDoll.RENDERED_SLOTS:

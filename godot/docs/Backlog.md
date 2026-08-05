@@ -58,9 +58,18 @@ Each with the reason it is not merely undone:
 - **TTS narration.** The client wiring exists; there is no local voice engine in
   the stack. It needs one chosen and shipped the way the narrator and whisper
   were — speech goes in today, nothing comes out.
-- **A true 3D character** ([CharacterRender.md](CharacterRender.md), Stage C).
-  Paused on an asset-sourcing decision: commissioned, generated, or a bought
-  pack. `spike3d/` holds the experiments; nothing in the shipped path uses them.
+- **Weapons and shields for the figurine.** The character rig ships clothing
+  only, so `weapon`, `offhand` and `shield` have sockets on the right bones and
+  no geometry to hang on them — the figurine goes unarmed. These are **rigid**
+  props: they ride a `BoneAttachment3D` and need no skin weights, so any CC0
+  weapon mesh fills them without touching the rig. Deliberately not faked with
+  the old fixture's swords, which are a different rig at a different scale.
+- **More than two outfit archetypes.** The pack ships Peasant and Ranger in male
+  and female. Every other genre — cyber, contemporary, steam — has no garment at
+  all, and materials cannot turn a tunic into a jacket. Generation onto the same
+  rig is the route (see [CharacterRender.md](CharacterRender.md)).
+- **A female base body.** Only the Superhero male is wired; the pack ships the
+  female mesh and the female garments, and the doll picks neither by sex yet.
 - **Co-op.** No networking design exists, and the local-first architecture is
   not obviously compatible with one.
 
