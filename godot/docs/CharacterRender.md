@@ -92,6 +92,30 @@ several `MeshInstance3D` pointing at the same `Skeleton3D`.
 Verified against the real CC0 body in `spike3d`, and rendered: bare → helm
 (head mesh gone, no face through the visor) → helm+cape → full kit → undressed.
 
+### The three surfaces, one doll
+
+Settled by the Director: the character is a **tabletop figurine**, not a hero
+render. This game calls itself the table on every other surface — *"the table
+keeps the tally"*, *"leave the table"* — so a miniature is the object the fiction
+already says is there. It also sets the fidelity bar honestly: nobody asks a
+28 mm mini to be photoreal, and the low-poly CC0 body reads as a deliberate
+sculpt at that size rather than as a cheap character.
+
+| Surface | Framing | Cost |
+|---|---|---|
+| **Gear page** (`DollView`) | Full figure, live, drag to turn | Free, **instant** on equip |
+| **Battle board** | Small figurine, a few poses | Free, cached |
+| **Scenes** | Painted hero, derived from the doll's render | One GPU pass, on demand |
+
+The Gear page previously showed a *generated painting* of the body, so putting on
+a helmet was a request to the image engine and a wait. That is the right picture
+for a scene and the wrong one for a fitting room. The painting is not deleted —
+it moved to the job it is good at, still commissioned by the same button.
+
+`SubViewport.UPDATE_WHEN_VISIBLE`, never `ALWAYS`: a viewport left rendering
+behind a hidden tab is GPU nobody can see, and on this machine the narrator and
+the image engine already fight over one card.
+
 ### What is still needed
 
 Two free CC0 downloads, both gated behind itch.io's session so they cannot be

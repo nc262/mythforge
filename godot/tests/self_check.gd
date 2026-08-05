@@ -983,8 +983,70 @@ The term for spell slots is "Echoes."
 			var bone := str(prof["sockets"][slot2])
 			assert(doll.skeleton.find_bone(bone) >= 0,
 				"doll: socket bone '%s' for '%s' is not on this skeleton" % [bone, slot2])
+		# An ITEM NAME must reach the right mesh. Specific before generic — the
+		# same ordering trap SHAPE_WORDS fell into, where a prefix shadowed the
+		# category noun and a shortbow was described as a blade.
+		assert(doll.part_for("weapon", "Greatsword") == "sword_2h", "doll: a greatsword is two-handed")
+		assert(doll.part_for("weapon", "Iron Sword") == "sword_1h", "doll: a plain sword is one-handed")
+		assert(doll.part_for("weapon", "Oak Staff") == "staff", "doll: a staff is a staff")
+		assert(doll.part_for("weapon", "Wand of Sparks") == "wand", "doll: a wand is a wand")
+		assert(doll.part_for("weapon", "Nonsense Thing") == "sword_1h",
+			"doll: an unknown weapon still arms the hand rather than emptying it")
+		assert(doll.part_for("shield", "Round Shield") == "round", "doll: a round shield is round")
+		assert(doll.part_for("shield", "Tower Shield") == "rect", "doll: a tower shield is the big one")
+		assert(doll.part_for("head", "Leather Hood") == "mage_hat", "doll: a hood is soft headgear")
+		assert(doll.part_for("head", "Iron Helm") == "knight_helm", "doll: a helm is hard headgear")
+		assert(doll.part_for("armor", "Chain Shirt") == "",
+			"doll: a slot this rig has no geometry for resolves to nothing, not to a guess")
+
+		# Dressed from the REAL inventory shape the game keeps, not a bespoke one.
+		doll.build(load("res://spike3d/models/Knight.glb"))
+		doll.wear_inventory({
+			"items": [{"id": "w1", "name": "Greatsword"}, {"id": "h1", "name": "Iron Helm"}],
+			"equipped": {"weapon": "w1", "head": "h1"}})
+		assert(doll.worn("weapon") == "sword_2h", "doll: the equipped greatsword reaches the figurine")
+		assert(doll.worn("head") == "knight_helm", "doll: the equipped helm reaches the figurine")
+		assert(doll.hidden_zones() == ["head"], "doll: ...and wearing it still hides the head")
+		# Unequipping in the game must bare the figurine.
+		doll.wear_inventory({"items": [{"id": "w1", "name": "Greatsword"}], "equipped": {}})
+		assert(doll.worn("weapon") == "" and doll.worn("head") == "",
+			"doll: an empty loadout strips the figurine")
+		assert(doll.hidden_zones().is_empty(), "doll: ...and gives the head back")
 		doll.queue_free()
-		print("  doll: helm/cape/weapon slots wired, body zones hide, sockets resolve")
+		print("  doll: helm/cape/weapon slots wired, body zones hide, sockets resolve, items map")
+
+	# The Gear page shows the FIGURINE, not a commissioned painting — the whole
+	# point is that equipping answers now instead of queueing a GPU job.
+	var cs_src := FileAccess.get_file_as_string("res://scenes/ui/character_screen.gd")
+	assert(cs_src.contains("DollView.new("), "gear: the Gear page builds the live figurine")
+	assert(cs_src.contains("figurine.wear(inv)"), "gear: ...and dresses it from the real inventory")
+
+	# DRESSING BEFORE THE VIEW IS IN THE TREE. The Gear page calls wear() the
+	# statement after new(), which is before _ready — so the doll does not exist
+	# and the loadout used to vanish in silence. The hero held a dagger and the
+	# figurine stood empty-handed, and the source-string assertion above passed
+	# happily through it. Drive the real order.
+	if ResourceLoader.exists("res://spike3d/models/Knight.glb"):
+		var dv := DollView.new()
+		dv.wear({"items": [{"id": "w1", "name": "Iron Sword"}, {"id": "h1", "name": "Iron Helm"}],
+			"equipped": {"weapon": "w1", "head": "h1"}})   # BEFORE add_child, as the page does
+		add_child(dv)
+		assert(dv.doll != null, "gear: the view must own a doll once it enters the tree")
+		assert(dv.doll.worn("weapon") == "sword_1h",
+			"gear: a loadout set before _ready must still reach the figurine")
+		assert(dv.doll.worn("head") == "knight_helm", "gear: ...for every slot, not just one")
+		# And it must STAND, not hang in the bind pose like a mannequin on a rack.
+		# Asserted on the skeleton rather than on AnimationPlayer bookkeeping:
+		# "some bone is off its rest transform" is the actual property, and it
+		# cannot be satisfied by a player that reports a clip it never applied.
+		var sk: Skeleton3D = dv.doll.skeleton
+		var posed := 0
+		for bi in sk.get_bone_count():
+			if not sk.get_bone_pose_rotation(bi).is_equal_approx(sk.get_bone_rest(bi).basis.get_rotation_quaternion()):
+				posed += 1
+		assert(posed > 0, "gear: the figurine is still in its rest pose — no stance was applied")
+		dv.queue_free()
+		print("  gear: figurine dressed from a pre-tree loadout, standing, framed")
 
 	# ── THE CONTRAST GATE ────────────────────────────────────────────────────
 	# InteractionLanguage.md has always required body text at >= 4.5:1 "measured

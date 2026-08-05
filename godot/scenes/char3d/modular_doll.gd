@@ -72,8 +72,65 @@ const RIGS := {
 			"shield": {"badge": "Badge_Shield", "rect": "Rectangle_Shield",
 				"round": "Round_Shield", "spike": "Spike_Shield"},
 		},
+		# Which part an ITEM NAME resolves to, per slot. Ordered, most specific
+		# first, with the last entry as the default — "Greatsword" has to reach
+		# the two-hander before "sword" claims it.
+		#
+		# Unlike Rules.SHAPE_WORDS, a size word is legitimate here: "great" picks
+		# a genuinely different MESH, not a hoped-for scale in a picture. The trap
+		# there was asking a prompt to imply size with nothing to measure against;
+		# there is no such ambiguity when the word selects geometry.
+		"match": {
+			"head": [["hood", "mage_hat"], ["hat", "mage_hat"], ["cap", "mage_hat"],
+				["circlet", "mage_hat"], ["", "knight_helm"]],
+			"cloak": [["", "knight_cape"]],
+			"weapon": [["greatsword", "sword_2h"], ["greataxe", "sword_2h"],
+				["maul", "sword_2h"], ["two-handed", "sword_2h"],
+				["staff", "staff"], ["quarterstaff", "staff"],
+				["wand", "wand"], ["rod", "wand"], ["scepter", "wand"],
+				["", "sword_1h"]],
+			"offhand": [["book", "spellbook"], ["tome", "spellbook"],
+				["grimoire", "spellbook"], ["", "sword_off"]],
+			"shield": [["round", "round"], ["buckler", "round"],
+				["kite", "rect"], ["tower", "rect"], ["wall", "rect"],
+				["spike", "spike"], ["", "badge"]],
+		},
 	},
 }
+
+
+## Which part of this rig an item NAME calls for in a slot, or "" if the rig has
+## nothing for that slot. Case-insensitive substring, first match wins, and the
+## empty key is the catch-all — so an unrecognised sword is still a sword rather
+## than an empty hand.
+func part_for(slot: String, item_name: String) -> String:
+	var table: Array = profile().get("match", {}).get(slot, [])
+	var low := item_name.to_lower()
+	for pair in table:
+		var kw := str(pair[0])
+		if kw == "" or low.contains(kw):
+			return str(pair[1])
+	return ""
+
+
+## Dress the doll from the player's actual equipment. Takes the inventory the
+## game already keeps, so nothing here invents a second source of truth about
+## what is worn.
+func wear_inventory(inv: Dictionary) -> void:
+	var equipped: Dictionary = inv.get("equipped", {}) if inv.get("equipped") is Dictionary else {}
+	var by_id := {}
+	for it in inv.get("items", []):
+		if it is Dictionary:
+			by_id[str(it.get("id", ""))] = str(it.get("name", ""))
+	# Slots the game fills → slots this rig can show. `armor`, `hands`, `legs`
+	# and `feet` are deliberately absent from kaykit: it has no geometry for
+	# them, and silently doing nothing is better than pretending.
+	for slot in ["head", "cloak", "weapon", "offhand", "shield"]:
+		var iid := str(equipped.get(slot, ""))
+		if iid == "" or not by_id.has(iid):
+			equip(slot, "")
+			continue
+		equip(slot, part_for(slot, str(by_id[iid])))
 
 var rig := "kaykit"
 var skeleton: Skeleton3D = null

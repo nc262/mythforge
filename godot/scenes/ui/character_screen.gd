@@ -807,11 +807,17 @@ func _body_view(s: Dictionary, inv: Dictionary) -> Control:
 	# with; rebuilding "hero-" + cid here names a file that does not exist, so the
 	# plate renders empty and the game re-commissions a face it already owns.
 	var key := Art.hero_body_key()
-	var plate := MythPlate.new(Vector2(230, 336))
-	plate.bind_key(key, Art.texture_for(Art.hero_key()))
+	# THE FIGURINE, not a painting. Putting a helmet on used to be a request to
+	# the image engine and a wait; the fitting room has to answer immediately, so
+	# the doll is live geometry and changes the frame you equip something.
+	#
+	# The painted body is not deleted — it moves to the job it is actually good
+	# at, which is the SCENE hero, still commissioned by the button below.
+	var figurine := DollView.new(Vector2(230, 336))
+	figurine.wear(inv)
+	col.add_child(figurine)
 	if not Art.has_art(key):
 		Art.ensure(key, _body_prompt(s, inv))
-	col.add_child(plate)
 	var rerender := Button.new()
 	rerender.text = "Re-render with current gear"
 	rerender.custom_minimum_size = Vector2(0, 44)   # R6 STR-27: a real touch target
