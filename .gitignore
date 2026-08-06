@@ -51,6 +51,16 @@ output.txt.txt
 !docs/**/*.jpg
 !docs/**/*.webp
 
+# …and except the 3D character assets, which are SOURCE, not output.
+#
+# The blanket *.png above is aimed at generated art under user:// and at scratch
+# renders, and it swept these up with them: every mesh in assets3d/ was tracked
+# and not one of its textures. A fresh clone got untextured geometry that also
+# could not import, because a .gltf names its textures by FILENAME — the same
+# trap SOURCE.md records from the other direction, where deleting a normal map
+# to save space broke the import.
+!godot/assets3d/**/*.png
+
 # Temp files
 _scratch/
 *.error.log

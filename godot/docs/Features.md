@@ -51,6 +51,13 @@ It is all **bone scale on one skeleton**, which is why nine heritages × two
 sexes × five knobs is not a wardrobe per combination — every garment is skinned
 to those same bones and follows the shape for free.
 
+The wardrobe itself is CC0 and fantasy, so the four families it cannot dress —
+cyber, everyday, space, steam — wear that cut in the **world's own poured
+cloth**: one tileable weave per family, sampled triplanar over the garment's own
+shading, so a Neon Spire hero is in grey technical weave and a Brasshaven one in
+tan canvas. It changes the substance and not the silhouette, which is the honest
+limit of a material; see [CharacterRender.md](CharacterRender.md).
+
 ## Character and play
 
 12 classes with usable per-level features · 9 heritages · 8 backgrounds ·

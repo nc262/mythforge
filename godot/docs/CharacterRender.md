@@ -134,18 +134,76 @@ it moved to the job it is good at, still commissioned by the same button.
 behind a hidden tab is GPU nobody can see, and on this machine the narrator and
 the image engine already fight over one card.
 
-### What is still needed
+### The world's cloth — what the pack does not cover
 
-Two free CC0 downloads, both gated behind itch.io's session so they cannot be
-fetched by script:
+The outfit pack is fantasy, and there is no CC0 sibling for any other genre:
+Quaternius ships exactly one modular outfit pack. So four world families —
+**cyber, everyday, space, steam** — would otherwise put a cyberpunk fixer in a
+peasant's brown wool.
 
-- **Universal Base Characters** — 6 bodies, 20 hairstyles, the rig the animation
-  library in `spike3d` already matches
-- **Modular Character Outfits – Fantasy** — 12 outfits, **62 parts**
+They wear the fantasy cut in the world's own **poured cloth** instead. This is
+the material spike's model finally wired in: a material is a *shader input*, so
+form × material is addition rather than multiplication, and one tileable texture
+per family covers every garment from any source. `_dye()` in `modular_doll.gd`,
+`assets3d/cloth/world_cloth.gdshader`, poured by `scripts/pour_materials.py`.
 
-Genres those do not cover (cyber, contemporary, steam) are generated locally —
-image-to-3D, then weight-transferred onto the same rig. That is what the Rigify
-choice buys.
+Three things make it read as clothing rather than as paint:
+
+- **Triplanar, never UV.** A garment's atlas is laid out for its own painted
+  texture; a tileable material pushed through it arrives stretched and scrambled.
+- **The garment's own albedo survives as LUMINANCE.** Every strap, lace and seam
+  is painted into that texture and it is the only record of the tailoring. The
+  shader keeps its light and dark and replaces only the hue, with a floor at
+  0.55 — without the floor a dark cloth times a dark albedo compounds to
+  near-black, and the first render was a figure smeared with soot.
+- **Tiling is 2.5 object-space repeats**, chosen off a rendered sweep. The
+  spike's 0.25 was tuned on another mesh and puts one thigh-sized blotch per
+  limb; 9.0 looks finer standing still and aliases to mush at the 256 px the
+  figurine actually renders at.
+
+The four fantasy-ish families — fantasy, pirate, horror, norse — are deliberately
+**not** in the table. The pack was authored for them, and pouring a material over
+a good texture only costs the detail painted into it.
+
+**This fixes the substance and not the silhouette**, and that is the honest
+limit: a Neon Spire hero is in grey technical weave, still in a sleeveless tunic
+with thigh straps. A real cut needs new geometry, and image-to-3D is not
+available here — this whole stack is Vulkan *because* there is no CUDA on this
+machine, and the image-to-3D models are CUDA-only.
+
+#### Pouring cloth, which is not like pouring a material
+
+Leather and bronze sit on tables in the training data, so "seamless tileable
+flat lay of …" is enough. Cloth never does — it is draped on a body, sewn into a
+garment, or stretched across a wall — so the same phrasing returns the *context*
+rather than the substance. Measured, over six rounds and forty pours:
+
+| Asked for | Came back as |
+|---|---|
+| "flat lay of technical synthetic twill" | glossy satin drapery |
+| "flat lay of ripstop nylon" | an architectural moulding |
+| "flat lay of waxed canvas" | a tiled brick wall, then a chrome object |
+| "extreme macro close-up of woven fabric" | macro *photography* — shallow depth, drama, folds |
+
+Four things fix it, and the script carries each with the failure it prevents:
+
+1. **"flatbed scan", not "flat lay".** A scan is a physical process that cannot
+   have folds, drama or depth, and the model knows its output.
+2. **Say DENIM.** Of every attempt, only the ones naming denim or canvas twill
+   rendered as fabric at all. Colour and thread vary; the weave noun does not.
+3. **Claim the frame** — "full frame edge to edge, one continuous piece" — or the
+   scan arrives as cut swatches with white paper between them.
+4. **Search the seed against a fold metric.** Prompt words move the odds; they do
+   not decide it. `fold_score()` shrinks the image to 16×16, so every thread
+   averages away and only shape survives, and takes the deviation: flat weave
+   2–7, folded garment 24–38, and nothing has ever landed between.
+
+Exposure is corrected at bake time by `lift_value()`, because the two demands
+cannot both be prompted: a flat evenly-lit denim scan **is** dark, and every
+candidate above value 100 scored 60–90 on folds, since a highlight means a fold.
+The lift is a **gamma**, not a multiply — lifting 15 to 130 by multiplication
+clips everything above 32 to white, and that came out on the figurine as
+camouflage.
 
 **Rendered slots:** head, chest, hands, legs, feet, cloak, main-hand, off-hand,
 shield. Rings, amulets and belts stay icons — they are invisible under a sleeve

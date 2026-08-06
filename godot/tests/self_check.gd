@@ -1141,6 +1141,41 @@ The term for spell slots is "Echoes."
 			"q-doll: applying the same build twice must not compound it")
 		qf.queue_free()
 
+		# ── The world's cloth ────────────────────────────────────────────────
+		# Four families have no wardrobe of their own and wear the fantasy cut
+		# in the world's substance instead. Whether that looks GOOD is a picture
+		# (tests/doll_shot.gd renders the sheet); whether it is plugged in at all
+		# is this, and the two are not the same question — the first version of
+		# this feature rendered five identical rangers and nothing said so.
+		var qc := ModularDoll.new()
+		qc.rig = "quaternius"
+		add_child(qc)
+		qc.build(load(qc.body_path()))
+		for fam in ModularDoll.CLOTH:
+			assert(ResourceLoader.exists(str(ModularDoll.CLOTH[fam])),
+				"cloth: the %s cloth must actually be in the export" % fam)
+		assert(ResourceLoader.exists(ModularDoll.CLOTH_SHADER), "cloth: the shader ships too")
+		# A dyed family overrides the garment's material; an undyed one must NOT,
+		# because the pack's own leather is already right for it and pouring over
+		# a good texture only costs the detail painted into it.
+		qc.family = "cyber"
+		assert(qc.cloth_tex() != null, "cloth: a dyed family resolves a texture")
+		assert(qc.equip("armor", "ranger"), "cloth: the garment still wears")
+		var dyed_mat := _first_override(qc)
+		assert(dyed_mat is ShaderMaterial, "cloth: a dyed family must reach the garment's material")
+		# ...and the poured texture must be the one that family named, not simply
+		# SOME shader — a single hardcoded cloth would pass a weaker assertion
+		# while every world wore the same jumpsuit.
+		assert((dyed_mat as ShaderMaterial).get_shader_parameter("cloth") != null,
+			"cloth: the poured texture must reach the shader")
+		qc.family = "fantasy"
+		assert(qc.cloth_tex() == null, "cloth: fantasy keeps the pack's own leather")
+		assert(qc.equip("armor", "ranger"), "cloth: the garment still wears undyed")
+		assert(not (_first_override(qc) is ShaderMaterial),
+			"cloth: an undyed family must leave the garment's own material alone")
+		qc.queue_free()
+		print("  cloth: four families dye the garment, the other four are left alone")
+
 	# ── The knobs themselves ─────────────────────────────────────────────────
 	# 50 means "whatever heritage and sex say", so an untouched hero is exactly
 	# what the rules already describe — the sliders modify, never replace.
@@ -1434,3 +1469,27 @@ The term for spell slots is "Echoes."
 
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
+
+
+## The first surface-override material on any mesh the doll is currently
+## wearing. Walked rather than looked up by path, because the holder's shape is
+## ModularDoll's business and a test that hardcodes it breaks on every rig swap
+## while proving nothing about the dye.
+func _first_override(doll: ModularDoll) -> Material:
+	for n in _meshes_under(doll):
+		if n.mesh == null:
+			continue
+		for i in n.mesh.get_surface_count():
+			var m := n.get_surface_override_material(i)
+			if m != null:
+				return m
+	return null
+
+
+func _meshes_under(n: Node) -> Array[MeshInstance3D]:
+	var out: Array[MeshInstance3D] = []
+	if n is MeshInstance3D:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_meshes_under(c))
+	return out

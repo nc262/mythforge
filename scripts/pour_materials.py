@@ -28,6 +28,7 @@ units so it must be tuned per mesh size — 0.25 suited a 1.5-unit character;
 """
 import argparse
 import base64
+import glob
 import io
 import json
 import os
@@ -64,14 +65,102 @@ MATERIALS = {
         "seamless tileable flat lay of dark brushed gunmetal with faint thin cyan etched lines, "
         "matte, low contrast, muted desaturated colour, subtle fine grain, even lighting",
 }
+
+# ── Garment cloth, keyed by WORLD SKIN FAMILY ───────────────────────────────
+# These dress the 3D figurine, and they exist only for the four families the
+# CC0 outfit pack does not cover. Fantasy, pirate, horror and norse are absent
+# ON PURPOSE: the pack's authored leather and homespun are already right for
+# them, and pouring a material over a good texture only costs detail.
+#
+# Keyed by family rather than by world id so a FORGED world is covered too — it
+# resolves to a family through WorldSkin.skin_for_id before it ever gets here.
+#
+# CLOTH HAS ITS OWN VOCABULARY, and the first pour proved why: 3 of 4 came back
+# as something other than fabric. "flat lay" is enough for leather and bronze —
+# they sit on tables in the training data. Cloth never does. It is draped over a
+# body, sewn into a garment, or stretched across a wall, so a prompt that only
+# names the substance gets the CONTEXT the model has always seen it in:
+#
+#   cyber    -> glossy satin drapery with a white artefact across it
+#   space    -> a near-white architectural moulding, no fabric anywhere
+#   steam    -> a tiled wall in brick coursing
+#   everyday -> real denim, but in folds the size of a torso, with stitching
+#
+# The obvious fix is wrong. "extreme macro close-up" was tried and made it
+# WORSE: macro is a photographic genre, and it brings shallow depth, dramatic
+# light and drape with it — cyber came back as glowing satin ribbons. Keep the
+# "flat lay" framing that already works for leather and bronze.
+#
+# What actually fixes it is the SUBSTANCE NOUN. Of eight attempts, the only ones
+# that rendered as fabric at all said DENIM. It is the one cloth this checkpoint
+# has seen photographed flat and lit evenly, so every family anchors on a denim
+# or canvas twill and varies only the colour and the thread. A prompt naming
+# "technical synthetic" or "ripstop nylon" gets sportswear or, twice, a wall.
+#
+# CFG was the other suspect and it is NOT the problem — measured, not assumed.
+# The checkpoint is an XL *Turbo*, which normally wants cfg ~2, so dropping to 2
+# looked like the fix for the over-dramatic look. It is not: at 2 this server's
+# sampler loses prompt adherence entirely and returns greeble noise — a cyan
+# thicket, a brown circuit board. Everything here is poured at the same 6.0 as
+# the materials above.
+#
+# One more word, and it is the whole thing: "flat lay" must become FLATBED SCAN.
+# For leather and bronze "flat lay" is harmless, but for cloth it names a real
+# photographic genre — styled folded clothing — so every pour came back as a
+# garment shot: big folds, seams, buttons, background showing through. A flatbed
+# scan is a physical process that CANNOT have folds, dramatic light or depth,
+# and the model knows what its output looks like.
+#
+# It brings the scanner BED with it, though, so the frame must be claimed too:
+# "full frame, edge to edge, one continuous piece" — without it the scan is of
+# cut swatches with white paper showing between them, which triplanar then
+# pours onto a shirt as white gashes.
+#
+# Two colour traps, both measured: "pale" plus "evenly lit" blows out to a white
+# line drawing, so every value here is mid or dark; and "waxed" is a gloss word
+# that summons a chrome OBJECT, so canvas is described by its weave instead.
+#
+# Ask for the DARK value, not the one you want to see. Brightness is corrected
+# at bake time by lift_value(), and asking the model for a light weave only
+# makes it reach for a photograph — measured, over ten seeds each: with "mid"
+# and "light" colour words every flat candidate still came back at value 27-46
+# and every candidate above 100 scored 60-90 on folds.
+CLOTH = {
+    "cyber-cloth":
+        "seamless tileable flatbed scan of dark charcoal denim twill weave with faint thin cyan "
+        "warp threads, full frame edge to edge, one continuous piece, pressed perfectly flat, "
+        "evenly lit, matte, low contrast, muted desaturated colour, subtle fine grain",
+    "everyday-cloth":
+        "seamless tileable flatbed scan of dark indigo cotton denim twill weave, full frame edge "
+        "to edge, one continuous piece, pressed perfectly flat, evenly lit, matte, low contrast, "
+        "muted desaturated colour, subtle fine grain",
+    "space-cloth":
+        "seamless tileable flatbed scan of mid slate grey cotton denim twill weave, full frame "
+        "edge to edge, one continuous piece, pressed perfectly flat, evenly lit, matte, low "
+        "contrast, muted desaturated colour, subtle fine grain",
+    "steam-cloth":
+        "seamless tileable flatbed scan of warm dark brown cotton denim twill weave, full frame "
+        "edge to edge, one continuous piece, pressed perfectly flat, evenly lit, matte, low "
+        "contrast, muted desaturated colour, subtle fine grain",
+}
 NEG = ("stained glass, mosaic, ornate, decorative pattern, heraldry, glowing, high contrast, "
        "dramatic lighting, product photo, label, packaging, object, item, seam, border, frame, "
        "vignette, text, watermark, logo, perspective, horizon")
+# Everything the first cloth pour actually returned, named so it cannot return.
+CLOTH_NEG = NEG + (", fold, folds, drape, draped, wrinkle, crease, pleat, satin, silk, velvet, "
+                   "gloss, glossy, sheen, specular highlight, stitching, hem, garment, clothing, "
+                   "shirt, wall, panel, tile, brick, plank, moulding, architecture, floor, "
+                   "swatch, sample card, cut edge, pinked edge, white background, paper, "
+                   "scanner bed, gap, blown out, overexposed")
+# NOT in that list, though it was tried: a bare "white". It fixes the one pour
+# that was blowing out and breaks the two that need a light value — cyber
+# crushed to near-black and lost its cyan entirely. Negate the FAILURE
+# ("overexposed"), never the colour.
 
 
 def gen(name: str, prompt: str, out_dir: str, size: int, steps: int,
-        cfg: float, seed: int, server: str) -> str:
-    body = {"prompt": prompt, "negative_prompt": NEG, "steps": steps,
+        cfg: float, seed: int, server: str, neg: str = NEG) -> str:
+    body = {"prompt": prompt, "negative_prompt": neg, "steps": steps,
             "cfg_scale": cfg, "width": size, "height": size, "seed": seed}
     t = time.time()
     req = urllib.request.Request(server, data=json.dumps(body).encode(),
@@ -79,8 +168,134 @@ def gen(name: str, prompt: str, out_dir: str, size: int, steps: int,
     res = json.loads(urllib.request.urlopen(req, timeout=900).read())
     path = os.path.join(out_dir, name + ".png")
     Image.open(io.BytesIO(base64.b64decode(res["images"][0]))).convert("RGB").save(path)
-    print("  %-32s %5.1fs  seam %s" % (name, time.time() - t, seam_score(path)))
+    print("  %-32s %5.1fs  seam %s  fold %5.2f  value %5.1f"
+          % (name, time.time() - t, seam_score(path), fold_score(path), mean_value(path)))
     return path
+
+
+## Above this the picture is a folded garment, not a weave. Calibrated on pours
+## judged by eye: the four that read as flat cloth scored 2.3-6.9, the four that
+## read as folded scored 24-38. Nothing has ever landed between.
+FOLD_MAX = 12.0
+
+## Where the cloth's mean luminance is LIFTED to after it is chosen, 0-255.
+##
+## Asking the model for a bright weave was tried first and is a dead end: it
+## cannot satisfy both gates at once. Every flat candidate came back at value
+## 27-46 and every candidate above 100 scored 60-90 on folds — because a flat
+## evenly-lit denim scan IS dark (denim is dark), and the bright ones are all
+## photographs with highlights, and a highlight means a fold. The generator is
+## right; the demand was wrong.
+##
+## So exposure is corrected at BAKE time instead, which is where exposure has
+## always belonged. The shader multiplies this cloth by the garment's own
+## albedo, so an un-lifted dark scan lands on the figurine as soot.
+VALUE_TARGET = 130.0
+## Sanity only — reject a candidate that is degenerate black or blown white,
+## which no amount of lifting can rescue.
+VALUE_RANGE = (12, 230)
+
+
+def mean_value(path: str) -> float:
+    im = Image.open(path).convert("L")
+    px = list(im.getdata())
+    return sum(px) / len(px)
+
+
+def lift_value(path: str, target: float = VALUE_TARGET) -> float:
+    """Raise the image's mean luminance to `target` by GAMMA, not by multiply.
+
+    A plain multiply was tried and is wrong: lifting the cyber scan from 15 to
+    130 means multiplying by 7.9, which clips every value above 32 to white. The
+    weave's subtle grain became blown blotches and the figurine came out in
+    CAMOUFLAGE — light and dark patches the size of a thigh. Gamma cannot clip:
+    it is monotonic on [0,1] and maps 1 to 1, so the ordering of every thread is
+    preserved and only the distribution moves.
+
+    Solved by bisection rather than algebra because the mean of a gamma curve
+    over an arbitrary histogram has no closed form worth writing.
+
+    Written back over the file, so the SHIPPED texture is the corrected one — a
+    lift hidden in the shader would be a number nobody can see by opening the
+    png.
+    """
+    im = Image.open(path).convert("RGB")
+    lo, hi = 0.05, 1.0
+    for _ in range(24):
+        g = (lo + hi) / 2.0
+        test = im.point(lambda v, gg=g: int(255.0 * (v / 255.0) ** gg))
+        if mean_value_of(test) < target:
+            hi = g          # smaller gamma brightens
+        else:
+            lo = g
+    im.point(lambda v, gg=(lo + hi) / 2.0: int(255.0 * (v / 255.0) ** gg)).save(path)
+    return mean_value(path)
+
+
+def mean_value_of(im: "Image.Image") -> float:
+    px = list(im.convert("L").getdata())
+    return sum(px) / len(px)
+
+
+def pour_flat(name: str, prompt: str, out_dir: str, size: int, steps: int,
+              cfg: float, seed: int, server: str, neg: str, tries: int) -> str:
+    """Pour until one comes out flat, then keep the flattest.
+
+    Every candidate is generated and scored; the winner is the lowest fold with
+    a seam that still tiles, and it is renamed into place. Stops early on the
+    first that clears FOLD_MAX, because there is nothing to gain from a flatter
+    flat — this is a search for an acceptable seed, not a beauty contest.
+    """
+    best_path, best_fold = "", 1e9
+    for i in range(max(tries, 1)):
+        cand = "%s__s%d" % (name, seed + i)
+        p = gen(cand, prompt, out_dir, size, steps, cfg, seed + i, server, neg)
+        f = fold_score(p)
+        ok = "SEAM" not in seam_score(p) and VALUE_RANGE[0] <= mean_value(p) <= VALUE_RANGE[1]
+        if ok and f < best_fold:
+            best_path, best_fold = p, f
+        if ok and f <= FOLD_MAX:
+            break
+    final = os.path.join(out_dir, name + ".png")
+    if not best_path:
+        # No seed in the budget produced a tileable image. Say so and leave
+        # nothing behind: a silently-kept folded texture is the one outcome
+        # worse than an empty folder, because it looks like it worked.
+        print("  %-32s NO TILEABLE CANDIDATE in %d tries" % (name, tries))
+        return ""
+    if os.path.exists(final):
+        os.remove(final)
+    os.rename(best_path, final)
+    lifted = lift_value(final)
+    print("  %-32s -> fold %5.2f  value %5.1f  %s"
+          % (name, best_fold, lifted, "OK" if best_fold <= FOLD_MAX else "STILL FOLDED"))
+    for stale in glob.glob(os.path.join(out_dir, name + "__s*.png")):
+        os.remove(stale)
+    return final
+
+
+def fold_score(path: str) -> float:
+    """How folded is it? Large-scale luminance variation, and nothing else.
+
+    Six rounds of prompt surgery could not reliably stop this checkpoint
+    photographing a FOLDED GARMENT instead of a flat weave, because whether it
+    drapes is close to a coin flip on the seed. Prompt words move the odds; they
+    do not decide it. So measure the failure and search for a seed that avoids
+    it — which is cheap, at 5 s an image.
+
+    The measurement is the whole trick and it is one line: shrink to 16x16, so
+    every thread of weave averages away and only shape survives, then take the
+    standard deviation. A flat lit weave is uniform at that scale; a fold is a
+    broad light-to-dark ramp, which is exactly what the deviation counts.
+
+    Calibrated against the pours judged by eye, not assumed:
+        ~5    flat weave, full frame          -> usable
+        ~25   folded garment, seams, shadow   -> the failure
+    """
+    im = Image.open(path).convert("L").resize((16, 16), Image.BOX)
+    px = list(im.getdata())
+    m = sum(px) / len(px)
+    return (sum((p - m) ** 2 for p in px) / len(px)) ** 0.5
 
 
 def seam_score(path: str) -> str:
@@ -133,11 +348,19 @@ def main() -> None:
     ap.add_argument("--cfg", type=float, default=6.0)
     ap.add_argument("--seed", type=int, default=7)
     ap.add_argument("--server", default=SERVER)
+    ap.add_argument("--set", choices=["materials", "cloth", "all"], default="all")
+    ap.add_argument("--tries", type=int, default=8,
+                    help="seeds to search per CLOTH entry before giving up")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    print("pouring %d materials -> %s" % (len(MATERIALS), a.out))
-    for name, prompt in MATERIALS.items():
-        gen(name, prompt, a.out, a.size, a.steps, a.cfg, a.seed, a.server)
+    want = {"materials": MATERIALS, "cloth": CLOTH, "all": {**MATERIALS, **CLOTH}}[a.set]
+    print("pouring %d materials -> %s" % (len(want), a.out))
+    for name, prompt in want.items():
+        if name in CLOTH:
+            pour_flat(name, prompt, a.out, a.size, a.steps, a.cfg, a.seed,
+                      a.server, CLOTH_NEG, a.tries)
+        else:
+            gen(name, prompt, a.out, a.size, a.steps, a.cfg, a.seed, a.server, NEG)
 
 
 if __name__ == "__main__":

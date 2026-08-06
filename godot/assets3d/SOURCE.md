@@ -8,6 +8,12 @@ domain, no attribution required, commercial use fine**.
 | `bodies/` | Universal Base Characters | Base bodies + 20 hairstyles rigged to the head bone |
 | `outfits/` | Modular Character Outfits – Fantasy | Per-slot garments: Body, Arms, Legs, Feet, Head_Hood, Pauldrons |
 | `anim/` | Universal Animation Library 2 | Animation set on the same skeleton |
+| `weapons/` | Fantasy RPG weapons | Rigid props for the hand bones — no skin weights needed |
+
+`cloth/` is the exception: it is **generated, not downloaded**. Four tileable
+weaves poured by `scripts/pour_materials.py` for the world families the outfit
+pack does not dress, plus the shader that pours them. See
+[docs/CharacterRender.md](../docs/CharacterRender.md).
 
 ## Why these three and not the ones already in `spike3d/`
 

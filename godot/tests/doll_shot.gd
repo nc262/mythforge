@@ -30,6 +30,23 @@ const SHOTS := [
 ## per body and the two are different cuts, not one mesh scaled.
 const SEXES := ["male", "female"]
 
+## One loadout under every poured cloth. Four world families have no wardrobe of
+## their own and wear the fantasy cut in the world's substance instead; whether
+## that reads as a jumpsuit or as a ranger dipped in paint is a PICTURE, not a
+## boolean, and no assertion in self_check can see it.
+##
+## "" is the undyed control and must be first — without it there is nothing to
+## judge the other four against, and a dye that silently did nothing would look
+## like a pass.
+const CLOTH_FAMILIES := ["", "cyber", "everyday", "space", "steam"]
+const CLOTH_FIT := {"armor": "ranger", "legs": "ranger", "feet": "ranger",
+	"hands": "ranger"}
+
+## Tile density sweep, one family, so the scale is CHOSEN from a picture rather
+## than inherited. The spike's 0.25 was tuned on another mesh entirely and puts
+## about one blotch per thigh on this body.
+const CLOTH_SCALES := [0.25, 1.0, 2.5, 5.0, 9.0]
+
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
@@ -71,5 +88,40 @@ func _ready() -> void:
 			var stem: String = str(shot[0]) if who == "male" else ("%s_f" % shot[0])
 			img.save_png("%s/%s.png" % [OUT, stem])
 			print("DOLL wrote %s" % stem)
+	doll.sex = "male"
+	doll.build(load(doll.body_path()))
+	doll.frame_camera(cam, 1.0, 0.52)
+	for fam in CLOTH_FAMILIES:
+		# BEFORE equipping, not after: the dye is applied as each garment is
+		# worn, so a family set afterwards changes nothing and the sheet would
+		# come out as five identical rangers that looked like a pass.
+		doll.family = str(fam)
+		for slot in ModularDoll.RENDERED_SLOTS:
+			doll.equip(slot, "")
+		for slot in CLOTH_FIT:
+			if not doll.equip(str(slot), str(CLOTH_FIT[slot])):
+				push_error("DOLL: could not equip %s for family %s" % [slot, fam])
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var dyed := vp.get_texture().get_image()
+		var tag: String = str(fam) if fam != "" else "undyed"
+		dyed.save_png("%s/cloth_%s.png" % [OUT, tag])
+		print("DOLL wrote cloth_%s" % tag)
+
+	doll.family = "cyber"
+	for sc in CLOTH_SCALES:
+		doll.cloth_scale = float(sc)
+		for slot in ModularDoll.RENDERED_SLOTS:
+			doll.equip(slot, "")
+		for slot in CLOTH_FIT:
+			doll.equip(str(slot), str(CLOTH_FIT[slot]))
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var swept := vp.get_texture().get_image()
+		swept.save_png("%s/scale_%s.png" % [OUT, str(sc).replace(".", "_")])
+		print("DOLL wrote scale_%s" % sc)
+
 	print("DOLL: wrote to ", ProjectSettings.globalize_path(OUT))
 	get_tree().quit(0)

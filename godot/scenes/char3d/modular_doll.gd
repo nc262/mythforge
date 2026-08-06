@@ -595,6 +595,7 @@ func _wear_file(slot: String, scene: PackedScene) -> bool:
 		mi.skeleton = mi.get_path_to(skeleton)
 	inst.queue_free()
 	_extern[slot] = holder
+	_dye(holder)
 	return true
 
 
@@ -679,20 +680,92 @@ func hidden_zones() -> Array:
 	return out
 
 
-## The world's poured material, dropped on body and gear alike. Triplanar, so it
-## ignores every mesh's own UV atlas — which is exactly what lets ONE material
-## cover any garment from any source (see the material spike: pushing a tileable
-## texture through a game mesh's atlas produced stretched garbage).
-func apply_world_material(tex: Texture2D, shader: Shader, tri_scale := 0.25) -> void:
-	if tex == null or shader == null:
+## The world's cloth, poured over GARMENTS ONLY.
+##
+## The outfit pack is fantasy: two archetypes in leather and homespun. Four
+## world families have no wardrobe at all — cyber, everyday, space, steam — and
+## a material cannot turn a tunic into a jacket, but it can stop a cyberpunk
+## hero being dressed in a peasant's brown wool. The cut stays fantasy; the
+## substance becomes the world's. An honest half-measure, and the alternative is
+## four wardrobes that do not exist.
+##
+## The other four families are absent from this table ON PURPOSE. Fantasy,
+## pirate, horror and norse are exactly what the pack was authored for, and
+## pouring a material over a good texture only costs the detail painted into it.
+const CLOTH := {
+	"cyber": "res://assets3d/cloth/cyber-cloth.png",
+	"everyday": "res://assets3d/cloth/everyday-cloth.png",
+	"space": "res://assets3d/cloth/space-cloth.png",
+	"steam": "res://assets3d/cloth/steam-cloth.png",
+}
+const CLOTH_SHADER := "res://assets3d/cloth/world_cloth.gdshader"
+
+## Object-space tiling repeats. A var, not a const, because the only way to pick
+## it is to render a sweep and look — tests/doll_shot.gd does exactly that. The
+## material spike's 0.25 was tuned against a different mesh at a different scale
+## and on this body it puts one thigh-sized blotch per limb.
+##
+## 2.5 was chosen off that sweep: the weave still reads as weave, and the belts,
+## straps and boot tops stay legible. 9.0 looks finer standing still and is the
+## wrong answer — the figurine renders at 256 px, where that grain aliases into
+## mush.
+var cloth_scale := 2.5
+
+## World skin FAMILY, not world id, so a FORGED world is dressed too — it
+## resolves to a family long before it reaches here. Left empty the doll asks
+## the live skin, which is what every caller in the game wants; a harness sets
+## it directly to render a family it is not currently playing.
+var family := ""
+
+
+func _cloth_family() -> String:
+	if family != "":
+		return family
+	# `Ui` is skin.gd's autoload name, not `Skin` — which resolves to something
+	# else entirely and fails at PARSE time, taking the whole harness down with a
+	# hang rather than an error.
+	return WorldSkin.family_for_id(str(Ui.world_id))
+
+
+## The poured texture for the active family, or null where the pack's own
+## clothes are already right. Godot caches `load`, so this is a dictionary
+## lookup after the first call.
+func cloth_tex() -> Texture2D:
+	var path := str(CLOTH.get(_cloth_family(), ""))
+	if path == "" or not ResourceLoader.exists(path):
+		return null
+	var t = load(path)
+	return t if t is Texture2D else null
+
+
+## Dye one worn garment. Called from _wear_file so nothing else has to remember
+## to — one place to forget instead of nine, and a hero half in denim and half
+## in homespun only shows up on the slot nobody happened to re-equip.
+##
+## Props are NOT dyed: a sword is not made of the same stuff as a shirt, and
+## `_hold_prop` builds its own holder for exactly that reason.
+func _dye(holder: Node) -> void:
+	var tex := cloth_tex()
+	if tex == null:
 		return
-	var mat := ShaderMaterial.new()
-	mat.shader = shader
-	mat.set_shader_parameter("albedo_tex", tex)
-	mat.set_shader_parameter("triplanar", true)
-	mat.set_shader_parameter("tri_scale", tri_scale)
-	for mi in _all_meshes(self):
-		mi.material_override = mat
+	var sh = load(CLOTH_SHADER)
+	if not (sh is Shader):
+		return
+	for mi in _all_meshes(holder):
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var src = mi.mesh.surface_get_material(i)
+			var sm := ShaderMaterial.new()
+			sm.shader = sh
+			sm.set_shader_parameter("cloth", tex)
+			# The garment's own albedo carries every strap, lace and seam; the
+			# shader keeps its luminance and replaces only the hue. Without it
+			# the piece flattens into one untailored silhouette.
+			if src is StandardMaterial3D and src.albedo_texture != null:
+				sm.set_shader_parameter("garment", src.albedo_texture)
+			sm.set_shader_parameter("tri_scale", cloth_scale)
+			mi.set_surface_override_material(i, sm)
 
 
 ## Pull a camera back until the whole figurine is in shot.

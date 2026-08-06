@@ -28,7 +28,12 @@
 param(
   [string]$Exe        = "",
   [string]$Checkpoint = "",
-  [int]$Port          = 8189
+  [int]$Port          = 8189,
+  # Circular padding on both axes — what makes a texture actually tile. It is a
+  # LAUNCH flag, not a request field, so a material pour needs its own server on
+  # its own port: `-Port 8190 -Circular`. Off for the game, which wants pictures
+  # with edges, not wallpaper.
+  [switch]$Circular
 )
 
 # <repo>/scripts/this.ps1 → <repo> → its parent, where fetch_sdcpp.py installs.
@@ -97,7 +102,8 @@ if (-not $Checkpoint -or -not (Test-Path $Checkpoint)) {
 $live = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
 if ($live) { Write-Host "already listening on :$Port" -ForegroundColor Green; return }
 
-$log = Join-Path $env:TEMP "sd-server.log"
+# Per-port, so a pour server on :8190 does not truncate the game server's log.
+$log = Join-Path $env:TEMP "sd-server-$Port.log"
 Remove-Item $log, "$log.err" -ErrorAction SilentlyContinue
 
 # --diffusion-fa: flash attention in the diffusion model. Measured on an RX 7900
@@ -107,8 +113,10 @@ Remove-Item $log, "$log.err" -ErrorAction SilentlyContinue
 #   allocate pinned memory ... ErrorOutOfDeviceMemory" and falls back to a slow
 #   path: decode alone was 36.2s of a 50.4s image. Tiled it is 3.1s, for a
 #   pixel-identical result at the same seed. 50.4s -> 19.9s per image.
+$sdArgs = @("-m","`"$Checkpoint`"","--listen-port","$Port","--diffusion-fa","--vae-tiling")
+if ($Circular) { $sdArgs += "--circular" }
 Start-Process -FilePath $Exe -WindowStyle Minimized `
-  -ArgumentList "-m","`"$Checkpoint`"","--listen-port","$Port","--diffusion-fa","--vae-tiling" `
+  -ArgumentList $sdArgs `
   -RedirectStandardOutput $log -RedirectStandardError "$log.err"
 
 Write-Host "loading $(Split-Path $Checkpoint -Leaf) (~6.5 GB)..." -ForegroundColor Cyan
