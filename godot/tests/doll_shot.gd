@@ -194,28 +194,6 @@ func _ready() -> void:
 		if is_instance_valid(doll._extern[slot]):
 			for m in _meshes_under(doll._extern[slot]):
 				worn[m] = true
-	# How far the skin has to be pulled in before it stops surfacing through the
-	# clothes. Swept rather than guessed: 0.004 was chosen as "a z-fight is
-	# microscopic" and the tears did not move, which says the gap is real
-	# interpenetration and not a depth tie.
-	for amt in [0.0, 0.006, 0.012, 0.02, 0.03]:
-		doll.cloth_swell = float(amt)
-		doll.build(load(doll.body_path()))
-		doll.frame_camera(cam, 1.0, 0.52)
-		for slot in CLOTH_FIT:
-			doll.equip(str(slot), str(CLOTH_FIT[slot]))
-		await get_tree().process_frame
-		await RenderingServer.frame_post_draw
-		vp.get_texture().get_image().save_png("%s/swell_%s.png" % [OUT, str(amt).replace(".", "_")])
-		print("DOLL wrote swell_%s" % amt)
-	doll.cloth_swell = 0.012
-	doll.build(load(doll.body_path()))
-	doll.frame_camera(cam, 1.0, 0.52)
-	for slot in CLOTH_FIT:
-		doll.equip(str(slot), str(CLOTH_FIT[slot]))
-	await get_tree().process_frame
-	await RenderingServer.frame_post_draw
-
 	var body_meshes: Array[MeshInstance3D] = []
 	for n in _meshes_under(doll._body):
 		if n.visible and not worn.has(n):

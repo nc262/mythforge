@@ -1168,24 +1168,50 @@ The term for spell slots is "Echoes."
 		# while every world wore the same jumpsuit.
 		assert((dyed_mat as ShaderMaterial).get_shader_parameter("cloth") != null,
 			"cloth: the poured texture must reach the shader")
-		# Both paths must PUSH THE CLOTH OUT by the same amount, or a cyberpunk
-		# hero pokes through where a fantasy one does not. The undyed path gets
-		# it from StandardMaterial3D.grow; the dyed path has no such property and
-		# reimplements it in the shader, which is exactly the kind of pair that
-		# drifts.
-		assert(is_equal_approx(float((dyed_mat as ShaderMaterial).get_shader_parameter("swell")),
-			qc.cloth_swell), "cloth: the dyed path must swell by the same amount")
 		qc.family = "fantasy"
 		assert(qc.cloth_tex() == null, "cloth: fantasy keeps the pack's own leather")
 		assert(qc.equip("armor", "ranger"), "cloth: the garment still wears undyed")
-		var plain := _first_override(qc)
-		assert(plain is StandardMaterial3D,
+		assert(not (_first_override(qc) is ShaderMaterial),
 			"cloth: an undyed family keeps the pack's own material, not a shader")
-		assert((plain as StandardMaterial3D).grow
-			and is_equal_approx((plain as StandardMaterial3D).grow_amount, qc.cloth_swell),
-			"cloth: ...and is still pushed out, or the skin tears through it")
 		qc.queue_free()
 		print("  cloth: four families dye the garment, the other four are left alone")
+
+		# ── Hidden surface removal ───────────────────────────────────────────
+		# EVERY garment needs its mask, because a garment without one hides no
+		# skin and the skin then tears through it — which is a picture, not an
+		# error, so nothing would report it. The forged trousers were doing
+		# exactly that while the pack's own were clean, because equip_scene did
+		# not record the file its mask is named after.
+		var qm := ModularDoll.new()
+		qm.rig = "quaternius"
+		add_child(qm)
+		var scenes: Dictionary = qm.profile().get("scenes", {})
+		var checked := 0
+		for msex in ["male", "female"]:
+			qm.sex = msex
+			for mslot in scenes:
+				for pid in scenes[mslot]:
+					var entry = scenes[mslot][pid]
+					var gp := qm._sexed(str(entry.get(msex, entry.get("male", "")))
+						if entry is Dictionary else str(entry))
+					if not ResourceLoader.exists(gp):
+						continue
+					checked += 1
+					assert(qm._mask_for(gp) != null,
+						"mask: %s has no baked hidden-surface mask" % gp)
+		assert(checked >= 16, "mask: expected the whole wardrobe, only saw %d" % checked)
+		# Dressed, the skin is masked; bare, it is untouched. The undress half is
+		# the one that rots — a mask left on after a garment comes off is a hero
+		# with a hole in them.
+		qm.sex = "male"
+		qm.build(load(qm.body_path()))
+		assert(_skin_override(qm) == null, "mask: a bare body wears no mask")
+		assert(qm.equip("armor", "ranger"), "mask: the garment wears")
+		assert(_skin_override(qm) is ShaderMaterial, "mask: dressing must mask the skin")
+		assert(qm.equip("armor", ""), "mask: the garment comes off")
+		assert(_skin_override(qm) == null, "mask: undressing must give the skin back")
+		qm.queue_free()
+		print("  mask: %d garments carry a hidden-surface mask; dressing hides skin, undressing returns it" % checked)
 
 	# ── The knobs themselves ─────────────────────────────────────────────────
 	# 50 means "whatever heritage and sex say", so an untouched hero is exactly
@@ -1483,11 +1509,19 @@ The term for spell slots is "Echoes."
 
 
 ## The first surface-override material on any mesh the doll is currently
-## wearing. Walked rather than looked up by path, because the holder's shape is
+## WEARING. Walked rather than looked up by path, because the holder's shape is
 ## ModularDoll's business and a test that hardcodes it breaks on every rig swap
 ## while proving nothing about the dye.
+##
+## Scoped to the worn pieces, not the whole doll: once hidden-surface removal
+## landed, the BODY carries an override too, and walking everything found the
+## skin's mask material first and asserted the dye against it.
 func _first_override(doll: ModularDoll) -> Material:
-	for n in _meshes_under(doll):
+	var worn: Array[MeshInstance3D] = []
+	for slot in doll._extern:
+		if is_instance_valid(doll._extern[slot]):
+			worn.append_array(_meshes_under(doll._extern[slot]))
+	for n in worn:
 		if n.mesh == null:
 			continue
 		for i in n.mesh.get_surface_count():
@@ -1504,3 +1538,17 @@ func _meshes_under(n: Node) -> Array[MeshInstance3D]:
 	for c in n.get_children():
 		out.append_array(_meshes_under(c))
 	return out
+
+
+## The override on the BODY's skin surface, or null. Separate from
+## _first_override, which walks what the doll is wearing — this walks what it is.
+func _skin_override(doll: ModularDoll) -> Material:
+	var want := str(doll.profile().get("skin_mat", ""))
+	for n in _meshes_under(doll._body):
+		if n.mesh == null:
+			continue
+		for i in n.mesh.get_surface_count():
+			var src = n.mesh.surface_get_material(i)
+			if src is StandardMaterial3D and src.resource_name.contains(want):
+				return n.get_surface_override_material(i)
+	return null

@@ -17,11 +17,24 @@ class_name ModularDoll extends Node3D
 ##           Data Transfer -> Vertex Groups) — the standard garment workflow.
 ##
 ## POKE-THROUGH is the part everyone underestimates: an elbow stabbing through a
-## sleeve. The published answers are a vertex bitmask, an alpha mask on the body
-## texture, or one mesh per body zone toggled off. We get the third for free —
-## these bodies already arrive split into head/torso/arms/legs — so a garment
-## simply declares which zones it hides and they are switched off. No shader, no
-## mask textures, nothing to keep in sync.
+## sleeve. The answer is HIDDEN SURFACE REMOVAL, which is what production
+## modular-character systems do — the skin under a garment is not pushed away
+## from the cloth, it is not drawn. Reallusion ships it as the Hide Body Mesh
+## tool and stores the visibility on the GARMENT; Roblox patented it for layered
+## avatars; WoW calls the pieces geosets.
+##
+## Two mechanisms here, because the two rigs are shaped differently. KayKit
+## arrives split into head/torso/arms/legs, so a garment names the ZONES it
+## covers and those meshes switch off. The Quaternius body is ONE mesh, so it
+## gets the mask variant instead: a baked greyscale image per garment in the
+## body's own UV layout, unioned across the loadout, and the skin shader
+## discards what it covers. See _refresh_body_mask and scripts/bake_body_masks.py.
+##
+## What was tried first and is WRONG: keeping the body and swelling the garment
+## to clear it. Separation enforced in one pose is undone by the next, because
+## skinning moves the two surfaces by different weights — the thigh cleared and
+## the knee tore. Absent geometry cannot poke through anything, in any pose. If
+## it needs tuning to survive standing still it cannot survive animation.
 ##
 ## EVERY RIG FACT IS DATA. Bone names, socket bones, zone mesh names and the
 ## parts themselves live in RIGS below, because the rig WILL change: the KayKit
@@ -123,6 +136,10 @@ const RIGS := {
 		# resolves them with no retargeting at all — which is the dividend of
 		# every pack sharing one skeleton.
 		"anim": "res://assets3d/anim/UAL2_Standard.glb",
+		# Which of the body's three materials is SKIN — the other two are eyes
+		# and hair, which no garment covers. Matched on a substring because the
+		# name carries the sex (MI_Superhero_Male / _Female).
+		"skin_mat": "Superhero",
 		# Which bones each body dimension moves. Data, like everything else about
 		# a rig — the heritage spike proved this on Rigify names and these are
 		# the Unreal ones for the same joints.
@@ -325,6 +342,7 @@ func body_path() -> String:
 var _body: Node3D = null
 var _zone_meshes := {}    # zone → Array[MeshInstance3D]
 var _worn := {}           # slot → part id (or "" when bare)
+var _worn_file := {}      # slot → the garment's own res:// path, for its mask
 var _extern := {}         # slot → the Node3D we instanced for an external part
 ## Bind pose, captured once per body. apply_build scales FROM here every time,
 ## because scaling an already-scaled bone compounds — drag a slider twice and
@@ -346,6 +364,7 @@ func build(body_scene: PackedScene) -> void:
 		_body.queue_free()
 	_zone_meshes.clear()
 	_worn.clear()
+	_worn_file.clear()
 	_extern.clear()
 	_rest.clear()   # a new body has a new bind pose; keeping the old one warps it
 	_body = body_scene.instantiate()
@@ -513,6 +532,11 @@ func equip(slot: String, part_id: String) -> bool:
 			return false
 		if not _wear_file(slot, load(path)):
 			return false
+		# Remembered because the hidden-surface mask is named after the garment
+		# FILE, and by the time the body mask is rebuilt the scene is long gone.
+		# A slot plus a part id does not identify the file — the sex token lives
+		# in the path.
+		_worn_file[slot] = path
 		_worn[slot] = part_id
 		_refresh_zones()
 		return true
@@ -624,6 +648,12 @@ func equip_scene(slot: String, scene: PackedScene, fitted := false) -> bool:
 			return false
 		att.add_child(inst)
 	_extern[slot] = inst
+	# Same reason as in equip(): the hidden-surface mask is named after the
+	# garment file. This path is how every SOURCED or FORGED piece is worn, so
+	# without it exactly the new garments — the ones with no fallback — would
+	# hide no skin, and they were still tearing while the pack's own were clean.
+	if scene.resource_path != "":
+		_worn_file[slot] = scene.resource_path
 	_worn[slot] = "scene"
 	_refresh_zones()
 	return true
@@ -640,6 +670,8 @@ func unequip_scene(slot: String) -> void:
 			old.get_parent().remove_child(old)
 		old.queue_free()
 	_extern.erase(slot)
+	# Or the skin stays hidden under a garment that is no longer there.
+	_worn_file.erase(slot)
 	if str(_worn.get(slot, "")) == "scene":
 		_worn[slot] = ""
 
@@ -664,6 +696,73 @@ func _refresh_zones() -> void:
 		for mi in _zone_meshes[zone]:
 			if is_instance_valid(mi):
 				mi.visible = not covered.has(zone)
+	_refresh_body_mask()
+
+
+## Hide the skin every worn garment covers — HIDDEN SURFACE REMOVAL, the thing
+## production modular-character systems actually do. See
+## scripts/bake_body_masks.py for the technique and why pushing the cloth out
+## instead can never survive a pose change.
+##
+## Rebuilt from the WHOLE loadout, for the same reason the zones above are: an
+## incremental version leaves a leg hidden when the leggings come off but the
+## boots stay, and that is invisible until someone undresses in an order nobody
+## tested.
+func _refresh_body_mask() -> void:
+	var want := str(profile().get("skin_mat", ""))
+	if want == "" or _body == null:
+		return
+	var union: Image = null
+	for slot in _worn_file:
+		if str(_worn[slot] if _worn.has(slot) else "") == "":
+			continue
+		var mask := _mask_for(str(_worn_file[slot]))
+		if mask == null:
+			continue
+		if union == null:
+			union = mask.duplicate()
+		else:
+			_max_into(union, mask)
+	_apply_body_mask(want, union)
+
+
+## The baked mask for a garment file, or null where none was baked. Missing is
+## not an error at runtime — a garment with no mask simply hides no skin, which
+## is the pre-mask behaviour. self_check is where a missing mask must fail.
+func _mask_for(garment_path: String) -> Image:
+	var stem := garment_path.get_file().get_basename()
+	var p := MASK_DIR + stem + "_mask.png"
+	if not ResourceLoader.exists(p):
+		return null
+	var tex = load(p)
+	return tex.get_image() if tex is Texture2D else null
+
+
+## Pixel-wise max, because blend_rect on an opaque image just overwrites.
+func _max_into(dst: Image, src: Image) -> void:
+	var size := dst.get_size()
+	for y in size.y:
+		for x in size.x:
+			if src.get_pixel(x, y).r > dst.get_pixel(x, y).r:
+				dst.set_pixel(x, y, src.get_pixel(x, y))
+
+
+func _apply_body_mask(want: String, union: Image) -> void:
+	for mi in _all_meshes(_body):
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var src = mi.mesh.surface_get_material(i)
+			if not (src is StandardMaterial3D) or not src.resource_name.contains(want):
+				continue
+			if union == null:
+				mi.set_surface_override_material(i, null)   # bare: no mask at all
+				continue
+			var sm := ShaderMaterial.new()
+			sm.shader = load(BODY_MASK_SHADER)
+			sm.set_shader_parameter("albedo_tex", src.albedo_texture)
+			sm.set_shader_parameter("cover_mask", ImageTexture.create_from_image(union))
+			mi.set_surface_override_material(i, sm)
 
 
 ## Which body zones are currently hidden — the doll's own answer, for checks.
@@ -700,32 +799,14 @@ const CLOTH := {
 }
 const CLOTH_SHADER := "res://assets3d/cloth/world_cloth.gdshader"
 
-## How far every garment is pushed OUT along its own normals, in body units,
-## where the figure is ~1.75 tall — so this is about a centimetre on a person.
-##
-## POKE-THROUGH. The note in RIGS predicted the fix would be an alpha mask on
-## the body texture. It is not: the garments turn out to ENCLOSE the body
-## completely — rendered with the body hidden, a full kit is a closed, sleeved,
-## booted outfit with no holes in it at all — so there is nothing to mask out.
-## What showed was skin surfacing THROUGH cloth it interpenetrates, in torn
-## notches at both shoulders and the outer thigh.
-##
-## The obvious fix is to shrink the SKIN, and it was built and measured first.
-## It works — at 0.025 the outfit is flawless — and it is the wrong knob, because
-## of what it does when it is wrong: the eyes and eyebrows are separate meshes
-## that do not shrink with the head, so they pop out in front of the face, and
-## the fingers get eaten. Every value that clears the cloth ruins the face.
-##
-## Pushing the CLOTH out instead is the same one-line primitive against a
-## harmless failure mode. Too much, and the clothes hang very slightly looser.
-## Nothing on a garment can pop out of anything.
-##
-## A var, and swept in tests/doll_shot.gd, because the right value is whatever
-## clears the widest interpenetration and no more. Chosen off that sweep:
-## 0.012 still tore at the chest and thigh, 0.02 left one nick on a thigh, 0.03
-## is clean everywhere. The cost is a slightly fuller silhouette, which at
-## figurine size reads as sculpted cloth rather than as a mistake.
-var cloth_swell := 0.03
+const BODY_MASK_SHADER := "res://assets3d/cloth/body_mask.gdshader"
+## Where bake_body_masks.py writes, and the naming it uses.
+const MASK_DIR := "res://assets3d/masks/"
+
+## Garments used to be pushed out along their normals to clear the body. That is
+## gone: hidden-surface removal deletes the skin underneath instead, so there is
+## nothing left to clear, and swelling every garment only made the silhouette
+## puffy. See _refresh_body_mask and scripts/bake_body_masks.py.
 
 ## Object-space tiling repeats. A var, not a const, because the only way to pick
 ## it is to render a sweep and look — tests/doll_shot.gd does exactly that. The
@@ -780,15 +861,7 @@ func _dye(holder: Node) -> void:
 		for i in mi.mesh.get_surface_count():
 			var src = mi.mesh.surface_get_material(i)
 			if tex == null or not (sh is Shader):
-				# Undyed: keep the pack's own material and only push it out.
-				# DUPLICATE — the material is a shared imported resource, so
-				# growing it in place swells that garment on every doll in the
-				# process, and keeps doing it after this one is freed.
-				if src is StandardMaterial3D:
-					var g: StandardMaterial3D = src.duplicate()
-					g.grow = true
-					g.grow_amount = cloth_swell
-					mi.set_surface_override_material(i, g)
+				# Undyed: the pack's own material is already right.
 				continue
 			var sm := ShaderMaterial.new()
 			sm.shader = sh
@@ -799,10 +872,6 @@ func _dye(holder: Node) -> void:
 			if src is StandardMaterial3D and src.albedo_texture != null:
 				sm.set_shader_parameter("garment", src.albedo_texture)
 			sm.set_shader_parameter("tri_scale", cloth_scale)
-			# A ShaderMaterial has no `grow`, so the dyed path has to do the same
-			# offset itself. It must match, or a cyberpunk hero pokes through
-			# where a fantasy one does not.
-			sm.set_shader_parameter("swell", cloth_swell)
 			mi.set_surface_override_material(i, sm)
 
 
