@@ -123,6 +123,18 @@ const RIGS := {
 		# resolves them with no retargeting at all — which is the dividend of
 		# every pack sharing one skeleton.
 		"anim": "res://assets3d/anim/UAL2_Standard.glb",
+		# Which bones each body dimension moves. Data, like everything else about
+		# a rig — the heritage spike proved this on Rigify names and these are
+		# the Unreal ones for the same joints.
+		"bones": {
+			"head":     ["Head"],
+			"leg":      ["thigh_l", "thigh_r", "calf_l", "calf_r"],
+			"arm":      ["upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"],
+			"girth":    ["pelvis", "spine_01"],
+			"torso":    ["spine_02", "spine_03"],
+			"chest":    ["spine_03"],
+			"shoulder": ["clavicle_l", "clavicle_r"],
+		},
 		# UAL2 is a SITUATIONAL library — farming, zombies, sword combos — with no
 		# plain "Idle". The first pick here was Idle_FoldArms, which reads well
 		# right up until the figurine holds something: crossed arms tuck both
@@ -314,6 +326,10 @@ var _body: Node3D = null
 var _zone_meshes := {}    # zone → Array[MeshInstance3D]
 var _worn := {}           # slot → part id (or "" when bare)
 var _extern := {}         # slot → the Node3D we instanced for an external part
+## Bind pose, captured once per body. apply_build scales FROM here every time,
+## because scaling an already-scaled bone compounds — drag a slider twice and
+## the hero doubles.
+var _rest := {}
 
 
 func profile() -> Dictionary:
@@ -331,6 +347,7 @@ func build(body_scene: PackedScene) -> void:
 	_zone_meshes.clear()
 	_worn.clear()
 	_extern.clear()
+	_rest.clear()   # a new body has a new bind pose; keeping the old one warps it
 	_body = body_scene.instantiate()
 	add_child(_body)
 	skeleton = _find_skeleton(_body)
@@ -375,6 +392,52 @@ func _attach_anim(prof: Dictionary) -> void:
 	for lib in sap.get_animation_library_list():
 		ap.add_animation_library(str(lib), sap.get_animation_library(lib))
 	src.queue_free()
+
+
+## Give the figurine its body: heritage, sex, and whatever the player set.
+##
+## Bone scale, never separate geometry — which is the whole reason nine
+## heritages times two sexes times five knobs does not mean a wardrobe per
+## combination. Every garment is skinned to these same bones, so it follows the
+## shape for free.
+##
+## BONE SCALE COMPOUNDS INTO CHILDREN, and that is the trap the heritage spike
+## hit: scaling the chest uniformly stretched the arms hanging off it, so a
+## broad hero came out with long arms too. Girth and shoulders are therefore
+## WIDTH AND DEPTH ONLY (X/Z, never Y); limbs are the reverse, length only; the
+## head is the one group that scales evenly because nothing hangs below it.
+func apply_build(shape: Dictionary) -> void:
+	if skeleton == null or _body == null:
+		return
+	var groups: Dictionary = profile().get("bones", {})
+	if groups.is_empty():
+		return
+	if _rest.is_empty():
+		for i in skeleton.get_bone_count():
+			_rest[i] = skeleton.get_bone_pose(i)
+	else:
+		for i in _rest:
+			skeleton.set_bone_pose(i, _rest[i])   # back to bind, or the scales stack
+	for g in groups:
+		var f := float(shape.get(g, 1.0))
+		if is_equal_approx(f, 1.0):
+			continue
+		for nm in groups[g]:
+			var bi := skeleton.find_bone(str(nm))
+			if bi < 0:
+				continue
+			var t: Transform3D = skeleton.get_bone_pose(bi)
+			match str(g):
+				"head":
+					t = t.scaled_local(Vector3.ONE * f)
+				"girth", "shoulder", "torso", "chest":
+					t = t.scaled_local(Vector3(f, 1.0, f))
+				_:
+					t = t.scaled_local(Vector3(1.0, f, 1.0))
+			skeleton.set_bone_pose(bi, t)
+	# Height is the whole figure, not a bone — scaling a spine to gain height
+	# stretches the head and hands with it.
+	_body.scale = Vector3.ONE * float(shape.get("height", 1.0))
 
 
 ## Put the figurine on its feet and FREEZE it there. A looping animation in a

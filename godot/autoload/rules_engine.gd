@@ -202,6 +202,60 @@ func road_states() -> Array:
 	return ROAD.keys()
 
 
+## ── THE BODY THE PLAYER CHOOSES ──────────────────────────────────────────────
+## Heritage and sex set a starting shape; these are what the player moves on top
+## of it. Each knob reads 0–100 with **50 as "whatever your heritage says"**, so
+## a Dwarf who touches nothing is still short and broad — the knobs modify the
+## profile, they never replace it. Same rule `body_profile` already applies to
+## sex, for the same reason.
+##
+## `span` is how far the knob can push the underlying factor either way. Kept
+## modest on purpose: a slider that can make any heritage into any other makes
+## heritage meaningless, and the geometry stops deforming cleanly well before
+## the extremes anyway.
+const BUILD_KNOBS := {
+	"height": {"label": "Height",  "span": 0.14, "hint": "shorter · taller"},
+	"build":  {"label": "Build",   "span": 0.18, "hint": "lean · powerful"},
+	"frame":  {"label": "Frame",   "span": 0.16, "hint": "narrow · broad shoulders"},
+	"weight": {"label": "Weight",  "span": 0.18, "hint": "spare · heavy"},
+	"chest":  {"label": "Chest",   "span": 0.16, "hint": "flat · full"},
+}
+const BUILD_NEUTRAL := 50
+
+
+## A knob's 0–100 reading as a multiplier around 1.0.
+func build_factor(knob: String, value: int) -> float:
+	var span := float(BUILD_KNOBS.get(knob, {}).get("span", 0.15))
+	return 1.0 + (clampf(float(value), 0.0, 100.0) - float(BUILD_NEUTRAL)) / float(BUILD_NEUTRAL) * span
+
+
+## The FINAL shape of one hero: heritage, then sex, then the player's own hand.
+## Returns the same keys `body_profile` does plus the knob-driven ones, so a
+## renderer has one dictionary to read and no idea where any of it came from.
+func hero_body(sheet: Dictionary) -> Dictionary:
+	var out := body_profile(str(sheet.get("race", "Human")), str(sheet.get("sex", "")))
+	var knobs = sheet.get("build")
+	if not (knobs is Dictionary):
+		knobs = {}
+	# height and girth already carry heritage+sex, so the knob MULTIPLIES rather
+	# than overwrites — this is what keeps a heavy Halfling still a Halfling.
+	out["height"] = float(out.get("height", 1.0)) * build_factor("height", int(knobs.get("height", BUILD_NEUTRAL)))
+	out["girth"] = float(out.get("girth", 1.0)) * build_factor("weight", int(knobs.get("weight", BUILD_NEUTRAL)))
+	out["shoulder"] = float(out.get("shoulder", 1.0)) * build_factor("frame", int(knobs.get("frame", BUILD_NEUTRAL)))
+	out["torso"] = build_factor("build", int(knobs.get("build", BUILD_NEUTRAL)))
+	out["chest"] = build_factor("chest", int(knobs.get("chest", BUILD_NEUTRAL)))
+	return out
+
+
+## A fresh hero's knobs: every one neutral, so an untouched hero is exactly what
+## their heritage and sex describe.
+func default_build() -> Dictionary:
+	var out := {}
+	for k in BUILD_KNOBS:
+		out[k] = BUILD_NEUTRAL
+	return out
+
+
 const SMALL_NAME_HINT := "(?i)halfling|gnome|goblin|kobold|imp|sprite|fairy|pixie|homunculus"
 
 const DEFAULT_BODY := {"height": 1.0, "girth": 1.0, "head": 1.0, "leg": 1.0, "arm": 1.0}

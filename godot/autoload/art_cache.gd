@@ -703,8 +703,12 @@ func _loadout_key(inv: Dictionary) -> String:
 	for it in inv.get("items", []):
 		if it is Dictionary:
 			by_id[str(it.get("id", ""))] = str(it.get("name", ""))
-	var bits: Array[String] = [hero_body_key()]
-	for slot in ["head", "cloak", "weapon", "offhand", "shield"]:
+	# The BODY is part of the token too — a hero who changes sex or build is a
+	# different miniature, and keying on gear alone would keep serving the old one.
+	var s := GameState.sheet()
+	var bits: Array[String] = [hero_body_key(), str(s.get("race", "")), str(s.get("sex", "")),
+		JSON.stringify(s.get("build", {}))]
+	for slot in ["head", "cloak", "weapon", "offhand", "shield", "armor", "hands", "legs", "feet"]:
 		bits.append("%s=%s" % [slot, str(by_id.get(str(eq.get(slot, "")), ""))])
 	return "|".join(bits)
 
@@ -747,6 +751,7 @@ func _render_figurine(key: String, inv: Dictionary) -> void:
 		var body := str(_fig_doll.body_path())
 		if ResourceLoader.exists(body):
 			_fig_doll.build(load(body))
+			_fig_doll.apply_build(Rules.hero_body(GameState.sheet()))
 		var key_light := DirectionalLight3D.new()
 		key_light.rotation_degrees = Vector3(-40, 30, 0)
 		key_light.light_energy = 1.7

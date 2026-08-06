@@ -38,6 +38,19 @@ may not state a roll, an HP total, or a success — see [AI.md](AI.md).
 | Speech to text | `LocalGM.transcribe()` |
 | Art | `Art` → stable-diffusion.cpp |
 
+## The body
+
+Sex, and five knobs — height, build, frame, weight, chest — set at the anvil
+against a **live figurine that answers as you drag**, because the body is
+geometry rather than a commissioned painting. Every knob reads 0–100 with 50
+meaning *whatever your heritage and sex already say*, so the sliders modify that
+profile and never replace it: a Dwarf who maxes Height is a tall Dwarf, still
+shorter than an average Human. `Rules.hero_body` owns the arithmetic.
+
+It is all **bone scale on one skeleton**, which is why nine heritages × two
+sexes × five knobs is not a wardrobe per combination — every garment is skinned
+to those same bones and follows the shape for free.
+
 ## Character and play
 
 12 classes with usable per-level features · 9 heritages · 8 backgrounds ·

@@ -72,6 +72,7 @@ func _ready() -> void:
 	var body := doll.body_path()
 	if ResourceLoader.exists(body):
 		doll.build(load(body))   # build() stands the figure itself
+		doll.apply_build(Rules.hero_body(GameState.sheet()))
 	_built = true
 	if not _pending.is_empty():
 		doll.wear_inventory(_pending)
@@ -96,8 +97,25 @@ func _ready() -> void:
 	# rig swap would have broken it again, silently and differently.
 	var cam := Camera3D.new()
 	cam.fov = 34.0
+	cam.name = "FitCam"   # named so a rebuild can find and reframe it
 	_vp.add_child(cam)
 	if doll != null:
+		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0))
+
+
+## Swap the body for the other sex. A rebuild, not a re-pose: it is a different
+## mesh with a different garment cut, and the camera has to reframe because the
+## two are not the same height.
+func rebuild(new_sex: String) -> void:
+	if doll == null or not is_instance_valid(doll):
+		return
+	doll.sex = new_sex
+	var body := doll.body_path()
+	if not ResourceLoader.exists(body):
+		return
+	doll.build(load(body))
+	var cam := _vp.get_node_or_null("FitCam") if _vp != null else null
+	if cam is Camera3D:
 		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0))
 
 

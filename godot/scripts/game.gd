@@ -483,6 +483,11 @@ func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], bac
 	s["name"] = nm
 	s["race"] = race
 	s["cls"] = cls
+	# The body the player shaped at the anvil. It sits on the sheet beside race
+	# because it is the same KIND of fact — what this hero IS, not what they
+	# carry — and every renderer reads it through Rules.hero_body.
+	s["sex"] = str(extra.get("sex", "male"))
+	s["build"] = extra.get("build") if extra.get("build") is Dictionary else Rules.default_build()
 	s["abilities"] = abilities
 	s["hitDie"] = int(preset.get("hitDie", 8))
 	s["hpMax"] = int(preset.get("hitDie", 8)) + Rules.ability_mod(int(abilities.get("CON", 10)))

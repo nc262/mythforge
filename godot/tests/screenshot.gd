@@ -11,6 +11,14 @@ func _ready() -> void:
 		await get_tree().create_timer(1.0).timeout  # let the seeded state settle
 	var scene = load(scene_path).instantiate()
 	add_child(scene)
+	# MF_SHOT_STAGE — jump a forge to one of its stages by NAME, so the anvil's
+	# later steps can be looked at without clicking through the earlier ones.
+	var want_stage := OS.get_environment("MF_SHOT_STAGE")
+	if want_stage != "" and scene.has_method("_enter_stage") and "STAGES" in scene:
+		var idx: int = scene.STAGES.find(want_stage)
+		if idx >= 0:
+			await get_tree().create_timer(0.6).timeout
+			scene.call("_enter_stage", idx)
 	if OS.get_environment("MF_SHOT_DEMO") == "1" and scene_path.contains("game"):
 		await get_tree().create_timer(1.5).timeout  # let the scene's hydrate() settle
 		_seed_demo()  # then plant the demo state on top

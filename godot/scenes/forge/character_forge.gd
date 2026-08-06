@@ -35,7 +35,10 @@ const Fold := preload("res://ui/myth_fold.gd")
 
 var draft := {"name": "", "race": "", "cls": "", "bg": "", "rolled": [], "assign": {},
 	"appearance": "", "style": "painted", "kit": [], "origin": "",
-	"cls_story": "", "bg_story": "", "portrait_key": ""}
+	"cls_story": "", "bg_story": "", "portrait_key": "",
+	# The body itself. `sex` picks which base and which garment cut; `build` is
+	# the player's own hand on top of what heritage and sex already decided.
+	"sex": "male", "build": {}}
 var menu_mode := false        # true = forging a draft from the main menu
 var start_at_quench := false  # a banked draft resumes at the reveal
 var _embers: Array = []
@@ -448,11 +451,100 @@ func _portrait_prompt(nm: String) -> String:
 const LOOK_GUIDES := ["build", "age", "hair", "eyes", "skin", "garb", "bearing", "a scar or mark", "a color they wear"]
 
 
+## The figurine and the knobs that shape it, rebuilt in place as they move.
+##
+## Every knob is 0–100 with 50 meaning "whatever your heritage and sex say", so
+## an untouched hero is exactly what the rules already described — the sliders
+## MODIFY the profile and never replace it. A Dwarf who touches nothing is still
+## short and broad, and one who drags Height to the top is a tall Dwarf, not an
+## Elf. `Rules.hero_body` owns that arithmetic; this only moves the numbers.
+var _look_doll: DollView = null
+
+func _body_column() -> Control:
+	var col := VBoxContainer.new()
+	col.custom_minimum_size = Vector2(268, 0)
+	col.add_theme_constant_override("separation", Ui.SPACE["xs"])
+	_look_doll = DollView.new(Vector2(252, 300))
+	# Dressed, not stripped. An empty loadout resolves to the rig's underclothes,
+	# so the preview shows a person being shaped rather than a nude figure — and
+	# it is also what they will actually look like on day one, before they have
+	# found anything better.
+	_look_doll.wear({})
+	col.add_child(_look_doll)
+
+	var refresh := func():
+		if not is_instance_valid(_look_doll) or _look_doll.doll == null:
+			return
+		var probe := {"race": str(draft["race"]), "sex": str(draft["sex"]), "build": draft["build"]}
+		_look_doll.doll.apply_build(Rules.hero_body(probe))
+
+	# Sex first: it chooses the base body AND the cut of every garment, so it
+	# has to settle before the knobs mean anything.
+	var sexes := HBoxContainer.new()
+	sexes.alignment = BoxContainer.ALIGNMENT_CENTER
+	sexes.add_theme_constant_override("separation", Ui.SPACE["xs"])
+	var sex_btns := {}
+	for opt in ["male", "female"]:
+		var b := Button.new()
+		b.theme_type_variation = "GhostButton"
+		b.text = str(opt).capitalize()
+		b.custom_minimum_size = Vector2(112, 40)
+		b.toggle_mode = true
+		b.button_pressed = str(draft["sex"]) == opt
+		b.pressed.connect(func():
+			draft["sex"] = opt
+			for k in sex_btns:
+				sex_btns[k].button_pressed = (k == opt)
+			# A different body and a different wardrobe — rebuilt, not re-posed.
+			if is_instance_valid(_look_doll):
+				_look_doll.rebuild(opt)
+				refresh.call())
+		sex_btns[opt] = b
+		sexes.add_child(b)
+	col.add_child(sexes)
+
+	if not (draft["build"] is Dictionary) or draft["build"].is_empty():
+		draft["build"] = Rules.default_build()
+	for knob in Rules.BUILD_KNOBS:
+		var spec: Dictionary = Rules.BUILD_KNOBS[knob]
+		var row := VBoxContainer.new()
+		var cap := Label.new()
+		cap.theme_type_variation = "HintLabel"
+		cap.text = "%s — %s" % [str(spec["label"]), str(spec["hint"])]
+		row.add_child(cap)
+		var sl := HSlider.new()
+		sl.min_value = 0
+		sl.max_value = 100
+		sl.step = 1
+		sl.value = int(draft["build"].get(knob, Rules.BUILD_NEUTRAL))
+		sl.custom_minimum_size = Vector2(252, 22)
+		sl.value_changed.connect(func(v):
+			draft["build"][knob] = int(v)
+			refresh.call())
+		row.add_child(sl)
+		col.add_child(row)
+
+	var reset := Button.new()
+	reset.theme_type_variation = "GhostButton"
+	reset.text = "As their heritage made them"
+	reset.custom_minimum_size = Vector2(0, 36)
+	reset.pressed.connect(func():
+		draft["build"] = Rules.default_build()
+		_enter_stage(STAGES.find("Appearance")))
+	col.add_child(reset)
+	refresh.call()
+	return col
+
+
 func _stage_appearance() -> void:
-	_title_label("Their Face, In Words")
+	_title_label("Their Face, and Their Frame")
 	var split := HBoxContainer.new()
 	split.alignment = BoxContainer.ALIGNMENT_CENTER
 	split.add_theme_constant_override("separation", Ui.SPACE["l"])
+	# THE BODY, live. Left column: the figurine and the handful of knobs that
+	# shape it. It answers instantly — that is the whole argument for geometry
+	# over a painted preview, which would have to be re-commissioned per drag.
+	split.add_child(_body_column())
 	# The living portrait — it forms from the words on the right.
 	var port := TextureRect.new()
 	port.custom_minimum_size = Vector2(236, 236)

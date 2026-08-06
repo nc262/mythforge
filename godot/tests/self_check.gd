@@ -1098,6 +1098,13 @@ The term for spell slots is "Echoes."
 			"q-doll: a claymore must be longer than a sword")
 		assert(float(plen.get("spear", 0.0)) > float(plen.get("claymore", 9.0)),
 			"q-doll: a spear outreaches every blade")
+		# And the stance must not hide them. Folded arms tucks both hands into the
+		# chest, which makes a figurine that shows your gear show nothing.
+		var stance: Array = qd.profile().get("stand", [])
+		assert(stance.size() > 0 and str(stance[0]).to_lower() != "idle_foldarms",
+			"q-doll: the default stance must leave the hands visible")
+		qd.queue_free()
+		print("  q-doll: chest/hands/legs/feet wear real garments, swap cleanly, and stand")
 
 		# ── Both sexes, both wardrobes ───────────────────────────────────────
 		# The pack ships a full garment set per body and the female cut is not
@@ -1118,14 +1125,49 @@ The term for spell slots is "Echoes."
 		# Feet), which a pure template cannot cover — this is the assertion that
 		# caught it.
 		assert(qf.worn("feet") == "ranger", "q-doll(f): boots stay on despite the odd filename")
+		# The body the player shaped must actually MOVE bones. A build that does
+		# nothing is a slider that lies.
+		var before_pose := qf.skeleton.get_bone_pose(qf.skeleton.find_bone("spine_03"))
+		qf.apply_build(Rules.hero_body({"race": "Human", "sex": "female",
+			"build": {"chest": 100, "frame": 100, "weight": 100, "height": 100, "build": 100}}))
+		assert(qf.skeleton.get_bone_pose(qf.skeleton.find_bone("spine_03")) != before_pose,
+			"q-doll: the build knobs must reach the skeleton")
+		# ...and dragging twice must not double it. apply_build restores the bind
+		# pose first, because bone scale compounds.
+		var once := qf.skeleton.get_bone_pose(qf.skeleton.find_bone("spine_03"))
+		qf.apply_build(Rules.hero_body({"race": "Human", "sex": "female",
+			"build": {"chest": 100, "frame": 100, "weight": 100, "height": 100, "build": 100}}))
+		assert(qf.skeleton.get_bone_pose(qf.skeleton.find_bone("spine_03")).is_equal_approx(once),
+			"q-doll: applying the same build twice must not compound it")
 		qf.queue_free()
-		# And the stance must not hide them. Folded arms tucks both hands into the
-		# chest, which makes a figurine that shows your gear show nothing.
-		var stance: Array = qd.profile().get("stand", [])
-		assert(stance.size() > 0 and str(stance[0]).to_lower() != "idle_foldarms",
-			"q-doll: the default stance must leave the hands visible")
-		qd.queue_free()
-		print("  q-doll: chest/hands/legs/feet wear real garments, swap cleanly, and stand")
+
+	# ── The knobs themselves ─────────────────────────────────────────────────
+	# 50 means "whatever heritage and sex say", so an untouched hero is exactly
+	# what the rules already describe — the sliders modify, never replace.
+	assert(is_equal_approx(Rules.build_factor("height", Rules.BUILD_NEUTRAL), 1.0),
+		"build: the neutral notch changes nothing")
+	assert(Rules.build_factor("height", 100) > 1.0 and Rules.build_factor("height", 0) < 1.0,
+		"build: the knob runs both ways")
+	assert(Rules.build_factor("height", 999) == Rules.build_factor("height", 100),
+		"build: a knob past its end is clamped, not extrapolated")
+	# A Dwarf who drags Height to the top is a TALL DWARF, not an Elf — the knob
+	# multiplies the heritage profile rather than overwriting it.
+	var dwarf_tall := Rules.hero_body({"race": "Dwarf", "sex": "male", "build": {"height": 100}})
+	var human_mid := Rules.hero_body({"race": "Human", "sex": "male", "build": {}})
+	assert(float(dwarf_tall["height"]) < float(human_mid["height"]),
+		"build: a maxed-out Dwarf is still shorter than an average Human")
+	assert(Rules.default_build().size() == Rules.BUILD_KNOBS.size(),
+		"build: a fresh hero gets every knob, all neutral")
+	for k in Rules.default_build().values():
+		assert(int(k) == Rules.BUILD_NEUTRAL, "build: a fresh hero starts neutral everywhere")
+	# The forge must ASK, and the answer must reach the sheet.
+	var fsrc := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
+	assert(fsrc.contains("draft[\"sex\"] = opt"), "forge: the anvil asks for a hero's sex")
+	assert(fsrc.contains("Rules.BUILD_KNOBS"), "forge: ...and offers every build knob")
+	var gsrc5 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(gsrc5.contains("s[\"sex\"]") and gsrc5.contains("s[\"build\"]"),
+		"forge: a forged hero carries its body onto the sheet")
+	print("  build: sex + 5 knobs, neutral means heritage, and a tall Dwarf is still a Dwarf")
 
 	# The Gear page shows the FIGURINE, not a commissioned painting — the whole
 	# point is that equipping answers now instead of queueing a GPU job.
