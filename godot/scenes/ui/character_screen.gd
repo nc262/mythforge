@@ -819,20 +819,28 @@ func _body_view(s: Dictionary, inv: Dictionary) -> Control:
 	if not Art.has_art(key):
 		Art.ensure(key, _body_prompt(s, inv))
 	var rerender := Button.new()
-	rerender.text = "Re-render with current gear"
+	rerender.text = "Paint them, as they stand"
 	rerender.custom_minimum_size = Vector2(0, 44)   # R6 STR-27: a real touch target
-	rerender.tooltip_text = "Paints your hero again, wearing exactly what they wear now."
+	rerender.tooltip_text = "Paints your hero FROM the figurine — same pose, same gear, in the world's own hand."
 	rerender.pressed.connect(func():
-		Art.forget(key)
-		Art.ensure(key, _body_prompt(GameState.sheet(), GameState.inv()))
 		rerender.text = "The forge paints…"
 		rerender.disabled = true
-		# Re-enable when the paint lands (or dies), so the button can't be
-		# hammered into a queue of duplicate commissions.
-		Art.art_progress.connect(func(k, st):
-			if str(k) == key and st in ["ready", "failed", "cancelled"] and is_instance_valid(rerender):
-				rerender.disabled = false
-				rerender.text = "Re-render with current gear"))
+		# PAINTED OVER THE FIGURINE, not prompted beside it. A prompt describing
+		# the same hero drifts every time it runs — the spike measured three
+		# different rangers from one description. Feeding the render in means the
+		# painting cannot disagree with the doll it came from.
+		var why: String = await Art.repaint_hero()
+		if not is_instance_valid(rerender):
+			return
+		rerender.disabled = false
+		# The failure says WHICH thing failed, on the button that caused it —
+		# "the image engine is not running" and "it painted badly" are different
+		# problems and a silent no-op tells the player neither.
+		rerender.text = why if why != "" else "Paint them, as they stand"
+		if why != "":
+			await get_tree().create_timer(4.0).timeout
+			if is_instance_valid(rerender):
+				rerender.text = "Paint them, as they stand")
 	col.add_child(rerender)
 	return col
 

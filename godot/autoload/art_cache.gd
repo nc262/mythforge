@@ -783,6 +783,128 @@ func _render_figurine(key: String, inv: Dictionary) -> void:
 	art_ready.emit("figurine")   # the board repaints and picks it up
 
 
+## ── THE SCENE HERO, PAINTED OVER THE FIGURINE ────────────────────────────────
+## The Gear page and the board show geometry. A scene wants a PAINTING, in the
+## same hand that painted the world — and the two must be the same character.
+##
+## So the painting is derived from the figurine rather than prompted beside it.
+## The spike measured why: costume in the PROMPT drifts on every repose (three
+## poses, three different rangers), costume in the MESH survives both reposing
+## and stylisation. Feeding the render in means identity, pose and every worn
+## piece are decided by geometry, and diffusion only supplies surface.
+##
+## Two details that are not obvious and were paid for once already
+## (scripts/stylize_render.py):
+##
+##  · THE ALPHA MUST COME BACK. sd-server returns RGB, so the cut-out the
+##    viewport gave us for free is destroyed by the round trip. The render's own
+##    alpha is re-applied afterwards, so the silhouette stays geometry's to
+##    decide rather than whatever the model painted around the edges.
+##  · THE MATTE IS MID-DARK, NOT BLACK OR TRANSPARENT. Flattened onto black the
+##    model paints black rim-light into the edges; onto white, haze. A neutral
+##    dark reads as an unlit backdrop and stays out of the way.
+const HERO_PX := 768
+const I2I_PATH := "/sdapi/v1/img2img"
+const MATTE := Color8(38, 34, 46)
+const I2I_NEG := "3d render, cgi, plastic, clay, videogame screenshot, flat vector, blurry, watermark"
+## Denoise is the whole dial, measured on this stack: <=0.35 painterly with
+## identity held exactly; 0.45 silhouette held but details re-invented; >=0.55
+## fully re-imagined and identity gone. This sits at the top of the usable band.
+const I2I_DENOISE := 0.35
+
+
+## Paint the hero from their own figurine. Returns "" on success, else why not.
+func repaint_hero() -> String:
+	if DisplayServer.get_name() == "headless":
+		return "No renderer — the figurine cannot be captured headless."
+	var shot := await _figurine_plate(HERO_PX)
+	if shot == null:
+		return "The figurine did not render."
+	var key := hero_body_key()
+	art_progress.emit(key, "painting")
+	var painted := await _paint_over(shot, _hero_paint_prompt())
+	if painted == null:
+		art_progress.emit(key, "failed")
+		return "The image engine did not answer — is it running?"
+	# Geometry decides the silhouette, not the paint.
+	painted.convert(Image.FORMAT_RGBA8)
+	for y in painted.get_height():
+		for x in painted.get_width():
+			var c := painted.get_pixel(x, y)
+			c.a = shot.get_pixel(x, y).a
+			painted.set_pixel(x, y, c)
+	DirAccess.make_dir_recursive_absolute(_dir_for(key))
+	painted.save_png(path_for(key))
+	_note_asset(key)
+	art_progress.emit(key, "ready")
+	art_ready.emit(key)
+	return ""
+
+
+func _hero_paint_prompt() -> String:
+	var s := GameState.sheet()
+	return "full-body character portrait of %s, a %s %s, %s, %s. painted character art, confident brushwork, no text" % [
+		str(s.get("name", "a hero")), str(s.get("race", "")), str(s.get("cls", "")),
+		subject_style("character"), world_flavor()]
+
+
+## One big, well-framed capture of the doll, matted onto neutral dark.
+func _figurine_plate(px: int) -> Image:
+	if _fig_vp == null:
+		_render_figurine("", GameState.inv())      # builds the viewport and doll
+		await get_tree().process_frame
+	if _fig_vp == null or _fig_doll == null:
+		return null
+	var was := _fig_vp.size
+	_fig_vp.size = Vector2i(px, px)
+	_fig_doll.wear_inventory(GameState.inv())
+	var cam: Camera3D = _fig_vp.get_node_or_null("FigCam")
+	if cam != null:
+		_fig_doll.frame_camera(cam, 1.0, 0.52)     # looser than the token: this is a portrait
+	_fig_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	await RenderingServer.frame_post_draw
+	await RenderingServer.frame_post_draw
+	var img := _fig_vp.get_texture().get_image()
+	_fig_vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_fig_vp.size = was
+	return img
+
+
+## img2img against the local engine. A different endpoint from everything else
+## here — the OpenAI-shaped route this file uses elsewhere has no init image.
+func _paint_over(src: Image, prompt: String) -> Image:
+	if Api.test_mode:
+		return null
+	var flat := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
+	flat.fill(MATTE)
+	flat.blend_rect(src, Rect2i(Vector2i.ZERO, src.get_size()), Vector2i.ZERO)
+	var req := HTTPRequest.new()
+	add_child(req)
+	var body := {
+		"init_images": [Marshalls.raw_to_base64(flat.save_png_to_buffer())],
+		"prompt": prompt, "negative_prompt": I2I_NEG,
+		"denoising_strength": I2I_DENOISE,
+		"width": src.get_width(), "height": src.get_height(),
+	}
+	var err := req.request(IMAGE_SERVER + I2I_PATH,
+		PackedStringArray(["Content-Type: application/json"]),
+		HTTPClient.METHOD_POST, JSON.stringify(body))
+	if err != OK:
+		req.queue_free()
+		return null
+	var res: Array = await req.request_completed
+	req.queue_free()
+	if res[1] != 200:
+		return null
+	var out = JSON.parse_string(res[3].get_string_from_utf8())
+	if not (out is Dictionary) or not (out.get("images") is Array) or out["images"].is_empty():
+		return null
+	var img := Image.new()
+	if img.load_png_from_buffer(Marshalls.base64_to_raw(str(out["images"][0]))) != OK:
+		return null
+	return img
+
+
 ## The face a combatant wears everywhere (board token, initiative rail):
 ## hero portrait / companion npc portrait / bestiary painting (commissioned
 ## from the entry's art prompt on first sight).

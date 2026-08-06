@@ -105,7 +105,25 @@ sculpt at that size rather than as a cheap character.
 |---|---|---|
 | **Gear page** (`DollView`) | Full figure, live, drag to turn | Free, **instant** on equip |
 | **Battle board** | Small figurine, a few poses | Free, cached |
-| **Scenes** | Painted hero, derived from the doll's render | One GPU pass, on demand |
+| **Scenes** | Painted hero, **painted over** the doll's render | One GPU pass, on demand — measured 5.9 s |
+
+The scene hero is img2img over the figurine, not a prompt describing the same
+person. The spike measured why: costume in the PROMPT drifts on every repose —
+three poses gave three different rangers — while costume in the MESH survives
+both reposing and stylisation. Feeding the render in means identity, pose and
+every worn piece are decided by geometry and diffusion only supplies surface.
+
+Two details, both paid for once already in `scripts/stylize_render.py`:
+
+- **The alpha must come back.** sd-server returns RGB, so the viewport's free
+  cut-out dies in the round trip; the render's own alpha is re-applied, leaving
+  the silhouette geometry's to decide.
+- **The matte is mid-dark, never black or transparent.** On black the model
+  paints black rim-light into the edges; on white, haze.
+
+Denoise is the whole dial, measured on this stack: **≤0.35** painterly with
+identity held exactly · **0.45** silhouette held, details re-invented · **≥0.55**
+fully re-imagined, identity gone. It ships at 0.35.
 
 The Gear page previously showed a *generated painting* of the body, so putting on
 a helmet was a request to the image engine and a wait. That is the right picture
