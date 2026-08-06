@@ -121,10 +121,10 @@ const RIGS := {
 	# unhiding a mesh that was already inside the body. `scenes` below is that
 	# list; `parts` stays empty.
 	#
-	# And the body is ONE mesh, not a set of zones — so there is nothing to hide
-	# under a sleeve. `hides` is empty on purpose: these garments are authored
-	# for this exact body and enclose it. If poke-through ever shows, the fix is
-	# an alpha mask on the body texture, NOT a fake zone split.
+	# And the body is ONE mesh, not a set of zones, so `hides` is empty and stays
+	# empty: there are no zones to name. This rig hides skin the other way, with
+	# a baked per-garment mask — which is what the note here used to predict and
+	# _refresh_body_mask now does.
 	"quaternius": {
 		# `{S}` is the sex token, filled at load with Male or Female. The pack
 		# ships both bodies and a complete garment set for each, and writing two
