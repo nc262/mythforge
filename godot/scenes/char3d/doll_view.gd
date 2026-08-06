@@ -63,6 +63,11 @@ func _ready() -> void:
 	_pivot = Node3D.new()
 	_vp.add_child(_pivot)
 	doll = ModularDoll.new()
+	# The pack ships a full body and garment set per sex, and the female cut is
+	# not the male one scaled. The hero forge does not ask for this yet — there
+	# is no `sex` on the sheet today — so this reads whatever is there and
+	# defaults to male, and starts working the day the forge offers the choice.
+	doll.sex = str(GameState.sheet().get("sex", "male"))
 	_pivot.add_child(doll)
 	var body := doll.body_path()
 	if ResourceLoader.exists(body):

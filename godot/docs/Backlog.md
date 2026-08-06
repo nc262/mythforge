@@ -68,8 +68,11 @@ Each with the reason it is not merely undone:
   and female. Every other genre — cyber, contemporary, steam — has no garment at
   all, and materials cannot turn a tunic into a jacket. Generation onto the same
   rig is the route (see [CharacterRender.md](CharacterRender.md)).
-- **A female base body.** Only the Superhero male is wired; the pack ships the
-  female mesh and the female garments, and the doll picks neither by sex yet.
+- **The hero forge never asks a hero's sex.** The figurine reads
+  `sheet.sex` and both bodies and both wardrobes are wired and checked — but
+  nothing writes that field, so every hero renders male. The forge needs one
+  more question; `Rules.body_profile` and `tables.body_sexes` have been waiting
+  for it since the heritage spike.
 - **Co-op.** No networking design exists, and the local-first architecture is
   not obviously compatible with one.
 

@@ -113,7 +113,10 @@ const RIGS := {
 	# for this exact body and enclose it. If poke-through ever shows, the fix is
 	# an alpha mask on the body texture, NOT a fake zone split.
 	"quaternius": {
-		"body": "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_Male_FullBody.gltf",
+		# `{S}` is the sex token, filled at load with Male or Female. The pack
+		# ships both bodies and a complete garment set for each, and writing two
+		# parallel tables is how one of them silently loses a boot.
+		"body": "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_{S}_FullBody.gltf",
 		# The clips live in their OWN file on this rig, so they are attached at
 		# build time. Track paths read `Armature/Skeleton3D:pelvis` and the body
 		# has exactly that shape, so an AnimationPlayer rooted at the body root
@@ -172,17 +175,34 @@ const RIGS := {
 			"offhand": {"len": 0.55, "rot": Vector3(0, 0, -90), "pos": Vector3(0, 0.02, 0)},
 			"shield":  {"len": 0.60, "rot": Vector3(0, 90, 0),  "pos": Vector3(0, 0.03, 0)},
 		},
+		# A dagger is not a claymore. The slot default sizes an arming sword, and
+		# using it for everything made a dagger read as a short sword and a spear
+		# as a walking stick — the one distinction the ICON pipeline could never
+		# draw (KnownIssues #5, size within a category) is free here, because
+		# this is geometry and geometry has a length.
+		"prop_len": {
+			"dagger": 0.38, "hammer": 0.7, "axe": 0.8,
+			"sword": 0.85, "bow": 1.1,
+			"sword_big": 1.15, "axe_big": 1.15, "maul": 1.2,
+			"claymore": 1.35, "scythe": 1.7, "spear": 1.9,
+		},
 		"scenes": {
-			"armor":  {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Body.gltf",
-				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Body.gltf"},
-			"hands":  {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Arms.gltf",
-				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Arms.gltf"},
-			"legs":   {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Legs.gltf",
-				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Legs.gltf"},
-			"feet":   {"ranger": "res://assets3d/outfits/Modular Parts/Male_Ranger_Feet_Boots.gltf",
-				"peasant": "res://assets3d/outfits/Modular Parts/Male_Peasant_Feet.gltf"},
-			"head":   {"hood": "res://assets3d/outfits/Modular Parts/Male_Ranger_Head_Hood.gltf"},
-			"cloak":  {"pauldrons": "res://assets3d/outfits/Modular Parts/Male_Ranger_Acc_Pauldron.gltf"},
+			"armor":  {"ranger": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Body.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/{S}_Peasant_Body.gltf"},
+			"hands":  {"ranger": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Arms.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/{S}_Peasant_Arms.gltf"},
+			"legs":   {"ranger": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Legs.gltf",
+				"peasant": "res://assets3d/outfits/Modular Parts/{S}_Peasant_Legs.gltf"},
+			# The pack's own naming diverges here and nowhere else — the male file
+			# is `Ranger_Feet_Boots`, the female just `Ranger_Feet` — so this one
+			# entry is an explicit pair rather than a `{S}` template. Worth the
+			# exception: the template covers eleven other files correctly, and
+			# the alternative is guessing at suffixes.
+			"feet":   {"ranger": {"male": "res://assets3d/outfits/Modular Parts/Male_Ranger_Feet_Boots.gltf",
+					"female": "res://assets3d/outfits/Modular Parts/Female_Ranger_Feet.gltf"},
+				"peasant": "res://assets3d/outfits/Modular Parts/{S}_Peasant_Feet.gltf"},
+			"head":   {"hood": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Head_Hood.gltf"},
+			"cloak":  {"pauldrons": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Acc_Pauldron.gltf"},
 		},
 		# UNDERCLOTHES. A hero with no leggings equipped is not naked, they are in
 		# whatever they own — so an empty slot falls back to the peasant set
@@ -274,12 +294,21 @@ func _rig_has_slot(slot: String) -> bool:
 		or prof.get("props", {}).has(slot)
 
 var rig := "quaternius"
+## Which body and which garment cut. Set before build(); the pack ships a full
+## set for each, and the female ranger is not the male one scaled.
+var sex := "male"
 var skeleton: Skeleton3D = null
+
+
+## Fill the `{S}` sex token. Files are named Male_/Female_, so the value is
+## capitalised here rather than at every call site.
+func _sexed(path: String) -> String:
+	return path.replace("{S}", "Female" if sex == "female" else "Male")
 
 
 ## The body this rig dresses, so a caller does not have to know the path.
 func body_path() -> String:
-	return str(profile().get("body", "res://spike3d/models/Knight.glb"))
+	return _sexed(str(profile().get("body", "res://spike3d/models/Knight.glb")))
 
 var _body: Node3D = null
 var _zone_meshes := {}    # zone → Array[MeshInstance3D]
@@ -405,7 +434,7 @@ func equip(slot: String, part_id: String) -> bool:
 		return true
 	var props: Dictionary = prof.get("props", {}).get(slot, {})
 	if props.has(part_id):
-		if not _hold_prop(slot, str(props[part_id])):
+		if not _hold_prop(slot, str(props[part_id]), part_id):
 			return false
 		_worn[slot] = part_id
 		_refresh_zones()
@@ -413,7 +442,10 @@ func equip(slot: String, part_id: String) -> bool:
 	if files.has(part_id):
 		# A garment carries its own copy of the skeleton; it is worn by borrowing
 		# THIS doll's pose, so one animation drives body and clothing together.
-		var path := str(files[part_id])
+		# A value is either a `{S}` template or, where the pack's own names
+		# diverge by sex, an explicit {male:…, female:…} pair.
+		var entry = files[part_id]
+		var path := _sexed(str(entry.get(sex, entry.get("male", ""))) if entry is Dictionary else str(entry))
 		if not ResourceLoader.exists(path):
 			return false
 		if not _wear_file(slot, load(path)):
@@ -440,7 +472,7 @@ func equip(slot: String, part_id: String) -> bool:
 ## in a MeshInstance3D here. The fit (scale, rotation, offset) comes from the
 ## rig profile because it is a property of THIS pack meeting THIS rig, not of
 ## either alone.
-func _hold_prop(slot: String, path: String) -> bool:
+func _hold_prop(slot: String, path: String, part_id := "") -> bool:
 	if not ResourceLoader.exists(path):
 		return false
 	var res = load(path)
@@ -466,7 +498,8 @@ func _hold_prop(slot: String, path: String) -> bool:
 	# a sword three times the height of the man carrying it.
 	var box := mesh.get_aabb()
 	var longest: float = maxf(box.size.x, maxf(box.size.y, box.size.z))
-	var want := float(fit.get("len", 0.8))
+	# The weapon's own length if it has one, else the slot's default.
+	var want := float(profile().get("prop_len", {}).get(part_id, fit.get("len", 0.8)))
 	held.scale = Vector3.ONE * (want / maxf(longest, 0.0001))
 	held.rotation_degrees = fit.get("rot", Vector3.ZERO)
 	held.position = fit.get("pos", Vector3.ZERO)

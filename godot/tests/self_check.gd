@@ -1088,6 +1088,37 @@ The term for spell slots is "Echoes."
 		var fitw: Dictionary = qd.profile().get("prop_fit", {}).get("weapon", {})
 		assert(fitw.has("len") and not fitw.has("scale"),
 			"q-doll: props are fitted by target LENGTH, never by a guessed scale factor")
+		# SIZE WITHIN A CATEGORY, which the icon pipeline provably cannot draw
+		# (KnownIssues #5) and geometry gets for nothing. A dagger that is as long
+		# as a sword is the same failure, just in 3D.
+		var plen: Dictionary = qd.profile().get("prop_len", {})
+		assert(float(plen.get("dagger", 9.0)) < float(plen.get("sword", 0.0)),
+			"q-doll: a dagger must be shorter than a sword")
+		assert(float(plen.get("claymore", 0.0)) > float(plen.get("sword", 9.0)),
+			"q-doll: a claymore must be longer than a sword")
+		assert(float(plen.get("spear", 0.0)) > float(plen.get("claymore", 9.0)),
+			"q-doll: a spear outreaches every blade")
+
+		# ── Both sexes, both wardrobes ───────────────────────────────────────
+		# The pack ships a full garment set per body and the female cut is not
+		# the male one scaled, so every path carries a {S} token. A template that
+		# silently resolves to a file that does not exist leaves a slot empty and
+		# says nothing, so every one is checked for real.
+		var qf := ModularDoll.new()
+		qf.rig = "quaternius"
+		qf.sex = "female"
+		add_child(qf)
+		assert(ResourceLoader.exists(qf.body_path()), "q-doll: the female body resolves")
+		assert(qf.body_path() != qd.body_path(), "q-doll: the sexes are different bodies")
+		qf.build(load(qf.body_path()))
+		for fslot in ["armor", "hands", "legs", "feet"]:
+			assert(qf.equip(fslot, "ranger"), "q-doll(f): '%s' must resolve for the female cut" % fslot)
+		assert(qf.equip("head", "hood"), "q-doll(f): the hood resolves")
+		# The pack's own naming diverges on exactly one file (Feet_Boots vs
+		# Feet), which a pure template cannot cover — this is the assertion that
+		# caught it.
+		assert(qf.worn("feet") == "ranger", "q-doll(f): boots stay on despite the odd filename")
+		qf.queue_free()
 		# And the stance must not hide them. Folded arms tucks both hands into the
 		# chest, which makes a figurine that shows your gear show nothing.
 		var stance: Array = qd.profile().get("stand", [])

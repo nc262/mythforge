@@ -743,6 +743,7 @@ func _render_figurine(key: String, inv: Dictionary) -> void:
 		# path, so when the shipping rig changed the token kept building the old
 		# chibi body and then dressing it with the NEW rig's profile — a 41-bone
 		# skeleton wearing 65-bone garments, which renders as a pile of parts.
+		_fig_doll.sex = str(GameState.sheet().get("sex", "male"))
 		var body := str(_fig_doll.body_path())
 		if ResourceLoader.exists(body):
 			_fig_doll.build(load(body))

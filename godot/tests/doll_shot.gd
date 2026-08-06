@@ -19,7 +19,16 @@ const SHOTS := [
 		"weapon": "sword", "shield": "heater"}],
 	["twohand", {"armor": "ranger", "legs": "ranger", "feet": "ranger",
 		"weapon": "claymore"}],
+	# ONE dagger, nothing else in either hand. The Gear page appeared to show two
+	# blades for a single equipped dagger and I could not tell at 40 px whether
+	# that was real; this is the frame that answers it.
+	["dagger_only", {"weapon": "dagger"}],
+	["spear", {"armor": "ranger", "legs": "ranger", "feet": "ranger", "weapon": "spear"}],
 ]
+
+## Rendered a second time as the other sex — the pack ships a full garment set
+## per body and the two are different cuts, not one mesh scaled.
+const SEXES := ["male", "female"]
 
 
 func _ready() -> void:
@@ -45,17 +54,22 @@ func _ready() -> void:
 	cam.fov = 34.0
 	doll.frame_camera(cam, 1.0, 0.52)
 
-	for shot in SHOTS:
-		for slot in ModularDoll.RENDERED_SLOTS:
-			doll.equip(slot, "")
-		for slot in shot[1]:
-			if not doll.equip(str(slot), str(shot[1][slot])):
-				push_error("DOLL: could not equip %s = %s" % [slot, shot[1][slot]])
-		await get_tree().process_frame
-		await get_tree().process_frame
-		await RenderingServer.frame_post_draw
-		var img := vp.get_texture().get_image()
-		img.save_png("%s/%s.png" % [OUT, shot[0]])
-		print("DOLL wrote %s  hidden=%s" % [shot[0], str(doll.hidden_zones())])
+	for who in SEXES:
+		doll.sex = who
+		doll.build(load(doll.body_path()))
+		doll.frame_camera(cam, 1.0, 0.52)
+		for shot in SHOTS:
+			for slot in ModularDoll.RENDERED_SLOTS:
+				doll.equip(slot, "")
+			for slot in shot[1]:
+				if not doll.equip(str(slot), str(shot[1][slot])):
+					push_error("DOLL: could not equip %s = %s (%s)" % [slot, shot[1][slot], who])
+			await get_tree().process_frame
+			await get_tree().process_frame
+			await RenderingServer.frame_post_draw
+			var img := vp.get_texture().get_image()
+			var stem: String = str(shot[0]) if who == "male" else ("%s_f" % shot[0])
+			img.save_png("%s/%s.png" % [OUT, stem])
+			print("DOLL wrote %s" % stem)
 	print("DOLL: wrote to ", ProjectSettings.globalize_path(OUT))
 	get_tree().quit(0)
