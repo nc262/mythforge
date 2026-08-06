@@ -74,7 +74,7 @@ Each with the reason it is not merely undone:
 
 Relationship/reputation web · engine-verified quest objectives · world-sim depth
 (NPC goals, seasons, festivals) · camp mode with banter · animated 3D dice ·
-cinematic finale slideshow · photo/share mode · Steam achievements and Workshop.
+cinematic finale slideshow · photo/share mode.
 
 ---
 

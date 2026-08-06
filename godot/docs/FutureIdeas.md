@@ -33,9 +33,6 @@ Backlog row (with priority) → Roadmap milestone.
 - Photo mode / share-a-moment export (image + caption card).
 
 ## Platform
-- Steam achievements mapped to engine events (first crit, world forged,
-  campaign completed, death survived).
-- Steam Workshop for exported worlds (.world.json already portable).
 - Co-op party play over the existing polling protocol; voice via WebRTC.
 - One-click installer that fetches the models and the image engine for a
   machine that has neither.
