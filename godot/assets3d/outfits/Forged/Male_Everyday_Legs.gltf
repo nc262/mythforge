@@ -1419,60 +1419,60 @@
 		{
 			"bufferView":0,
 			"componentType":5126,
-			"count":656,
+			"count":3534,
 			"max":[
-				0.23615387082099915,
-				1.053699254989624,
-				0.0934419333934784
+				0.20894619822502136,
+				1.0582466125488281,
+				0.10958604514598846
 			],
 			"min":[
-				-0.23615387082099915,
+				-0.20894619822502136,
 				0.10499999672174454,
-				-0.16434548795223236
+				-0.16481320559978485
 			],
 			"type":"VEC3"
 		},
 		{
 			"bufferView":1,
 			"componentType":5126,
-			"count":656,
+			"count":3534,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":2,
 			"componentType":5126,
-			"count":656,
+			"count":3534,
 			"type":"VEC2"
 		},
 		{
 			"bufferView":3,
 			"componentType":5126,
-			"count":656,
+			"count":3534,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":4,
 			"componentType":5123,
-			"count":656,
+			"count":3534,
 			"normalized":true,
 			"type":"VEC4"
 		},
 		{
 			"bufferView":5,
 			"componentType":5121,
-			"count":656,
+			"count":3534,
 			"type":"VEC4"
 		},
 		{
 			"bufferView":6,
 			"componentType":5126,
-			"count":656,
+			"count":3534,
 			"type":"VEC4"
 		},
 		{
 			"bufferView":7,
 			"componentType":5123,
-			"count":3336,
+			"count":20016,
 			"type":"SCALAR"
 		},
 		{
@@ -1485,56 +1485,56 @@
 	"bufferViews":[
 		{
 			"buffer":0,
-			"byteLength":7872,
+			"byteLength":42408,
 			"byteOffset":0,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":7872,
-			"byteOffset":7872,
+			"byteLength":42408,
+			"byteOffset":42408,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":5248,
-			"byteOffset":15744,
+			"byteLength":28272,
+			"byteOffset":84816,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":7872,
-			"byteOffset":20992,
+			"byteLength":42408,
+			"byteOffset":113088,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":5248,
-			"byteOffset":28864,
+			"byteLength":28272,
+			"byteOffset":155496,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":2624,
-			"byteOffset":34112,
+			"byteLength":14136,
+			"byteOffset":183768,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":10496,
-			"byteOffset":36736,
+			"byteLength":56544,
+			"byteOffset":197904,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":6672,
-			"byteOffset":47232,
+			"byteLength":40032,
+			"byteOffset":254448,
 			"target":34963
 		},
 		{
 			"buffer":0,
 			"byteLength":4160,
-			"byteOffset":53904
+			"byteOffset":294480
 		}
 	],
 	"samplers":[
@@ -1545,7 +1545,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":58064,
+			"byteLength":298640,
 			"uri":"Male_Everyday_Legs.bin"
 		}
 	]
