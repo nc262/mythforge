@@ -4,7 +4,10 @@ extends Node
 ## Windowed only; headless uses a dummy rasterizer and every capture is blank.
 ##   Godot_v4.7-stable_win64.exe --path godot res://tests/doll_shot.tscn
 const OUT := "user://doll"
-const SIZE := 640
+## 1280, not 640. These frames are how every garment decision gets made, and at
+## 640 with no anti-aliasing the review sheet was too coarse to judge a hem —
+## the first batch came back "pixelated", correctly.
+const SIZE := 1280
 
 ## Each frame: a label and the loadout to wear. The bare pass is first on
 ## purpose — if the doll cannot be UNDRESSED the rest proves nothing, and with
@@ -67,6 +70,12 @@ func _ready() -> void:
 	vp.size = Vector2i(SIZE, SIZE)
 	vp.transparent_bg = true
 	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	# A SubViewport defaults to NO anti-aliasing, which on a figurine is all
+	# silhouette — every edge you are trying to judge is the jagged one.
+	vp.msaa_3d = Viewport.MSAA_8X
+	# FXAA on top, because MSAA only smooths geometry edges: it does nothing for
+	# the ragged boundary inside a texture, which is most of this character.
+	vp.screen_space_aa = Viewport.SCREEN_SPACE_AA_FXAA
 	add_child(vp)
 
 	var doll := ModularDoll.new()
@@ -162,5 +171,71 @@ func _ready() -> void:
 		forged.save_png("%s/%s.png" % [OUT, str(row[0])])
 		print("DOLL wrote %s" % row[0])
 
+	# ── Where does the skin come through? ────────────────────────────────────
+	# The review sheet showed torn notches at both shoulders and the outer
+	# thigh, and there are only two possible causes: the BODY is poking through
+	# a garment that does not enclose it, or the garment itself has holes there.
+	# Those want opposite fixes, and no amount of staring at the dressed figure
+	# separates them — so render the garment ALONE. Whatever is torn with the
+	# body hidden is torn in the garment.
+	doll.family = ""
+	for slot in ModularDoll.RENDERED_SLOTS:
+		doll.equip(slot, "")
+	for slot in CLOTH_FIT:
+		doll.equip(str(slot), str(CLOTH_FIT[slot]))
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	vp.get_texture().get_image().save_png("%s/clip_dressed.png" % OUT)
+	# The garments live UNDER the skeleton, which is under the body scene, so
+	# "every mesh in _body" is every mesh there is — hiding that set rendered a
+	# blank frame. Subtract the worn holders to get the body's own skin.
+	var worn := {}
+	for slot in doll._extern:
+		if is_instance_valid(doll._extern[slot]):
+			for m in _meshes_under(doll._extern[slot]):
+				worn[m] = true
+	# How far the skin has to be pulled in before it stops surfacing through the
+	# clothes. Swept rather than guessed: 0.004 was chosen as "a z-fight is
+	# microscopic" and the tears did not move, which says the gap is real
+	# interpenetration and not a depth tie.
+	for amt in [0.0, 0.006, 0.012, 0.02, 0.03]:
+		doll.cloth_swell = float(amt)
+		doll.build(load(doll.body_path()))
+		doll.frame_camera(cam, 1.0, 0.52)
+		for slot in CLOTH_FIT:
+			doll.equip(str(slot), str(CLOTH_FIT[slot]))
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		vp.get_texture().get_image().save_png("%s/swell_%s.png" % [OUT, str(amt).replace(".", "_")])
+		print("DOLL wrote swell_%s" % amt)
+	doll.cloth_swell = 0.012
+	doll.build(load(doll.body_path()))
+	doll.frame_camera(cam, 1.0, 0.52)
+	for slot in CLOTH_FIT:
+		doll.equip(str(slot), str(CLOTH_FIT[slot]))
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+
+	var body_meshes: Array[MeshInstance3D] = []
+	for n in _meshes_under(doll._body):
+		if n.visible and not worn.has(n):
+			body_meshes.append(n)
+			n.visible = false
+	await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	vp.get_texture().get_image().save_png("%s/clip_garment_only.png" % OUT)
+	for n in body_meshes:
+		n.visible = true
+	print("DOLL wrote clip_dressed + clip_garment_only (%d body meshes)" % body_meshes.size())
+
 	print("DOLL: wrote to ", ProjectSettings.globalize_path(OUT))
 	get_tree().quit(0)
+
+
+func _meshes_under(n: Node) -> Array[MeshInstance3D]:
+	var out: Array[MeshInstance3D] = []
+	if n is MeshInstance3D:
+		out.append(n)
+	for c in n.get_children():
+		out.append_array(_meshes_under(c))
+	return out

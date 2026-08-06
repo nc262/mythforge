@@ -700,6 +700,33 @@ const CLOTH := {
 }
 const CLOTH_SHADER := "res://assets3d/cloth/world_cloth.gdshader"
 
+## How far every garment is pushed OUT along its own normals, in body units,
+## where the figure is ~1.75 tall — so this is about a centimetre on a person.
+##
+## POKE-THROUGH. The note in RIGS predicted the fix would be an alpha mask on
+## the body texture. It is not: the garments turn out to ENCLOSE the body
+## completely — rendered with the body hidden, a full kit is a closed, sleeved,
+## booted outfit with no holes in it at all — so there is nothing to mask out.
+## What showed was skin surfacing THROUGH cloth it interpenetrates, in torn
+## notches at both shoulders and the outer thigh.
+##
+## The obvious fix is to shrink the SKIN, and it was built and measured first.
+## It works — at 0.025 the outfit is flawless — and it is the wrong knob, because
+## of what it does when it is wrong: the eyes and eyebrows are separate meshes
+## that do not shrink with the head, so they pop out in front of the face, and
+## the fingers get eaten. Every value that clears the cloth ruins the face.
+##
+## Pushing the CLOTH out instead is the same one-line primitive against a
+## harmless failure mode. Too much, and the clothes hang very slightly looser.
+## Nothing on a garment can pop out of anything.
+##
+## A var, and swept in tests/doll_shot.gd, because the right value is whatever
+## clears the widest interpenetration and no more. Chosen off that sweep:
+## 0.012 still tore at the chest and thigh, 0.02 left one nick on a thigh, 0.03
+## is clean everywhere. The cost is a slightly fuller silhouette, which at
+## figurine size reads as sculpted cloth rather than as a mistake.
+var cloth_swell := 0.03
+
 ## Object-space tiling repeats. A var, not a const, because the only way to pick
 ## it is to render a sweep and look — tests/doll_shot.gd does exactly that. The
 ## material spike's 0.25 was tuned against a different mesh at a different scale
@@ -746,16 +773,23 @@ func cloth_tex() -> Texture2D:
 ## `_hold_prop` builds its own holder for exactly that reason.
 func _dye(holder: Node) -> void:
 	var tex := cloth_tex()
-	if tex == null:
-		return
 	var sh = load(CLOTH_SHADER)
-	if not (sh is Shader):
-		return
 	for mi in _all_meshes(holder):
 		if mi.mesh == null:
 			continue
 		for i in mi.mesh.get_surface_count():
 			var src = mi.mesh.surface_get_material(i)
+			if tex == null or not (sh is Shader):
+				# Undyed: keep the pack's own material and only push it out.
+				# DUPLICATE — the material is a shared imported resource, so
+				# growing it in place swells that garment on every doll in the
+				# process, and keeps doing it after this one is freed.
+				if src is StandardMaterial3D:
+					var g: StandardMaterial3D = src.duplicate()
+					g.grow = true
+					g.grow_amount = cloth_swell
+					mi.set_surface_override_material(i, g)
+				continue
 			var sm := ShaderMaterial.new()
 			sm.shader = sh
 			sm.set_shader_parameter("cloth", tex)
@@ -765,6 +799,10 @@ func _dye(holder: Node) -> void:
 			if src is StandardMaterial3D and src.albedo_texture != null:
 				sm.set_shader_parameter("garment", src.albedo_texture)
 			sm.set_shader_parameter("tri_scale", cloth_scale)
+			# A ShaderMaterial has no `grow`, so the dyed path has to do the same
+			# offset itself. It must match, or a cyberpunk hero pokes through
+			# where a fantasy one does not.
+			sm.set_shader_parameter("swell", cloth_swell)
 			mi.set_surface_override_material(i, sm)
 
 

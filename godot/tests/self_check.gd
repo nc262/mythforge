@@ -1168,11 +1168,22 @@ The term for spell slots is "Echoes."
 		# while every world wore the same jumpsuit.
 		assert((dyed_mat as ShaderMaterial).get_shader_parameter("cloth") != null,
 			"cloth: the poured texture must reach the shader")
+		# Both paths must PUSH THE CLOTH OUT by the same amount, or a cyberpunk
+		# hero pokes through where a fantasy one does not. The undyed path gets
+		# it from StandardMaterial3D.grow; the dyed path has no such property and
+		# reimplements it in the shader, which is exactly the kind of pair that
+		# drifts.
+		assert(is_equal_approx(float((dyed_mat as ShaderMaterial).get_shader_parameter("swell")),
+			qc.cloth_swell), "cloth: the dyed path must swell by the same amount")
 		qc.family = "fantasy"
 		assert(qc.cloth_tex() == null, "cloth: fantasy keeps the pack's own leather")
 		assert(qc.equip("armor", "ranger"), "cloth: the garment still wears undyed")
-		assert(not (_first_override(qc) is ShaderMaterial),
-			"cloth: an undyed family must leave the garment's own material alone")
+		var plain := _first_override(qc)
+		assert(plain is StandardMaterial3D,
+			"cloth: an undyed family keeps the pack's own material, not a shader")
+		assert((plain as StandardMaterial3D).grow
+			and is_equal_approx((plain as StandardMaterial3D).grow_amount, qc.cloth_swell),
+			"cloth: ...and is still pushed out, or the skin tears through it")
 		qc.queue_free()
 		print("  cloth: four families dye the garment, the other four are left alone")
 

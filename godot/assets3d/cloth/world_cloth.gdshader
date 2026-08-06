@@ -30,10 +30,22 @@ uniform float tri_scale = 0.25;
 // stays because the right value is a look, and looks get retuned.
 uniform float keep : hint_range(0.0, 1.0) = 0.55;
 
+// Push the garment out along its own normals, to clear the body it
+// interpenetrates. StandardMaterial3D does this natively with `grow`, and a
+// ShaderMaterial has no such property — so the dyed path has to do it here, and
+// it must MATCH the undyed one or a cyberpunk hero pokes through where a
+// fantasy one does not. See ModularDoll.cloth_swell for why the cloth moves
+// rather than the skin.
+uniform float swell = 0.012;
+
 varying vec3 tri_pos;
 varying vec3 tri_nrm;
 
 void vertex() {
+	VERTEX += NORMAL * swell;
+	// Sample AFTER the offset, so the weave is anchored to the surface the eye
+	// actually sees. Sampling the pre-swell position slides the texture across
+	// the garment whenever the swell is retuned.
 	tri_pos = VERTEX * tri_scale;
 	tri_nrm = NORMAL;
 }
