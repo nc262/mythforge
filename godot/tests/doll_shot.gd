@@ -47,6 +47,19 @@ const CLOTH_FIT := {"armor": "ranger", "legs": "ranger", "feet": "ranger",
 ## about one blotch per thigh on this body.
 const CLOTH_SCALES := [0.25, 1.0, 2.5, 5.0, 9.0]
 
+## Forged garments, beside the pack piece they were deformed from. The whole
+## claim is that a boot becomes a shoe and a legging becomes a trouser without
+## touching a single weight — and that claim is a silhouette, so it is judged
+## here rather than by an assertion about vertex counts.
+const FORGED := [
+	["pack_legs_feet", "res://assets3d/outfits/Modular Parts/Male_Peasant_Legs.gltf",
+		"res://assets3d/outfits/Modular Parts/Male_Peasant_Feet.gltf"],
+	["forged_everyday", "res://assets3d/outfits/Forged/Male_Everyday_Legs.gltf",
+		"res://assets3d/outfits/Forged/Male_Everyday_Feet.gltf"],
+	["forged_space", "res://assets3d/outfits/Forged/Male_Space_Legs.gltf",
+		"res://assets3d/outfits/Forged/Male_Everyday_Feet.gltf"],
+]
+
 
 func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
@@ -122,6 +135,32 @@ func _ready() -> void:
 		var swept := vp.get_texture().get_image()
 		swept.save_png("%s/scale_%s.png" % [OUT, str(sc).replace(".", "_")])
 		print("DOLL wrote scale_%s" % sc)
+
+	doll.family = ""
+	doll.cloth_scale = 2.5
+	for row in FORGED:
+		for slot in ModularDoll.RENDERED_SLOTS:
+			doll.equip(slot, "")
+		doll.equip("armor", "peasant")   # the same shirt every time, as a control
+		var ok := true
+		# equip_scene(fitted) is the path EVERY sourced or generated garment
+		# takes: instance it and re-point its skin at this doll's skeleton.
+		for pair in [["legs", row[1]], ["feet", row[2]]]:
+			if not ResourceLoader.exists(str(pair[1])):
+				push_error("DOLL: missing forged garment %s" % pair[1])
+				ok = false
+				continue
+			if not doll.equip_scene(str(pair[0]), load(str(pair[1])), true):
+				push_error("DOLL: could not wear %s" % pair[1])
+				ok = false
+		if not ok:
+			continue
+		await get_tree().process_frame
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		var forged := vp.get_texture().get_image()
+		forged.save_png("%s/%s.png" % [OUT, str(row[0])])
+		print("DOLL wrote %s" % row[0])
 
 	print("DOLL: wrote to ", ProjectSettings.globalize_path(OUT))
 	get_tree().quit(0)
