@@ -7,7 +7,8 @@ domain, no attribution required, commercial use fine**.
 |---|---|---|
 | `bodies/` | Universal Base Characters | Base bodies + 20 hairstyles rigged to the head bone |
 | `outfits/` | Modular Character Outfits – Fantasy | Per-slot garments: Body, Arms, Legs, Feet, Head_Hood, Pauldrons |
-| `anim/` | Universal Animation Library 2 | Animation set on the same skeleton |
+| `anim/` | Universal Animation Library 2 | 43 situational clips, already on the 65-bone skeleton |
+| `anim/UAL1_Retargeted.glb` | Universal Animation Library **1** | 43 more, **retargeted** here from Rigify — see below |
 | `weapons/` | Fantasy RPG weapons | Rigid props for the hand bones — no skin weights needed |
 
 `cloth/` is the exception: it is **generated, not downloaded**. Four tileable
@@ -33,6 +34,28 @@ share exactly **1** bone (`root`).
 So a garment from `outfits/` drops onto a body from `bodies/` and is driven by a
 clip from `anim/` with nothing in between. That is the whole reason to prefer
 this family over the KayKit knight, which is now only a test fixture.
+
+## The second animation library, and why it needed baking
+
+UAL2 is a SITUATIONAL set — farming, fishing, zombies, sword combos, a phone
+call. It has **no neutral idle at all**, which is why the Gear page used to stand
+in a sword guard whether or not a sword was held, and nothing for a hero who
+casts.
+
+UAL1 has the plain idles, a four-clip spell set, punches, a hop and a dance. Same
+author, same CC0 licence, and it was **already in `spike3d/models`** — but as
+`AnimationLibrary_Godot_Standard.gltf`, which is the **Rigify** export: 53 bones
+named `DEF-hips`, `DEF-upper_arm.L`. It shares exactly one bone (`root`) with the
+65-bone rig everything else uses, so its clips did nothing at all — silently,
+because Godot matches tracks by name and a track that resolves to nothing is not
+an error.
+
+`scripts/retarget_anim.py` bakes it onto the shipping rig. The mapping is 1:1
+(hips + three spines + neck + head, shoulders off the last spine), and the
+transfer is the delta from rest rather than the world rotation — copying world
+rotations directly twists every limb, because the two rigs roll their arm bones
+differently. Output is `anim/UAL1_Retargeted.glb`, 3.2 MB, 43 clips, attached as
+a second named animation library so the two `A_TPose` clips do not collide.
 
 ## What was left out, and why
 

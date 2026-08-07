@@ -79,6 +79,10 @@ func _ready() -> void:
 	# is no `sex` on the sheet today — so this reads whatever is there and
 	# defaults to male, and starts working the day the forge offers the choice.
 	doll.sex = str(GameState.sheet().get("sex", "male"))
+	# Whether the arcane flourishes are in this hero's gesture pool. Asked of
+	# Rules rather than of the class name, so a half-caster Ranger counts and a
+	# Barbarian never throws a spell at nothing.
+	doll.caster = Rules.caster_level(GameState.sheet()) > 0
 	_pivot.add_child(doll)
 	var body := doll.body_path()
 	if ResourceLoader.exists(body):

@@ -135,7 +135,19 @@ const RIGS := {
 		# has exactly that shape, so an AnimationPlayer rooted at the body root
 		# resolves them with no retargeting at all — which is the dividend of
 		# every pack sharing one skeleton.
-		"anim": "res://assets3d/anim/UAL2_Standard.glb",
+		# TWO libraries, and they are not interchangeable. UAL2 is situational —
+		# farming, zombies, sword combos — and ships no neutral idle at all,
+		# which is why the figure used to stand in a sword guard. UAL1 has the
+		# plain idles, the spell set and the punches, and was RETARGETED onto
+		# this rig from its Rigify original by scripts/retarget_anim.py.
+		#
+		# Each becomes its own named animation library, because both contain a
+		# clip called `A_TPose` and adding two libraries under one name is an
+		# error rather than a merge.
+		"anim": [
+			["", "res://assets3d/anim/UAL2_Standard.glb"],
+			["ual1", "res://assets3d/anim/UAL1_Retargeted.glb"],
+		],
 		# Which of the body's three materials is SKIN — the other two are eyes
 		# and hair, which no garment covers. Matched on a substring because the
 		# name carries the sex (MI_Superhero_Male / _Female).
@@ -180,7 +192,18 @@ const RIGS := {
 		# list written from the Blender clip list matches nothing, silently — the
 		# figure just keeps whatever pose it already had, which looks like a
 		# design decision rather than a lookup that found no clip.
-		"live": ["Idle_Shield", "Idle_Rail", "Idle_FoldArms"],
+		# Every idle the figure may stand in, and one is chosen AT RANDOM per
+		# build rather than first-available, so two heroes on two save files do
+		# not hold the identical stance.
+		#
+		# `ual1/Idle` leads because UAL2 ships no neutral idle AT ALL — that is
+		# why the figure used to stand in a sword guard on the Gear page whether
+		# or not it was holding a sword.
+		# `ual1/Sword_Idle` looks like it belongs here and does not: its source
+		# name carries no `_Loop`, so it imports as a one-shot and would leave
+		# the figure frozen after one play. It is a gesture instead.
+		"live": ["ual1/Idle", "Idle_Shield", "ual1/Idle_Torch", "Idle_Rail",
+			"Idle_FoldArms"],
 		# WHAT THE FIGURE DOES BETWEEN IDLES. Every entry is a SEQUENCE, because
 		# some of these are halves: a hook without its recovery leaves the fist
 		# in the air, and a leap without a landing leaves the hero in orbit.
@@ -201,15 +224,31 @@ const RIGS := {
 			# who never swings it reads as a mannequin holding a sword.
 			"armed": [
 				["Sword_Regular_Combo"], ["Sword_Heavy_Combo"], ["Sword_Block"],
-				["Melee_Hook", "Melee_Hook_Rec"], ["OverhandThrow"],
-				["Idle_Shield_Break"], ["Yes"], ["Idle_Rail_Call"],
-				["NinjaJump_Start", "NinjaJump_Land"],
+				["ual1/Sword_Attack"], ["ual1/Sword_Idle"],
+				["Melee_Hook", "Melee_Hook_Rec"],
+				["OverhandThrow"], ["Idle_Shield_Break"], ["Yes"],
+				["Idle_Rail_Call"], ["ual1/Interact"], ["ual1/PickUp_Table"],
+				["ual1/Hit_Chest"], ["ual1/Jump_Start", "ual1/Jump_Land"],
 			],
-			# Empty-handed. A nod, a hail, a drink, a crouch, a hop.
+			# Empty-handed. A nod, a hail, a jab, a reach, a hop.
 			"bare": [
 				["Yes"], ["Idle_Rail_Call"], ["Consume"], ["Chest_Open"],
-				["Melee_Hook", "Melee_Hook_Rec"], ["OverhandThrow"],
-				["NinjaJump_Start", "NinjaJump_Land"], ["Idle_Shield_Break"],
+				["ual1/Punch_Jab"], ["ual1/Punch_Cross"], ["ual1/Punch_Enter"],
+				["ual1/Interact"], ["ual1/PickUp_Table"], ["OverhandThrow"],
+				["Idle_Shield_Break"], ["ual1/Hit_Chest"],
+				["ual1/Jump_Start", "ual1/Jump_Land"],
+			],
+			# ADDED to whichever pool above, for a hero who actually casts.
+			# `Rules.caster_level` already answers that, so a barbarian never
+			# throws an arcane flourish — which is the sort of thing that reads
+			# as the game not knowing who your character is.
+			#
+			# `Spell_Simple_Idle` is deliberately absent from the sequence: it
+			# is a LOOP, and a loop in a gesture stops the director dead.
+			"caster": [
+				["ual1/Spell_Simple_Enter", "ual1/Spell_Simple_Shoot", "ual1/Spell_Simple_Exit"],
+				["ual1/Spell_Simple_Enter", "ual1/Spell_Simple_Shoot",
+					"ual1/Spell_Simple_Shoot", "ual1/Spell_Simple_Exit"],
 			],
 		},
 		"sockets": {"weapon": "hand_r", "offhand": "hand_l", "shield": "hand_l",
@@ -382,6 +421,11 @@ func _rig_has_slot(slot: String) -> bool:
 	return prof.get("parts", {}).has(slot) or prof.get("scenes", {}).has(slot) \
 		or prof.get("props", {}).has(slot)
 
+## Does this hero cast? Gates the spell gestures, and nothing else. Set by the
+## view from `Rules.caster_level`, because the doll has no business reading a
+## character sheet.
+var caster := false
+
 var rig := "quaternius"
 ## Which body and which garment cut. Set before build(); the pack ships a full
 ## set for each, and the female ranger is not the male one scaled.
@@ -461,24 +505,37 @@ func build(body_scene: PackedScene) -> void:
 ## Borrow a shared animation library. Only needed where the clips ship apart from
 ## the body — the KayKit rig carries its own, so this is a no-op there.
 func _attach_anim(prof: Dictionary) -> void:
-	var path := str(prof.get("anim", ""))
-	if path == "" or _body == null or not ResourceLoader.exists(path):
+	var libs: Array = prof.get("anim", [])
+	if libs.is_empty() or _body == null:
 		return
 	if _find_anim(_body) != null:
 		return                       # the body already brought clips of its own
-	var src = load(path).instantiate()
-	var sap := _find_anim(src)
-	if sap == null:
+	var ap: AnimationPlayer = null
+	for entry in libs:
+		var name := str(entry[0])
+		var path := str(entry[1])
+		if not ResourceLoader.exists(path):
+			continue
+		var src = load(path).instantiate()
+		var sap := _find_anim(src)
+		if sap == null:
+			src.queue_free()
+			continue
+		if ap == null:
+			ap = AnimationPlayer.new()
+			_body.add_child(ap)
+			# Rooted at the body, because the clips' track paths are written
+			# relative to the glTF root they came from and every file shares
+			# that shape — which is the dividend of one skeleton, and the whole
+			# reason UAL1 was retargeted onto it rather than played as it came.
+			ap.root_node = ap.get_path_to(_body)
+		for lib in sap.get_animation_library_list():
+			# A file's own libraries are almost always the unnamed default; the
+			# name here is OURS, so two files cannot collide.
+			var key: String = name if str(lib) == "" else "%s_%s" % [name, lib]
+			if not ap.has_animation_library(key):
+				ap.add_animation_library(key, sap.get_animation_library(lib))
 		src.queue_free()
-		return
-	var ap := AnimationPlayer.new()
-	_body.add_child(ap)
-	# Rooted at the body, because the clips' track paths are written relative to
-	# the glTF root they came from and both files share that shape.
-	ap.root_node = ap.get_path_to(_body)
-	for lib in sap.get_animation_library_list():
-		ap.add_animation_library(str(lib), sap.get_animation_library(lib))
-	src.queue_free()
 
 
 ## Give the figurine its body: heritage, sex, and whatever the player set.
@@ -549,7 +606,7 @@ func stand() -> void:
 ## The spring simulation is switched on HERE and nowhere else. Jiggle on a
 ## paused pose is a per-frame cost with nothing to show for it.
 func live() -> void:
-	var ap := _play(profile().get("live", profile().get("stand", ["Idle"])))
+	var ap := _play(_idle_choices())
 	if ap == null:
 		return
 	_idle = ap.current_animation
@@ -618,7 +675,9 @@ func _gesture() -> void:
 	if ap == null or _idle == "":
 		return
 	var pools: Dictionary = profile().get("gestures", {})
-	var pool: Array = pools.get("armed" if worn("weapon") != "" else "bare", [])
+	var pool: Array = (pools.get("armed" if worn("weapon") != "" else "bare", []) as Array).duplicate()
+	if caster:
+		pool.append_array(pools.get("caster", []))
 	var seq := _playable(ap, pool)
 	if seq.is_empty():
 		return
@@ -669,6 +728,31 @@ func _playable(ap: AnimationPlayer, pool: Array) -> Array[String]:
 	for nm in ok[randi() % ok.size()]:
 		out.append(str(nm))
 	return out
+
+
+## Every idle on the list this library actually has AND that loops, shuffled.
+##
+## Random rather than first-available, so two heroes on two save files do not
+## hold the identical stance — `_play` takes the first entry it can find, so
+## shuffling the list IS the choice.
+##
+## The loop test is the same one the gestures get, inverted: an idle that does
+## not loop plays once and leaves the figure frozen until the next gesture,
+## which looks exactly like a game that has hung.
+func _idle_choices() -> Array:
+	var ap := _find_anim(_body)
+	var want: Array = profile().get("live", profile().get("stand", ["Idle"]))
+	if ap == null:
+		return want
+	var ok: Array = []
+	for w in want:
+		var clip := ap.get_animation(str(w))
+		if clip != null and clip.loop_mode != Animation.LOOP_NONE:
+			ok.append(w)
+	if ok.is_empty():
+		return want
+	ok.shuffle()
+	return ok
 
 
 ## Find the first clip on the preference list and play it. Returns the player so

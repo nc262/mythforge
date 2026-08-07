@@ -41,6 +41,16 @@ const EVERY := 4
 ## The look-at-it strip is longer: a sword combo runs 2.4 s.
 const ALIVE := 26
 
+## Sequences rendered one strip each, turning throughout. Not a sample of what
+## the director happens to pick — named, so the same four come back every run
+## and two builds can be compared.
+const SHOWCASE := [
+	["combo", ["Sword_Regular_Combo"]],
+	["spell", ["ual1/Spell_Simple_Enter", "ual1/Spell_Simple_Shoot", "ual1/Spell_Simple_Exit"]],
+	["hop", ["ual1/Jump_Start", "ual1/Jump_Land"]],
+	["jab", ["ual1/Punch_Jab"]],
+]
+
 var _vp: SubViewport = null
 var _doll: ModularDoll = null
 var _pivot: Node3D = null
@@ -188,21 +198,26 @@ func _alive() -> void:
 	_doll._gesture()
 	assert(ap != null and ap.current_animation != _doll._idle,
 		"JIGGLE: the director never left the idle")
-	_doll._queue = ["Sword_Regular_Combo"] as Array[String]
-	_doll._next_clip("")
-	print("JIGGLE gesture %s" % ap.current_animation)
-	# Longer and slower than the spring strips: a sword combo is 2.4 s and a
-	# sixteen-frame window a second wide would cut it off mid-swing.
-	#
-	# Turned WHILE it swings, because that is the claim — the player drags a
-	# pivot above the doll and the clips move bones inside the skeleton, so the
-	# two have never been able to interfere. Rendering it is cheaper than
-	# asserting it.
+	for show in SHOWCASE:
+		var seq: Array[String] = []
+		for nm in show[1]:
+			seq.append(str(nm))
+		_pivot.rotation_degrees.y = -22.0
+		_doll._queue = seq
+		_doll._next_clip("")
+		print("JIGGLE showcase %s -> %s" % [show[0], ap.current_animation])
+		await _run_strip(str(show[0]))
+
+
+## Capture ALIVE frames while turning, which is the claim being rendered: the
+## player drags a pivot above the doll and the clips move bones inside the
+## skeleton, so the two have never been able to interfere.
+func _run_strip(tag: String) -> void:
 	for i in ALIVE:
 		for _f in 6:
 			_pivot.rotation_degrees.y += 100.0 / float(ALIVE * 6)
 			await get_tree().process_frame
-		await _grab("alive_%02d" % i)
+		await _grab("alive_%s_%02d" % [tag, i])
 
 
 ## How far apart the two runs are, per frame, in mean absolute luminance.

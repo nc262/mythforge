@@ -196,7 +196,23 @@ the idle when it ends.
 
 Which pool depends on what is in the hand — a hero holding a sword who never
 swings it reads as a mannequin holding a sword, and one swinging an empty fist
-reads as a bug.
+reads as a bug. A third pool, the spell set, is added only when
+`Rules.caster_level` says this hero casts, so a Barbarian never throws an arcane
+flourish at nothing and a half-caster Ranger still can.
+
+The idle is picked **at random** per build from every clip on the `live` list
+that exists and loops, so two heroes on two save files do not hold the identical
+stance.
+
+**Two animation libraries, and the second had to be baked.** UAL2 is situational
+— farming, zombies, sword combos — and ships no neutral idle at all, which is
+why the figure used to stand in a sword guard regardless. UAL1 has the plain
+idles, a spell set and the punches, but its Godot export is **Rigify**: 53 bones
+sharing exactly one (`root`) with the 65-bone rig. `scripts/retarget_anim.py`
+bakes it across, transferring each bone's **delta from rest** rather than its
+world rotation — copy world rotations directly and every limb twists, because
+the two rigs roll their arm bones differently. See
+[assets3d/SOURCE.md](../assets3d/SOURCE.md).
 
 Deliberately **not** an `AnimationTree`. A state machine earns its keep when
 transitions are conditional and gameplay drives them; this is one state with a

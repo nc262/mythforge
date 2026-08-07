@@ -1056,11 +1056,33 @@ The term for spell slots is "Echoes."
 						"q-doll: gesture clip '%s' ends — a looping one stops the director dead" % nm)
 		# And the idle must be the opposite: a loop, or the figure plays it once
 		# and stands frozen until the next gesture.
+		var idles := 0
 		for w in qd.profile().get("live", []):
 			var idle := qap.get_animation(str(w))
-			if idle != null:
-				assert(idle.loop_mode != Animation.LOOP_NONE,
-					"q-doll: live idle '%s' loops" % w)
+			assert(idle != null, "q-doll: idle clip '%s' is in the library" % w)
+			assert(idle.loop_mode != Animation.LOOP_NONE,
+				"q-doll: live idle '%s' loops" % w)
+			idles += 1
+		assert(idles >= 3, "q-doll: several idles to choose between, got %d" % idles)
+		# BOTH libraries attached, not just the first. They arrive under
+		# different names and a clip from the second resolving to nothing is
+		# silent — Godot matches tracks by name and a track that hits nothing is
+		# not an error, so the figure would just never leave its idle.
+		assert(qap.get_animation_library_list().size() >= 2,
+			"q-doll: both animation libraries are attached")
+		assert(qap.get_animation("ual1/Idle") != null,
+			"q-doll: the retargeted library is reachable")
+		# The spell set is for casters ONLY, so it must not be in either of the
+		# pools that every hero draws from.
+		var spell_pool: Array = pools.get("caster", [])
+		assert(not spell_pool.is_empty(), "q-doll: a caster has something to cast")
+		for seq in spell_pool:
+			for nm in seq:
+				var clip := qap.get_animation(str(nm))
+				assert(clip != null and clip.loop_mode == Animation.LOOP_NONE,
+					"q-doll: caster clip '%s' exists and ends" % nm)
+			assert(not pools["armed"].has(seq) and not pools["bare"].has(seq),
+				"q-doll: a non-caster is never handed a spell")
 		# THE SLOTS THAT WERE MISSING. These are the whole reason for the pack —
 		# on the old fixture every one of them resolved to nothing.
 		for slot in ["armor", "hands", "legs", "feet"]:

@@ -91,4 +91,6 @@ func _strip(ap: AnimationPlayer, nm: String) -> void:
 		img.convert(Image.FORMAT_RGBA8)
 		sheet.blend_rect(img, Rect2i(Vector2i.ZERO, img.get_size()), Vector2i(CELL * i, 0))
 	ap.stop()
-	sheet.save_png("%s/%s.png" % [OUT, nm])
+	# A clip from a named library arrives as "ual1/Idle", and the slash is a
+	# directory that does not exist rather than part of a filename.
+	sheet.save_png("%s/%s.png" % [OUT, nm.replace("/", "__")])
