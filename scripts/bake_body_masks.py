@@ -82,6 +82,26 @@ def _import(path: str) -> list:
     return [o for o in bpy.data.objects if o not in keep]
 
 
+def rim_faces(garment) -> set:
+    """Faces touching an OPEN edge — the neck hole, the cuffs, the hem.
+
+    A garment is a tube, and its openings are where the proximity test lies. A
+    neck vertex sitting comfortably ABOVE a high collar is still within 3.5 cm
+    of that collar's rim, so proximity alone calls it covered and the figurine
+    loses its neck. Cuffs and hems fail the same way, just less visibly.
+
+    An edge with one adjacent face is a border. Rejecting proximity hits that
+    land on a border face draws the line where the cloth actually stops.
+    """
+    import bmesh
+
+    bm = bmesh.new()
+    bm.from_mesh(garment.data)
+    out = {f.index for e in bm.edges if len(e.link_faces) == 1 for f in e.link_faces}
+    bm.free()
+    return out
+
+
 def covered_vertices(body, garment) -> np.ndarray:
     """Boolean per body vertex: is this skin underneath this garment?
 
@@ -109,6 +129,7 @@ def covered_vertices(body, garment) -> np.ndarray:
     # identity, so this is the same frame either way and the simpler one.
     n = len(body.data.vertices)
     out = np.zeros(n, dtype=bool)
+    rim = rim_faces(garment)
     for i, v in enumerate(body.data.vertices):
         o = v.co
         d = Vector(v.normal).normalized()
@@ -116,9 +137,20 @@ def covered_vertices(body, garment) -> np.ndarray:
         if garment.ray_cast(o + d * 0.0005, d, distance=MAX_DIST)[0]:
             out[i] = True
             continue
-        ok, loc, _, _ = garment.closest_point_on_mesh(o, distance=NEAR)
-        if ok and (o - loc).length <= NEAR:
-            out[i] = True
+        ok, loc, nrm, face = garment.closest_point_on_mesh(o, distance=NEAR)
+        if not ok or (o - loc).length > NEAR:
+            continue
+        # Proximity to a garment's OPEN EDGE does not mean covered — but only
+        # from the outside of it. Skin inside a collar is under cloth and must
+        # go; skin above the collar is bare and must stay, and both are within
+        # 3.5 cm of the same rim.
+        #
+        # Rejecting every rim hit outright was tried and swings too far the
+        # other way: the tunic's laced front placket is an open edge too, so the
+        # whole chest was exempted and the bare torso came back.
+        if face in rim and (o - loc).dot(nrm) > 0.0:
+            continue
+        out[i] = True
     return out
 
 
