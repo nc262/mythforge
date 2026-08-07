@@ -149,8 +149,18 @@ const RIGS := {
 			"arm":      ["upperarm_l", "upperarm_r", "lowerarm_l", "lowerarm_r"],
 			"girth":    ["pelvis", "spine_01"],
 			"torso":    ["spine_02", "spine_03"],
-			"chest":    ["spine_03"],
 			"shoulder": ["clavicle_l", "clavicle_r"],
+			# SOFT TISSUE, on bones this pack did not ship with — added by
+			# scripts/add_jiggle_bones.py to the body AND to every garment, so
+			# the cloth swells and jiggles with the flesh under it.
+			#
+			# `chest` used to scale spine_03, which broadens a whole ribcage:
+			# it made a barrel, never a bust, and it stretched the arms hanging
+			# off it. These own a hand-sized patch of flesh each and nothing
+			# else, which is what lets a slider mean what it says.
+			"chest":    ["breast_l", "breast_r"],
+			"seat":     ["glute_l", "glute_r"],
+			"belly":    ["belly"],
 		},
 		# UAL2 is a SITUATIONAL library — farming, zombies, sword combos — with no
 		# plain "Idle". The first pick here was Idle_FoldArms, which reads well
@@ -159,6 +169,18 @@ const RIGS := {
 		# entire purpose of a doll that shows what you equipped. A guard stance
 		# keeps the hands out where the gear is visible.
 		"stand": ["Sword_Block", "Idle_Shield", "Idle_Rail", "Idle_FoldArms"],
+		# What the LIVE figurine plays. A different list, because the two
+		# surfaces want opposite things: the board wants one readable frame, and
+		# a held block is ideal there; the Gear page wants sixty frames that come
+		# back round, and a one-shot block would stop dead on its last pose.
+		#
+		# THESE NAMES ARE GODOT'S, NOT BLENDER'S. The file on disk calls them
+		# `Idle_Shield_Loop`; Godot's glTF importer reads the `_Loop` suffix as a
+		# loop-mode hint, sets the mode from it and STRIPS IT FROM THE NAME. So a
+		# list written from the Blender clip list matches nothing, silently — the
+		# figure just keeps whatever pose it already had, which looks like a
+		# design decision rather than a lookup that found no clip.
+		"live": ["Idle_Shield", "Idle_Rail", "Idle_FoldArms"],
 		"sockets": {"weapon": "hand_r", "offhand": "hand_l", "shield": "hand_l",
 			"head": "Head", "cloak": "spine_03"},
 		"zones": {},
@@ -231,7 +253,14 @@ const RIGS := {
 					"female": "res://assets3d/outfits/Modular Parts/Female_Ranger_Feet.gltf"},
 				"peasant": "res://assets3d/outfits/Modular Parts/{S}_Peasant_Feet.gltf"},
 			"head":   {"hood": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Head_Hood.gltf"},
-			"cloak":  {"pauldrons": "res://assets3d/outfits/Modular Parts/{S}_Ranger_Acc_Pauldron.gltf"},
+			# The pack's second naming divergence, and the same shape as `feet`
+			# below: the male file is `Acc_Pauldron`, the female `Acc_Pauldrons`.
+			# The `{S}` template silently resolved to a path that does not exist,
+			# `equip` returned false, and no female hero has ever worn a pauldron
+			# — which reads as "the game chose not to draw it" rather than as a
+			# missing file, so nobody looked. The mask for it was baked all along.
+			"cloak":  {"pauldrons": {"male": "res://assets3d/outfits/Modular Parts/Male_Ranger_Acc_Pauldron.gltf",
+				"female": "res://assets3d/outfits/Modular Parts/Female_Ranger_Acc_Pauldrons.gltf"}},
 		},
 		# UNDERCLOTHES. A hero with no leggings equipped is not naked, they are in
 		# whatever they own — so an empty slot falls back to the peasant set
@@ -386,6 +415,7 @@ func build(body_scene: PackedScene) -> void:
 				m.visible = false
 		_worn[slot] = ""
 	_attach_anim(prof)
+	_add_jiggle()
 	stand()
 	_refresh_zones()
 
@@ -447,9 +477,13 @@ func apply_build(shape: Dictionary) -> void:
 				continue
 			var t: Transform3D = skeleton.get_bone_pose(bi)
 			match str(g):
-				"head":
+				# EVEN, because nothing hangs off these. The head has no
+				# children, and a soft-tissue bone has none either — it is a
+				# lump of flesh on a stick, so scaling it evenly swells that
+				# lump radially, which is what a bust or a paunch IS.
+				"head", "chest", "seat", "belly":
 					t = t.scaled_local(Vector3.ONE * f)
-				"girth", "shoulder", "torso", "chest":
+				"girth", "shoulder", "torso":
 					t = t.scaled_local(Vector3(f, 1.0, f))
 				_:
 					t = t.scaled_local(Vector3(1.0, f, 1.0))
@@ -459,28 +493,133 @@ func apply_build(shape: Dictionary) -> void:
 	_body.scale = Vector3.ONE * float(shape.get("height", 1.0))
 
 
-## Put the figurine on its feet and FREEZE it there. A looping animation in a
-## menu is a viewport that never stops redrawing, which is GPU the narrator
-## wants — and a miniature does not fidget.
+## Put the figurine on its feet and FREEZE it there. This is the pose the BOARD
+## TOKEN and the painted scene hero are made from — one frame, captured once per
+## loadout, so a looping animation behind them would be GPU nobody can see.
 func stand() -> void:
+	var ap := _play(profile().get("stand", ["Idle", "Idle_Loop", "1H_Melee_Idle"]))
+	if ap != null:
+		ap.pause()
+
+
+## Put the figurine on its feet and LEAVE IT BREATHING. This is the Gear page,
+## which is a different object from the board token and wants the opposite
+## trade: the player is looking straight at their hero and a statue reads as a
+## bug. The viewport it lives in is UPDATE_WHEN_VISIBLE, so the cost is paid
+## only while the page is open.
+##
+## The spring simulation is switched on HERE and nowhere else. Jiggle on a
+## paused pose is a per-frame cost with nothing to show for it.
+func live() -> void:
+	if _play(profile().get("live", profile().get("stand", ["Idle"]))) != null:
+		set_living(true)
+
+
+## Start or stop everything that costs a frame. Its caller is whoever knows
+## whether the figure is on screen — this class cannot, because the same doll is
+## a live figure on one page and a frozen capture on another.
+func set_living(on: bool) -> void:
+	var ap := _find_anim(_body)
+	if ap != null:
+		ap.active = on
+	if _spring != null and is_instance_valid(_spring):
+		_spring.active = on
+
+
+## Find the first clip on the preference list and play it. Returns the player so
+## the caller can decide whether it keeps running.
+##
+## PREFERENCE OUTERMOST. The first version looped clips on the outside and
+## preferences on the inside, so whichever clip came first ALPHABETICALLY and
+## appeared anywhere in the list won — `Idle_FoldArms` beat `Sword_Block` every
+## time and the priority order was decoration. The list looked obeyed and was
+## not, which is the worst kind of wrong.
+func _play(want: Array) -> AnimationPlayer:
 	var ap := _find_anim(_body)
 	if ap == null:
-		return
-	var want: Array = profile().get("stand", ["Idle", "Idle_Loop", "1H_Melee_Idle"])
-	# PREFERENCE OUTERMOST. The first version looped clips on the outside and
-	# preferences on the inside, so whichever clip came first ALPHABETICALLY and
-	# appeared anywhere in the list won — `Idle_FoldArms` beat `Sword_Block`
-	# every time and the priority order was decoration. The list looked obeyed
-	# and was not, which is the worst kind of wrong.
+		return null
 	for w in want:
 		for lib in ap.get_animation_library_list():
 			for nm in ap.get_animation_library(lib).get_animation_list():
 				if str(nm).nocasecmp_to(str(w)) != 0:
 					continue
-				ap.play((str(lib) + "/" + str(nm)) if str(lib) != "" else str(nm))
+				var full: String = (str(lib) + "/" + str(nm)) if str(lib) != "" else str(nm)
+				ap.play(full)
 				ap.advance(0.35)   # a step in, past any wind-up on frame zero
-				ap.pause()
-				return
+				return ap
+	return null
+
+
+## ── JIGGLE ───────────────────────────────────────────────────────────────────
+## Flesh does not stop when the bone carrying it stops. Godot ships
+## SpringBoneSimulator3D for exactly this, so there is no simulation to write:
+## each soft-tissue bone becomes a ONE-BONE CHAIN whose tip is synthesised by
+## `extend_end_bone`, which is why the rig needed no leaf bones added to it.
+##
+## The garments are weighted to these same bones (scripts/add_jiggle_bones.py),
+## so a bust under a tunic moves the tunic. Skip that and the hidden-surface
+## mask makes it worse rather than better — the skin under the cloth is deleted,
+## so a jiggle that only moved the skin would be invisible right up until it
+## punched through.
+##
+## `stiffness` is how hard the flesh returns to where the animation put it,
+## `drag` how fast it gives up, `gravity` how much it sags, and `length` the
+## lever the spring pulls on. Chosen off a four-point sweep rendered against a
+## FROZEN pose (tests/jiggle_shot.gd), because the obvious test — run the idle
+## twice and diff it — cannot work: two real-time runs never land on the same
+## animation phase, so the whole silhouette lights up and the jiggle is lost
+## inside it. Held still, every pixel that moves is the simulation.
+##
+## Measured, tightest to loosest: 0.518 / 0.540 / 0.677 / 0.740 peak pixel
+## displacement. The looser end keeps paying, so the limit is taste, not range —
+## the last step reads as rubber rather than flesh. These sit one notch back
+## from it, and the three parts differ because they are different tissue: a
+## belly is heavy and slow, a seat is firm, a bust is neither.
+const JIGGLE := {
+	"breast_l": {"stiffness": 0.14, "drag": 0.14, "gravity": 0.14, "radius": 0.05, "length": 0.16},
+	"breast_r": {"stiffness": 0.14, "drag": 0.14, "gravity": 0.14, "radius": 0.05, "length": 0.16},
+	"glute_l":  {"stiffness": 0.22, "drag": 0.20, "gravity": 0.10, "radius": 0.05, "length": 0.14},
+	"glute_r":  {"stiffness": 0.22, "drag": 0.20, "gravity": 0.10, "radius": 0.05, "length": 0.14},
+	"belly":    {"stiffness": 0.12, "drag": 0.22, "gravity": 0.16, "radius": 0.05, "length": 0.16},
+}
+
+var _spring: SpringBoneSimulator3D = null
+
+
+## Hang a spring simulation off whichever soft-tissue bones this body actually
+## has. A body rigged before add_jiggle_bones.py existed has none of them, and
+## gets no simulator rather than a broken one.
+func _add_jiggle() -> void:
+	_spring = null
+	if skeleton == null:
+		return
+	var names: Array[String] = []
+	for nm in JIGGLE:
+		if skeleton.find_bone(str(nm)) >= 0:
+			names.append(str(nm))
+	if names.is_empty():
+		return
+	var sim := SpringBoneSimulator3D.new()
+	sim.name = "Jiggle"
+	skeleton.add_child(sim)
+	sim.set_setting_count(names.size())
+	for i in names.size():
+		var cfg: Dictionary = JIGGLE[names[i]]
+		# Root AND end are the same bone. A chain of one is legal here precisely
+		# because `extend_end_bone` invents the tip that the spring pulls on —
+		# without it the simulator has a chain with no free end and does nothing.
+		sim.set_root_bone_name(i, names[i])
+		sim.set_end_bone_name(i, names[i])
+		sim.set_extend_end_bone(i, true)
+		sim.set_end_bone_length(i, float(cfg.get("length", 0.15)))
+		sim.set_stiffness(i, float(cfg.get("stiffness", 0.15)))
+		sim.set_drag(i, float(cfg.get("drag", 0.15)))
+		sim.set_radius(i, float(cfg.get("radius", 0.05)))
+		sim.set_gravity(i, float(cfg.get("gravity", 0.1)))
+	# Off until live() asks. The board token is one captured frame and the forge
+	# preview is a still; neither has motion for a spring to answer.
+	sim.active = false
+	_spring = sim
 
 
 func _find_anim(n: Node) -> AnimationPlayer:

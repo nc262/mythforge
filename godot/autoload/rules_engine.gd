@@ -218,7 +218,17 @@ const BUILD_KNOBS := {
 	"build":  {"label": "Build",   "span": 0.18, "hint": "lean · powerful"},
 	"frame":  {"label": "Frame",   "span": 0.16, "hint": "narrow · broad shoulders"},
 	"weight": {"label": "Weight",  "span": 0.18, "hint": "spare · heavy"},
-	"chest":  {"label": "Chest",   "span": 0.16, "hint": "flat · full"},
+	# ── SOFT TISSUE ──────────────────────────────────────────────────────────
+	# The four above move BONES THAT ALREADY EXIST, and a bone is a lever: a
+	# little goes a long way, because it drags a whole limb or a whole ribcage.
+	# These three move bones added for the purpose (scripts/add_jiggle_bones.py),
+	# each of which owns a hand-sized patch of flesh and nothing else — so the
+	# same 0.16 span that broadens a torso convincingly is invisible on a bust.
+	# 0.45 is the swell you can actually see, measured off a render sweep, and
+	# it reaches genuinely flat at 0 and genuinely full at 100.
+	"chest":  {"label": "Chest",   "span": 0.45, "hint": "flat · full"},
+	"seat":   {"label": "Seat",    "span": 0.45, "hint": "flat · full"},
+	"belly":  {"label": "Belly",   "span": 0.45, "hint": "trim · soft"},
 }
 const BUILD_NEUTRAL := 50
 
@@ -244,6 +254,8 @@ func hero_body(sheet: Dictionary) -> Dictionary:
 	out["shoulder"] = float(out.get("shoulder", 1.0)) * build_factor("frame", int(knobs.get("frame", BUILD_NEUTRAL)))
 	out["torso"] = build_factor("build", int(knobs.get("build", BUILD_NEUTRAL)))
 	out["chest"] = build_factor("chest", int(knobs.get("chest", BUILD_NEUTRAL)))
+	out["seat"] = build_factor("seat", int(knobs.get("seat", BUILD_NEUTRAL)))
+	out["belly"] = build_factor("belly", int(knobs.get("belly", BUILD_NEUTRAL)))
 	return out
 
 

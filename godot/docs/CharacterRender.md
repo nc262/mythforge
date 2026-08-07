@@ -103,8 +103,8 @@ sculpt at that size rather than as a cheap character.
 
 | Surface | Framing | Cost |
 |---|---|---|
-| **Gear page** (`DollView`) | Full figure, live, drag to turn | Free, **instant** on equip |
-| **Battle board** | Small figurine, a few poses | Free, cached |
+| **Gear page** (`DollView`) | Full figure, **breathing and jiggling**, drag to turn | Free, **instant** on equip, and only while the page is open |
+| **Battle board** | Small figurine, one held frame | Free, cached per loadout |
 | **Scenes** | Painted hero, **painted over** the doll's render | One GPU pass, on demand — measured 5.9 s |
 
 The scene hero is img2img over the figurine, not a prompt describing the same
@@ -132,7 +132,64 @@ it moved to the job it is good at, still commissioned by the same button.
 
 `SubViewport.UPDATE_WHEN_VISIBLE`, never `ALWAYS`: a viewport left rendering
 behind a hidden tab is GPU nobody can see, and on this machine the narrator and
-the image engine already fight over one card.
+the image engine already fight over one card. `DollView._process` goes further
+and stops the animation and the springs as well, because a viewport that is not
+drawing still has a 70-bone skeleton being re-posed behind it, once per garment.
+
+### One surface lives, the others are held frames
+
+The board token and the painted scene hero are **one captured frame**; the Gear
+page **runs**. That split is the whole reason both can be good at once — the
+token is rendered once per loadout into an `ImageTexture` and the board is free
+to repaint every frame over it, while the page the player is staring at gets an
+idle loop and soft-tissue simulation.
+
+So the doll has two entry points that are deliberately not the same call:
+
+| | Plays | Springs | Used by |
+|---|---|---|---|
+| `stand()` | first clip on `stand`, then **pauses** | off | board token, scene hero, forge preview |
+| `live()` | first clip on `live`, looping | **on** | Gear page only |
+
+**The clip names in those lists are Godot's, not Blender's.** UAL2 ships
+`Idle_Shield_Loop`; Godot's glTF importer reads the `_Loop` suffix as a loop-mode
+hint, sets the mode from it and *strips it from the name*. A list written from
+the Blender clip list therefore matches nothing and does so **silently** — the
+figure simply keeps whatever pose it already had, which reads as a design
+decision rather than a lookup that found no clip.
+
+### Soft tissue — shape and jiggle are the same five bones
+
+The pack's base body has **no shape keys** (`o.data.shape_keys is None`,
+measured), so there was nothing to blend towards a bust, a seat or a paunch. The
+old `chest` knob scaled `spine_03`, which widens an entire ribcage: it passed
+every assertion and never once made a chest.
+
+`scripts/add_jiggle_bones.py` adds five bones — `breast_l/r`, `glute_l/r`,
+`belly` — to the body **and to all twenty-three garments**, weighting each to a
+hand-sized patch of flesh by radial falloff and taking that weight back off the
+joints already holding it. One change buys both halves:
+
+- **Shape** — `apply_build` scales the bone evenly and the patch swells. Nothing
+  hangs off these bones, so an even scale is a radial swell, which is what a bust
+  *is*. Knobs: **Chest**, **Seat**, **Belly**, span 0.45 each.
+- **Motion** — `SpringBoneSimulator3D` simulates the same bone. Each is a
+  one-bone chain whose tip is synthesised by `extend_end_bone`, which is why no
+  leaf bones had to be added to the rig.
+
+Weighting the **garments** is not optional. Hidden-surface removal deletes the
+skin under the cloth, so a jiggle that moved only the skin would be invisible
+right up until it punched through.
+
+The bone positions are **measured, never typed**: the seed is the most forward
+(or most rearward) vertex in a height band, so it lands on the real surface of
+whichever body it is run against. Male and female seed differently, which is why
+the script runs once per sex.
+
+Spring constants were chosen off a four-point sweep in `tests/jiggle_shot.gd` —
+peak pixel displacement 0.518 / 0.540 / 0.677 / 0.740 from tightest to loosest.
+The looser end keeps paying, so the limit is taste rather than range; the shipped
+values sit one notch back from the point where flesh starts reading as rubber.
 
 ### The world's cloth — what the pack does not cover
 

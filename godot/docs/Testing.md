@@ -26,6 +26,33 @@ $GODOT --headless --path godot res://tests/bench_gm.tscn        # latency + repe
 | `bench_gm` | turn latency and repetition across many turns | correctness of the rules underneath |
 | `clean-room` | that a **stranger** can fetch all 13 downloads a first run needs | that any of it runs — no GPU, no Vulkan, no Windows in the container |
 
+## The two that need a window
+
+Headless uses a dummy rasterizer, so every capture comes back blank. These run
+**windowed** and answer questions no assertion can:
+
+```bash
+$GODOT --path godot res://tests/doll_shot.tscn     # every loadout, cloth, forged garment
+$GODOT --path godot res://tests/jiggle_shot.tscn   # the body knobs, and the springs
+```
+
+`jiggle_shot` does two things. It renders each soft-tissue knob at 0 / 50 / 100,
+bare and dressed, from the angle that shows it — the only test that could have
+caught the old `chest` knob, which widened a whole ribcage, passed everything,
+and never made a chest.
+
+Then it measures the springs, and **the way it does that is the point**. The
+obvious version — run the idle twice, springs on and off, and diff the frames —
+does not work: two real-time runs never land on the same animation phase, so the
+whole silhouette lights up and the jiggle is lost inside it. It was tried, and
+the difference image was a glowing outline of the entire figure.
+
+So the pose is **frozen** and the figure is turned instead. Springs-off is then
+perfectly static, every pixel that moves is the simulation, and the number means
+what it says. It asserts on peak displacement, because a simulator that is wired
+up and inert passes every other check in the repo: the node exists, the bones
+resolve, and the strip renders sixteen identical frames.
+
 Image engine, when a harness needs art:
 
 ```bash

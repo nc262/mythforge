@@ -8,48 +8,32 @@ Branch `claude/keen-lovelace-1c04a9`. Read
 
 ---
 
-## The decision that blocks the next phase
+## The decision that blocked the next phase — settled
 
 **The base body has no shape keys.** Measured, not assumed:
 `Superhero_Male_FullBody` is 7,281 vertices / 12,566 faces, and
 `o.data.shape_keys` is `None` on every mesh in it.
 
-That is the whole gate on full body configuration:
+That used to block full body configuration entirely. It no longer does, because
+the answer was not to find a body with morphs — it was to add **five bones**.
 
-| Want | Works today | Why |
+| Want | Works | How |
 |---|---|---|
-| Burly fighter | **Yes** | `apply_build` scales bones, and every garment is skinned to the same 65 bones, so the clothes follow for free |
+| Burly fighter | **Yes** | `apply_build` scales bones, and every garment is skinned to the same rig, so the clothes follow for free |
 | Taller / shorter, broader, heavier | **Yes** | same mechanism |
-| Visible bust, glutes, muscle definition | **No** | those are *surface shape*, not bone scale. This rig has no bones for them and the body has no morphs to blend |
+| Visible bust, seat, paunch | **Yes** | `scripts/add_jiggle_bones.py` adds `breast_l/r`, `glute_l/r`, `belly` to the body and all 23 garments; the Chest / Seat / Belly knobs scale them |
+| Jiggle | **Yes** | the *same* five bones, simulated by `SpringBoneSimulator3D` on the Gear page |
 
-The `chest` knob scales `spine_03`, which widens a whole ribcage. It broadens a
-torso; it does not sculpt a bust. Do not let the slider imply otherwise.
+One rig change bought both halves, which is why it was worth doing rather than
+swapping the base body and re-fitting the whole wardrobe.
 
-**So the first question next session is whether to keep this base body at all.**
-"Burly fighters and curvaceous bards" is a body-with-morphs requirement, and
-this body has none. Everything below is still useful either way — the coverage
-rule, the forge and the render path are body-agnostic — but the wardrobe fit and
-the masks are baked per body and would be redone.
+### And the surface split, also settled
 
-### And a tension to resolve before building anything
-
-**Jiggle physics and offline path-traced quality pull in opposite directions.**
-The figurine went offline into Cycles *because* it is static — that is what buys
-the lighting and the subdivision. Jiggle is a real-time simulation of something
-moving. You can have:
-
-- a **cached path-traced still** — best quality, no motion of any kind, or
-- a **real-time posed figure** with spring bones and jiggle — motion, at the
-  fidelity Godot's forward renderer gives, which is what was rejected, or
-- **both, on different surfaces** — the Gear page live and jiggling, the board
-  token and scene hero pre-rendered.
-
-The third is the only one that gets both, and it is a real decision, not a
-detail. Godot 4 has `PhysicalBoneSimulator3D` for the real-time half; there are
-no jiggle bones in this rig today, so they would have to be added to the
-skeleton and weighted, which is a rig change and therefore a garment change.
-
----
+**The board token is a held frame; the Gear page runs.** The token is rendered
+once per loadout into an `ImageTexture` and the board repaints freely over it;
+the page the player is looking at gets a looping idle and live springs, and stops
+both the moment it is hidden. `stand()` and `live()` are the two entry points and
+they are deliberately not the same call.
 
 ## What is committed and working
 
@@ -74,6 +58,7 @@ Desktop build is current.
 | `scripts/garment_probe.py` | Round-trips a garment and asserts the skin survived |
 | `scripts/figurine_render.py` | Path-traces the figurine in Cycles as a painted miniature |
 | `scripts/pour_materials.py` | Generates the tileable world cloths |
+| `scripts/add_jiggle_bones.py` | Adds the five soft-tissue bones to the body and all 23 garments, and weights them. **Rewrites the .gltf files in place.** Run once per sex |
 
 Binaries, because neither is on PATH and one is not installed at all:
 
@@ -95,20 +80,19 @@ Blender is a **portable unzip**, not an install: `download.blender.org` returns
    clip needs applying here.
 2. **One sliver of skin on the right calf**, where the boot's top rim and the
    trouser hem overlap and each exempts the other's neighbourhood.
-3. **The in-game masks are stale.** The side-aware rim fix landed in
-   `bake_body_masks.py` *after* the 19 masks were baked, so
-   `assets3d/masks/*.png` still carry the old rule — they hide the neck. Re-bake
-   before shipping.
-4. **The normal / ORM / roughness maps were deleted**, and that was a mistake:
+3. **The normal / ORM / roughness maps were deleted**, and that was a mistake:
    `SOURCE.md` justifies it with "the character shader is toon", but the toon
    shader was a spike that never shipped and the doll renders standard PBR. Every
    surface is flat albedo with shader-level roughness only. Re-fetch them.
-5. **Textures were downsampled to 1024** with "no visible change" — true at
+4. **Textures were downsampled to 1024** with "no visible change" — true at
    230x336 on the Gear page, false at 1280 and false in Cycles.
-6. **`scripts/figurine_render.py` is uncommitted**, along with the rim fix in
-   `bake_body_masks.py`.
+5. **Only one idle clip ever plays.** `live()` picks `Idle_Shield` and loops it
+   forever. UAL2 has 43 clips; a rotation with the odd gesture in it would read
+   as considerably more alive than one loop, and would give the springs more to
+   answer to. Nothing is broken — it is just thin.
 
----
+Closed since the last handoff: the masks were stale (re-baked, all 23, with the
+side-aware rim rule) and `figurine_render.py` was uncommitted.
 
 ## Traps, each of which cost a round
 
@@ -151,6 +135,25 @@ concluded a fix had not worked. It had; I never reopened the image.
 is named `AgX - Base Contrast` — `AgX - Medium Contrast` does not exist and
 throws.
 
+**The clip names in Blender are not the clip names in Godot.** UAL2 ships
+`Idle_Shield_Loop`; Godot's glTF importer reads the `_Loop` suffix as a loop-mode
+hint, sets the mode from it and STRIPS IT FROM THE NAME. A preference list
+written off the Blender clip list matches nothing and says nothing — the figure
+keeps whatever pose it already had, which looks like a decision. Half a round
+went into "why is `live()` not playing", and the original list had been right.
+
+**You cannot diff two runs of a real-time animation.** Springs-on and springs-off
+never land on the same phase, so the difference image is a glowing outline of the
+whole figure and the jiggle is buried inside it. Freeze the pose and turn the
+figure instead: springs-off is then perfectly static and every moving pixel is
+the simulation.
+
+**Adding a vertex group is only half of adding a weight.** Skinning is a weighted
+average, so the joints already holding that vertex have to give up exactly as
+much as the new bone takes. Skip the rescale and the mesh does not tear, it
+DRIFTS — and it drifts more every time the script is re-run, which is why
+`paint()` drops any previous pass and re-normalises before it starts.
+
 ---
 
 ## Measured numbers worth keeping
@@ -168,8 +171,11 @@ throws.
 
 ## If picking this up cold
 
-1. Re-bake the masks (the rim fix is in the script, not in the PNGs).
-2. Commit `figurine_render.py`.
-3. Decide the base body — that gates full body configuration entirely.
-4. Decide the live-vs-baked split before touching jiggle, because it decides
-   whether the figurine is a cached still or a simulated one.
+1. Pose the Cycles render — it is the only thing still standing in bind pose.
+2. Re-fetch the normal / ORM maps and the full-resolution textures.
+3. Give `live()` more than one clip.
+
+**Never edit the asset .gltf files by hand.** `scripts/add_jiggle_bones.py`
+rewrites all 25 of them IN PLACE, with `export_keep_originals` so the PNGs beside
+them are untouched. Re-running it is safe — it drops any previous pass and
+re-normalises first — but hand edits will be overwritten.

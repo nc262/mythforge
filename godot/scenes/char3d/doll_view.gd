@@ -18,12 +18,6 @@ class_name DollView extends SubViewportContainer
 ## is the RIG's business now (`ModularDoll.body_path`), not this view's.
 const BODY := "res://spike3d/models/Knight.glb"
 
-## A stance, not a T-pose. The bind pose is a mannequin on a rack; a miniature
-## stands. Tried in name order because rigs disagree — KayKit says "Idle",
-## Quaternius says "Idle_Loop" — and the first one present wins.
-const IDLE_NAMES := ["Idle", "Idle_Loop", "1H_Melee_Idle", "2H_Melee_Idle",
-	"Idle_A", "Unarmed_Idle"]
-
 var doll: ModularDoll = null
 var _vp: SubViewport = null
 var _yaw := 0.0
@@ -35,6 +29,9 @@ var _dragging := false
 ## that: the hero held a dagger and the figurine stood empty-handed.
 var _pending: Dictionary = {}
 var _built := false
+## Whether the figure is currently animating, so `_process` only acts on the
+## frame the page is shown or hidden rather than every frame.
+var _running := false
 
 
 func _init(view_size := Vector2(230, 336)) -> void:
@@ -73,6 +70,11 @@ func _ready() -> void:
 	if ResourceLoader.exists(body):
 		doll.build(load(body))   # build() stands the figure itself
 		doll.apply_build(Rules.hero_body(GameState.sheet()))
+		# THIS page is the one that breathes. The board token and the painted
+		# hero are both one captured frame, and the difference is deliberate:
+		# here the player is looking straight at their character, and a figure
+		# holding a single frame reads as a game that has hung.
+		doll.live()
 	_built = true
 	if not _pending.is_empty():
 		doll.wear_inventory(_pending)
@@ -114,9 +116,24 @@ func rebuild(new_sex: String) -> void:
 	if not ResourceLoader.exists(body):
 		return
 	doll.build(load(body))
+	doll.live()   # build() stands and freezes; this page wants it breathing
 	var cam := _vp.get_node_or_null("FitCam") if _vp != null else null
 	if cam is Camera3D:
 		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0))
+
+
+## The figure moves ONLY while the page is on screen.
+##
+## The viewport already stops DRAWING when hidden (UPDATE_WHEN_VISIBLE), but a
+## viewport that is not drawing still has a 70-bone skeleton being re-posed and
+## five springs being integrated behind it, once per garment. Cheap, and pure
+## waste — this game shares one card with the narrator.
+func _process(_dt: float) -> void:
+	var on := is_visible_in_tree()
+	if on == _running or doll == null or not is_instance_valid(doll):
+		return
+	_running = on
+	doll.set_living(on)
 
 
 ## Show what the hero is actually wearing. Safe to call before the view is in
@@ -126,33 +143,6 @@ func wear(inv: Dictionary) -> void:
 		_pending = inv.duplicate(true)
 		return
 	doll.wear_inventory(inv)
-
-
-## Put the figurine on its feet, and freeze it there — a looping animation in a
-## menu is a viewport that never stops redrawing, which is GPU the narrator wants.
-func _stand() -> void:
-	var ap := _find_anim(doll)
-	if ap == null:
-		return
-	for lib in ap.get_animation_library_list():
-		for nm in ap.get_animation_library(lib).get_animation_list():
-			for want in IDLE_NAMES:
-				if str(nm).nocasecmp_to(want) == 0:
-					var full: String = (str(lib) + "/" + str(nm)) if str(lib) != "" else str(nm)
-					ap.play(full)
-					ap.advance(0.4)   # a step in, past any wind-up on frame zero
-					ap.pause()
-					return
-
-
-func _find_anim(n: Node) -> AnimationPlayer:
-	if n is AnimationPlayer:
-		return n
-	for c in n.get_children():
-		var f := _find_anim(c)
-		if f != null:
-			return f
-	return null
 
 
 ## Drag to turn. A figurine you can only see from the front hides half of what

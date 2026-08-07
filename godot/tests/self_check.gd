@@ -1022,8 +1022,20 @@ The term for spell slots is "Echoes."
 		qd.rig = "quaternius"
 		add_child(qd)
 		qd.build(load(qd.body_path()))
-		assert(qd.skeleton != null and qd.skeleton.get_bone_count() == 65,
-			"q-doll: the shipping body is the 65-bone rig")
+		# 65 shipped, plus the five soft-tissue bones scripts/add_jiggle_bones.py
+		# adds. Named individually as well as counted, because a count alone
+		# passes if the exporter renames one — and a renamed jiggle bone does not
+		# error, it silently stops being simulated.
+		assert(qd.skeleton != null and qd.skeleton.get_bone_count() == 70,
+			"q-doll: the shipping body is the 65-bone rig plus five for soft tissue")
+		for jb in ModularDoll.JIGGLE:
+			assert(qd.skeleton.find_bone(str(jb)) >= 0,
+				"q-doll: the body carries the '%s' bone" % jb)
+		var sim := qd.skeleton.get_node_or_null("Jiggle")
+		assert(sim != null, "q-doll: a spring simulator is hung off the skeleton")
+		assert(not sim.active, "q-doll: ...and it is OFF until something asks to be alive")
+		assert(sim.get_setting_count() == ModularDoll.JIGGLE.size(),
+			"q-doll: every soft-tissue bone gets a spring")
 		# THE SLOTS THAT WERE MISSING. These are the whole reason for the pack —
 		# on the old fixture every one of them resolved to nothing.
 		for slot in ["armor", "hands", "legs", "feet"]:
@@ -1239,7 +1251,8 @@ The term for spell slots is "Echoes."
 	var gsrc5 := FileAccess.get_file_as_string("res://scripts/game.gd")
 	assert(gsrc5.contains("s[\"sex\"]") and gsrc5.contains("s[\"build\"]"),
 		"forge: a forged hero carries its body onto the sheet")
-	print("  build: sex + 5 knobs, neutral means heritage, and a tall Dwarf is still a Dwarf")
+	print("  build: sex + %d knobs, neutral means heritage, and a tall Dwarf is still a Dwarf"
+		% Rules.BUILD_KNOBS.size())
 
 	# The Gear page shows the FIGURINE, not a commissioned painting — the whole
 	# point is that equipping answers now instead of queueing a GPU job.
