@@ -1036,6 +1036,31 @@ The term for spell slots is "Echoes."
 		assert(not sim.active, "q-doll: ...and it is OFF until something asks to be alive")
 		assert(sim.get_setting_count() == ModularDoll.JIGGLE.size(),
 			"q-doll: every soft-tissue bone gets a spring")
+		# EVERY GESTURE CLIP MUST EXIST AND MUST END. A name that is not in the
+		# library is a gesture that never plays; a name that LOOPS is worse, because
+		# `animation_finished` never fires for it and the director stops dead —
+		# the figure freezes on the last thing it did and idles no more. Neither
+		# is visible from the table, since Godot's glTF importer decides loop mode
+		# from a `_Loop` suffix that it then strips off the name.
+		var qap: AnimationPlayer = qd._find_anim(qd._body)
+		assert(qap != null, "q-doll: the shipping rig has an AnimationPlayer")
+		var pools: Dictionary = qd.profile().get("gestures", {})
+		assert(not pools.is_empty(), "q-doll: the figure has gestures to play")
+		for pool in pools:
+			assert(not pools[pool].is_empty(), "q-doll: the '%s' pool is not empty" % pool)
+			for seq in pools[pool]:
+				for nm in seq:
+					var clip := qap.get_animation(str(nm))
+					assert(clip != null, "q-doll: gesture clip '%s' is in the library" % nm)
+					assert(clip.loop_mode == Animation.LOOP_NONE,
+						"q-doll: gesture clip '%s' ends — a looping one stops the director dead" % nm)
+		# And the idle must be the opposite: a loop, or the figure plays it once
+		# and stands frozen until the next gesture.
+		for w in qd.profile().get("live", []):
+			var idle := qap.get_animation(str(w))
+			if idle != null:
+				assert(idle.loop_mode != Animation.LOOP_NONE,
+					"q-doll: live idle '%s' loops" % w)
 		# THE SLOTS THAT WERE MISSING. These are the whole reason for the pack —
 		# on the old fixture every one of them resolved to nothing.
 		for slot in ["armor", "hands", "legs", "feet"]:

@@ -86,10 +86,12 @@ Blender is a **portable unzip**, not an install: `download.blender.org` returns
    surface is flat albedo with shader-level roughness only. Re-fetch them.
 4. **Textures were downsampled to 1024** with "no visible change" — true at
    230x336 on the Gear page, false at 1280 and false in Cycles.
-5. **Only one idle clip ever plays.** `live()` picks `Idle_Shield` and loops it
-   forever. UAL2 has 43 clips; a rotation with the odd gesture in it would read
-   as considerably more alive than one loop, and would give the springs more to
-   answer to. Nothing is broken — it is just thin.
+5. **The gesture pools are as deep as this library allows.** 9 armed sequences
+   and 8 bare, drawn from the 43 clips UAL2 ships, of which most are situational
+   (farming, zombies, phone calls) or travel out of frame. There is no wave, no
+   shrug, no weight-shift, no look-around; `Idle_Rail_Call` is standing in for a
+   hail. More variety is an ASSET problem now, not a code one — the table takes
+   whatever the library has.
 
 Closed since the last handoff: the masks were stale (re-baked, all 23, with the
 side-aware rim rule) and `figurine_render.py` was uncommitted.
@@ -130,6 +132,12 @@ limit, not your code.
 
 **Read the render, not the log.** Two runs printed the same face count and I
 concluded a fix had not worked. It had; I never reopened the image.
+
+**A gesture that loops does not misbehave, it stops the director dead.**
+`animation_finished` never fires for a looping clip, so the figure freezes on
+the last thing it did and never idles again. Which clips loop is not readable
+from the table, because Godot sets loop mode from a `_Loop` suffix it strips —
+so `self_check` asserts every gesture clip exists AND ends.
 
 **Cycles on this machine:** `HIP` is the working compute device, and the AgX look
 is named `AgX - Base Contrast` — `AgX - Medium Contrast` does not exist and

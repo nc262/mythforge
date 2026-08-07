@@ -29,12 +29,17 @@ const VALUES := [0, 50, 100]
 ## is that a bust under a tunic has to move the tunic. Bare proves the body;
 ## dressed proves the wardrobe followed.
 const DRESS := {"armor": "ranger", "legs": "ranger", "feet": "ranger", "hands": "ranger"}
+## Armed, for the motion strips only. The gesture pool splits on what is in the
+## hand, and an empty-handed figure never reaches the sword swings at all.
+const ARMED := {"weapon": "sword"}
 
 ## Frames in the motion strip, and how many rendered frames to let pass between
 ## captures. 4 is enough for the spring to have moved visibly and few enough
 ## that sixteen captures still cover most of a 60-frame idle loop.
 const STRIP := 16
 const EVERY := 4
+## The look-at-it strip is longer: a sword combo runs 2.4 s.
+const ALIVE := 26
 
 var _vp: SubViewport = null
 var _doll: ModularDoll = null
@@ -162,13 +167,40 @@ func _alive() -> void:
 		"belly": Rules.build_factor("belly", 78),
 	})
 	_pivot.rotation_degrees.y = -22.0
-	_doll.frame_camera(_cam, 1.0, 0.52)
+	# THE GEAR PAGE'S OWN VIEWPORT, not a square one. A gesture that reads fine
+	# in a generous frame can still step the hero out of a 230x336 box, and the
+	# only way to know is to render it through the same aspect and the same
+	# margin DollView uses.
+	_vp.size = Vector2i(700, 1024)
+	_doll.frame_camera(_cam, 230.0 / 336.0, DollView.FRAME_MARGIN)
+	for slot in ARMED:
+		_doll.equip(str(slot), str(ARMED[slot]))
 	_doll.live()
 	var ap := _doll._find_anim(_doll._body)
 	print("JIGGLE live clip=%s playing=%s" % [
 		"none" if ap == null else ap.current_animation, ap != null and ap.is_playing()])
-	for i in STRIP:
-		for _f in EVERY:
+	# A gesture is FORCED rather than waited for. The director idles 2.6-6.5 s
+	# between them and this strip is about a second long, so waiting would
+	# capture sixteen frames of standing still and call it a pass.
+	# The director picks at random, which is right in the game and useless in a
+	# harness — this asserts it CAN pick, then drives a named sequence through
+	# the same plumbing so the strip shows the same swing every run.
+	_doll._gesture()
+	assert(ap != null and ap.current_animation != _doll._idle,
+		"JIGGLE: the director never left the idle")
+	_doll._queue = ["Sword_Regular_Combo"] as Array[String]
+	_doll._next_clip("")
+	print("JIGGLE gesture %s" % ap.current_animation)
+	# Longer and slower than the spring strips: a sword combo is 2.4 s and a
+	# sixteen-frame window a second wide would cut it off mid-swing.
+	#
+	# Turned WHILE it swings, because that is the claim — the player drags a
+	# pivot above the doll and the clips move bones inside the skeleton, so the
+	# two have never been able to interfere. Rendering it is cheaper than
+	# asserting it.
+	for i in ALIVE:
+		for _f in 6:
+			_pivot.rotation_degrees.y += 100.0 / float(ALIVE * 6)
 			await get_tree().process_frame
 		await _grab("alive_%02d" % i)
 

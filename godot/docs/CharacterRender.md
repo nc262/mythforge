@@ -149,7 +149,7 @@ So the doll has two entry points that are deliberately not the same call:
 | | Plays | Springs | Used by |
 |---|---|---|---|
 | `stand()` | first clip on `stand`, then **pauses** | off | board token, scene hero, forge preview |
-| `live()` | first clip on `live`, looping | **on** | Gear page only |
+| `live()` | an idle on `live`, looping, interrupted by gestures | **on** | Gear page only |
 
 **The clip names in those lists are Godot's, not Blender's.** UAL2 ships
 `Idle_Shield_Loop`; Godot's glTF importer reads the `_Loop` suffix as a loop-mode
@@ -185,6 +185,56 @@ The bone positions are **measured, never typed**: the seed is the most forward
 (or most rearward) vertex in a height band, so it lands on the real surface of
 whichever body it is run against. Male and female seed differently, which is why
 the script runs once per sex.
+
+### The life of the figure
+
+An idle on repeat is a screensaver. What reads as alive is an idle that keeps
+being **interrupted**: the hero shakes the stance out, swings the sword, nods,
+hails someone, hops, and goes back to standing there. `_gesture()` fires every
+2.6–6.5 s, picks a sequence, plays it with a 0.22 s cross-fade and returns to
+the idle when it ends.
+
+Which pool depends on what is in the hand — a hero holding a sword who never
+swings it reads as a mannequin holding a sword, and one swinging an empty fist
+reads as a bug.
+
+Deliberately **not** an `AnimationTree`. A state machine earns its keep when
+transitions are conditional and gameplay drives them; this is one state with a
+random excursion out of it and straight back, and the whole director is twenty
+lines.
+
+**Rotation and gesture never interfere.** The player drags a `Node3D` pivot
+*above* the doll; the clips move bones *inside* the skeleton. Turning the figure
+mid-swing has always worked and needed no code — it is rendered in
+`jiggle_shot` rather than asserted.
+
+Three things had to be measured rather than assumed, and each cost a render:
+
+- **The clip list was chosen by auditing all 43 as contact strips**
+  (`tests/gesture_shot.tscn`), never off their names. `ClimbUp_1m`, `Shield_Dash`
+  and the whole `Slide` family walk the figure clean out of frame;
+  `Hit_Knockback` ends flat on its back below the bottom edge. None of that is
+  visible in a name. The rule for inclusion is that a clip must **start and end
+  near standing** — `Sword_Regular_A/B/C` are combo links that finish mid-swing,
+  so only the assembled `_Combo` versions are used.
+- **Every gesture must be a one-shot.** `animation_finished` never fires for a
+  looping clip, so one loop in the table does not misbehave, it stops the
+  director **dead** and the figure freezes on the last thing it did. `self_check`
+  asserts this, because Godot decides loop mode from a suffix it then strips, so
+  you cannot read it off the table.
+- **The travel is on `pelvis`, not `root`.** That rules out
+  `root_motion_track`, which would strip the whole track — and the pelvis track
+  is not only travel, it carries the crouch and the weight drop. `PlantFeet`
+  returns X and Z to the bind pose each frame and leaves Y alone, so the hero
+  still lunges without ending up somewhere else.
+
+Even planted, a combo reaches a foot above the hero's own head, so the Gear
+page's camera margin was swept against its real 230x336 frame: 0.54 and 0.62
+both crop the blade, **0.70** is the first value where nothing touches an edge,
+0.78 buys nothing more. The resting figure pays about a fifth of its size — the
+right way round, since a smaller hero reads fine and a beheaded one reads as a
+bug. The board token and forge preview keep their tighter margins; they never
+gesture.
 
 Spring constants were chosen off a four-point sweep in `tests/jiggle_shot.gd` —
 peak pixel displacement 0.518 / 0.540 / 0.677 / 0.740 from tightest to loosest.

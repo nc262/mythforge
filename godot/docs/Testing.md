@@ -33,8 +33,17 @@ Headless uses a dummy rasterizer, so every capture comes back blank. These run
 
 ```bash
 $GODOT --path godot res://tests/doll_shot.tscn     # every loadout, cloth, forged garment
-$GODOT --path godot res://tests/jiggle_shot.tscn   # the body knobs, and the springs
+$GODOT --path godot res://tests/jiggle_shot.tscn   # the body knobs, the springs, a gesture
+$GODOT --path godot res://tests/gesture_shot.tscn  # all 43 clips as contact strips
 ```
+
+`gesture_shot` exists because **the clip names lie**. `Idle_Rail_Call` might be
+a wave or a man shouting over a fence; `NinjaJump_Start` might be a skip or it
+might carry the hero out of frame. It renders six frames evenly across every
+clip in the library, framed ONCE on the standing pose and never re-framed — so a
+clip that travels shows the figure walking off the edge, which is exactly what
+picking off names cannot tell you. Run it whenever the animation library
+changes; the gesture table in `RIGS` is chosen from its output.
 
 `jiggle_shot` does two things. It renders each soft-tissue knob at 0 / 50 / 100,
 bare and dressed, from the angle that shows it — the only test that could have

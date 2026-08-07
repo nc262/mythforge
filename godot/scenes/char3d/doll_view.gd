@@ -18,6 +18,20 @@ class_name DollView extends SubViewportContainer
 ## is the RIG's business now (`ModularDoll.body_path`), not this view's.
 const BODY := "res://spike3d/models/Knight.glb"
 
+## How much room to leave around the figurine.
+##
+## Framing on the STANDING pose is not enough once the figure gestures: a sword
+## combo reaches a foot above the hero's own head, and at the 0.54 this used to
+## carry, the blade left the top of the box on every swing. Swept against the
+## real 230x336 frame — 0.54 and 0.62 both crop, 0.70 is the first value where
+## nothing touches an edge, and 0.78 buys nothing further. The resting figure
+## pays about a fifth of its size for it, which is the right way round: a
+## smaller hero reads fine, a beheaded one reads as a bug.
+##
+## The board token and the forge preview keep their own tighter margins. They
+## never gesture.
+const FRAME_MARGIN := 0.70
+
 var doll: ModularDoll = null
 var _vp: SubViewport = null
 var _yaw := 0.0
@@ -102,7 +116,7 @@ func _ready() -> void:
 	cam.name = "FitCam"   # named so a rebuild can find and reframe it
 	_vp.add_child(cam)
 	if doll != null:
-		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0))
+		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0), FRAME_MARGIN)
 
 
 ## Swap the body for the other sex. A rebuild, not a re-pose: it is a different
@@ -119,7 +133,7 @@ func rebuild(new_sex: String) -> void:
 	doll.live()   # build() stands and freezes; this page wants it breathing
 	var cam := _vp.get_node_or_null("FitCam") if _vp != null else null
 	if cam is Camera3D:
-		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0))
+		doll.frame_camera(cam, custom_minimum_size.x / maxf(custom_minimum_size.y, 1.0), FRAME_MARGIN)
 
 
 ## The figure moves ONLY while the page is on screen.

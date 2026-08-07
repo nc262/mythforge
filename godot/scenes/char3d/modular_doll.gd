@@ -181,6 +181,37 @@ const RIGS := {
 		# figure just keeps whatever pose it already had, which looks like a
 		# design decision rather than a lookup that found no clip.
 		"live": ["Idle_Shield", "Idle_Rail", "Idle_FoldArms"],
+		# WHAT THE FIGURE DOES BETWEEN IDLES. Every entry is a SEQUENCE, because
+		# some of these are halves: a hook without its recovery leaves the fist
+		# in the air, and a leap without a landing leaves the hero in orbit.
+		#
+		# Chosen by auditing all 43 clips as contact strips
+		# (tests/gesture_shot.tscn) rather than off their names, and the audition
+		# earned itself immediately — `ClimbUp_1m`, `Shield_Dash` and the whole
+		# `Slide` family walk the figure clean out of the frame, and
+		# `Hit_Knockback` ends flat on its back off the bottom edge. None of that
+		# is visible in a name.
+		#
+		# The rule for inclusion is that a clip must START AND END near standing.
+		# `Sword_Regular_A/B/C` are combo LINKS that finish mid-swing, so only
+		# the assembled `_Combo` versions are here — the singles pop when the
+		# idle blends back in.
+		"gestures": {
+			# With something in the hand. Swings, because a hero holding a sword
+			# who never swings it reads as a mannequin holding a sword.
+			"armed": [
+				["Sword_Regular_Combo"], ["Sword_Heavy_Combo"], ["Sword_Block"],
+				["Melee_Hook", "Melee_Hook_Rec"], ["OverhandThrow"],
+				["Idle_Shield_Break"], ["Yes"], ["Idle_Rail_Call"],
+				["NinjaJump_Start", "NinjaJump_Land"],
+			],
+			# Empty-handed. A nod, a hail, a drink, a crouch, a hop.
+			"bare": [
+				["Yes"], ["Idle_Rail_Call"], ["Consume"], ["Chest_Open"],
+				["Melee_Hook", "Melee_Hook_Rec"], ["OverhandThrow"],
+				["NinjaJump_Start", "NinjaJump_Land"], ["Idle_Shield_Break"],
+			],
+		},
 		"sockets": {"weapon": "hand_r", "offhand": "hand_l", "shield": "hand_l",
 			"head": "Head", "cloak": "spine_03"},
 		"zones": {},
@@ -395,6 +426,13 @@ func build(body_scene: PackedScene) -> void:
 	_worn.clear()
 	_worn_file.clear()
 	_extern.clear()
+	# The gesture director outlives the body it was driving — the Timer is a
+	# child of THIS node, not of `_body`. Left running, it fires into a
+	# half-rebuilt figure and picks a pool from a loadout that has been cleared.
+	_queue.clear()
+	_idle = ""
+	if _life != null and is_instance_valid(_life):
+		_life.stop()
 	_rest.clear()   # a new body has a new bind pose; keeping the old one warps it
 	_body = body_scene.instantiate()
 	add_child(_body)
@@ -511,8 +549,18 @@ func stand() -> void:
 ## The spring simulation is switched on HERE and nowhere else. Jiggle on a
 ## paused pose is a per-frame cost with nothing to show for it.
 func live() -> void:
-	if _play(profile().get("live", profile().get("stand", ["Idle"]))) != null:
-		set_living(true)
+	var ap := _play(profile().get("live", profile().get("stand", ["Idle"])))
+	if ap == null:
+		return
+	_idle = ap.current_animation
+	if not ap.animation_finished.is_connected(_next_clip):
+		ap.animation_finished.connect(_next_clip)
+	if _life == null or not is_instance_valid(_life):
+		_life = Timer.new()
+		_life.one_shot = true
+		_life.timeout.connect(_gesture)
+		add_child(_life)
+	set_living(true)
 
 
 ## Start or stop everything that costs a frame. Its caller is whoever knows
@@ -524,6 +572,103 @@ func set_living(on: bool) -> void:
 		ap.active = on
 	if _spring != null and is_instance_valid(_spring):
 		_spring.active = on
+	if _life == null or not is_instance_valid(_life):
+		return
+	if on:
+		_life.start(randf_range(GAP_MIN, GAP_MAX))
+	else:
+		# Or a page left hidden for a minute comes back mid-swing, because the
+		# timer went on firing into a viewport nobody was drawing.
+		_life.stop()
+
+
+## ── THE LIFE OF THE FIGURE ───────────────────────────────────────────────────
+## An idle on repeat is a screensaver. What reads as ALIVE is an idle that keeps
+## being interrupted: a hero looks at the blade, shakes the stance out, swings,
+## hops, goes back to standing there.
+##
+## Deliberately NOT an AnimationTree. A state machine earns its keep when
+## transitions are conditional and gameplay drives them; here there is one state
+## with a random excursion out of it and straight back, and the whole director is
+## the twenty lines below. `play(name, blend)` cross-fades on its own.
+##
+## Rotation is untouched by any of this. The player drags a Node3D pivot ABOVE
+## the doll, and the clips move bones inside the skeleton, so turning the figure
+## mid-swing works for free and always did.
+
+## Seconds of idling between gestures. The low end is short enough that the page
+## does not feel dead while you are reading a stat block, the high end long
+## enough that the figure is not performing at you.
+const GAP_MIN := 2.6
+const GAP_MAX := 6.5
+## Cross-fade into and out of a gesture. Below about 0.15 the swing snaps on;
+## above 0.35 the wind-up is eaten by the blend and the swing looks half-hearted.
+const BLEND := 0.22
+
+var _life: Timer = null
+var _idle := ""
+var _queue: Array[String] = []
+
+
+## Pick a sequence and start it. Which pool depends on what is in the hand — a
+## hero holding a sword who never swings it reads as a mannequin holding a sword,
+## and one swinging an empty fist reads as a bug.
+func _gesture() -> void:
+	var ap := _find_anim(_body)
+	if ap == null or _idle == "":
+		return
+	var pools: Dictionary = profile().get("gestures", {})
+	var pool: Array = pools.get("armed" if worn("weapon") != "" else "bare", [])
+	var seq := _playable(ap, pool)
+	if seq.is_empty():
+		return
+	_queue = seq
+	_next_clip("")
+
+
+## Advance the sequence, or fall back to idling and re-arm the timer.
+##
+## `animation_finished` never fires for a looping clip, which is exactly the
+## behaviour wanted: the idle runs until the timer interrupts it, and only a
+## gesture — every one of which is a one-shot — comes back here.
+func _next_clip(_finished: String) -> void:
+	var ap := _find_anim(_body)
+	if ap == null:
+		return
+	if _queue.is_empty():
+		ap.play(_idle, BLEND)
+		if _life != null and is_instance_valid(_life):
+			_life.start(randf_range(GAP_MIN, GAP_MAX))
+		return
+	ap.play(_queue.pop_front(), BLEND)
+
+
+## One sequence from the pool, filtered down to clips this library actually has
+## and that actually END.
+##
+## THE LOOP CHECK IS NOT PARANOIA. A looping clip never emits
+## `animation_finished`, so one loop in a gesture list does not misbehave — it
+## STOPS THE DIRECTOR DEAD, permanently, and the figure stands there repeating
+## the last thing it did. Godot's glTF importer decides loop mode from a `_Loop`
+## suffix it then strips, so which clips loop is not something you can read off
+## the names in the table.
+func _playable(ap: AnimationPlayer, pool: Array) -> Array[String]:
+	var ok: Array = []
+	for seq in pool:
+		var good := true
+		for nm in seq:
+			var clip := ap.get_animation(str(nm))
+			if clip == null or clip.loop_mode != Animation.LOOP_NONE:
+				good = false
+				break
+		if good:
+			ok.append(seq)
+	if ok.is_empty():
+		return []
+	var out: Array[String] = []
+	for nm in ok[randi() % ok.size()]:
+		out.append(str(nm))
+	return out
 
 
 ## Find the first clip on the preference list and play it. Returns the player so
@@ -599,6 +744,12 @@ func _add_jiggle() -> void:
 			names.append(str(nm))
 	if names.is_empty():
 		return
+	# BEFORE the springs, because modifiers run in child order and the springs
+	# should answer to the planted pose rather than to a translation that is
+	# about to be undone.
+	var plant := PlantFeet.new()
+	plant.name = "Plant"
+	skeleton.add_child(plant)
 	var sim := SpringBoneSimulator3D.new()
 	sim.name = "Jiggle"
 	skeleton.add_child(sim)
