@@ -16,12 +16,22 @@ extends Node
 ##   Godot_v4.7-stable_win64.exe --path godot res://tests/gesture_shot.tscn
 const OUT := "user://gestures"
 const CELL := 320
+## Frames per strip. Raised from 6 while auditing a short authored emote, where
+## six samples across 1.2 s skips the whole middle of the motion.
+
 const SHOTS := 6
 
 ## Dressed and armed — a sword swing judged on an empty hand tells you nothing
 ## about whether the blade stays in shot.
 const DRESS := {"armor": "ranger", "legs": "ranger", "feet": "ranger",
 	"hands": "ranger", "weapon": "sword"}
+
+## Narrow the audition while iterating on ONE library, and drop the sword —
+## an emote judged with a blade in the hand is judged with the blade in front of
+## it, and a wave holding a sword is not a wave.
+##   ONLY=mf BARE=1 godot --path godot res://tests/gesture_shot.tscn
+static func _env(k: String) -> String:
+	return OS.get_environment(k) if OS.has_environment(k) else ""
 
 var _vp: SubViewport = null
 var _doll: ModularDoll = null
@@ -54,6 +64,8 @@ func _ready() -> void:
 	_doll.sex = "female"
 	_doll.build(load(_doll.body_path()))
 	for slot in DRESS:
+		if slot == "weapon" and _env("BARE") != "":
+			continue
 		_doll.equip(str(slot), str(DRESS[slot]))
 	# Framed ONCE, on the standing pose, and never re-framed per clip. Reframing
 	# would silently re-centre a clip that travels, which is exactly the thing
@@ -67,7 +79,10 @@ func _ready() -> void:
 		return
 	var names := ap.get_animation_list()
 	names.sort()
+	var only := _env("ONLY")
 	for nm in names:
+		if only != "" and not str(nm).begins_with(only):
+			continue
 		await _strip(ap, str(nm))
 	print("GESTURE audited %d clips — %s" % [names.size(), ProjectSettings.globalize_path(OUT)])
 	get_tree().quit()

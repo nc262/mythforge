@@ -48,7 +48,12 @@ const SHOWCASE := [
 	["combo", ["Sword_Regular_Combo"]],
 	["spell", ["ual1/Spell_Simple_Enter", "ual1/Spell_Simple_Shoot", "ual1/Spell_Simple_Exit"]],
 	["hop", ["ual1/Jump_Start", "ual1/Jump_Land"]],
-	["jab", ["ual1/Punch_Jab"]],
+	["wave", ["mf/Wave"]],
+	["shrug", ["mf/Shrug"]],
+	["cheer", ["mf/Cheer"]],
+	["bow", ["mf/Bow"]],
+	["hips", ["mf/HandsOnHips"]],
+	["shift", ["mf/ShiftWeight"]],
 ]
 
 var _vp: SubViewport = null
@@ -183,8 +188,6 @@ func _alive() -> void:
 	# margin DollView uses.
 	_vp.size = Vector2i(700, 1024)
 	_doll.frame_camera(_cam, 230.0 / 336.0, DollView.FRAME_MARGIN)
-	for slot in ARMED:
-		_doll.equip(str(slot), str(ARMED[slot]))
 	_doll.live()
 	var ap := _doll._find_anim(_doll._body)
 	print("JIGGLE live clip=%s playing=%s" % [
@@ -199,6 +202,11 @@ func _alive() -> void:
 	assert(ap != null and ap.current_animation != _doll._idle,
 		"JIGGLE: the director never left the idle")
 	for show in SHOWCASE:
+		# Armed only for the clips that want a blade — a wave holding a sword is
+		# not a wave, and the emotes are exactly what is being judged here.
+		var wants_blade: bool = str(show[0]) in ["combo"]
+		for slot in ARMED:
+			_doll.equip(str(slot), str(ARMED[slot]) if wants_blade else "")
 		var seq: Array[String] = []
 		for nm in show[1]:
 			seq.append(str(nm))

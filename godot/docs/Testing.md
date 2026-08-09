@@ -34,8 +34,14 @@ Headless uses a dummy rasterizer, so every capture comes back blank. These run
 ```bash
 $GODOT --path godot res://tests/doll_shot.tscn     # every loadout, cloth, forged garment
 $GODOT --path godot res://tests/jiggle_shot.tscn   # the body knobs, the springs, a gesture
-$GODOT --path godot res://tests/gesture_shot.tscn  # all 43 clips as contact strips
+$GODOT --path godot res://tests/gesture_shot.tscn  # all 95 clips as contact strips
+
+ONLY=mf BARE=1 $GODOT --path godot res://tests/gesture_shot.tscn   # one library, no sword
 ```
+
+`ONLY` narrows the audition to one library while iterating on it, and `BARE`
+drops the weapon — an emote judged with a blade in the hand is judged with the
+blade in front of it, and a wave holding a sword is not a wave.
 
 `gesture_shot` exists because **the clip names lie**. `Idle_Rail_Call` might be
 a wave or a man shouting over a fence; `NinjaJump_Start` might be a skip or it

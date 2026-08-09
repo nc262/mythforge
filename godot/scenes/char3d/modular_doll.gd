@@ -147,6 +147,7 @@ const RIGS := {
 		"anim": [
 			["", "res://assets3d/anim/UAL2_Standard.glb"],
 			["ual1", "res://assets3d/anim/UAL1_Retargeted.glb"],
+			["mf", "res://assets3d/anim/Authored.glb"],
 		],
 		# Which of the body's three materials is SKIN — the other two are eyes
 		# and hair, which no garment covers. Matched on a substring because the
@@ -222,6 +223,17 @@ const RIGS := {
 		"gestures": {
 			# With something in the hand. Swings, because a hero holding a sword
 			# who never swings it reads as a mannequin holding a sword.
+			#
+			# The `mf/` entries are AUTHORED — see scripts/author_gestures.py.
+			# Between them the two sourced libraries have 86 clips and not one
+			# wave, shrug, bow or look-around: they are locomotion and task
+			# libraries, and the social emotes a character needs while standing
+			# still are simply not in them.
+			#
+			# A REPEATED ENTRY IS A WEIGHT. The pool is picked from uniformly, so
+			# listing the two quiet ones twice makes the figure fidget more often
+			# than it performs — which is the right ratio for something a player
+			# has open while reading a stat block.
 			"armed": [
 				["Sword_Regular_Combo"], ["Sword_Heavy_Combo"], ["Sword_Block"],
 				["ual1/Sword_Attack"], ["ual1/Sword_Idle"],
@@ -229,14 +241,23 @@ const RIGS := {
 				["OverhandThrow"], ["Idle_Shield_Break"], ["Yes"],
 				["Idle_Rail_Call"], ["ual1/Interact"], ["ual1/PickUp_Table"],
 				["ual1/Hit_Chest"], ["ual1/Jump_Start", "ual1/Jump_Land"],
+				["mf/Bow"], ["mf/Shrug"], ["mf/HandsOnHips"], ["mf/Cheer"],
+				["mf/Beckon"],
+				["mf/LookAround"], ["mf/LookAround"],
+				["mf/ShiftWeight"], ["mf/ShiftWeight"],
 			],
-			# Empty-handed. A nod, a hail, a jab, a reach, a hop.
+			# Empty-handed. Everything above that does not want a blade in it,
+			# plus the emotes that only read with a free hand.
 			"bare": [
 				["Yes"], ["Idle_Rail_Call"], ["Consume"], ["Chest_Open"],
 				["ual1/Punch_Jab"], ["ual1/Punch_Cross"], ["ual1/Punch_Enter"],
 				["ual1/Interact"], ["ual1/PickUp_Table"], ["OverhandThrow"],
 				["Idle_Shield_Break"], ["ual1/Hit_Chest"],
 				["ual1/Jump_Start", "ual1/Jump_Land"],
+				["mf/Wave"], ["mf/Bow"], ["mf/Shrug"], ["mf/HandsOnHips"],
+				["mf/Cheer"], ["mf/Stretch"], ["mf/Beckon"],
+				["mf/LookAround"], ["mf/LookAround"],
+				["mf/ShiftWeight"], ["mf/ShiftWeight"],
 			],
 			# ADDED to whichever pool above, for a hero who actually casts.
 			# `Rules.caster_level` already answers that, so a barbarian never

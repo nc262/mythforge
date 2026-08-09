@@ -9,9 +9,11 @@ domain, no attribution required, commercial use fine**.
 | `outfits/` | Modular Character Outfits – Fantasy | Per-slot garments: Body, Arms, Legs, Feet, Head_Hood, Pauldrons |
 | `anim/` | Universal Animation Library 2 | 43 situational clips, already on the 65-bone skeleton |
 | `anim/UAL1_Retargeted.glb` | Universal Animation Library **1** | 43 more, **retargeted** here from Rigify — see below |
+| `anim/Authored.glb` | **none — written here** | 9 emotes no free library ships |
 | `weapons/` | Fantasy RPG weapons | Rigid props for the hand bones — no skin weights needed |
 
-`cloth/` is the exception: it is **generated, not downloaded**. Four tileable
+`cloth/` and `anim/Authored.glb` are the exceptions: they are **made here, not
+downloaded**. Four tileable
 weaves poured by `scripts/pour_materials.py` for the world families the outfit
 pack does not dress, plus the shader that pours them. See
 [docs/CharacterRender.md](../docs/CharacterRender.md).
@@ -56,6 +58,31 @@ transfer is the delta from rest rather than the world rotation — copying world
 rotations directly twists every limb, because the two rigs roll their arm bones
 differently. Output is `anim/UAL1_Retargeted.glb`, 3.2 MB, 43 clips, attached as
 a second named animation library so the two `A_TPose` clips do not collide.
+
+## The emotes nobody ships
+
+Between them the two libraries give **86 clips and not one wave, shrug, bow or
+look-around**. They are locomotion and task libraries — running, farming,
+fishing, swimming, zombie walks — and the social emotes a character needs while
+standing still are simply not in them. The free mocap sets that do have gestures
+are thousands of clips of walking with a few usable seconds buried inside; the
+good hand-made packs want an account or money.
+
+A wave is eight keyframes on four bones. `scripts/author_gestures.py` writes
+nine — Wave, Shrug, Bow, Cheer, Stretch, Beckon, LookAround, HandsOnHips,
+ShiftWeight — straight onto the shipping rig, 0.9 MB.
+
+Two things make that tractable and neither was guessed. The bone axes were
+**measured** by rotating each 40° and asking where its tail went (`Y` is the
+bone's own length and does not move it; `X+` swings forward; `Z+` raises the
+LEFT arm and lowers the RIGHT). And the base pose is **borrowed** — the rig's
+rest is a T-pose, so a gesture authored from rest opens with the arms straight
+out sideways; frame 0 of the retargeted `Idle_Loop` is a person standing with
+their arms down, so that is sampled and every gesture is a delta on top, which
+also means each clip starts and ends exactly where the idle lives.
+
+The numbers came off two rendered passes, not one. The first draft's Beckon and
+ShiftWeight were invisible and its Wave reached only chest height.
 
 ## What was left out, and why
 

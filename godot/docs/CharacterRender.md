@@ -204,15 +204,25 @@ The idle is picked **at random** per build from every clip on the `live` list
 that exists and loops, so two heroes on two save files do not hold the identical
 stance.
 
-**Two animation libraries, and the second had to be baked.** UAL2 is situational
+**Three animation libraries.** Two sourced, one written here. UAL2 is situational
 — farming, zombies, sword combos — and ships no neutral idle at all, which is
 why the figure used to stand in a sword guard regardless. UAL1 has the plain
 idles, a spell set and the punches, but its Godot export is **Rigify**: 53 bones
 sharing exactly one (`root`) with the 65-bone rig. `scripts/retarget_anim.py`
 bakes it across, transferring each bone's **delta from rest** rather than its
 world rotation — copy world rotations directly and every limb twists, because
-the two rigs roll their arm bones differently. See
-[assets3d/SOURCE.md](../assets3d/SOURCE.md).
+the two rigs roll their arm bones differently.
+
+And between them those 86 clips contain **no wave, shrug, bow or look-around**:
+they are locomotion and task libraries, and the social emotes a character needs
+while standing still are not in them. So `scripts/author_gestures.py` writes
+nine, on the shipping rig, from measured bone axes and a base pose borrowed off
+frame 0 of the idle. See [assets3d/SOURCE.md](../assets3d/SOURCE.md).
+
+**A repeated entry in a pool is a weight.** The pool is picked from uniformly,
+so `LookAround` and `ShiftWeight` are listed twice — the figure fidgets more
+often than it performs, which is the right ratio for something a player has open
+while reading a stat block.
 
 Deliberately **not** an `AnimationTree`. A state machine earns its keep when
 transitions are conditional and gameplay drives them; this is one state with a

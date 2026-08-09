@@ -59,6 +59,7 @@ Desktop build is current.
 | `scripts/figurine_render.py` | Path-traces the figurine in Cycles as a painted miniature |
 | `scripts/pour_materials.py` | Generates the tileable world cloths |
 | `scripts/retarget_anim.py` | Bakes an animation library from another rig onto this one. The route for ANY new humanoid clips |
+| `scripts/author_gestures.py` | Writes the emotes no library ships, from keyframe tables. Bone axes are MEASURED, base pose BORROWED off the idle |
 | `scripts/add_jiggle_bones.py` | Adds the five soft-tissue bones to the body and all 23 garments, and weights them. **Rewrites the .gltf files in place.** Run once per sex |
 
 Binaries, because neither is on PATH and one is not installed at all:
@@ -87,13 +88,12 @@ Blender is a **portable unzip**, not an install: `download.blender.org` returns
    surface is flat albedo with shader-level roughness only. Re-fetch them.
 4. **Textures were downsampled to 1024** with "no visible change" — true at
    230x336 on the Gear page, false at 1280 and false in Cycles.
-5. **Still no wave, shrug, weight-shift or look-around.** The pools are now 14
-   armed, 13 bare and 2 caster across **86** clips (UAL2 plus the retargeted
-   UAL1), which is most of what these two libraries can offer a figure standing
-   on a stand — the rest is locomotion, farming, zombies and swimming.
-   `Idle_Rail_Call` is still standing in for a hail. More variety is an ASSET
-   problem, not a code one: the table takes whatever the libraries have, and
-   `retarget_anim.py` is now the route for any humanoid library on any rig.
+5. **The emotes are hand-keyframed, and read as it.** Nine of them, authored
+   because no free library ships a wave, and they hold up at Gear-page size —
+   but they are 4–7 poses interpolated, with none of the settle, overlap or
+   secondary motion mocap gives you for free. The route to better is more keys
+   per clip in `author_gestures.py`, or a mocap set through
+   `retarget_anim.py`, which now takes any humanoid library on any rig.
 
 Closed since the last handoff: the masks were stale (re-baked, all 23, with the
 side-aware rim rule) and `figurine_render.py` was uncommitted.
