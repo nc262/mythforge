@@ -89,6 +89,7 @@ func _ready() -> void:
 	_vp.add_child(_cam)
 	_cam.fov = 34.0
 
+	await _tail_sheet()
 	await _horn_sheet()
 	await _skin_sheet()
 	await _neck_sheet()
@@ -105,6 +106,56 @@ func _ready() -> void:
 	await _alive()
 	print("JIGGLE done — %s" % ProjectSettings.globalize_path(OUT))
 	get_tree().quit()
+
+
+## The tail: full figure, three angles, and then SWUNG — a tail that hangs
+## correctly and does not move is a rope, and the whole reason its bones went on
+## the body's own skeleton was so the spring simulator would drive it.
+func _tail_sheet() -> void:
+	_vp.size = Vector2i(SIZE, SIZE)
+	for who in ["female", "male"]:
+		_doll.sex = who
+		_doll.build(load(_doll.body_path()))
+		for slot in DRESS:
+			_doll.equip(str(slot), str(DRESS[slot]))
+		_doll.apply_look({"hair": "long" if who == "female" else "parted",
+			"hair_color": "black", "skin": "verdant",
+			"horns": "swept", "horn_color": "bone", "tail": "drake"})
+		for yaw in [-22.0, -110.0, -184.0]:
+			_pivot.rotation_degrees.y = yaw
+			_doll.frame_camera(_cam, 1.0, 0.60)
+			await _grab("tail_%s_%d" % [who, int(-yaw)])
+	# And moving. Frozen pose, turned through 200 degrees, springs live — the
+	# same control the neck used, for the same reason: any pixel that moves is
+	# the simulation.
+	_doll.live()
+	_doll.set_living(true)
+	# SPRINGS ON, THEN OFF, over the identical frozen swing.
+	#
+	# The obvious probe — read `tail_05` back and see how far it moved — does
+	# NOT work: `get_bone_global_pose` reports the animation's pose, not what a
+	# SkeletonModifier3D wrote after it, so the number came back at 7-9 mm and
+	# went DOWN when the spring was softened, which is the signature of a metric
+	# measuring the wrong thing. It cost two runs before that read as impossible
+	# rather than as a stiff tail.
+	#
+	# Pixels against a frozen pose is the method that already works here: any
+	# pixel that differs between the two passes is the simulation.
+	for springs in [true, false]:
+		_doll.build(load(_doll.body_path()))
+		for slot in DRESS:
+			_doll.equip(str(slot), str(DRESS[slot]))
+		_doll.apply_look({"hair": "", "beard": "", "skin": "verdant", "tail": "drake"})
+		var sim := _doll.skeleton.get_node_or_null("Jiggle")
+		if sim != null:
+			sim.active = springs
+		_pivot.rotation_degrees.y = 8.0
+		for i in 14:
+			for _f in 5:
+				_pivot.rotation_degrees.y += 200.0 / 70.0
+				await get_tree().process_frame
+			_doll.frame_camera(_cam, 1.0, 0.60)
+			await _grab("tailswing_%s_%02d" % ["on" if springs else "off", i])
 
 
 ## Every horn on both skulls, front and three-quarter. Placement is the whole

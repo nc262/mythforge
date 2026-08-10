@@ -147,6 +147,14 @@ Four days of re-bakes were silent no-ops, and three separate coverage rules were
 measured and rendered against stale PNGs before the identical render gave it
 away. `bake_body_masks` now checks the file exists after saving.
 
+**`get_bone_global_pose()` does not see a SkeletonModifier3D.** It reports the
+pose the animation left, not what a modifier wrote after it — so reading a bone
+back is not a way to measure a spring. The tail's tip "moved" 7-9 mm and moved
+LESS when the spring was softened, which is the signature of a metric measuring
+something else entirely, and it cost two full harness runs before that read as
+impossible rather than as a stiff tail. Measure springs in PIXELS, against a
+frozen pose, on versus off.
+
 **Give every render an unmasked CONTROL.** "The mask is eating the neck" and
 "the collar just looks like that" are indistinguishable from one picture, and
 telling them apart took one render with hidden-surface removal switched off.

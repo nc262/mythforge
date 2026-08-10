@@ -10,7 +10,7 @@ domain, no attribution required, commercial use fine**.
 | `anim/` | Universal Animation Library 2 | 43 situational clips, already on the 65-bone skeleton |
 | `anim/UAL1_Retargeted.glb` | Universal Animation Library **1** | 43 more, **retargeted** here from Rigify — see below |
 | `anim/Authored.glb` | **none — written here** | 9 emotes no free library ships |
-| `horns/` | **none — grown here** | 4 horn pairs per sex, seeded off each skull |
+| `horns/` | **none — grown here** | 4 horn pairs per sex, seeded off each skull, plus the tail |
 | `weapons/` | Fantasy RPG weapons | Rigid props for the hand bones — no skin weights needed |
 
 `cloth/` and `anim/Authored.glb` are the exceptions: they are **made here, not

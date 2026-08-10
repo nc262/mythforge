@@ -1026,16 +1026,16 @@ The term for spell slots is "Echoes."
 		# adds. Named individually as well as counted, because a count alone
 		# passes if the exporter renames one — and a renamed jiggle bone does not
 		# error, it silently stops being simulated.
-		assert(qd.skeleton != null and qd.skeleton.get_bone_count() == 70,
-			"q-doll: the shipping body is the 65-bone rig plus five for soft tissue")
+		assert(qd.skeleton != null and qd.skeleton.get_bone_count() == 75,
+			"q-doll: 65 shipped, five for soft tissue, five for the tail")
 		for jb in ModularDoll.JIGGLE:
 			assert(qd.skeleton.find_bone(str(jb)) >= 0,
 				"q-doll: the body carries the '%s' bone" % jb)
 		var sim := qd.skeleton.get_node_or_null("Jiggle")
 		assert(sim != null, "q-doll: a spring simulator is hung off the skeleton")
 		assert(not sim.active, "q-doll: ...and it is OFF until something asks to be alive")
-		assert(sim.get_setting_count() == ModularDoll.JIGGLE.size(),
-			"q-doll: every soft-tissue bone gets a spring")
+		assert(sim.get_setting_count() == ModularDoll.JIGGLE.size() + ModularDoll.JIGGLE_CHAINS.size(),
+			"q-doll: every soft-tissue bone and every chain gets a spring")
 		# EVERY GESTURE CLIP MUST EXIST AND MUST END. A name that is not in the
 		# library is a gesture that never plays; a name that LOOPS is worse, because
 		# `animation_finished` never fires for it and the director stops dead —

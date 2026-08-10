@@ -390,6 +390,14 @@ const RIGS := {
 		"beard": {
 			"full": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Beard.gltf",
 		},
+		# TAIL, grown by scripts/author_tail.py, which also puts its five bones
+		# on the BODY's skeleton — so the spring simulator already hanging there
+		# drives it, and a tail is one entry in JIGGLE_CHAINS rather than a
+		# second skeleton with its own simulator and its own update order.
+		"tail": {
+			"drake": {"male": "res://assets3d/horns/Male_tail.glb",
+				"female": "res://assets3d/horns/Female_tail.glb"},
+		},
 		# HORNS, grown by scripts/author_horns.py rather than sourced — no free
 		# pack ships them, and a horn is a swept tube, which is arithmetic.
 		#
@@ -624,7 +632,7 @@ func _attach_anim(prof: Dictionary) -> void:
 func apply_look(look: Dictionary) -> void:
 	var prof := profile()
 	var fallback: Dictionary = prof.get("look_default", {}).get(sex, {})
-	for kind in ["hair", "beard", "horns"]:
+	for kind in ["hair", "beard", "horns", "tail"]:
 		var table: Dictionary = prof.get(kind, {})
 		if table.is_empty():
 			continue
@@ -649,6 +657,9 @@ func apply_look(look: Dictionary) -> void:
 	skin_tint = SKIN_TONES.get(str(look.get("skin", DEFAULT_SKIN)), SKIN_TONES[DEFAULT_SKIN])
 	_tint_horns(HORN_COLORS.get(str(look.get("horn_color", DEFAULT_HORN)),
 		HORN_COLORS[DEFAULT_HORN]))
+	# The tail takes the SKIN's colour, not its own. It is the same creature —
+	# a crimson tiefling with a beige tail reads as a costume.
+	_tint_piece("tail", skin_tint)
 	_refresh_zones()
 
 
@@ -741,9 +752,13 @@ func _tint_hair(c: Color) -> void:
 
 
 func _tint_horns(c: Color) -> void:
-	if not _extern.has("horns") or not is_instance_valid(_extern["horns"]):
+	_tint_piece("horns", c)
+
+
+func _tint_piece(kind: String, c: Color) -> void:
+	if not _extern.has(kind) or not is_instance_valid(_extern[kind]):
 		return
-	for mi in _all_meshes(_extern["horns"]):
+	for mi in _all_meshes(_extern[kind]):
 		if mi.mesh == null:
 			continue
 		for i in mi.mesh.get_surface_count():
@@ -1029,6 +1044,18 @@ const JIGGLE := {
 	"belly":    {"stiffness": 0.12, "drag": 0.22, "gravity": 0.16, "radius": 0.05, "length": 0.16},
 }
 
+## Chains, as opposed to the one-bone lumps above. A tail is a real limb: five
+## bones, root to tip, and the simulator walks it. Softer and heavier than the
+## soft tissue, because a tail is long and its tip has a long way to travel.
+const JIGGLE_CHAINS := {
+	# MUCH looser than the soft tissue, and measured rather than guessed: at the
+	# soft-tissue numbers (0.26 / 0.30) a 200-degree turn moved the tip 9.6 mm,
+	# which is alive on paper and nothing to look at. A tail is half a metre of
+	# lever and wants to trail.
+	"tail": {"root": "tail_01", "end": "tail_05",
+		"stiffness": 0.07, "drag": 0.11, "gravity": 0.32, "radius": 0.035},
+}
+
 var _spring: SpringBoneSimulator3D = null
 
 
@@ -1043,7 +1070,14 @@ func _add_jiggle() -> void:
 	for nm in JIGGLE:
 		if skeleton.find_bone(str(nm)) >= 0:
 			names.append(str(nm))
-	if names.is_empty():
+	# Chains only count if the WHOLE chain is on this skeleton — a body exported
+	# before the tail existed has neither end of it.
+	var chains: Array[String] = []
+	for key in JIGGLE_CHAINS:
+		var c: Dictionary = JIGGLE_CHAINS[key]
+		if skeleton.find_bone(str(c["root"])) >= 0 and skeleton.find_bone(str(c["end"])) >= 0:
+			chains.append(str(key))
+	if names.is_empty() and chains.is_empty():
 		return
 	# BEFORE the springs, because modifiers run in child order and the springs
 	# should answer to the planted pose rather than to a translation that is
@@ -1054,7 +1088,7 @@ func _add_jiggle() -> void:
 	var sim := SpringBoneSimulator3D.new()
 	sim.name = "Jiggle"
 	skeleton.add_child(sim)
-	sim.set_setting_count(names.size())
+	sim.set_setting_count(names.size() + chains.size())
 	for i in names.size():
 		var cfg: Dictionary = JIGGLE[names[i]]
 		# Root AND end are the same bone. A chain of one is legal here precisely
@@ -1068,6 +1102,18 @@ func _add_jiggle() -> void:
 		sim.set_drag(i, float(cfg.get("drag", 0.15)))
 		sim.set_radius(i, float(cfg.get("radius", 0.05)))
 		sim.set_gravity(i, float(cfg.get("gravity", 0.1)))
+	for j in chains.size():
+		var c: Dictionary = JIGGLE_CHAINS[chains[j]]
+		var i := names.size() + j
+		# A REAL chain: root and end are different bones, so `extend_end_bone`
+		# stays off — the tip is the last bone, not a synthesised one.
+		sim.set_root_bone_name(i, str(c["root"]))
+		sim.set_end_bone_name(i, str(c["end"]))
+		sim.set_extend_end_bone(i, false)
+		sim.set_stiffness(i, float(c.get("stiffness", 0.3)))
+		sim.set_drag(i, float(c.get("drag", 0.3)))
+		sim.set_radius(i, float(c.get("radius", 0.03)))
+		sim.set_gravity(i, float(c.get("gravity", 0.2)))
 	# Off until live() asks. The board token is one captured frame and the forge
 	# preview is a still; neither has motion for a spring to answer.
 	sim.active = false

@@ -211,9 +211,38 @@ Horn colour is its own palette, not the hair's — bone-white over crimson is a
 different character from black, and neither should follow what the hero did with
 their hair.
 
-That is a tiefling on the shipped body: crimson skin, a pair of horns, and the
-build knobs. What is still missing is the tail, which wants its own small bone
-chain and a spring — the rig is already tuned for it.
+### The tail
+
+Five bones onto the BODY's own skeleton, and a mesh skinned across them —
+`scripts/author_tail.py` does both, rewriting the body in place the way
+`add_jiggle_bones` does.
+
+Putting the bones on the shared skeleton rather than giving the tail a private
+armature is the entire trick. `SpringBoneSimulator3D` is already hanging off that
+skeleton, already tuned, so a chain rooted at `tail_01` and ending at `tail_05`
+is **one entry in a table** and the tail sways with no new simulation, no second
+skeleton to keep in step and no attachment maths. A private armature would have
+needed all three.
+
+The garments did NOT need re-exporting. A garment's skin binds to the bones it
+names and none of them names a tail, so extra bones are inert to everything that
+does not reference them — only the two bodies were rewritten.
+
+It takes the SKIN's tint rather than its own: a crimson tiefling with a beige
+tail reads as a costume.
+
+**No clip in either animation library touches a tail bone** — they were baked
+long before the bones existed. That makes the proof free: every millimetre
+`tail_05` moves from its rest is the spring and nothing else, so `jiggle_shot`
+asserts on exactly that rather than on a picture.
+
+So the shipped body now reaches a **tiefling** (crimson, horns, tail) and most of
+the way to a **dragonborn** (verdant or azure, horns, tail). What a dragonborn
+still lacks is scales and a snout. Scales are a surface and therefore reachable —
+the skin shader already samples albedo, normal and roughness and multiplies a
+tint, so a tiling scale pattern is one more sampler. **A snout is not.** The head
+is one low-poly mesh with no morphs and no face bones; it can be tinted and have
+things bolted to it, but it cannot be reshaped.
 
 ### The neck, and the four rules it took
 
