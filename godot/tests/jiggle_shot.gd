@@ -89,6 +89,7 @@ func _ready() -> void:
 	_vp.add_child(_cam)
 	_cam.fov = 34.0
 
+	await _skin_sheet()
 	await _neck_sheet()
 	await _look_sheet()
 	for who in ["female", "male"]:
@@ -103,6 +104,24 @@ func _ready() -> void:
 	await _alive()
 	print("JIGGLE done — %s" % ProjectSettings.globalize_path(OUT))
 	get_tree().quit()
+
+
+## The skin palette, close on the face where the normal map actually shows, and
+## where a tint that reads as "a hero" and one that reads as "a hero dipped in
+## paint" are told apart.
+func _skin_sheet() -> void:
+	_vp.size = Vector2i(SIZE, SIZE)
+	_doll.sex = "female"
+	_doll.build(load(_doll.body_path()))
+	for slot in DRESS:
+		_doll.equip(str(slot), str(DRESS[slot]))
+	for tone in ModularDoll.SKIN_TONES:
+		_doll.apply_look({"hair": "long", "hair_color": "black", "skin": tone})
+		_pivot.rotation_degrees.y = -18.0
+		var top := _top_y()
+		_cam.position = Vector3(0.0, top - 0.16, 0.78)
+		_cam.look_at(Vector3(0.0, top - 0.17, 0.0), Vector3.UP)
+		await _grab("skin_%s" % tone)
 
 
 ## THE NECK, framed on the neck. Every garment that touches the shoulders, alone,

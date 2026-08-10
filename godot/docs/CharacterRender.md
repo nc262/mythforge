@@ -158,6 +158,30 @@ the Blender clip list therefore matches nothing and does so **silently** — the
 figure simply keeps whatever pose it already had, which reads as a design
 decision rather than a lookup that found no clip.
 
+### The skin's own surface
+
+The pack's skin ships a **normal map and a roughness map**, and its material
+references both. The hidden-surface shader replaced that material the moment any
+garment went on — and sampled albedo alone, with a hard-coded flat roughness. So
+a bare hero rendered with pores and a dressed one rendered like painted plastic.
+That is every hero, always, on every surface in the game, and nothing failed
+because nothing was looking.
+
+The shader carries both through now, and it is applied **even bare**, which
+matters for a second reason: it is the one material the skin always wears, so it
+is the only place a skin tone can live. Ten tones, multiplied over the pack's
+albedo so freckles, lips and brows survive — a flat fill gives a hero the face of
+a mannequin dipped in paint.
+
+Four of the ten are not human colours at all. `crimson`, `violet`, `verdant` and
+`azure` are there because **a tint is what makes a tiefling possible on one base
+body**: horns and a tail are geometry and can be attached, but without the skin
+a tiefling is a human wearing horns.
+
+The eyebrows go with the hair. They are the BODY's mesh, not a worn piece, on
+the same `MI_Hair` material the wigs use — tinting only the worn hair gave every
+hero white eyebrows over black hair.
+
 ### The neck, and the four rules it took
 
 Every torso garment was deleting the throat, so the head sat straight on the

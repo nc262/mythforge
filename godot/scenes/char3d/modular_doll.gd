@@ -626,6 +626,7 @@ func apply_look(look: Dictionary) -> void:
 			_worn[kind] = pick
 	_tint_hair(HAIR_COLORS.get(str(look.get("hair_color", DEFAULT_HAIR)),
 		HAIR_COLORS[DEFAULT_HAIR]))
+	skin_tint = SKIN_TONES.get(str(look.get("skin", DEFAULT_SKIN)), SKIN_TONES[DEFAULT_SKIN])
 	_refresh_zones()
 
 
@@ -653,17 +654,53 @@ const HAIR_COLORS := {
 }
 const DEFAULT_HAIR := "brown"
 
+## Skin, multiplied over the pack's own albedo so freckles, lips and brows
+## survive it. The natural tones sit near 1.0 because the texture is already a
+## skin; the heritage tints are the ones that do real work.
+##
+## THIS IS WHAT MAKES A TIEFLING POSSIBLE AT ALL on one base body. Horns and a
+## tail are geometry and can be attached; the crimson is a tint, and without it
+## a tiefling is a human with horns.
+const SKIN_TONES := {
+	"fair":    Color(1.06, 0.98, 0.94),
+	"tan":     Color(0.92, 0.80, 0.66),
+	"olive":   Color(0.82, 0.74, 0.56),
+	"brown":   Color(0.62, 0.45, 0.33),
+	"deep":    Color(0.40, 0.28, 0.21),
+	"ashen":   Color(0.74, 0.74, 0.78),
+	"crimson": Color(0.86, 0.30, 0.26),
+	"violet":  Color(0.60, 0.42, 0.72),
+	"verdant": Color(0.52, 0.68, 0.42),
+	"azure":   Color(0.44, 0.62, 0.80),
+}
+const DEFAULT_SKIN := "tan"
+
+## The live tint, set by `apply_look`. Held as a Color rather than a key because
+## the shader is rebuilt on every re-dress and re-reading the palette each time
+## is the sort of thing that quietly disagrees with itself.
+var skin_tint := Color(1.0, 1.0, 1.0)
+
 
 func _tint_hair(c: Color) -> void:
+	# THE EYEBROWS ARE THE BODY'S, not a worn piece — they arrive as their own
+	# mesh inside the base character, on the same MI_Hair material the wigs use.
+	# Tinting only the worn hair gave every hero white eyebrows over black hair,
+	# which at Gear-page size reads as a very surprised old man.
+	var holders: Array = [_body]
 	for kind in ["hair", "beard"]:
-		if not _extern.has(kind) or not is_instance_valid(_extern[kind]):
+		if _extern.has(kind) and is_instance_valid(_extern[kind]):
+			holders.append(_extern[kind])
+	for holder in holders:
+		if holder == null or not is_instance_valid(holder):
 			continue
-		for mi in _all_meshes(_extern[kind]):
+		for mi in _all_meshes(holder):
 			if mi.mesh == null:
 				continue
 			for i in mi.mesh.get_surface_count():
 				var src = mi.mesh.surface_get_material(i)
-				if not (src is StandardMaterial3D):
+				# Only the HAIR material. The body carries eyes and skin on the
+				# same mesh list, and dyeing an eyeball black is memorable.
+				if not (src is StandardMaterial3D) or not src.resource_name.contains("Hair"):
 					continue
 				var m: StandardMaterial3D = src.duplicate()
 				m.albedo_color = c
@@ -1271,14 +1308,39 @@ func _apply_body_mask(want: String, union: Image) -> void:
 			var src = mi.mesh.surface_get_material(i)
 			if not (src is StandardMaterial3D) or not src.resource_name.contains(want):
 				continue
-			if union == null:
-				mi.set_surface_override_material(i, null)   # bare: no mask at all
-				continue
+			# ALWAYS the shader, even bare. It used to fall back to the pack's
+			# own material whenever nothing was worn, which meant the skin tone
+			# only reached a DRESSED hero — and it meant the surface changed
+			# under you the moment you took a shirt off.
 			var sm := ShaderMaterial.new()
 			sm.shader = load(BODY_MASK_SHADER)
 			sm.set_shader_parameter("albedo_tex", src.albedo_texture)
-			sm.set_shader_parameter("cover_mask", ImageTexture.create_from_image(union))
+			# CARRIED THROUGH, not dropped. The pack's skin ships both of these
+			# and the material references them; the old shader sampled albedo
+			# alone, so putting on a shirt turned a hero's skin to plastic.
+			sm.set_shader_parameter("normal_tex", src.normal_texture)
+			sm.set_shader_parameter("has_normal", src.normal_texture != null)
+			sm.set_shader_parameter("normal_depth", src.normal_scale if src.normal_enabled else 0.0)
+			sm.set_shader_parameter("rough_tex", src.roughness_texture)
+			sm.set_shader_parameter("has_rough", src.roughness_texture != null)
+			sm.set_shader_parameter("rough_flat", src.roughness)
+			sm.set_shader_parameter("tint", skin_tint)
+			sm.set_shader_parameter("cover_mask",
+				ImageTexture.create_from_image(union) if union != null else _no_mask())
 			mi.set_surface_override_material(i, sm)
+
+
+## A 1x1 black texture: "nothing is covered". Cached, because a bare doll would
+## otherwise build one per mesh per re-dress.
+static var _blank: ImageTexture = null
+
+
+static func _no_mask() -> ImageTexture:
+	if _blank == null:
+		var img := Image.create(1, 1, false, Image.FORMAT_RGB8)
+		img.fill(Color.BLACK)
+		_blank = ImageTexture.create_from_image(img)
+	return _blank
 
 
 ## Which body zones are currently hidden — the doll's own answer, for checks.

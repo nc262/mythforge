@@ -1297,11 +1297,26 @@ The term for spell slots is "Echoes."
 		# with a hole in them.
 		qm.sex = "male"
 		qm.build(load(qm.body_path()))
-		assert(_skin_override(qm) == null, "mask: a bare body wears no mask")
+		# WHAT THE MASK CONTAINS, not whether one is present. The skin now always
+		# wears its own shader — bare included, because that is where the skin
+		# tone and the PBR maps live — so "is there an override" stopped meaning
+		# anything. How much of the body it hides still does.
+		var bare_sm := _skin_override(qm)
+		assert(bare_sm is ShaderMaterial, "mask: the skin always wears its own shader")
+		assert(_mask_white(bare_sm) <= 0.001, "mask: a bare body is covered nowhere")
+		# THE PBR MAPS SURVIVE IT. This shader replaced a StandardMaterial that
+		# carries a normal map and a roughness map, and for months sampled albedo
+		# alone — so putting on a shirt turned a hero's skin to plastic, on every
+		# surface in the game, and nothing failed.
+		assert(bool(bare_sm.get_shader_parameter("has_normal")),
+			"mask: the skin keeps its normal map")
+		assert(bool(bare_sm.get_shader_parameter("has_rough")),
+			"mask: the skin keeps its roughness map")
 		assert(qm.equip("armor", "ranger"), "mask: the garment wears")
-		assert(_skin_override(qm) is ShaderMaterial, "mask: dressing must mask the skin")
+		assert(_mask_white(_skin_override(qm)) > 0.02, "mask: dressing must hide skin")
 		assert(qm.equip("armor", ""), "mask: the garment comes off")
-		assert(_skin_override(qm) == null, "mask: undressing must give the skin back")
+		assert(_mask_white(_skin_override(qm)) <= 0.001,
+			"mask: undressing must give the skin back")
 		qm.queue_free()
 		print("  mask: %d garments carry a hidden-surface mask; dressing hides skin, undressing returns it" % checked)
 
@@ -1635,6 +1650,28 @@ func _meshes_under(n: Node) -> Array[MeshInstance3D]:
 
 ## The override on the BODY's skin surface, or null. Separate from
 ## _first_override, which walks what the doll is wearing — this walks what it is.
+## What fraction of the coverage mask is white — how much of the skin it hides.
+## Sampled every 8th texel; the answer is a proportion and does not need all
+## 262,144 of them.
+func _mask_white(m: Material) -> float:
+	if not (m is ShaderMaterial):
+		return -1.0
+	var tex = m.get_shader_parameter("cover_mask")
+	if not (tex is Texture2D):
+		return -1.0
+	var img: Image = tex.get_image()
+	if img == null or img.is_empty():
+		return -1.0
+	var hit := 0
+	var seen := 0
+	for y in range(0, img.get_height(), 8):
+		for x in range(0, img.get_width(), 8):
+			seen += 1
+			if img.get_pixel(x, y).r > 0.5:
+				hit += 1
+	return float(hit) / float(maxi(seen, 1))
+
+
 func _skin_override(doll: ModularDoll) -> Material:
 	var want := str(doll.profile().get("skin_mat", ""))
 	for n in _meshes_under(doll._body):
