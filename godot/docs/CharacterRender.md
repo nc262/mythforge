@@ -158,6 +158,41 @@ the Blender clip list therefore matches nothing and does so **silently** — the
 figure simply keeps whatever pose it already had, which reads as a design
 decision rather than a lookup that found no clip.
 
+### The neck, and the four rules it took
+
+Every torso garment was deleting the throat, so the head sat straight on the
+shoulders and you could see down inside the collar from behind. The cause was
+proximity: the mask hides skin within 3.5 cm of cloth, and a throat is within
+3.5 cm of a collar that stands clear of it.
+
+Three rules were written to fix that and none did.
+
+| Rule | Result |
+|---|---|
+| Reject hits on any open-edge face | The tunic's laced placket is an open edge too — the whole chest came back bare |
+| Reject them only from the outward side | A collar is a TUBE: skin above it is *inside* that tube, so the side test reads "under cloth" and never fires |
+| Require the skin be ENCLOSED — a fan of rays, most finding cloth | A collar does surround a throat sideways; only the opening above escapes. Still ate it |
+| Tighten the distance to 1.2 cm | Saved the neck, put the legs straight through the trousers |
+
+All four were general answers to a specific problem. **Nothing in this wardrobe
+covers a throat** — the collars stand off it and the hood is a shell around the
+skull with its whole front open. So `neck_line` excludes everything above
+`neck_01` by REGION, taken from the rig so a different body carries its own
+line, and the entire class of bug stops being reachable. With that in place
+there was nothing left for a clever proximity rule to do, and all of them were
+deleted.
+
+**And none of the three had ever actually been tested.** `Image.save()` with a
+relative path writes nothing and reports nothing, so every re-bake for four days
+was a no-op and every measurement was taken against stale PNGs. The bake now
+checks the file exists afterwards. The lesson is the repo's own, again: the
+render was identical three times running, and that was the evidence.
+
+`jiggle_shot` renders each garment on the neck at close range with a `_raw`
+control beside it — the same loadout with masking off. That control is what
+finally separated "the mask is eating it" from "the collar just looks like
+that", after an hour of tuning a bake that was not being written.
+
 ### Hair, which was in the repo all along
 
 Five cuts and a beard ship with the base characters, skinned to the same 65

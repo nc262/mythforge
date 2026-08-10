@@ -28,7 +28,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # copied. Two definitions of "is this skin under that garment" is how the
 # offline render and the live figurine start disagreeing about where the holes
 # are, and the one that is wrong is whichever nobody looked at last.
-from bake_body_masks import covered_vertices  # noqa: E402
+from bake_body_masks import covered_vertices, neck_line  # noqa: E402
 
 SAMPLES = 160
 RES = 1024
@@ -105,9 +105,13 @@ def strip_covered(body, garment_objs) -> int:
     """
     import bmesh
 
+    # The neck line matters MORE here than in the game. A mask only discards
+    # fragments; this deletes faces outright, so skin carved off the throat is
+    # not a dark patch, it is a hole you can see the inside of the skull through.
+    above = neck_line(list(bpy.data.objects))
     cov = np.zeros(len(body.data.vertices), dtype=bool)
     for g in garment_objs:
-        cov |= covered_vertices(body, g)
+        cov |= covered_vertices(body, g, above)
 
     bm = bmesh.new()
     bm.from_mesh(body.data)

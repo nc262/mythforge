@@ -141,6 +141,16 @@ the last thing it did and never idles again. Which clips loop is not readable
 from the table, because Godot sets loop mode from a `_Loop` suffix it strips —
 so `self_check` asserts every gesture clip exists AND ends.
 
+**`Image.save()` with a RELATIVE path writes nothing and says nothing.** Blender
+resolves it against the blend file, which in a `--background` run is nowhere.
+Four days of re-bakes were silent no-ops, and three separate coverage rules were
+measured and rendered against stale PNGs before the identical render gave it
+away. `bake_body_masks` now checks the file exists after saving.
+
+**Give every render an unmasked CONTROL.** "The mask is eating the neck" and
+"the collar just looks like that" are indistinguishable from one picture, and
+telling them apart took one render with hidden-surface removal switched off.
+
 **Cycles on this machine:** `HIP` is the working compute device, and the AgX look
 is named `AgX - Base Contrast` — `AgX - Medium Contrast` does not exist and
 throws.

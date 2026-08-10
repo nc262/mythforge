@@ -89,6 +89,7 @@ func _ready() -> void:
 	_vp.add_child(_cam)
 	_cam.fov = 34.0
 
+	await _neck_sheet()
 	await _look_sheet()
 	for who in ["female", "male"]:
 		await _shape_sheet(who)
@@ -102,6 +103,73 @@ func _ready() -> void:
 	await _alive()
 	print("JIGGLE done — %s" % ProjectSettings.globalize_path(OUT))
 	get_tree().quit()
+
+
+## THE NECK, framed on the neck. Every garment that touches the shoulders, alone,
+## because "no neck sometimes" is a loadout-dependent bug and the only way to see
+## which loadout is to render them one at a time.
+##
+## Close enough that the jaw fills the frame — at full-figure size a missing neck
+## reads as a slightly hunched hero, which is exactly why this shipped.
+const NECK_KIT := [
+	["bare", {}],
+	["ranger_body", {"armor": "ranger"}],
+	["peasant_body", {"armor": "peasant"}],
+	["hood", {"head": "hood"}],
+	["ranger_hood", {"armor": "ranger", "head": "hood"}],
+	["full", {"armor": "ranger", "legs": "ranger", "feet": "ranger",
+		"hands": "ranger", "cloak": "pauldrons"}],
+]
+
+
+func _neck_sheet() -> void:
+	_vp.size = Vector2i(SIZE, SIZE)
+	for who in ["male", "female"]:
+		_doll.sex = who
+		_doll.build(load(_doll.body_path()))
+		_doll.apply_look({"hair": "", "beard": ""})   # nothing to hide behind
+		for kit in NECK_KIT:
+			for slot in ModularDoll.RENDERED_SLOTS:
+				_doll.equip(slot, "")
+			for slot in kit[1]:
+				_doll.equip(str(slot), str(kit[1][slot]))
+			# `_raw` IS THE CONTROL: the same loadout with hidden-surface
+			# removal switched off entirely. If the neck looks the same without
+			# a mask then the mask is not what is eating it, and every hour
+			# spent tuning the bake is an hour spent on the wrong thing.
+			for masked in [true, false]:
+				if not masked:
+					_doll._apply_body_mask(str(_doll.profile().get("skin_mat", "")), null)
+				for yaw in [-14.0, -62.0]:
+					_pivot.rotation_degrees.y = yaw
+					# AIMED AT THE TOP OF THE FIGURE, not framed on it.
+					#
+					# `frame_camera` centres on the union of every visible mesh,
+					# which is the middle of the TORSO, so a tight margin there
+					# zooms in on the belt and the neck never appears. And
+					# `get_bone_global_pose` is skeleton space rather than
+					# world, so aiming at the Head bone put the camera on the
+					# belly. Both were rendered before this was.
+					#
+					# Shoulders to crown is about 0.45 m, and at fov 34 that
+					# needs 0.45/2 / tan(17 deg) = 0.74 m of distance.
+					var top := _top_y()
+					_cam.position = Vector3(0.0, top - 0.205, 0.74)
+					_cam.look_at(Vector3(0.0, top - 0.205, 0.0), Vector3.UP)
+					await _grab("neck_%s_%s_%d%s" % [who, kit[0], int(-yaw),
+						"" if masked else "_raw"])
+
+
+## The highest point of anything visible on the doll, in world space — the crown
+## of the head, unless the hero is holding a sword over it.
+func _top_y() -> float:
+	var top := -1e9
+	for mi in _doll._all_meshes(_doll):
+		if not mi.visible:
+			continue
+		var box: AABB = mi.global_transform * mi.get_aabb()
+		top = maxf(top, box.position.y + box.size.y)
+	return top
 
 
 ## Every hairstyle on both bodies, plus a hood over one — because hair a hood
