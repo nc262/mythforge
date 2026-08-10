@@ -360,6 +360,43 @@ const RIGS := {
 		# one. `head` and `cloak` are absent on purpose: bare-headed and
 		# cloakless are normal, bare-legged is not.
 		"default": {"armor": "peasant", "hands": "peasant", "legs": "peasant", "feet": "peasant"},
+		# ── APPEARANCE, WHICH IS NOT EQUIPMENT ───────────────────────────────
+		# Hair is not something a hero finds in a chest, so it is deliberately
+		# not one of RENDERED_SLOTS and `wear_inventory` never touches it. It is
+		# set once at build from the sheet, like sex and heritage.
+		#
+		# Mechanically it IS a garment: every one of these is skinned to the same
+		# 65 bones, so they ride `_wear_file` with nothing new underneath. That
+		# is the dividend of one rig, again — five hairstyles and a beard for a
+		# table.
+		#
+		# EYEBROWS AND EYES ARE NOT HERE because the body already carries them as
+		# their own meshes. The pack ships standalone brow meshes too; wearing
+		# those as well would give every hero two sets.
+		"hair": {
+			"long": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Long.gltf",
+			"buns": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buns.gltf",
+			"parted": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_SimpleParted.gltf",
+			# ONE cut, authored twice. `Hair_BuzzedFemale` is not a second style
+			# — it is the same 466-vertex shell sitting 43 mm lower, because the
+			# female head is 43 mm lower. Offering both as separate choices gave
+			# a menu with a dead entry: whichever one was cut for the other body
+			# sinks under the scalp and renders as bald.
+			#
+			# Same shape as the `feet` entry above, and the same reason.
+			"buzzed": {"male": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Buzzed.gltf",
+				"female": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_BuzzedFemale.gltf"},
+		},
+		"beard": {
+			"full": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Beard.gltf",
+		},
+		# What a hero looks like before anyone chooses. Bald is a CHOICE, not a
+		# default — a figurine with no hair reads as unfinished, which is exactly
+		# how every render in this repo has read until now.
+		"look_default": {
+			"male": {"hair": "parted", "beard": ""},
+			"female": {"hair": "long", "beard": ""},
+		},
 		# Two archetypes is what the pack actually ships (see SOURCE.md), so the
 		# match table sorts every item name into one of them. Leather, hide and
 		# studded read as the ranger; cloth and common wear read as the peasant.
@@ -557,6 +594,80 @@ func _attach_anim(prof: Dictionary) -> void:
 			if not ap.has_animation_library(key):
 				ap.add_animation_library(key, sap.get_animation_library(lib))
 		src.queue_free()
+
+
+## Hair, beard, and the colour of them. Appearance, not equipment — set once at
+## build from the sheet, never from the pack.
+##
+## Mechanically each piece is a garment on the shared skeleton, so it goes
+## through the same `_wear_file` the wardrobe uses, with the dye switched off.
+func apply_look(look: Dictionary) -> void:
+	var prof := profile()
+	var fallback: Dictionary = prof.get("look_default", {}).get(sex, {})
+	for kind in ["hair", "beard"]:
+		var table: Dictionary = prof.get(kind, {})
+		if table.is_empty():
+			continue
+		# An ABSENT key falls back to the default look; an explicitly EMPTY one
+		# means bald or clean-shaven and must be honoured. `has` is the whole
+		# distinction, and `get(kind, "")` would collapse it.
+		var pick := str(look[kind]) if look.has(kind) else str(fallback.get(kind, ""))
+		unequip_scene(kind)
+		_worn[kind] = ""
+		if pick == "" or not table.has(pick):
+			continue
+		# A value is either a plain path or, where the pack cut the piece twice,
+		# a {male:…, female:…} pair — same convention the wardrobe already uses.
+		var entry = table[pick]
+		var path := str(entry.get(sex, entry.get("male", ""))) if entry is Dictionary else str(entry)
+		if not ResourceLoader.exists(path):
+			continue
+		if _wear_file(kind, load(path), false):
+			_worn[kind] = pick
+	_tint_hair(HAIR_COLORS.get(str(look.get("hair_color", DEFAULT_HAIR)),
+		HAIR_COLORS[DEFAULT_HAIR]))
+	_refresh_zones()
+
+
+## The colour of every hair piece worn.
+##
+## A MULTIPLY over the pack's own texture, not a flat fill: the strand detail,
+## the roots and the specular break-up all live in that albedo, and replacing it
+## outright gives a helmet of solid colour.
+##
+## THE TINT IS THE HAIR COLOUR, not a wash over one. The pack authors its hair
+## near-white so that any colour can multiply onto it — which means leaving the
+## tint bright does not mean "as authored", it means PLATINUM, and the first
+## render of this gave a party of silver-haired seventy-year-olds.
+##
+## A palette rather than a free colour: six that read at 230x336 and against the
+## eight world skins. Free RGB would let a player pick a hair that vanishes into
+## whatever hood they later put on.
+const HAIR_COLORS := {
+	"black": Color(0.10, 0.09, 0.10),
+	"brown": Color(0.29, 0.18, 0.11),
+	"auburn": Color(0.42, 0.17, 0.09),
+	"blond": Color(0.78, 0.62, 0.31),
+	"grey": Color(0.62, 0.61, 0.60),
+	"white": Color(0.88, 0.87, 0.85),
+}
+const DEFAULT_HAIR := "brown"
+
+
+func _tint_hair(c: Color) -> void:
+	for kind in ["hair", "beard"]:
+		if not _extern.has(kind) or not is_instance_valid(_extern[kind]):
+			continue
+		for mi in _all_meshes(_extern[kind]):
+			if mi.mesh == null:
+				continue
+			for i in mi.mesh.get_surface_count():
+				var src = mi.mesh.surface_get_material(i)
+				if not (src is StandardMaterial3D):
+					continue
+				var m: StandardMaterial3D = src.duplicate()
+				m.albedo_color = c
+				mi.set_surface_override_material(i, m)
 
 
 ## Give the figurine its body: heritage, sex, and whatever the player set.
@@ -994,7 +1105,7 @@ func _hold_prop(slot: String, path: String, part_id := "") -> bool:
 
 
 ## Instance a garment scene and re-point its meshes at this doll's skeleton.
-func _wear_file(slot: String, scene: PackedScene) -> bool:
+func _wear_file(slot: String, scene: PackedScene, dye := true) -> bool:
 	if skeleton == null or scene == null:
 		return false
 	var inst := scene.instantiate()
@@ -1014,7 +1125,10 @@ func _wear_file(slot: String, scene: PackedScene) -> bool:
 		mi.skeleton = mi.get_path_to(skeleton)
 	inst.queue_free()
 	_extern[slot] = holder
-	_dye(holder)
+	# Hair is not cut from the world's cloth. Pouring denim over it turns a
+	# hero's head into a hat.
+	if dye:
+		_dye(holder)
 	return true
 
 
@@ -1091,6 +1205,13 @@ func _refresh_zones() -> void:
 		for mi in _zone_meshes[zone]:
 			if is_instance_valid(mi):
 				mi.visible = not covered.has(zone)
+	# A HOOD EATS THE HAIR. There is no mask for this and there does not need to
+	# be one: hair is its own mesh, so hiding it is a boolean, and long hair
+	# through a hood is the one poke-through nobody would forgive.
+	#
+	# The beard stays. A hood does not cover a chin, and the pack's does not.
+	if _extern.has("hair") and is_instance_valid(_extern["hair"]):
+		_extern["hair"].visible = str(_worn.get("head", "")) == ""
 	_refresh_body_mask()
 
 

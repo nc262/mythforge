@@ -5,7 +5,7 @@ domain, no attribution required, commercial use fine**.
 
 | Folder | Pack | What |
 |---|---|---|
-| `bodies/` | Universal Base Characters | Base bodies + 20 hairstyles rigged to the head bone |
+| `bodies/` | Universal Base Characters | Base bodies, plus 5 hairstyles and a beard rigged to the head bone |
 | `outfits/` | Modular Character Outfits – Fantasy | Per-slot garments: Body, Arms, Legs, Feet, Head_Hood, Pauldrons |
 | `anim/` | Universal Animation Library 2 | 43 situational clips, already on the 65-bone skeleton |
 | `anim/UAL1_Retargeted.glb` | Universal Animation Library **1** | 43 more, **retargeted** here from Rigify — see below |
@@ -36,6 +36,24 @@ share exactly **1** bone (`root`).
 So a garment from `outfits/` drops onto a body from `bodies/` and is driven by a
 clip from `anim/` with nothing in between. That is the whole reason to prefer
 this family over the KayKit knight, which is now only a test fixture.
+
+## The hair
+
+`bodies/Hairstyles/Rigged to Head Bone/` holds **five cuts and a beard**, each
+skinned to the same 65 bones as everything else — so they are worn through the
+same code path the wardrobe uses, with nothing new underneath. Eyebrows and eyes
+are NOT among them: the bodies already carry both as their own meshes, and
+wearing the pack's standalone brow meshes as well gives every hero two sets.
+
+`Hair_Buzzed` and `Hair_BuzzedFemale` are **one cut authored twice**, not two
+styles — the same 466-vertex shell, 43 mm apart, because the female head is
+43 mm lower. Offered as separate choices, whichever was cut for the other body
+sinks under the scalp and renders as bald.
+
+The hair texture is authored near-white so any colour can multiply onto it,
+which means the TINT IS THE HAIR COLOUR and leaving it bright is not "as
+authored" — it is platinum. The first render of this gave a party of
+silver-haired seventy-year-olds.
 
 ## The second animation library, and why it needed baking
 

@@ -1074,6 +1074,39 @@ The term for spell slots is "Echoes."
 			"q-doll: the retargeted library is reachable")
 		# The spell set is for casters ONLY, so it must not be in either of the
 		# pools that every hero draws from.
+		# ── HAIR ─────────────────────────────────────────────────────────────
+		# Five styles and a beard sat in this repo, rigged and imported, wired to
+		# NOTHING — every figurine ever rendered here was bald and nobody noticed,
+		# because bald is a perfectly plausible thing for a character to be.
+		var hair: Dictionary = qd.profile().get("hair", {})
+		assert(hair.size() >= 3, "q-doll: several hairstyles, got %d" % hair.size())
+		for style in hair:
+			var entry = hair[style]
+			var paths: Array = []
+			if entry is Dictionary:
+				for k in entry:
+					paths.append(entry[k])
+			else:
+				paths.append(entry)
+			for path in paths:
+				assert(ResourceLoader.exists(str(path)),
+					"q-doll: hairstyle '%s' resolves to a real file" % style)
+		var bald := qd._all_meshes(qd).size()
+		qd.apply_look({"hair": "long", "beard": ""})
+		assert(qd._all_meshes(qd).size() > bald, "q-doll: hair adds geometry")
+		assert(qd.worn("hair") == "long", "q-doll: ...and the doll knows it wears it")
+		# A HOOD EATS THE HAIR, and this is a boolean rather than a mask, so it is
+		# the cheapest thing in the world to break silently.
+		qd.equip("head", "hood")
+		assert(not qd._extern["hair"].visible, "q-doll: a hood hides the hair under it")
+		qd.equip("head", "")
+		assert(qd._extern["hair"].visible, "q-doll: ...and taking it off gives it back")
+		qd.apply_look({"hair": "", "beard": ""})
+		assert(qd.worn("hair") == "", "q-doll: an empty style is honoured, not defaulted")
+		assert(qd._all_meshes(qd).size() == bald, "q-doll: ...and the geometry goes")
+		assert(ModularDoll.HAIR_COLORS.has(ModularDoll.DEFAULT_HAIR),
+			"q-doll: the default hair colour is one of the palette")
+
 		var spell_pool: Array = pools.get("caster", [])
 		assert(not spell_pool.is_empty(), "q-doll: a caster has something to cast")
 		for seq in spell_pool:

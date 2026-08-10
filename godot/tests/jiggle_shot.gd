@@ -89,6 +89,7 @@ func _ready() -> void:
 	_vp.add_child(_cam)
 	_cam.fov = 34.0
 
+	await _look_sheet()
 	for who in ["female", "male"]:
 		await _shape_sheet(who)
 	# Standing still first, then being TURNED — because the Gear page has both
@@ -101,6 +102,36 @@ func _ready() -> void:
 	await _alive()
 	print("JIGGLE done — %s" % ProjectSettings.globalize_path(OUT))
 	get_tree().quit()
+
+
+## Every hairstyle on both bodies, plus a hood over one — because hair a hood
+## grows through is the one poke-through nobody would forgive, and it is a
+## boolean rather than a mask, so it is the cheapest thing in the world to get
+## silently wrong.
+func _look_sheet() -> void:
+	_vp.size = Vector2i(SIZE, SIZE)
+	for who in ["female", "male"]:
+		_doll.sex = who
+		_doll.build(load(_doll.body_path()))
+		for slot in DRESS:
+			_doll.equip(str(slot), str(DRESS[slot]))
+		for style in ["", "long", "buns", "parted", "buzzed"]:
+			for hooded in [false, true]:
+				_doll.equip("head", "hood" if hooded else "")
+				_doll.apply_look({"hair": style, "beard": "full" if who == "male" else "",
+					"hair_color": "brown"})
+				_pivot.rotation_degrees.y = -22.0
+				_doll.frame_camera(_cam, 1.0, 0.34)   # tight: this is about a head
+				await _grab("look_%s_%s%s" % [who, style if style != "" else "bald",
+					"_hood" if hooded else ""])
+		_doll.equip("head", "")
+		# The palette, on one head. A hair colour that reads on paper can still
+		# vanish into the scalp at 230x336, which is the size this is judged at.
+		for c in ModularDoll.HAIR_COLORS:
+			_doll.apply_look({"hair": "long" if who == "female" else "parted",
+				"beard": "full" if who == "male" else "", "hair_color": c})
+			_doll.frame_camera(_cam, 1.0, 0.34)
+			await _grab("hue_%s_%s" % [who, c])
 
 
 ## One image per knob per value, bare and dressed. The point of comparison is

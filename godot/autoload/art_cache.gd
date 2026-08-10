@@ -695,6 +695,12 @@ var _fig_cache := {}     # loadout key → ImageTexture
 var _fig_busy := {}      # loadout key → true while a render is in flight
 
 
+## Hair, beard and their colour, as the sheet holds them.
+func _look() -> Dictionary:
+	var l = GameState.sheet().get("look")
+	return l if l is Dictionary else {}
+
+
 ## What makes one figurine different from another: the gear, and who is wearing
 ## it. Two heroes in identical kit legitimately share a token.
 func _loadout_key(inv: Dictionary) -> String:
@@ -706,8 +712,11 @@ func _loadout_key(inv: Dictionary) -> String:
 	# The BODY is part of the token too — a hero who changes sex or build is a
 	# different miniature, and keying on gear alone would keep serving the old one.
 	var s := GameState.sheet()
+	# The LOOK is part of the token too. Without it a hero who cuts their hair
+	# keeps the old miniature on the board, and it is the sort of staleness that
+	# reads as the change not having applied.
 	var bits: Array[String] = [hero_body_key(), str(s.get("race", "")), str(s.get("sex", "")),
-		JSON.stringify(s.get("build", {}))]
+		JSON.stringify(s.get("build", {})), JSON.stringify(s.get("look", {}))]
 	for slot in ["head", "cloak", "weapon", "offhand", "shield", "armor", "hands", "legs", "feet"]:
 		bits.append("%s=%s" % [slot, str(by_id.get(str(eq.get(slot, "")), ""))])
 	return "|".join(bits)
@@ -763,6 +772,11 @@ func _render_figurine(key: String, inv: Dictionary) -> void:
 	if _fig_doll == null:
 		_fig_busy.erase(key)
 		return
+	# Re-applied on EVERY render, not once at construction. The viewport and its
+	# doll are built lazily and then reused for the life of the process, so a
+	# look applied in that block would be whatever the hero looked like the first
+	# time a token was ever asked for — and a haircut would never reach the board.
+	_fig_doll.apply_look(_look())
 	_fig_doll.wear_inventory(inv)
 	# Re-framed per loadout, and TIGHT — this ends up ~40 px inside a ring on the
 	# board, so the margin that reads well on the Gear page leaves a figure too

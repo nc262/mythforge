@@ -88,6 +88,7 @@ func _ready() -> void:
 	if ResourceLoader.exists(body):
 		doll.build(load(body))   # build() stands the figure itself
 		doll.apply_build(Rules.hero_body(GameState.sheet()))
+		doll.apply_look(GameState.sheet().get("look", {}) if GameState.sheet().get("look") is Dictionary else {})
 		# THIS page is the one that breathes. The board token and the painted
 		# hero are both one captured frame, and the difference is deliberate:
 		# here the player is looking straight at their character, and a figure

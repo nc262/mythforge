@@ -158,6 +158,28 @@ the Blender clip list therefore matches nothing and does so **silently** — the
 figure simply keeps whatever pose it already had, which reads as a design
 decision rather than a lookup that found no clip.
 
+### Hair, which was in the repo all along
+
+Five cuts and a beard ship with the base characters, skinned to the same 65
+bones — and were wired to **nothing**. Every figurine this project has ever
+rendered was bald, and nobody caught it, because bald is a perfectly plausible
+thing for a character to be.
+
+They are appearance, not equipment: `apply_look` sets them once at build from
+the sheet, they are not in `RENDERED_SLOTS`, and `wear_inventory` never touches
+them. Mechanically each is a garment on the shared skeleton, so it rides
+`_wear_file` with the dye switched off — hair is not cut from the world's cloth,
+and pouring denim over it turns a hero's head into a hat.
+
+**A hood eats the hair.** No mask needed: hair is its own mesh, so hiding it is
+a boolean. The beard stays, because a hood does not cover a chin.
+
+**The tint IS the hair colour.** The pack authors its hair near-white so any
+colour can multiply onto it, so leaving the tint bright is not "as authored", it
+is platinum — the first render gave a party of silver-haired seventy-year-olds.
+Six palette entries rather than free RGB, so a player cannot pick a hair that
+vanishes into the hood they later put on.
+
 ### Soft tissue — shape and jiggle are the same five bones
 
 The pack's base body has **no shape keys** (`o.data.shape_keys is None`,
