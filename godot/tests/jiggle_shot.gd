@@ -89,6 +89,7 @@ func _ready() -> void:
 	_vp.add_child(_cam)
 	_cam.fov = 34.0
 
+	await _horn_sheet()
 	await _skin_sheet()
 	await _neck_sheet()
 	await _look_sheet()
@@ -104,6 +105,28 @@ func _ready() -> void:
 	await _alive()
 	print("JIGGLE done — %s" % ProjectSettings.globalize_path(OUT))
 	get_tree().quit()
+
+
+## Every horn on both skulls, front and three-quarter. Placement is the whole
+## question — a horn seeded off the wrong head floats above it, and the two
+## skulls in this pack sit 43 mm apart.
+func _horn_sheet() -> void:
+	_vp.size = Vector2i(SIZE, SIZE)
+	for who in ["female", "male"]:
+		_doll.sex = who
+		_doll.build(load(_doll.body_path()))
+		for slot in DRESS:
+			_doll.equip(str(slot), str(DRESS[slot]))
+		for style in ["ram", "swept", "spire", "nub"]:
+			_doll.apply_look({"hair": "long" if who == "female" else "parted",
+				"hair_color": "black", "skin": "crimson",
+				"horns": style, "horn_color": "onyx"})
+			for yaw in [-16.0, -68.0]:
+				_pivot.rotation_degrees.y = yaw
+				var top := _top_y()
+				_cam.position = Vector3(0.0, top - 0.20, 0.80)
+				_cam.look_at(Vector3(0.0, top - 0.22, 0.0), Vector3.UP)
+				await _grab("horn_%s_%s_%d" % [who, style, int(-yaw)])
 
 
 ## The skin palette, close on the face where the normal map actually shows, and

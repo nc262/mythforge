@@ -1106,6 +1106,41 @@ The term for spell slots is "Echoes."
 		assert(qd._all_meshes(qd).size() == bald, "q-doll: ...and the geometry goes")
 		assert(ModularDoll.HAIR_COLORS.has(ModularDoll.DEFAULT_HAIR),
 			"q-doll: the default hair colour is one of the palette")
+		# ── HORNS ────────────────────────────────────────────────────────────
+		# Grown by scripts/author_horns.py and skinned entirely to the Head bone,
+		# so they are a garment as far as the doll is concerned. Paired by sex,
+		# because the two skulls sit 43 mm apart and a horn seeded off one floats
+		# above the other.
+		var horns: Dictionary = qd.profile().get("horns", {})
+		assert(horns.size() >= 3, "q-doll: several horn styles, got %d" % horns.size())
+		for style in horns:
+			var pair = horns[style]
+			assert(pair is Dictionary and pair.has("male") and pair.has("female"),
+				"q-doll: horn '%s' is cut for both skulls" % style)
+			for k in pair:
+				assert(ResourceLoader.exists(str(pair[k])),
+					"q-doll: horn '%s' (%s) resolves to a real file" % [style, k])
+		# Hair pinned OFF at both ends of the comparison. `apply_look` falls back
+		# to the sex default for anything the dictionary does not mention, so a
+		# baseline taken without saying `hair: ""` silently includes a wig and
+		# the counts never match.
+		qd.apply_look({"hair": "", "beard": "", "horns": ""})
+		var plain := qd._all_meshes(qd).size()
+		qd.apply_look({"hair": "", "beard": "", "horns": "ram"})
+		assert(qd._all_meshes(qd).size() > plain, "q-doll: horns add geometry")
+		assert(qd.worn("horns") == "ram", "q-doll: ...and the doll knows it wears them")
+		# A HOOD DOES NOT REMOVE THEM. Hair is hidden under a hood; horns are part
+		# of the head, and a tiefling who loses their horns to a hat is not a
+		# tiefling. This is the assertion that stops someone "fixing" that.
+		qd.equip("head", "hood")
+		assert(qd._extern["horns"].visible, "q-doll: a hood does not take the horns off")
+		qd.equip("head", "")
+		qd.apply_look({"hair": "", "beard": "", "horns": ""})
+		assert(qd._all_meshes(qd).size() == plain, "q-doll: and they come off again")
+		assert(ModularDoll.HORN_COLORS.has(ModularDoll.DEFAULT_HORN),
+			"q-doll: the default horn colour is one of the palette")
+		assert(ModularDoll.SKIN_TONES.has(ModularDoll.DEFAULT_SKIN),
+			"q-doll: the default skin tone is one of the palette")
 
 		var spell_pool: Array = pools.get("caster", [])
 		assert(not spell_pool.is_empty(), "q-doll: a caster has something to cast")

@@ -390,6 +390,26 @@ const RIGS := {
 		"beard": {
 			"full": "res://assets3d/bodies/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_Beard.gltf",
 		},
+		# HORNS, grown by scripts/author_horns.py rather than sourced — no free
+		# pack ships them, and a horn is a swept tube, which is arithmetic.
+		#
+		# Skinned entirely to the `Head` bone at weight 1, so as far as this
+		# class is concerned they are a garment: worn through `_wear_file`, and
+		# they follow the head through every animation with no socket, no bone
+		# attachment and no second code path.
+		#
+		# Paired by sex for the same reason the buzz cut is: the two skulls sit
+		# 43 mm apart, and the roots are seeded off each body's own surface.
+		"horns": {
+			"ram":    {"male": "res://assets3d/horns/Male_ram.glb",
+				"female": "res://assets3d/horns/Female_ram.glb"},
+			"swept":  {"male": "res://assets3d/horns/Male_swept.glb",
+				"female": "res://assets3d/horns/Female_swept.glb"},
+			"spire":  {"male": "res://assets3d/horns/Male_spire.glb",
+				"female": "res://assets3d/horns/Female_spire.glb"},
+			"nub":    {"male": "res://assets3d/horns/Male_nub.glb",
+				"female": "res://assets3d/horns/Female_nub.glb"},
+		},
 		# What a hero looks like before anyone chooses. Bald is a CHOICE, not a
 		# default — a figurine with no hair reads as unfinished, which is exactly
 		# how every render in this repo has read until now.
@@ -604,7 +624,7 @@ func _attach_anim(prof: Dictionary) -> void:
 func apply_look(look: Dictionary) -> void:
 	var prof := profile()
 	var fallback: Dictionary = prof.get("look_default", {}).get(sex, {})
-	for kind in ["hair", "beard"]:
+	for kind in ["hair", "beard", "horns"]:
 		var table: Dictionary = prof.get(kind, {})
 		if table.is_empty():
 			continue
@@ -627,6 +647,8 @@ func apply_look(look: Dictionary) -> void:
 	_tint_hair(HAIR_COLORS.get(str(look.get("hair_color", DEFAULT_HAIR)),
 		HAIR_COLORS[DEFAULT_HAIR]))
 	skin_tint = SKIN_TONES.get(str(look.get("skin", DEFAULT_SKIN)), SKIN_TONES[DEFAULT_SKIN])
+	_tint_horns(HORN_COLORS.get(str(look.get("horn_color", DEFAULT_HORN)),
+		HORN_COLORS[DEFAULT_HORN]))
 	_refresh_zones()
 
 
@@ -675,6 +697,17 @@ const SKIN_TONES := {
 }
 const DEFAULT_SKIN := "tan"
 
+## Horn is keratin, not hair, and takes its own colour: a bone-white pair over
+## crimson skin is a very different character from a black pair, and neither
+## should follow whatever the hero did with their hair.
+const HORN_COLORS := {
+	"onyx":  Color(0.13, 0.12, 0.13),
+	"ash":   Color(0.34, 0.31, 0.29),
+	"bone":  Color(0.78, 0.74, 0.65),
+	"amber": Color(0.55, 0.36, 0.16),
+}
+const DEFAULT_HORN := "ash"
+
 ## The live tint, set by `apply_look`. Held as a Color rather than a key because
 ## the shader is rebuilt on every re-dress and re-reading the palette each time
 ## is the sort of thing that quietly disagrees with itself.
@@ -705,6 +738,21 @@ func _tint_hair(c: Color) -> void:
 				var m: StandardMaterial3D = src.duplicate()
 				m.albedo_color = c
 				mi.set_surface_override_material(i, m)
+
+
+func _tint_horns(c: Color) -> void:
+	if not _extern.has("horns") or not is_instance_valid(_extern["horns"]):
+		return
+	for mi in _all_meshes(_extern["horns"]):
+		if mi.mesh == null:
+			continue
+		for i in mi.mesh.get_surface_count():
+			var src = mi.mesh.surface_get_material(i)
+			if not (src is StandardMaterial3D):
+				continue
+			var m: StandardMaterial3D = src.duplicate()
+			m.albedo_color = c
+			mi.set_surface_override_material(i, m)
 
 
 ## Give the figurine its body: heritage, sex, and whatever the player set.

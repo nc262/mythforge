@@ -182,6 +182,39 @@ The eyebrows go with the hair. They are the BODY's mesh, not a worn piece, on
 the same `MI_Hair` material the wigs use — tinting only the worn hair gave every
 hero white eyebrows over black hair.
 
+### Horns, and heritage on one body
+
+No free pack ships a horn, and a horn is a swept tube, which is arithmetic.
+`scripts/author_horns.py` grows four — ram, swept, spire, nub — as rings along a
+curve that pitches back as it climbs, tapering to a point, with ridges as a sine
+on the radius. That last term costs nothing and is the difference between a horn
+and a traffic cone.
+
+**They need no new mechanism.** Every vertex is weighted to `Head` at 1.0, so as
+far as the doll is concerned a horn IS a garment: worn through `_wear_file`,
+following the skull through every animation, with no socket, no bone attachment
+and no second code path.
+
+**The roots are seeded, not typed.** The two skulls sit 43 mm apart — the same
+gap that made `Hair_BuzzedFemale` render as bald — so a horn placed by hand on
+one head floats above the other. Each root is the surface vertex furthest along
+a direction from the head's own centre, which lands correctly whatever the skull
+is shaped like. The first render put that direction out on the TEMPLES and the
+result read as a bull; horns want the brow ridge, and forward-and-inward is the
+whole difference.
+
+**A hood does not take them off.** Hair is hidden under a hood; horns are part of
+the head, and a tiefling who loses their horns to a hat is not a tiefling.
+`self_check` asserts it, so nobody "fixes" it later.
+
+Horn colour is its own palette, not the hair's — bone-white over crimson is a
+different character from black, and neither should follow what the hero did with
+their hair.
+
+That is a tiefling on the shipped body: crimson skin, a pair of horns, and the
+build knobs. What is still missing is the tail, which wants its own small bone
+chain and a spring — the rig is already tuned for it.
+
 ### The neck, and the four rules it took
 
 Every torso garment was deleting the throat, so the head sat straight on the
