@@ -409,11 +409,55 @@ where a player looks.
 meshes placed at the pack head's landmarks, so on a differently-shaped head they
 float: the brows read as small horns above the hairline and the eyes sit proud.
 
-So the order of work is now known, and it is not what it looked like from the
-bare renders: fix the uv islands, then re-place the eyes and brows, then re-seed
-the jiggle bones, horns, tail and shape keys — every one of those scripts
-measures the body it is given, so the last part is a re-run rather than a
-re-write.
+#### The fork: whose uv layout, and what each side costs
+
+Two routes were built and both were rendered, because the choice turns out to be
+a real trade rather than a bug to fix.
+
+**Inherit our layout** (transfer the uvs off the pack body). The twenty masks
+keep working untouched, and the DRESSED figure is clean front and back. The bare
+figure carries dark smears — scalp, chin, a shoulder, both thighs — wherever a
+loop's transferred uv landed on the wrong island. That artifact class cannot be
+tuned away, only made rarer: a transfer is a guess about which island a loop
+belongs to, and some loops straddle.
+
+**Keep MakeHuman's layout** (bake our skin onto it, `bake_skin`). A bake is not a
+guess — it is a ray from each texel to the old surface — so the smears are gone
+by construction and the bare body is clean everywhere but the face. It also
+lifts a ceiling: our atlas allocates face area for a head of 833 vertices, and
+keeping it would texture the better face at the worse density forever. **And it
+breaks every mask**, because masks are read BY UV: the dressed figure comes out
+shredded, cloth and skin swapped in patches.
+
+Four things went wrong inside the bake, and only the last one mattered:
+
+- 3 cm of cage with a 6 cm ray limit baked the knees and left the rest black.
+  Unbaked texels are not obviously unbaked — they are just very dark skin.
+- 10 cm of cage baked the torso and left both arms and both shins black in clean
+  uv-island-shaped bands.
+- A real cage object instead of per-face extrusion changed **nothing**, which is
+  what finally ruled out ray reach as the cause.
+- The bake was running **while our rig still held MakeHuman's A-pose**. The new
+  body had just been un-posed to the T-pose, so rays from its arms went looking
+  for arms that were hanging at fifty degrees. The torso baked perfectly the
+  whole time because a torso is in the same place in both poses. Resting the rig
+  before the bake fixed every band at once.
+
+Texels the ray genuinely cannot reach — a nose, a brow ridge, a chin, which the
+old body simply does not have — are healed by dilating their neighbours inward,
+because skin next to skin is skin. A flat average would put a grey disc on the
+nose.
+
+**The face is still wrong on both routes**, and for a reason no layout fixes:
+our texture has brow shading and lip colour PAINTED for our face's shape, so on a
+different face they land as blotches on a forehead and a temple. That wants a
+skin authored for this head, not a better projection of one that was not.
+
+So the decision is not technical any more. Inheriting the layout is the better
+CANDIDATE, because it can be looked at dressed. Baking is the better DESTINATION,
+but it only pays once the MakeHuman body replaces the pack body outright — masks
+are keyed by garment name and shared, so two bodies with different layouts cannot
+share one set of them.
 
 ### Soft tissue — a morph for the shape, a bone for the swing
 

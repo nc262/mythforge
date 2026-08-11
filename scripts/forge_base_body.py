@@ -365,42 +365,147 @@ def unpose(mh, arm, world: dict) -> float:
 	return moved
 
 
-def take_skin(mh, body) -> str:
-	"""Give the new body OUR uv layout, our texture and our material.
+## Baked skin resolution. The pack's own skin maps are 1024; MakeHuman's layout
+## gives the face a far larger share of the sheet than ours did, so 2048 keeps
+## the head at better than parity while the body loses nothing.
+BAKE_PX = 2048
 
-	This is the difference between a candidate and a body. MakeHuman's mesh
-	arrives with MakeHuman's uv layout, which means our skin texture lands
-	nowhere on it — and, worse, that every mask in `masks/` is addressed in the
-	OLD layout. Masks are images in uv space: hidden-surface removal reads them
-	by UV, not by position. A new layout invalidates all twenty at a stroke.
 
-	So the layout is not replaced, it is INHERITED. Both meshes are standing in
-	the same T-pose by this point, which is the only reason a proximity transfer
-	is meaningful at all — do it before the un-pose and it copies the uv of
-	whatever body part happened to be nearest.
+def heal(img) -> int:
+	"""Grow the baked pixels outwards into the ones that never got hit.
 
-	Interpolated across the nearest face rather than snapped to the nearest
-	corner: the two meshes differ in density, and snapping leaves the denser one
-	banded wherever the sparser one had a big quad.
+	A ray only lands where the old body HAS surface, and the new one has
+	features the old one does not: a nose, a brow ridge, a chin. Those texels
+	come back transparent, and transparent reads as black — a hero with soot on
+	his face. There is nothing to sample for them, so they are filled from their
+	neighbours instead, which is right because skin next to skin is skin.
+
+	Dilation rather than one flat fill: a flat average puts a grey disc on the
+	nose, while spreading the surrounding pixels inward keeps the tone that
+	belongs to that part of the face.
 	"""
-	while mh.data.uv_layers:
-		mh.data.uv_layers.remove(mh.data.uv_layers[0])
+	import numpy as np
+
+	w, h = img.size
+	buf = np.empty(w * h * 4, dtype=np.float32)
+	img.pixels.foreach_get(buf)
+	px = buf.reshape(h, w, 4)
+	rgb, alpha = px[..., :3], px[..., 3]
+	holes = int((alpha <= 0.5).sum())
+	if holes == 0:
+		return 0
+	for _ in range(64):
+		known = alpha > 0.5
+		if known.all():
+			break
+		total = np.zeros_like(rgb)
+		count = np.zeros_like(alpha)
+		for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+			nb = np.roll(np.roll(rgb, dy, axis=0), dx, axis=1)
+			nk = np.roll(np.roll(known, dy, axis=0), dx, axis=1)
+			total += nb * nk[..., None]
+			count += nk
+		grow = (~known) & (count > 0)
+		if not grow.any():
+			break
+		rgb[grow] = total[grow] / count[grow][..., None]
+		alpha[grow] = 1.0
+	alpha[:] = 1.0
+	img.pixels.foreach_set(px.reshape(-1))
+	img.update()
+	return holes
+
+
+def bake_skin(mh, body, out_dir: str, stem: str) -> str:
+	"""Bake our skin ONTO MakeHuman's own uv layout, rather than moving uvs.
+
+	THE OBVIOUS ROUTE WAS TRANSFERRING THE UVS and it was tried first: give the
+	new body our layout, and every mask in `masks/` keeps working unchanged,
+	since hidden-surface removal reads them BY UV, NOT BY POSITION. It worked
+	well enough that the dressed figure was clean front and back — and left dark
+	smears across the scalp, under the chin, on a shoulder and down both thighs,
+	wherever a loop's transferred uv landed on the wrong island. Every one of
+	those is on skin the wardrobe leaves showing.
+
+	That artifact class cannot be tuned away, only made rarer: a uv transfer is a
+	guess about which island a loop belongs to, and some loops straddle. A BAKE
+	is not a guess — it is a ray from each texel of the new layout to the old
+	surface, so there is no island to pick and no seam to straddle.
+
+	It also lifts a ceiling. Our atlas allocates its face area for a head of 833
+	vertices; MakeHuman's allocates for a head with a nose and eyelids. Keeping
+	our layout would have textured the better face at the worse density forever.
+
+	The masks are the price, and they are cheap: `bake_body_masks.py` measures
+	the body it is handed, so twenty masks are a re-run rather than hand work.
+	"""
+	sc = bpy.context.scene
+	sc.render.engine = "CYCLES"
+	sc.cycles.device = "CPU"
+	# One sample, and no light transport at all — DIFFUSE with direct and
+	# indirect off is the albedo and nothing else. Anything more is baking this
+	# scene's lighting into a skin that has to work under the game's.
+	sc.cycles.samples = 1
+	sc.render.bake.use_selected_to_active = True
+	sc.render.bake.use_pass_direct = False
+	sc.render.bake.use_pass_indirect = False
+	sc.render.bake.use_pass_color = True
+	# A REAL CAGE, not per-face extrusion, and the difference is whole limbs.
+	# Extrusion pushes each face out on its own, so on anything thin — an arm, a
+	# shin — the pushed faces cross each other and rays leave from the wrong
+	# side. 3 cm of it baked the knees and nothing else; 10 cm baked the torso
+	# and left both arms and both shins black in clean uv-island-shaped bands.
+	# An inflated COPY of the mesh stays a single coherent surface, so every ray
+	# starts outside the body and points at it.
+	cage = mh.copy()
+	cage.data = mh.data.copy()
+	cage.name = "BakeCage"
+	bpy.context.collection.objects.link(cage)
+	for v, src in zip(cage.data.vertices, mh.data.vertices):
+		v.co = src.co + src.normal * 0.035
+	cage.data.update()
+	sc.render.bake.use_cage = True
+	sc.render.bake.cage_object = cage
+	sc.render.bake.max_ray_distance = 0.0
+	# Bleed past each island edge, or every uv seam renders as a dark hairline
+	# once the texture is filtered.
+	sc.render.bake.margin = 16
+
+	# alpha=True so an untouched texel is TRANSPARENT rather than black, which is
+	# what makes "did this bake" answerable afterwards. Baked black and unbaked
+	# black are the same colour, and telling them apart by eye cost three wrong
+	# diagnoses of the arms.
+	img = bpy.data.images.new("%s_skin" % stem, BAKE_PX, BAKE_PX, alpha=True)
+	mat = bpy.data.materials.new("MI_%s" % stem)
+	mat.use_nodes = True
+	node = mat.node_tree.nodes.new("ShaderNodeTexImage")
+	node.image = img
+	bsdf = mat.node_tree.nodes.get("Principled BSDF")
+	if bsdf is not None:
+		mat.node_tree.links.new(bsdf.inputs["Base Color"], node.outputs["Color"])
+	# The bake writes into whichever image node is ACTIVE, which is why this is
+	# set explicitly rather than left to whatever the last new node happened to be.
+	mat.node_tree.nodes.active = node
+	mh.data.materials.clear()
+	mh.data.materials.append(mat)
+
 	bpy.ops.object.select_all(action="DESELECT")
+	body.select_set(True)
 	mh.select_set(True)
 	bpy.context.view_layer.objects.active = mh
-	mod = mh.modifiers.new("UVs", "DATA_TRANSFER")
-	mod.object = body
-	mod.use_loop_data = True
-	mod.data_types_loops = {"UV"}
-	mod.loop_mapping = "POLYINTERP_LNORPROJ"
-	bpy.ops.object.datalayout_transfer(modifier=mod.name)
-	bpy.ops.object.modifier_apply(modifier=mod.name)
+	bpy.ops.object.bake(type="DIFFUSE")
+	bpy.data.objects.remove(cage, do_unlink=True)
+	filled = heal(img)
 
-	mh.data.materials.clear()
-	for m in body.data.materials:
-		mh.data.materials.append(m)
-	return "%d uv layers, %d materials" % (
-		len(mh.data.uv_layers), len(mh.data.materials))
+	path = os.path.join(out_dir, "%s_skin.png" % stem)
+	img.filepath_raw = path
+	img.file_format = "PNG"
+	img.save()
+	if not os.path.exists(path):
+		raise SystemExit("baked skin was not written: %s" % path)
+	node.image.filepath = path
+	return "%d px, %d texels healed -> %s" % (
+		BAKE_PX, filled, os.path.basename(path))
 
 
 def main() -> None:
@@ -443,12 +548,23 @@ def main() -> None:
 
 	moved = unpose(mh, arm, world)
 	print("  un-posed, furthest vertex travelled %.3f m" % moved)
-	print("  took our skin: %s" % take_skin(mh, body))
 
-	# Back to rest, and the new mesh is bound to it.
+	# BACK TO REST BEFORE THE BAKE, and the order is the whole point. The bake
+	# fires rays from the new body's surface at the old one, so the two have to
+	# be standing the same way — and the new one has just been un-posed into the
+	# T-pose while our rig is still holding MakeHuman's A-pose. Baked in that
+	# order the torso comes out perfectly and both arms come out BLACK, because
+	# the source's arms are hanging at fifty degrees where the ray expects them
+	# level. It reads as a ray-reach problem and is not one; widening the cage
+	# and then building a real cage object both changed nothing at all.
 	for pb in arm.pose.bones:
 		pb.matrix_basis = Matrix()
 	bpy.context.view_layer.update()
+
+	out_dir = os.path.dirname(os.path.abspath(out_path))
+	os.makedirs(out_dir, exist_ok=True)
+	stem = os.path.splitext(os.path.basename(out_path))[0]
+	print("  baked our skin onto its own layout: %s" % bake_skin(mh, body, out_dir, stem))
 
 	bpy.ops.object.select_all(action="DESELECT")
 	mh.select_set(True)
