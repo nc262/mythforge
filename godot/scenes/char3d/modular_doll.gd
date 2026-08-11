@@ -1393,7 +1393,7 @@ func _refresh_body_mask() -> void:
 ## is the pre-mask behaviour. self_check is where a missing mask must fail.
 func _mask_for(garment_path: String) -> Image:
 	var stem := garment_path.get_file().get_basename()
-	var p := MASK_DIR + stem + "_mask.png"
+	var p := mask_dir + stem + "_mask.png"
 	if not ResourceLoader.exists(p):
 		return null
 	var tex = load(p)
@@ -1489,6 +1489,12 @@ const CLOTH_SHADER := "res://assets3d/cloth/world_cloth.gdshader"
 const BODY_MASK_SHADER := "res://assets3d/cloth/body_mask.gdshader"
 ## Where bake_body_masks.py writes, and the naming it uses.
 const MASK_DIR := "res://assets3d/masks/"
+## Which set of masks this doll reads. A mask is an image in THE BODY'S OWN uv
+## layout, so a body with a different layout needs its own set — they are not
+## interchangeable and a mismatched one does not degrade, it shreds: cloth and
+## skin swap in patches. The shipping body uses MASK_DIR; a candidate body
+## points this somewhere else. Nothing in the game changes this.
+var mask_dir := MASK_DIR
 
 ## Garments used to be pushed out along their normals to clear the body. That is
 ## gone: hidden-surface removal deletes the skin underneath instead, so there is

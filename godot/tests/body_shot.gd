@@ -60,6 +60,11 @@ func _ready() -> void:
 			push_error("BODY: missing %s" % path)
 			continue
 		_doll.sex = "male"
+		# A mask is an image in THE BODY'S OWN uv layout. The candidate carries
+		# MakeHuman's layout, not ours, so it needs the set baked against it —
+		# pointing it at the shipping masks does not degrade, it shreds.
+		_doll.mask_dir = "res://assets3d/masks/makehuman/" if shape != "" \
+			else ModularDoll.MASK_DIR
 		_doll.build(load(path))
 		_doll.apply_look({"hair": "", "beard": "", "horns": "", "skin": "tan"})
 		for dressed in [false, true]:
