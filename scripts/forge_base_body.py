@@ -365,6 +365,44 @@ def unpose(mh, arm, world: dict) -> float:
 	return moved
 
 
+def take_skin(mh, body) -> str:
+	"""Give the new body OUR uv layout, our texture and our material.
+
+	This is the difference between a candidate and a body. MakeHuman's mesh
+	arrives with MakeHuman's uv layout, which means our skin texture lands
+	nowhere on it — and, worse, that every mask in `masks/` is addressed in the
+	OLD layout. Masks are images in uv space: hidden-surface removal reads them
+	by UV, not by position. A new layout invalidates all twenty at a stroke.
+
+	So the layout is not replaced, it is INHERITED. Both meshes are standing in
+	the same T-pose by this point, which is the only reason a proximity transfer
+	is meaningful at all — do it before the un-pose and it copies the uv of
+	whatever body part happened to be nearest.
+
+	Interpolated across the nearest face rather than snapped to the nearest
+	corner: the two meshes differ in density, and snapping leaves the denser one
+	banded wherever the sparser one had a big quad.
+	"""
+	while mh.data.uv_layers:
+		mh.data.uv_layers.remove(mh.data.uv_layers[0])
+	bpy.ops.object.select_all(action="DESELECT")
+	mh.select_set(True)
+	bpy.context.view_layer.objects.active = mh
+	mod = mh.modifiers.new("UVs", "DATA_TRANSFER")
+	mod.object = body
+	mod.use_loop_data = True
+	mod.data_types_loops = {"UV"}
+	mod.loop_mapping = "POLYINTERP_LNORPROJ"
+	bpy.ops.object.datalayout_transfer(modifier=mod.name)
+	bpy.ops.object.modifier_apply(modifier=mod.name)
+
+	mh.data.materials.clear()
+	for m in body.data.materials:
+		mh.data.materials.append(m)
+	return "%d uv layers, %d materials" % (
+		len(mh.data.uv_layers), len(mh.data.materials))
+
+
 def main() -> None:
 	argv = sys.argv[sys.argv.index("--") + 1:]
 	obj_path, ours_path, out_path = argv[0], argv[1], argv[2]
@@ -405,6 +443,7 @@ def main() -> None:
 
 	moved = unpose(mh, arm, world)
 	print("  un-posed, furthest vertex travelled %.3f m" % moved)
+	print("  took our skin: %s" % take_skin(mh, body))
 
 	# Back to rest, and the new mesh is bound to it.
 	for pb in arm.pose.bones:
@@ -425,7 +464,10 @@ def main() -> None:
 	bpy.data.objects.remove(body, do_unlink=True)
 	os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
 	bpy.ops.object.select_all(action="SELECT")
+	# keep_originals, so the new body POINTS AT the textures already sitting
+	# beside it rather than writing a second copy of every skin map.
 	bpy.ops.export_scene.gltf(filepath=out_path, export_format="GLTF_SEPARATE",
+							  export_keep_originals=True,
 							  export_skins=True, export_animations=False)
 	if not os.path.exists(out_path):
 		raise SystemExit("new body was not written: %s" % out_path)

@@ -31,6 +31,12 @@ Fetched from `raw.githubusercontent.com/makehumancommunity/mpfb2` at
 `src/mpfb/data/3dobjs/base.obj`. The **addon is not needed and is not installed**
 — only that one file, which is the mesh itself.
 
+It wears **our** uv layout and **our** material, transferred off the pack body
+rather than kept as its own. That is deliberate: the masks in `masks/` are
+addressed in uv space, so a new layout would invalidate every one of them, and
+inheriting the old one keeps the skin texture and all twenty masks working
+unchanged.
+
 Nothing in the game loads it. It is wired into `tests/head_shot.tscn` only, so it
 can be looked at beside the head it would replace.
 

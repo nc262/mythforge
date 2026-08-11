@@ -370,12 +370,33 @@ matrix rather than blending the inverses: correct to worry about, since that
 matrix does go near-singular across a big rotation, but it was not what made the
 sheets.
 
-**It is a candidate, not the body.** What is still owed before it could replace
-anything: it has MakeHuman's UV layout and so no skin texture, the masks in
-`masks/` are baked against the old layout, and the jiggle bones, horns, tail and
-shape keys would all need re-seeding — every one of those scripts measures the
-body it is given, so that is a re-run rather than a re-write. Rendered beside the
-head it would replace by `tests/head_shot.tscn`.
+**The UV layout is inherited, not replaced**, and that is the decision that
+makes the rest affordable. MakeHuman's mesh arrives with MakeHuman's layout,
+which would leave our skin texture landing nowhere — and, far worse, would
+invalidate all twenty masks in `masks/` at a stroke, because hidden-surface
+removal reads them **by UV, not by position**. So the new body takes OUR uv
+layout off our own body by transfer, along with the material. Both meshes are
+standing in the same T-pose by then, which is the only reason a proximity
+transfer means anything; done before the un-pose it would copy the uv of
+whichever body part happened to be nearest.
+
+The mapping mode is worth naming, because the first one left marks. Interpolated
+across the **nearest face** put a dark blotch on each hand where the fingers
+straddle a uv island edge. Projected **along the loop normals** does not, because
+it asks "what is directly under this surface" rather than "what is closest",
+and a fingertip's answer to the second question can be the back of its own hand.
+
+**It is still a candidate, not the body.** What is owed: the painted underwear
+does not carry (MakeHuman's hips land on plain skin, which only shows on a bare
+figure, since the wardrobe covers it and the mask deletes what is under cloth);
+the skin reads a shade darker than ours, so the uv landing is approximate rather
+than part-for-part; and the jiggle bones, horns, tail and shape keys need
+re-seeding — every one of those scripts measures the body it is given, so that is
+a re-run rather than a re-write. **The test that decides it is a dressed one**:
+whether the inherited uvs are close enough that the baked masks cut the skin in
+the right places. Approximately-right uvs make a correct-looking bare figure and
+a hero with skin through their tunic. Rendered beside the head it would replace
+by `tests/head_shot.tscn`.
 
 ### Soft tissue — a morph for the shape, a bone for the swing
 

@@ -1581,6 +1581,25 @@
 				"metallicFactor":0,
 				"roughnessFactor":0.34545454382896423
 			}
+		},
+		{
+			"doubleSided":true,
+			"name":"MI_Superhero_Male",
+			"normalTexture":{
+				"index":2,
+				"texCoord":1
+			},
+			"pbrMetallicRoughness":{
+				"baseColorTexture":{
+					"index":3,
+					"texCoord":1
+				},
+				"metallicFactor":0,
+				"metallicRoughnessTexture":{
+					"index":4,
+					"texCoord":1
+				}
+			}
 		}
 	],
 	"meshes":[
@@ -1634,10 +1653,12 @@
 						"POSITION":23,
 						"NORMAL":24,
 						"TEXCOORD_0":25,
-						"JOINTS_0":26,
-						"WEIGHTS_0":27
+						"TEXCOORD_1":26,
+						"JOINTS_0":27,
+						"WEIGHTS_0":28
 					},
-					"indices":28
+					"indices":29,
+					"material":2
 				}
 			]
 		}
@@ -1650,6 +1671,18 @@
 		{
 			"sampler":0,
 			"source":1
+		},
+		{
+			"sampler":0,
+			"source":2
+		},
+		{
+			"sampler":0,
+			"source":3
+		},
+		{
+			"sampler":0,
+			"source":4
 		}
 	],
 	"images":[
@@ -1662,6 +1695,21 @@
 			"mimeType":"image/png",
 			"name":"T_Eye_Brown",
 			"uri":"T_Eye_Brown.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"T_Superhero_Male_Normal",
+			"uri":"T_Superhero_Male_Normal.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"T_Superhero_Male_Dark",
+			"uri":"T_Superhero_Male_Dark.png"
+		},
+		{
+			"mimeType":"image/png",
+			"name":"T_Superhero_Male_Roughness",
+			"uri":"T_Superhero_Male_Roughness.png"
 		}
 	],
 	"skins":[
@@ -1911,7 +1959,7 @@
 		{
 			"bufferView":23,
 			"componentType":5126,
-			"count":14517,
+			"count":17708,
 			"max":[
 				0.891929566860199,
 				1.8017170429229736,
@@ -1927,29 +1975,35 @@
 		{
 			"bufferView":24,
 			"componentType":5126,
-			"count":14517,
+			"count":17708,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":25,
 			"componentType":5126,
-			"count":14517,
+			"count":17708,
 			"type":"VEC2"
 		},
 		{
 			"bufferView":26,
-			"componentType":5121,
-			"count":14517,
-			"type":"VEC4"
+			"componentType":5126,
+			"count":17708,
+			"type":"VEC2"
 		},
 		{
 			"bufferView":27,
-			"componentType":5126,
-			"count":14517,
+			"componentType":5121,
+			"count":17708,
 			"type":"VEC4"
 		},
 		{
 			"bufferView":28,
+			"componentType":5126,
+			"count":17708,
+			"type":"VEC4"
+		},
+		{
+			"bufferView":29,
 			"componentType":5123,
 			"count":80268,
 			"type":"SCALAR"
@@ -2095,38 +2149,44 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":174204,
+			"byteLength":212496,
 			"byteOffset":131088,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":174204,
-			"byteOffset":305292,
+			"byteLength":212496,
+			"byteOffset":343584,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":116136,
-			"byteOffset":479496,
+			"byteLength":141664,
+			"byteOffset":556080,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":58068,
-			"byteOffset":595632,
+			"byteLength":141664,
+			"byteOffset":697744,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":232272,
-			"byteOffset":653700,
+			"byteLength":70832,
+			"byteOffset":839408,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":283328,
+			"byteOffset":910240,
 			"target":34962
 		},
 		{
 			"buffer":0,
 			"byteLength":160536,
-			"byteOffset":885972,
+			"byteOffset":1193568,
 			"target":34963
 		}
 	],
@@ -2138,7 +2198,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":1046508,
+			"byteLength":1354104,
 			"uri":"Superhero_Male_FullBody_makehuman.bin"
 		}
 	]
