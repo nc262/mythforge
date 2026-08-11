@@ -386,17 +386,34 @@ straddle a uv island edge. Projected **along the loop normals** does not, becaus
 it asks "what is directly under this surface" rather than "what is closest",
 and a fingertip's answer to the second question can be the back of its own hand.
 
-**It is still a candidate, not the body.** What is owed: the painted underwear
-does not carry (MakeHuman's hips land on plain skin, which only shows on a bare
-figure, since the wardrobe covers it and the mask deletes what is under cloth);
-the skin reads a shade darker than ours, so the uv landing is approximate rather
-than part-for-part; and the jiggle bones, horns, tail and shape keys need
-re-seeding — every one of those scripts measures the body it is given, so that is
-a re-run rather than a re-write. **The test that decides it is a dressed one**:
-whether the inherited uvs are close enough that the baked masks cut the skin in
-the right places. Approximately-right uvs make a correct-looking bare figure and
-a hero with skin through their tunic. Rendered beside the head it would replace
-by `tests/head_shot.tscn`.
+#### Dressed, which is the test that counts — and what it said
+
+`tests/body_shot.tscn` renders both bodies bare and dressed, front and back,
+because everything else rendered of this body was naked on a black background
+and that is exactly the condition under which a uv error hides.
+
+**The masks cut.** The ranger kit fits the new body, front and back, with no skin
+through the tunic and no gap at the collar or the seat. That is the load-bearing
+result: the inherited uv layout is close enough that twenty masks baked against a
+different mesh still delete the right skin. The body swap does not cost the
+wardrobe.
+
+**The bare figure is where it fails**, and the failure is the exact opposite of
+the one predicted. The dressed hero looks right; the undressed one carries dark
+smears — across the scalp, under the chin, on a shoulder, down both thighs —
+where transferred uvs landed on the wrong island and picked up hair or brow
+texture. Every one of those is on skin the wardrobe leaves showing, which is
+where a player looks.
+
+**The eyes and eyebrows are still cut for the old skull.** They are separate
+meshes placed at the pack head's landmarks, so on a differently-shaped head they
+float: the brows read as small horns above the hairline and the eyes sit proud.
+
+So the order of work is now known, and it is not what it looked like from the
+bare renders: fix the uv islands, then re-place the eyes and brows, then re-seed
+the jiggle bones, horns, tail and shape keys — every one of those scripts
+measures the body it is given, so the last part is a re-run rather than a
+re-write.
 
 ### Soft tissue — a morph for the shape, a bone for the swing
 
