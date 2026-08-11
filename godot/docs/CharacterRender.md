@@ -448,10 +448,37 @@ old body simply does not have — are healed by dilating their neighbours inward
 because skin next to skin is skin. A flat average would put a grey disc on the
 nose.
 
-**The face is still wrong on both routes**, and for a reason no layout fixes:
-our texture has brow shading and lip colour PAINTED for our face's shape, so on a
-different face they land as blotches on a forehead and a temple. That wants a
-skin authored for this head, not a better projection of one that was not.
+#### The face: seated, and deliberately untextured
+
+Two things were wrong with the head and neither had anything to do with uvs.
+
+**The eyes and brows were cut for the old skull.** They are separate meshes
+placed at the pack head's landmarks, so on a differently shaped head they float —
+the brows read as two small horns above the hairline. `seat_face` moves them by
+MEASUREMENT, like the horns and the tail: MakeHuman ships `joint-l-eye` and
+`joint-r-eye` among its joint cubes, so the new sockets are known exactly. Pupil
+centre to pupil centre gives position and scale together. It came out **34 mm off
+and 0.995 scale** — which is worth reading twice, because the spacing being right
+to half a percent is independent confirmation that the whole fit is sound.
+
+**The baked face was unusable, and no projection fixes it.** Our atlas has a face
+painted into it — lip colour, brow shading, the shadow under a nose our head does
+not have — and that paint describes OUR head's shape. Projected onto a head with
+a real nose and real eyelids it lands as red streaks across a cheek and a temple;
+the render of it looks like a flayed muscle chart. The problem is not where the
+paint went.
+
+So the head takes its own material and **no texture at all** (`flat_head`, cut at
+`neck_01`, 4,300 faces). That is not a surrender. The new head has the geometry to
+read on its own — brow, nose, eyelids, jaw, a real ear — and at 230×336 it is
+SHAPE that carries a face, not pore detail. The tone is the **median** of the
+baked sheet rather than the mean, because the atlas has black underwear painted
+into it and a mean comes out grey.
+
+MakeHuman ships no skin to borrow instead: its `default.mhmat` sets
+`shaderConfig diffuse false` and uses a litsphere with auto tone blending, so
+there is no albedo map in the CC0 release at all. The detailed skins are separate
+community assets under mixed licences.
 
 So the decision is not technical any more. Inheriting the layout is the better
 CANDIDATE, because it can be looked at dressed. Baking is the better DESTINATION,

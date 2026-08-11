@@ -1592,6 +1592,20 @@
 				"metallicFactor":0,
 				"roughnessFactor":0.5
 			}
+		},
+		{
+			"doubleSided":true,
+			"name":"MI_Superhero_Male_FullBody_makehuman_Head",
+			"pbrMetallicRoughness":{
+				"baseColorFactor":[
+					0.6392157077789307,
+					0.41960787773132324,
+					0.29411765933036804,
+					1
+				],
+				"metallicFactor":0,
+				"roughnessFactor":0.8199999928474426
+			}
 		}
 	],
 	"meshes":[
@@ -1650,6 +1664,17 @@
 					},
 					"indices":28,
 					"material":2
+				},
+				{
+					"attributes":{
+						"POSITION":29,
+						"NORMAL":30,
+						"TEXCOORD_0":31,
+						"JOINTS_0":32,
+						"WEIGHTS_0":33
+					},
+					"indices":34,
+					"material":3
 				}
 			]
 		}
@@ -1774,14 +1799,14 @@
 			"componentType":5126,
 			"count":650,
 			"max":[
-				0.062340568751096725,
-				1.7254689931869507,
-				0.09447787702083588
+				0.06204218789935112,
+				1.6922003030776978,
+				0.10201477259397507
 			],
 			"min":[
-				-0.062340568751096725,
-				1.6948611736297607,
-				0.056921616196632385
+				-0.06204218789935112,
+				1.6617388725280762,
+				0.06463826447725296
 			],
 			"type":"VEC3"
 		},
@@ -1857,14 +1882,14 @@
 			"componentType":5126,
 			"count":556,
 			"max":[
-				0.04874879866838455,
-				1.7135462760925293,
-				0.08063796162605286
+				0.04851547256112099,
+				1.6803345680236816,
+				0.0882411003112793
 			],
 			"min":[
-				-0.04874879866838455,
-				1.6836007833480835,
-				0.05123407021164894
+				-0.04851547256112099,
+				1.6505324840545654,
+				0.058977942913770676
 			],
 			"type":"VEC3"
 		},
@@ -1932,11 +1957,11 @@
 		{
 			"bufferView":23,
 			"componentType":5126,
-			"count":14517,
+			"count":10047,
 			"max":[
 				0.891929566860199,
-				1.8017170429229736,
-				0.19599364697933197
+				1.5275335311889648,
+				0.1781819760799408
 			],
 			"min":[
 				-0.8919294476509094,
@@ -1948,31 +1973,77 @@
 		{
 			"bufferView":24,
 			"componentType":5126,
-			"count":14517,
+			"count":10047,
 			"type":"VEC3"
 		},
 		{
 			"bufferView":25,
 			"componentType":5126,
-			"count":14517,
+			"count":10047,
 			"type":"VEC2"
 		},
 		{
 			"bufferView":26,
 			"componentType":5121,
-			"count":14517,
+			"count":10047,
 			"type":"VEC4"
 		},
 		{
 			"bufferView":27,
 			"componentType":5126,
-			"count":14517,
+			"count":10047,
 			"type":"VEC4"
 		},
 		{
 			"bufferView":28,
 			"componentType":5123,
-			"count":80268,
+			"count":54468,
+			"type":"SCALAR"
+		},
+		{
+			"bufferView":29,
+			"componentType":5126,
+			"count":4517,
+			"max":[
+				0.09629236161708832,
+				1.8017170429229736,
+				0.19599364697933197
+			],
+			"min":[
+				-0.09629235416650772,
+				1.5148285627365112,
+				-0.039470504969358444
+			],
+			"type":"VEC3"
+		},
+		{
+			"bufferView":30,
+			"componentType":5126,
+			"count":4517,
+			"type":"VEC3"
+		},
+		{
+			"bufferView":31,
+			"componentType":5126,
+			"count":4517,
+			"type":"VEC2"
+		},
+		{
+			"bufferView":32,
+			"componentType":5121,
+			"count":4517,
+			"type":"VEC4"
+		},
+		{
+			"bufferView":33,
+			"componentType":5126,
+			"count":4517,
+			"type":"VEC4"
+		},
+		{
+			"bufferView":34,
+			"componentType":5123,
+			"count":25800,
 			"type":"SCALAR"
 		}
 	],
@@ -2116,38 +2187,74 @@
 		},
 		{
 			"buffer":0,
-			"byteLength":174204,
+			"byteLength":120564,
 			"byteOffset":131088,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":174204,
-			"byteOffset":305292,
+			"byteLength":120564,
+			"byteOffset":251652,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":116136,
-			"byteOffset":479496,
+			"byteLength":80376,
+			"byteOffset":372216,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":58068,
-			"byteOffset":595632,
+			"byteLength":40188,
+			"byteOffset":452592,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":232272,
-			"byteOffset":653700,
+			"byteLength":160752,
+			"byteOffset":492780,
 			"target":34962
 		},
 		{
 			"buffer":0,
-			"byteLength":160536,
-			"byteOffset":885972,
+			"byteLength":108936,
+			"byteOffset":653532,
+			"target":34963
+		},
+		{
+			"buffer":0,
+			"byteLength":54204,
+			"byteOffset":762468,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":54204,
+			"byteOffset":816672,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":36136,
+			"byteOffset":870876,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":18068,
+			"byteOffset":907012,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":72272,
+			"byteOffset":925080,
+			"target":34962
+		},
+		{
+			"buffer":0,
+			"byteLength":51600,
+			"byteOffset":997352,
 			"target":34963
 		}
 	],
@@ -2159,7 +2266,7 @@
 	],
 	"buffers":[
 		{
-			"byteLength":1046508,
+			"byteLength":1048952,
 			"uri":"Superhero_Male_FullBody_makehuman.bin"
 		}
 	]

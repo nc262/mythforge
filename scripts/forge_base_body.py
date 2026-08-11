@@ -371,6 +371,104 @@ def unpose(mh, arm, world: dict) -> float:
 BAKE_PX = 2048
 
 
+def flat_head(mh, arm, img) -> str:
+	"""Take the baked texture OFF the head and leave it plain skin.
+
+	Our atlas has a face painted into it — lip colour, brow shading, the shadow
+	under a nose that our head does not have — and those features are painted for
+	OUR head's shape. Projected onto a head with a real nose and real eyelids
+	they land as red streaks across a cheek and a temple: the first render of it
+	looks like a flayed muscle chart. No projection fixes that, because the
+	problem is not where the paint went, it is that the paint describes a
+	different face.
+
+	So the head gets its own material and no texture at all. That is not a
+	surrender: the new head has the geometry to read on its own — a brow, a
+	nose, eyelids, a jaw — and at 230x336 it is the SHAPE that carries a face,
+	not pore detail. A clean flat head beside a blotched one is not a close call.
+
+	The tone is the MEDIAN of the baked sheet rather than the mean, because the
+	atlas has black underwear painted into it and a mean comes out grey.
+	"""
+	import numpy as np
+
+	b = arm.data.bones.get("neck_01")
+	if b is None:
+		return "no neck_01 to cut the head at"
+	neck = (arm.matrix_world @ b.matrix_local).translation.z
+
+	w, h = img.size
+	buf = np.empty(w * h * 4, dtype=np.float32)
+	img.pixels.foreach_get(buf)
+	px = buf.reshape(-1, 4)[:, :3]
+	tone = np.median(px, axis=0)
+
+	mat = bpy.data.materials.new("%s_Head" % mh.data.materials[0].name)
+	mat.use_nodes = True
+	bsdf = mat.node_tree.nodes.get("Principled BSDF")
+	if bsdf is not None:
+		bsdf.inputs["Base Color"].default_value = (
+			float(tone[0]), float(tone[1]), float(tone[2]), 1.0)
+		bsdf.inputs["Roughness"].default_value = 0.82
+	mh.data.materials.append(mat)
+	slot = len(mh.data.materials) - 1
+
+	n = 0
+	for p in mh.data.polygons:
+		mid = sum((mh.data.vertices[i].co for i in p.vertices), Vector()) / len(p.vertices)
+		if mid.z > neck:
+			p.material_index = slot
+			n += 1
+	mh.data.update()
+	return "%d faces above z=%.3f on flat skin %.2f %.2f %.2f" % (
+		n, neck, tone[0], tone[1], tone[2])
+
+
+def seat_face(objs, js: dict) -> str:
+	"""Move the eyes and brows onto the NEW skull.
+
+	They are separate meshes, cut and placed at the pack head's landmarks, so on
+	a differently shaped head they simply float — the brows read as two small
+	horns above the hairline and the eyes stand proud of their sockets. It is the
+	most obviously broken thing in a dressed render and it has nothing to do with
+	uvs or masks.
+
+	Placed by MEASUREMENT, like the horns and the tail: MakeHuman ships
+	`joint-l-eye` and `joint-r-eye` among its joint cubes, so the new sockets are
+	known exactly rather than guessed. Pupil centre to pupil centre gives both the
+	position and the scale, and the brows take the same transform because a brow
+	belongs to the eye under it.
+	"""
+	face = [o for o in objs if o.type == "MESH"
+			and o.name.lower().startswith(("eyes", "eyebrows"))]
+	if not face or "joint-l-eye" not in js or "joint-r-eye" not in js:
+		return "no eye joints to seat against"
+	dst_l, dst_r = js["joint-l-eye"], js["joint-r-eye"]
+
+	eye = next((o for o in face if o.name.lower().startswith("eyes")), None)
+	if eye is None:
+		return "no eye mesh"
+	co = [v.co for v in eye.data.vertices]
+	# Each eyeball's own centroid, not the mesh's bounding box: the box measures
+	# outer corner to outer corner and the joints measure pupil to pupil, and
+	# scaling one to the other would shrink the pair by a fifth.
+	left = [c for c in co if c.x > 0.0]
+	right = [c for c in co if c.x < 0.0]
+	if not left or not right:
+		return "eye mesh is not a pair"
+	src_l = sum(left, Vector()) / len(left)
+	src_r = sum(right, Vector()) / len(right)
+	src_c, dst_c = (src_l + src_r) * 0.5, (dst_l + dst_r) * 0.5
+	k = (dst_l - dst_r).length / max((src_l - src_r).length, 1e-6)
+	m = (Matrix.Translation(dst_c) @ Matrix.Scale(k, 4)
+		 @ Matrix.Translation(-src_c))
+	for o in face:
+		o.data.transform(m)
+		o.data.update()
+	return "%s moved %.3f m, scaled %.3f" % (
+		"+".join(o.name for o in face), (dst_c - src_c).length, k)
+
+
 def heal(img) -> int:
 	"""Grow the baked pixels outwards into the ones that never got hit.
 
@@ -416,7 +514,7 @@ def heal(img) -> int:
 	return holes
 
 
-def bake_skin(mh, body, out_dir: str, stem: str) -> str:
+def bake_skin(mh, body, arm, out_dir: str, stem: str) -> str:
 	"""Bake our skin ONTO MakeHuman's own uv layout, rather than moving uvs.
 
 	THE OBVIOUS ROUTE WAS TRANSFERRING THE UVS and it was tried first: give the
@@ -504,6 +602,7 @@ def bake_skin(mh, body, out_dir: str, stem: str) -> str:
 	if not os.path.exists(path):
 		raise SystemExit("baked skin was not written: %s" % path)
 	node.image.filepath = path
+	print("  head: %s" % flat_head(mh, arm, img))
 	return "%d px, %d texels healed -> %s" % (
 		BAKE_PX, filled, os.path.basename(path))
 
@@ -548,6 +647,7 @@ def main() -> None:
 
 	moved = unpose(mh, arm, world)
 	print("  un-posed, furthest vertex travelled %.3f m" % moved)
+	print("  seated the face: %s" % seat_face(ours, js))
 
 	# BACK TO REST BEFORE THE BAKE, and the order is the whole point. The bake
 	# fires rays from the new body's surface at the old one, so the two have to
@@ -564,7 +664,7 @@ def main() -> None:
 	out_dir = os.path.dirname(os.path.abspath(out_path))
 	os.makedirs(out_dir, exist_ok=True)
 	stem = os.path.splitext(os.path.basename(out_path))[0]
-	print("  baked our skin onto its own layout: %s" % bake_skin(mh, body, out_dir, stem))
+	print("  baked our skin onto its own layout: %s" % bake_skin(mh, body, arm, out_dir, stem))
 
 	bpy.ops.object.select_all(action="DESELECT")
 	mh.select_set(True)
