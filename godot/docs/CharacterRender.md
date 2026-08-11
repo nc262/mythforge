@@ -323,33 +323,57 @@ is platinum — the first render gave a party of silver-haired seventy-year-olds
 Six palette entries rather than free RGB, so a player cannot pick a hair that
 vanishes into the hood they later put on.
 
-### Soft tissue — shape and jiggle are the same five bones
+### Soft tissue — a morph for the shape, a bone for the swing
 
-The pack's base body has **no shape keys** (`o.data.shape_keys is None`,
+The pack's base body shipped with **no shape keys** (`o.data.shape_keys is None`,
 measured), so there was nothing to blend towards a bust, a seat or a paunch. The
-old `chest` knob scaled `spine_03`, which widens an entire ribcage: it passed
+first `chest` knob scaled `spine_03`, which widens an entire ribcage: it passed
 every assertion and never once made a chest.
 
 `scripts/add_jiggle_bones.py` adds five bones — `breast_l/r`, `glute_l/r`,
 `belly` — to the body **and to all twenty-three garments**, weighting each to a
 hand-sized patch of flesh by radial falloff and taking that weight back off the
-joints already holding it. One change buys both halves:
+joints already holding it. Weighting the garments is not optional: hidden-surface
+removal deletes the skin under the cloth, so a jiggle that moved only the skin
+would be invisible right up until it punched through.
 
-- **Shape** — `apply_build` scales the bone evenly and the patch swells. Nothing
-  hangs off these bones, so an even scale is a radial swell, which is what a bust
-  *is*. Knobs: **Chest**, **Seat**, **Belly**, span 0.45 each.
-- **Motion** — `SpringBoneSimulator3D` simulates the same bone. Each is a
-  one-bone chain whose tip is synthesised by `extend_end_bone`, which is why no
-  leaf bones had to be added to the rig.
+Those bones then did **both** jobs — scaled for shape, simulated for motion —
+and the second job quietly paid for the first. `SpringBoneSimulator3D` reads a
+chain's rest length and radius, so scaling a bone to make a fuller bust also
+retunes its physics: a hero at the top of the slider jiggled differently from one
+at the bottom, for no reason a player could name. So the two are now split.
 
-Weighting the **garments** is not optional. Hidden-surface removal deletes the
-skin under the cloth, so a jiggle that moved only the skin would be invisible
-right up until it punched through.
+- **Shape** is a **morph**, authored by `scripts/author_shapes.py`: `Chest`,
+  `Seat`, `Belly`, each a measured bulge seeded off `spine_03` / `spine_01` /
+  `pelvis` so the male and female skeletons place their own. Godot's blend-shape
+  values are not clamped to 0–1, so one key per axis spans flat to full — a knob
+  at 0 sends −1 and a knob at 100 sends +1.
+- **Motion** is the bone, at its authored rest, doing nothing but swinging.
 
-The bone positions are **measured, never typed**: the seed is the most forward
-(or most rearward) vertex in a height band, so it lands on the real surface of
-whichever body it is run against. Male and female seed differently, which is why
-the script runs once per sex.
+**The garments carry the same keys, and they were not authored twice.** Each is
+bound to the body with Blender's **Surface Deform** modifier, the body's key is
+driven to 1, and where the cloth ends up is read back and stored as a key of the
+same name. The tunic was *measured following the skin*, not given a matching
+falloff and hoped to agree — which is why its `Seat` key lives on its back at hip
+height and its `Chest` key does not. `_apply_morphs()` pushes every value onto
+every mesh on the doll by name, so a boot that has no `Chest` is simply not moved
+and needs no table saying so.
+
+Two things about Blender's shape keys cost a day between them, and neither is
+documented anywhere obvious:
+
+- **`shape_key_add()` hands back a key already at value 1.0.** glTF stores morph
+  weights, so an un-zeroed key ships a permanently inflated body — and every
+  garment bound afterwards binds to that inflated body, making its morph target
+  the difference between two wrong shapes. The first run wrote a tunic that
+  answered a chest bulge with *nothing* and answered a seat bulge on its **front**.
+- **Surface Deform perturbs nearly every vertex by a few microns**, even where the
+  body did not move. Count the response at a millimetre; at the float noise floor
+  every key reports half the mesh and all three look identical.
+
+Bone positions and bulge centres are **measured, never typed** — the seed is the
+most forward (or rearward) vertex in a height band, or a named joint — so both
+scripts run once per sex and land on whichever body they are given.
 
 ### The life of the figure
 

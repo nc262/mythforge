@@ -163,18 +163,21 @@ const RIGS := {
 			"girth":    ["pelvis", "spine_01"],
 			"torso":    ["spine_02", "spine_03"],
 			"shoulder": ["clavicle_l", "clavicle_r"],
-			# SOFT TISSUE, on bones this pack did not ship with — added by
-			# scripts/add_jiggle_bones.py to the body AND to every garment, so
-			# the cloth swells and jiggles with the flesh under it.
-			#
-			# `chest` used to scale spine_03, which broadens a whole ribcage:
-			# it made a barrel, never a bust, and it stretched the arms hanging
-			# off it. These own a hand-sized patch of flesh each and nothing
-			# else, which is what lets a slider mean what it says.
-			"chest":    ["breast_l", "breast_r"],
-			"seat":     ["glute_l", "glute_r"],
-			"belly":    ["belly"],
 		},
+		# SOFT TISSUE IS GEOMETRY, NOT BONE SCALE. These three used to scale the
+		# soft-tissue bones `add_jiggle_bones.py` planted — which worked, and cost
+		# something invisible until you look for it: those are the SPRING bones.
+		# `SpringBoneSimulator3D` reads a chain's rest length and radius, so
+		# scaling one to make a fuller bust also retunes its physics, and a hero
+		# at the top of the slider jiggled differently from one at the bottom for
+		# no reason a player could name.
+		#
+		# So shape and motion are split. The morph moves the vertices; the bone
+		# underneath keeps its rest and does nothing but swing. `author_shapes.py`
+		# puts the SAME NAMED key on the body and on every garment — bound with
+		# Blender's Surface Deform, so the cloth was measured following the skin
+		# rather than given a matching falloff and hoped to agree.
+		"morphs": {"chest": "Chest", "seat": "Seat", "belly": "Belly"},
 		# UAL2 is a SITUATIONAL library — farming, zombies, sword combos — with no
 		# plain "Idle". The first pick here was Idle_FoldArms, which reads well
 		# right up until the figurine holds something: crossed arms tuck both
@@ -531,6 +534,10 @@ func body_path() -> String:
 
 var _body: Node3D = null
 var _zone_meshes := {}    # zone → Array[MeshInstance3D]
+## Blend-shape name → -1..+1, held because a garment worn AFTER apply_build has
+## to arrive already the right shape. Without it the hero's chest is full and the
+## tunic over it is flat, which is worse than having neither.
+var _morph := {}
 var _worn := {}           # slot → part id (or "" when bare)
 var _worn_file := {}      # slot → the garment's own res:// path, for its mask
 var _extern := {}         # slot → the Node3D we instanced for an external part
@@ -804,11 +811,8 @@ func apply_build(shape: Dictionary) -> void:
 				continue
 			var t: Transform3D = skeleton.get_bone_pose(bi)
 			match str(g):
-				# EVEN, because nothing hangs off these. The head has no
-				# children, and a soft-tissue bone has none either — it is a
-				# lump of flesh on a stick, so scaling it evenly swells that
-				# lump radially, which is what a bust or a paunch IS.
-				"head", "chest", "seat", "belly":
+				# EVEN, because nothing hangs off a head.
+				"head":
 					t = t.scaled_local(Vector3.ONE * f)
 				"girth", "shoulder", "torso":
 					t = t.scaled_local(Vector3(f, 1.0, f))
@@ -818,6 +822,15 @@ func apply_build(shape: Dictionary) -> void:
 	# Height is the whole figure, not a bone — scaling a spine to gain height
 	# stretches the head and hands with it.
 	_body.scale = Vector3.ONE * float(shape.get("height", 1.0))
+	_morph.clear()
+	for knob in profile().get("morphs", {}):
+		# Back out of the multiplier the knob arrives as. `hero_body` hands over
+		# 1.0 ± span, and a morph wants -1..+1, so the span divides out and the
+		# doll never has to know what the number was.
+		var span := float(Rules.BUILD_KNOBS.get(knob, {}).get("span", 0.45))
+		var amt := clampf((float(shape.get(knob, 1.0)) - 1.0) / maxf(span, 1e-4), -1.0, 1.0)
+		_morph[str(profile()["morphs"][knob])] = amt
+	_apply_morphs()
 
 
 ## Put the figurine on its feet and FREEZE it there. This is the pose the BOARD
@@ -1260,6 +1273,7 @@ func _wear_file(slot: String, scene: PackedScene, dye := true) -> bool:
 	# hero's head into a hat.
 	if dye:
 		_dye(holder)
+	_apply_morphs()
 	return true
 
 
@@ -1295,6 +1309,7 @@ func equip_scene(slot: String, scene: PackedScene, fitted := false) -> bool:
 	if scene.resource_path != "":
 		_worn_file[slot] = scene.resource_path
 	_worn[slot] = "scene"
+	_apply_morphs()
 	_refresh_zones()
 	return true
 
@@ -1617,6 +1632,25 @@ func _find_mesh(n: Node, nm: String) -> MeshInstance3D:
 		if f != null:
 			return f
 	return null
+
+
+## Push the soft-tissue morphs onto every mesh currently on the doll.
+##
+## Named lookup, and silent when a mesh has no such key: a boot has no chest, and
+## the hair, horns and tail have none of the three. Asking by name means a piece
+## that was never given the keys is simply not moved, rather than erroring or
+## needing a table of which garment carries what.
+func _apply_morphs() -> void:
+	if _morph.is_empty():
+		return
+	for mi in _all_meshes(self):
+		for nm in _morph:
+			# TYPED, not inferred. `_all_meshes` returns an untyped Array, so `mi`
+			# is a Variant and `:=` here is a parse error — which does not fail
+			# loudly, it makes the harness hang forever.
+			var bi: int = mi.find_blend_shape_by_name(str(nm))
+			if bi >= 0:
+				mi.set_blend_shape_value(bi, float(_morph[nm]))
 
 
 func _all_meshes(n: Node) -> Array:

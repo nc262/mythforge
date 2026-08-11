@@ -1266,6 +1266,21 @@ The term for spell slots is "Echoes."
 			"build": {"chest": 100, "frame": 100, "weight": 100, "height": 100, "build": 100}}))
 		assert(qf.skeleton.get_bone_pose(qf.skeleton.find_bone("spine_03")).is_equal_approx(once),
 			"q-doll: applying the same build twice must not compound it")
+		# SOFT TISSUE IS A MORPH, NOT A BONE, and the entire point of it is that
+		# the CLOTH moves with the skin. So the assertion is not "the body has a
+		# chest" — it is that the body and the garment over it carry the same key
+		# at the same value. The failure this catches is a body-only morph: a full
+		# chest inside a flat tunic, which is worse than having neither.
+		var chest_keys := 0
+		for mi in qf._all_meshes(qf):
+			var bi: int = mi.find_blend_shape_by_name("Chest")
+			if bi < 0:
+				continue
+			chest_keys += 1
+			assert(is_equal_approx(mi.get_blend_shape_value(bi), 1.0),
+				"q-doll: %s carries Chest but was not driven to it" % mi.name)
+		assert(chest_keys >= 2,
+			"q-doll: the Chest morph must reach the body AND what it wears, got %d" % chest_keys)
 		qf.queue_free()
 
 		# ── The world's cloth ────────────────────────────────────────────────

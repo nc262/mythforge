@@ -13,6 +13,24 @@ domain, no attribution required, commercial use fine**.
 | `horns/` | **none — grown here** | 4 horn pairs per sex, seeded off each skull, plus the tail |
 | `weapons/` | Fantasy RPG weapons | Rigid props for the hand bones — no skin weights needed |
 
+## The shape keys, which the pack did not ship
+
+Every body and every fitted garment now carries three morph targets — `Chest`,
+`Seat`, `Belly` — added by `scripts/author_shapes.py`. The pack has none; the
+bodies were measured and `o.data.shape_keys is None`.
+
+The bodies' keys are authored: an ellipse of influence around a named joint,
+pushed out along the front or the back. The **garments' keys are not authored at
+all** — each garment is bound to the body with Blender's Surface Deform modifier,
+the body's key is driven to 1, and wherever the cloth ends up is read back and
+saved under the same name. The cloth was measured following the skin.
+
+Both are rewritten **in place** with `export_keep_originals=True`, so no texture
+is touched and every baked mask in `masks/` stays valid — a shape key moves
+vertices and leaves UVs exactly where they were. Re-running replaces its own keys
+rather than stacking them, and strips them **before** the bind, because a garment
+still wearing a previous run's keys would be bound in the wrong shape.
+
 `cloth/` and `anim/Authored.glb` are the exceptions: they are **made here, not
 downloaded**. Four tileable
 weaves poured by `scripts/pour_materials.py` for the world families the outfit
