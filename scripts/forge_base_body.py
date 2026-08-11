@@ -400,28 +400,68 @@ def flat_head(mh, arm, img) -> str:
 	w, h = img.size
 	buf = np.empty(w * h * 4, dtype=np.float32)
 	img.pixels.foreach_get(buf)
-	px = buf.reshape(-1, 4)[:, :3]
-	tone = np.median(px, axis=0)
+	px = buf.reshape(h, w, 4)
 
-	mat = bpy.data.materials.new("%s_Head" % mh.data.materials[0].name)
-	mat.use_nodes = True
-	bsdf = mat.node_tree.nodes.get("Principled BSDF")
-	if bsdf is not None:
-		bsdf.inputs["Base Color"].default_value = (
-			float(tone[0]), float(tone[1]), float(tone[2]), 1.0)
-		bsdf.inputs["Roughness"].default_value = 0.82
-	mh.data.materials.append(mat)
-	slot = len(mh.data.materials) - 1
-
-	n = 0
+	# SAMPLED AT THE NECK, not across the whole sheet. The median of everything
+	# came out 0.64 0.42 0.29 and rendered as a pale cream head on tan arms,
+	# because the sheet is mostly torso and limb and the atlas's own shading is
+	# lighter there. A head has to match the NECK it sits on, so the tone is read
+	# from the band of skin just below the cut — the one piece of the body that
+	# is always beside the face.
+	uv = mh.data.uv_layers.active.data
+	band = []
 	for p in mh.data.polygons:
 		mid = sum((mh.data.vertices[i].co for i in p.vertices), Vector()) / len(p.vertices)
-		if mid.z > neck:
-			p.material_index = slot
-			n += 1
-	mh.data.update()
-	return "%d faces above z=%.3f on flat skin %.2f %.2f %.2f" % (
-		n, neck, tone[0], tone[1], tone[2])
+		if not (neck - 0.10 < mid.z <= neck):
+			continue
+		for li in p.loop_indices:
+			u, v = uv[li].uv
+			x = min(w - 1, max(0, int(u * w)))
+			y = min(h - 1, max(0, int(v * h)))
+			band.append(px[y, x, :3])
+	tone = (np.median(np.array(band), axis=0) if band
+			else np.median(px.reshape(-1, 4)[:, :3], axis=0))
+
+	# PAINTED INTO THE ONE TEXTURE, not given a second material. A second
+	# material is the obvious move and it renders a CREAM head on tan arms: the
+	# doll replaces the skin material with `body_mask.gdshader`, which samples
+	# `albedo_tex`, and a material with only a base-colour factor has no texture
+	# to give it — so the sampler falls back to its default white and the skin
+	# tint turns that into pale wax. One material, one texture, and everything
+	# downstream — the mask, the tint, the pbr maps — keeps working untouched.
+	head = [p for p in mh.data.polygons
+			if (sum((mh.data.vertices[i].co for i in p.vertices), Vector())
+				/ len(p.vertices)).z > neck]
+	rgb = px[..., :3]
+	painted = 0
+	for p in head:
+		loops = [uv[li].uv for li in p.loop_indices]
+		pts = [(c.x * (w - 1), c.y * (h - 1)) for c in loops]
+		# Fan the quad into triangles and fill each by barycentric test, which is
+		# the only way to reach the texels INSIDE a face — a loop only gives its
+		# corners, and filling around the corners leaves the middle of a cheek
+		# still carrying the old paint.
+		for a, b, c in [(pts[0], pts[i], pts[i + 1]) for i in range(1, len(pts) - 1)]:
+			x0 = max(0, int(min(a[0], b[0], c[0])) - 1)
+			x1 = min(w - 1, int(max(a[0], b[0], c[0])) + 1)
+			y0 = max(0, int(min(a[1], b[1], c[1])) - 1)
+			y1 = min(h - 1, int(max(a[1], b[1], c[1])) + 1)
+			if x1 < x0 or y1 < y0:
+				continue
+			ys, xs = np.mgrid[y0:y1 + 1, x0:x1 + 1]
+			d = ((b[1] - c[1]) * (a[0] - c[0]) + (c[0] - b[0]) * (a[1] - c[1]))
+			if abs(d) < 1e-9:
+				continue
+			u1 = ((b[1] - c[1]) * (xs - c[0]) + (c[0] - b[0]) * (ys - c[1])) / d
+			u2 = ((c[1] - a[1]) * (xs - c[0]) + (a[0] - c[0]) * (ys - c[1])) / d
+			inside = (u1 >= -0.002) & (u2 >= -0.002) & (u1 + u2 <= 1.002)
+			if inside.any():
+				rgb[y0:y1 + 1, x0:x1 + 1][inside] = tone
+				painted += int(inside.sum())
+	img.pixels.foreach_set(px.reshape(-1))
+	img.update()
+	return "%d faces above z=%.3f, %d texels painted flat %.2f %.2f %.2f" % (
+		len(head), neck, painted, tone[0], tone[1], tone[2])
 
 
 def seat_face(objs, js: dict) -> str:
@@ -594,6 +634,9 @@ def bake_skin(mh, body, arm, out_dir: str, stem: str) -> str:
 	bpy.ops.object.bake(type="DIFFUSE")
 	bpy.data.objects.remove(cage, do_unlink=True)
 	filled = heal(img)
+	# BEFORE the save, obviously, and it was not: painting the head after
+	# writing the PNG leaves the paint in memory and the old face on disk.
+	print("  head: %s" % flat_head(mh, arm, img))
 
 	path = os.path.join(out_dir, "%s_skin.png" % stem)
 	img.filepath_raw = path
@@ -602,7 +645,6 @@ def bake_skin(mh, body, arm, out_dir: str, stem: str) -> str:
 	if not os.path.exists(path):
 		raise SystemExit("baked skin was not written: %s" % path)
 	node.image.filepath = path
-	print("  head: %s" % flat_head(mh, arm, img))
 	return "%d px, %d texels healed -> %s" % (
 		BAKE_PX, filled, os.path.basename(path))
 
