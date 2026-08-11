@@ -67,24 +67,50 @@ the thresholds trustworthy rather than argued about.
 | G3 STANCE | height and span within 6% of the pack body | 1.820 / 1.859 | +0.6% / +4.0% |
 | G4 EYES | the eye mesh sits inside the skull rather than floating off it | ok | ok |
 | G5 MASKS | a mask per worn garment, present **and** neither blank nor solid | 4 sane | 4 sane |
-| G6 CLOTHED | **no skin visible through cloth** | **17 px** | **317 px** |
+| G6 CLOTHED | **no skin visible through cloth** | 17 px | 317 px |
+| G7 INTACT | **no skin deleted where nothing covers it** | 727 px | **2,769 px — unmet** |
 
-**G6 is the one that matters, and it uses no colour heuristic at all.** Render
-the dressed figure twice — once normally, once with the skin mesh HIDDEN — and
-count the pixels that change inside the torso window. A hero whose clothes cover
-them looks identical either way, because nothing of them was showing. Every
-changed pixel is skin that was visible through cloth, by construction.
+**G6 and G7 use no colour heuristic at all**, which is what makes them worth
+believing. G6 renders the dressed figure twice — once normally, once with the
+skin mesh HIDDEN — and counts the pixels that change inside the torso. A hero
+whose clothes cover them looks identical either way, because nothing of them was
+showing; every changed pixel is skin that was visible through cloth, by
+construction. G7 is its mirror: skin the bare figure draws, the masked figure
+does not, and no cloth replaced — a hole.
 
-It earned its place immediately: it caught the candidate at **5,722 px** against
-the control's 17, proving the defect was skin rather than the mangled belt it
-equally looked like, and then proved the fix at **317**. The lever was
-`MASK_NEAR` — see [CharacterRender.md](CharacterRender.md).
+G6 earned its place on the first run, catching the candidate at **5,722 px**
+against the control's 17. That settled in one run what a day of renders could
+not: the defect was SKIN, not the mangled belt it equally looked like.
 
-**What it does NOT cover, and should.** G6 only catches skin that shows when it
-should not. Nothing yet catches the opposite — skin DELETED where no cloth
-covers it, which is how a mask that is too greedy reads: a hole at a wrist or a
-throat. Raising `MASK_NEAR` for the candidate makes that the live risk, and it
-is untested.
+**G7 is eroded by one pixel, and the shipping body is why.** Counted raw it
+scored the pack at 1,491 — and the pack is the one figure known to be correct, so
+that was the CHECK being wrong, not the body. The pixels were a one-deep rim:
+along every garment edge the cloth and skin silhouettes land a pixel apart and
+antialiasing puts both at partial alpha. A hole you can see is a region, so
+requiring the four neighbours to qualify erases the rim exactly.
+
+## What the audit proved about the candidate, and it is not what was hoped
+
+`MASK_NEAR` looked like the fix for G6 and a sweep killed that idea:
+
+| `MASK_NEAR` | G6 ≤400 | G7 ≤900 |
+|---|---|---|
+| 0.05 | 2,346 ✗ | 1,953 ✗ |
+| 0.06 | 1,042 ✗ | 2,232 ✗ |
+| 0.07 | 610 ✗ | 2,514 ✗ |
+| 0.09 | **317 ✓** | 2,769 ✗ |
+| *pack* | *17* | *727* |
+
+The two move in opposite directions and **no value passes both** — at the
+tightest setting G7 is still 2.7× the control. The threshold is not the problem;
+it only chooses which failure to have. The garment refit is, and that is where
+the next work goes.
+
+So the MakeHuman body is marked a **candidate** in the harness: its goals are
+measured and printed like any other, it does not fail the run — nothing in the
+game loads it, and a permanently red suite is one people stop reading — and the
+summary always states how many candidate goals are unmet, so adopting it means
+making those numbers pass first.
 
 `gesture_shot` exists because **the clip names lie**. `Idle_Rail_Call` might be
 a wave or a man shouting over a fence; `NinjaJump_Start` might be a skip or it
