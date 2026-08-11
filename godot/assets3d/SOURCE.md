@@ -13,6 +13,27 @@ domain, no attribution required, commercial use fine**.
 | `horns/` | **none — grown here** | 4 horn pairs per sex, seeded off each skull, plus the tail |
 | `weapons/` | Fantasy RPG weapons | Rigid props for the hand bones — no skin weights needed |
 
+## The MakeHuman base — a candidate, not yet the body
+
+`bodies/.../Superhero_Male_FullBody_makehuman.gltf` is **MakeHuman's base mesh**,
+put on this rig by `scripts/forge_base_body.py`. It is **CC0**, released
+explicitly in September 2020, and the notice is in the head of the source
+`base.obj` itself naming Data Collection AB, Joel Palmius and Jonas Hauquier —
+not a store page's summary of a licence, the licence.
+
+| | pack body | MakeHuman |
+|---|---|---|
+| vertices | 7,281 | 13,380 |
+| faces | 12,566 mixed | 13,378, **every one a quad** |
+| face | 833 verts, a flat mask | a nose with nostrils, lips, eyelids, a brow |
+
+Fetched from `raw.githubusercontent.com/makehumancommunity/mpfb2` at
+`src/mpfb/data/3dobjs/base.obj`. The **addon is not needed and is not installed**
+— only that one file, which is the mesh itself.
+
+Nothing in the game loads it. It is wired into `tests/head_shot.tscn` only, so it
+can be looked at beside the head it would replace.
+
 ## The shape keys, which the pack did not ship
 
 Every body and every fitted garment now carries three morph targets — `Chest`,

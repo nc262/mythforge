@@ -323,6 +323,60 @@ is platinum — the first render gave a party of silver-haired seventy-year-olds
 Six palette entries rather than free RGB, so a player cannot pick a hair that
 vanishes into the hood they later put on.
 
+### A denser base body, and the three ways it went wrong first
+
+The pack's body is 7,281 vertices with **833 in the face**, and it is that way
+because it was free rather than because a figurine wants it. That number is why
+`forge_head.py` could not make a muzzle: there is not enough geometry in that
+face to sculpt one. `scripts/forge_base_body.py` puts **MakeHuman's CC0 base** —
+13,380 vertices, every face a quad, a face with a nose and eyelids — onto this
+rig without touching the rig, so every clip, spring, garment, horn and tail
+binds exactly as before.
+
+The rigs do not stand the same way: our rest is a hard T-pose, MakeHuman's base
+is an **A-pose at about fifty degrees**. Nobody has to guess by how much, because
+MakeHuman ships its whole skeleton inside the mesh as **125 joint cubes** —
+`joint-l-elbow`, `joint-neck` — whose centroids are the joint positions. So the
+rig is aimed down those, the new mesh is skinned in that stance, and then
+**un-posed** back into our rest.
+
+Three things went wrong, and each looked like a different bug than it was:
+
+- **The rotation is not ours to do.** Blender's OBJ importer leaves the file
+  Y-up and puts the quarter turn to Z-up on the OBJECT MATRIX. Rotating the data
+  as well turns the body through a half circle — and the only symptom is that
+  the weight transfer afterwards skins the fingertips to the feet, because that
+  is genuinely where they now are.
+- **An OBJ arrives flat-shaded**, so every face owns its normals and the glTF
+  exporter splits every shared vertex to carry them: 13,380 went out as
+  **53,512**, more than the body it was replacing. Shade smooth first.
+- **Proximity cannot tell a hand from a thigh.** A fifty-degree A-pose puts each
+  hand alongside its thigh, so a nearest-surface weight transfer skinned the
+  fingers to `thigh_r` and `pelvis`. The un-pose then swung the shoulder up to
+  the T-pose and left the hand behind, and both arms rendered as **flat
+  triangular sheets** fanned between the two. The fix is not better maths, it is
+  a better question: **bone heat** solves over the mesh's own surface, so a hand
+  cannot borrow weight from a thigh it is only resting against — there is no path
+  along the skin from one to the other. Weighed against a throwaway armature
+  whose rest has been set to MakeHuman's stance, since that is the shape the
+  vertices are actually in.
+
+Two attempted fixes were wrong and are recorded because they were plausible.
+Scaling each bone to the spacing of its two joint cubes: the arms already agree
+to a millimetre (0.4947 m against 0.4955, shoulder to wrist), and the bones that
+are not limbs have tails set by convention, so matching `Head` scaled the skull
+by two and stood the figure 2.15 m tall. And inverting the blended skinning
+matrix rather than blending the inverses: correct to worry about, since that
+matrix does go near-singular across a big rotation, but it was not what made the
+sheets.
+
+**It is a candidate, not the body.** What is still owed before it could replace
+anything: it has MakeHuman's UV layout and so no skin texture, the masks in
+`masks/` are baked against the old layout, and the jiggle bones, horns, tail and
+shape keys would all need re-seeding — every one of those scripts measures the
+body it is given, so that is a re-run rather than a re-write. Rendered beside the
+head it would replace by `tests/head_shot.tscn`.
+
 ### Soft tissue — a morph for the shape, a bone for the swing
 
 The pack's base body shipped with **no shape keys** (`o.data.shape_keys is None`,

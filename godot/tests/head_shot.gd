@@ -10,9 +10,16 @@ extends Node
 const OUT := "user://heads"
 const SIZE := 900
 const BODIES := "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_%s_FullBody%s.gltf"
-## "" is the human control and must be FIRST — a muzzle is judged against the
-## face it was forged out of, not against an idea of one.
-const SHAPES := ["", "_saurian", "_drake", "_wyrm"]
+## "" is the pack's own head and must be FIRST — a candidate is judged against
+## the face it is meant to replace, not against an idea of one.
+##
+## The three displaced heads `forge_head.py` made are gone and so are their
+## entries: pushing a band of vertices forward inflates a face, it does not
+## sculpt one, and all three rendered as smooth domes with the eyes buried. What
+## is left is a real alternative — MakeHuman's CC0 base, put on this rig by
+## scripts/forge_base_body.py. 13,380 quads against 7,281 mixed, and a face with
+## enough geometry to have features at all.
+const SHAPES := ["", "_makehuman"]
 
 var _vp: SubViewport = null
 var _doll: ModularDoll = null
