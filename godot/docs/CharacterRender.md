@@ -240,9 +240,31 @@ So the shipped body now reaches a **tiefling** (crimson, horns, tail) and most o
 the way to a **dragonborn** (verdant or azure, horns, tail). What a dragonborn
 still lacks is scales and a snout. Scales are a surface and therefore reachable —
 the skin shader already samples albedo, normal and roughness and multiplies a
-tint, so a tiling scale pattern is one more sampler. **A snout is not.** The head
-is one low-poly mesh with no morphs and no face bones; it can be tinted and have
-things bolted to it, but it cannot be reshaped.
+tint, so a tiling scale pattern is one more sampler. **A snout is the wall, and it was measured rather than assumed.**
+
+First, the distinction that matters: **face bones drive expression, not shape.**
+A jaw that opens, a brow that furrows, an eyelid that closes — they move a head
+you already have. Scaling a jaw bone on a human skull gives a human with a large
+jaw, because the vertices are still arranged as a human face. A dragonborn's head
+is a different SHAPE, and shape is geometry.
+
+The head does have the topology for it: 1,691 vertices above `neck_01`, 833 of
+them in the face. So `scripts/forge_head.py` tried the trick the wardrobe uses —
+deform the body's own head, leave the UVs alone, and every mask, texture, garment
+and bone binding survives untouched. That reasoning holds.
+
+**The execution does not.** Pushing a weighted band of vertices forward INFLATES
+a face rather than sculpting one: the result is a smooth featureless dome with
+the eyes, which are their own mesh and correctly did not move, buried inside it.
+A muzzle needs the jaw separated from the skull, a bridge built between them, and
+the eye sockets held back while everything around them travels. That is sculpting
+logic, not a displacement field.
+
+`tests/head_shot.tscn` renders any candidate head beside the human control, close
+and in profile, which is what a next attempt should be judged against. What it
+would take is one of: a sculpted draconic head sourced or authored as its own
+mesh and seamed to the neck; or a different base body that ships one — and a
+different base body means re-baking every mask and re-fitting the wardrobe.
 
 ### The neck, and the four rules it took
 
