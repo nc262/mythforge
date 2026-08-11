@@ -22,6 +22,15 @@ const BODY := "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_Male_F
 ## cutting correctly on it is what makes a bad cut on the other one legible.
 const SHAPES := ["", "_makehuman"]
 const DRESS := {"armor": "ranger", "legs": "ranger", "feet": "ranger", "hands": "ranger"}
+## The same four pieces, refitted onto the candidate by scripts/refit_garments.py
+## and written BESIDE the originals rather than over them — the pack body still
+## ships and still wears the pack's own cut.
+const REFIT := {
+	"armor": "res://assets3d/outfits/Modular Parts/Male_Ranger_Body_makehuman.gltf",
+	"legs": "res://assets3d/outfits/Modular Parts/Male_Ranger_Legs_makehuman.gltf",
+	"feet": "res://assets3d/outfits/Modular Parts/Male_Ranger_Feet_Boots_makehuman.gltf",
+	"hands": "res://assets3d/outfits/Modular Parts/Male_Ranger_Arms_makehuman.gltf",
+}
 
 var _vp: SubViewport = null
 var _doll: ModularDoll = null
@@ -72,7 +81,19 @@ func _ready() -> void:
 				_doll.equip(str(slot), "")
 			if dressed:
 				for slot in DRESS:
-					_doll.equip(str(slot), str(DRESS[slot]))
+					if shape == "":
+						_doll.equip(str(slot), str(DRESS[slot]))
+					else:
+						# The candidate wears the REFITTED cut. The pack's own
+						# pieces were modelled against the pack torso, and on
+						# this one the chest and belly come straight through
+						# them — not a mask failing, geometry standing in front
+						# of the cloth.
+						var p: String = REFIT.get(slot, "")
+						if p != "" and ResourceLoader.exists(p):
+							_doll.equip_scene(str(slot), load(p), true)
+						else:
+							push_error("BODY: no refitted %s at %s" % [slot, p])
 			# FRONT and BACK. A tunic hides the chest either way, but the seat
 			# and the shoulder blades are where a mask that is a few texels out
 			# shows first, and nothing rendered so far has looked at the back.
