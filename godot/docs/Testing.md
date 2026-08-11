@@ -43,6 +43,49 @@ ONLY=mf BARE=1 $GODOT --path godot res://tests/gesture_shot.tscn   # one library
 drops the weapon — an emote judged with a blade in the hand is judged with the
 blade in front of it, and a wave holding a sword is not a wave.
 
+## The one that needs a window AND asserts
+
+```bash
+$GODOT --path godot res://tests/body_audit.tscn    # BODY-AUDIT OK
+```
+
+`body_audit` is the answer to a real failure of method: the MakeHuman candidate
+body was judged by LOOKING at renders for most of a day. That is not a question
+with a wrong answer. A bare figure on a black background hid a uv error
+completely, and the one measurement taken by hand scored a **known-good pairing
+at 57% broken**, because a nearest-surface normal test is not defined for an
+open garment like a tunic.
+
+So it runs the SHIPPING body first as a control. A check the shipping body fails
+is a check that is wrong, not a body that is — which is the property that makes
+the thresholds trustworthy rather than argued about.
+
+| Goal | Asserts | Pack | MakeHuman |
+|---|---|---|---|
+| G1 RIG | every bone the pack body has, name for name | 75 | 75, 0 missing |
+| G2 SKIN | no vertex left unweighted — one is a spike through the figure, and only in some poses | 0/7,281 | 0/14,517 |
+| G3 STANCE | height and span within 6% of the pack body | 1.820 / 1.859 | +0.6% / +4.0% |
+| G4 EYES | the eye mesh sits inside the skull rather than floating off it | ok | ok |
+| G5 MASKS | a mask per worn garment, present **and** neither blank nor solid | 4 sane | 4 sane |
+| G6 CLOTHED | **no skin visible through cloth** | **17 px** | **317 px** |
+
+**G6 is the one that matters, and it uses no colour heuristic at all.** Render
+the dressed figure twice — once normally, once with the skin mesh HIDDEN — and
+count the pixels that change inside the torso window. A hero whose clothes cover
+them looks identical either way, because nothing of them was showing. Every
+changed pixel is skin that was visible through cloth, by construction.
+
+It earned its place immediately: it caught the candidate at **5,722 px** against
+the control's 17, proving the defect was skin rather than the mangled belt it
+equally looked like, and then proved the fix at **317**. The lever was
+`MASK_NEAR` — see [CharacterRender.md](CharacterRender.md).
+
+**What it does NOT cover, and should.** G6 only catches skin that shows when it
+should not. Nothing yet catches the opposite — skin DELETED where no cloth
+covers it, which is how a mask that is too greedy reads: a hole at a wrist or a
+throat. Raising `MASK_NEAR` for the candidate makes that the live risk, and it
+is untested.
+
 `gesture_shot` exists because **the clip names lie**. `Idle_Rail_Call` might be
 a wave or a man shouting over a fence; `NinjaJump_Start` might be a skip or it
 might carry the hero out of frame. It renders six frames evenly across every

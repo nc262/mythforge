@@ -60,7 +60,15 @@ MAX_DIST = 0.06
 ## cloth. Hiding only the properly-tucked-in skin fixes nothing visible.
 ##
 ## So proximity regardless of side — but CLOSE proximity, not generous.
-NEAR = 0.035
+## Overridable, and only because a SECOND body proved one value does not serve
+## both. The rule below assumes skin sits inside cloth and pokes through where
+## the cloth is tight — true of a garment modelled against the body wearing it,
+## and false of a garment refitted onto a different torso, where the skin can
+## stand clear OUTSIDE the cloth and never come within 3.5 cm of it. The
+## shipping body keeps 0.035; a candidate can be baked and MEASURED at another
+## value (tests/body_audit.tscn, goal G6) instead of the number being argued
+## about.
+NEAR = float(os.environ.get("MASK_NEAR", "0.035"))
 ## Pixels of dilation. The mask is sampled per fragment, so a boundary that is
 ## exactly right in UV space still shows a rim of skin where a texel straddles
 ## the garment's edge. Growing it closes that without eating visible skin.
