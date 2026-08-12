@@ -37,6 +37,46 @@ import sys
 
 import bpy
 
+## How far outside the new body a garment vertex is pushed when it would
+## otherwise sit inside it. Small: enough to clear the skin and be hidden by the
+## mask, not enough to read as a balloon at 230x336.
+CLEARANCE = 0.008
+
+
+def stamp(path: str) -> str:
+	"""Fold the .bin's checksum into the .gltf, so Godot can SEE a geometry change.
+
+	Godot decides whether to re-import by hashing the file it was pointed at —
+	the .gltf. With `GLTF_SEPARATE` the JSON holds only offsets and counts, and
+	every vertex lives in the .bin beside it, WHICH GODOT DOES NOT HASH. Rewrite
+	a mesh in place without changing its vertex count and the JSON comes out
+	byte-identical, the checksum matches, and the engine serves the mesh from
+	yesterday. Nothing reports anything: the file on disk is new, the scene in
+	the game is old.
+
+	That cost a whole run of measurements here — an enclosure pass was audited
+	three times against geometry Godot had cached the previous day, and the
+	numbers were identical to the digit, which is the only reason it was caught.
+
+	Writing the .bin's md5 into `asset.extras` makes the .gltf's own checksum
+	move whenever the geometry does, which is the property Godot needed all
+	along.
+	"""
+	import hashlib
+	import json
+
+	binp = os.path.splitext(path)[0] + ".bin"
+	if not os.path.exists(binp):
+		return "no .bin"
+	with open(binp, "rb") as fh:
+		digest = hashlib.md5(fh.read()).hexdigest()
+	with open(path, "r", encoding="utf-8") as fh:
+		doc = json.load(fh)
+	doc.setdefault("asset", {}).setdefault("extras", {})["binMd5"] = digest
+	with open(path, "w", encoding="utf-8") as fh:
+		json.dump(doc, fh)
+	return digest[:8]
+
 
 def clear() -> None:
 	bpy.ops.wm.read_factory_settings(use_empty=True)
@@ -128,6 +168,49 @@ def main() -> None:
 			report.append("%s %d/%d max %.3f" % (
 				g.name, moved, len(co), far))
 
+		# ── and then MAKE IT ENCLOSE, which the deform alone does not ───────
+		# Following the body preserves the standoff the piece had on the OLD
+		# torso, and where the new torso is simply wider than the garment was
+		# ever cut for, that standoff is negative: the skin ends up past the
+		# cloth's silhouette edge. Neither answer is available to a mask there —
+		# delete the skin and you get a hole to the background, keep it and it
+		# shows through. tests/body_audit measured 2,769 px of exactly that.
+		#
+		# OUTSIDE only moves vertices that are INSIDE the body, and only
+		# far enough to clear it. Anything already sitting proud — a hem, a
+		# sleeve, the drape of a tabard — is left where the refit put it.
+		#
+		# The mode name matters: OUTSIDE_SURFACE is Blender's "Above Surface" and
+		# places EVERY vertex at the offset, which collapses the whole garment
+		# onto the skin — the count said "cleared 3067 of 3067" and that is what
+		# it meant.
+		for g in pieces:
+			out = g.modifiers.new("Clear", "SHRINKWRAP")
+			out.target = new
+			out.wrap_method = "NEAREST_SURFACEPOINT"
+			out.wrap_mode = "OUTSIDE"
+			out.offset = CLEARANCE
+		# FLUSH, or the evaluated mesh handed back is the one from the modifier
+		# stack as it stood BEFORE these were added — the Surface Deform result
+		# read a second time. The tell is the number: "cleared 3065 max 0.1048"
+		# against a refit whose own maximum was 0.105, the same displacement
+		# reported twice.
+		bpy.context.view_layer.update()
+		dg = bpy.context.evaluated_depsgraph_get()
+		for g in pieces:
+			co = [v.co.copy() for v in g.evaluated_get(dg).data.vertices]
+			pushed = sum(1 for i, c in enumerate(co)
+						 if (c - g.data.vertices[i].co).length > 1e-3)
+			shove = max(((c - g.data.vertices[i].co).length
+						 for i, c in enumerate(co)), default=0.0)
+			for i, c in enumerate(co):
+				g.data.vertices[i].co = c
+			g.data.update()
+			for m in list(g.modifiers):
+				if m.type == "SHRINKWRAP":
+					g.modifiers.remove(m)
+			report.append("%s cleared %d max %.4f" % (g.name, pushed, shove))
+
 		# The bodies were only ever scaffolding; neither belongs in the file.
 		for ob in oldobjs + newobjs:
 			bpy.data.objects.remove(ob, do_unlink=True)
@@ -140,6 +223,7 @@ def main() -> None:
 								  export_morph=True, export_animations=False)
 		if not os.path.exists(dst):
 			raise SystemExit("refitted garment was not written: %s" % dst)
+		report.append("bin %s" % stamp(dst))
 		print("REFIT %-40s %s" % (os.path.basename(dst), "  ".join(report)))
 
 

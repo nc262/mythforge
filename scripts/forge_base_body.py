@@ -112,6 +112,41 @@ def joints(verts: list, groups: dict) -> dict:
 	return out
 
 
+def stamp(path: str) -> str:
+	"""Fold the .bin's checksum into the .gltf, so Godot can SEE a geometry change.
+
+	Godot decides whether to re-import by hashing the file it was pointed at —
+	the .gltf. With `GLTF_SEPARATE` the JSON holds only offsets and counts, and
+	every vertex lives in the .bin beside it, WHICH GODOT DOES NOT HASH. Rewrite
+	a mesh in place without changing its vertex count and the JSON comes out
+	byte-identical, the checksum matches, and the engine serves the mesh from
+	yesterday. Nothing reports anything: the file on disk is new, the scene in
+	the game is old.
+
+	That cost a whole run of measurements here — an enclosure pass was audited
+	three times against geometry Godot had cached the previous day, and the
+	numbers were identical to the digit, which is the only reason it was caught.
+
+	Writing the .bin's md5 into `asset.extras` makes the .gltf's own checksum
+	move whenever the geometry does, which is the property Godot needed all
+	along.
+	"""
+	import hashlib
+	import json
+
+	binp = os.path.splitext(path)[0] + ".bin"
+	if not os.path.exists(binp):
+		return "no .bin"
+	with open(binp, "rb") as fh:
+		digest = hashlib.md5(fh.read()).hexdigest()
+	with open(path, "r", encoding="utf-8") as fh:
+		doc = json.load(fh)
+	doc.setdefault("asset", {}).setdefault("extras", {})["binMd5"] = digest
+	with open(path, "w", encoding="utf-8") as fh:
+		json.dump(doc, fh)
+	return digest[:8]
+
+
 def clear() -> None:
 	bpy.ops.wm.read_factory_settings(use_empty=True)
 	for ob in list(bpy.data.objects):
@@ -729,6 +764,7 @@ def main() -> None:
 							  export_skins=True, export_animations=False)
 	if not os.path.exists(out_path):
 		raise SystemExit("new body was not written: %s" % out_path)
+	print("  stamped bin checksum %s into the gltf" % stamp(out_path))
 	print("FORGED %s  %d verts" % (os.path.basename(out_path), len(mh.data.vertices)))
 
 

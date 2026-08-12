@@ -72,6 +72,7 @@ var _fail: Array = []
 var _soft: Array = []
 var _who := ""
 var _pack := {}
+var _holes_at := {}
 
 
 func _ready() -> void:
@@ -258,8 +259,13 @@ func _audit(shape: String) -> void:
 		_doll.equip(str(slot), "")
 	var naked := await _grab("%s_bare" % who)
 	var holes := _holes(naked, masked, dressed)
+	var band := []
+	for k in _holes_at:
+		if int(_holes_at[k]) > 0:
+			band.append("%s %d" % [k, _holes_at[k]])
 	_check(who, "G7 INTACT", holes <= HOLE_MAX,
-		"%d px of skin deleted with nothing over it (ceiling %d)" % [holes, HOLE_MAX])
+		"%d px deleted with nothing over it (ceiling %d)%s" % [
+			holes, HOLE_MAX, "" if band.is_empty() else "  [" + ", ".join(band) + "]"])
 
 
 ## A hole: skin the bare figure draws, the masked figure does not, and no cloth
@@ -285,7 +291,12 @@ func _holes(bare: Image, masked: Image, clothed: Image) -> int:
 				and masked.get_pixel(x, y).a <= 0.5 \
 				and clothed.get_pixel(x, y).a <= 0.5
 			raw[y * w + x] = 1 if lost else 0
+	# WHERE, not just how many. A count sends you back to looking at the picture
+	# to find out whether it is a wrist, a throat or a whole torso — which is the
+	# habit this harness exists to break. Reported as bands down the figure,
+	# because the fix differs completely by region.
 	var n := 0
+	_holes_at = {"head": 0, "chest": 0, "waist": 0, "legs": 0, "feet": 0}
 	for y in range(1, h - 1):
 		for x in range(1, w - 1):
 			if raw[y * w + x] == 0:
@@ -293,6 +304,17 @@ func _holes(bare: Image, masked: Image, clothed: Image) -> int:
 			if raw[(y - 1) * w + x] == 1 and raw[(y + 1) * w + x] == 1 \
 					and raw[y * w + x - 1] == 1 and raw[y * w + x + 1] == 1:
 				n += 1
+				var f := float(y) / float(h)
+				var band := "feet"
+				if f < 0.26:
+					band = "head"
+				elif f < 0.40:
+					band = "chest"
+				elif f < 0.52:
+					band = "waist"
+				elif f < 0.80:
+					band = "legs"
+				_holes_at[band] = int(_holes_at[band]) + 1
 	return n
 
 

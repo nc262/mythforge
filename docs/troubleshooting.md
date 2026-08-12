@@ -87,6 +87,41 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
   This was written twice before it stuck.
 
+## A mesh was rewritten and Godot kept serving the old one
+
+**Symptom:** a `.gltf` is re-exported with new geometry, `--import` is run, the
+harness measures **exactly** the same numbers as before — identical to the digit,
+including breakdowns that could not possibly repeat by chance.
+
+**Root cause:** Godot decides whether to re-import by hashing the file its
+`.import` points at — the **`.gltf`**. With `GLTF_SEPARATE` that JSON holds only
+offsets and counts; every vertex lives in the **`.bin`** beside it, and **Godot
+does not hash the `.bin`**. Rewrite a mesh in place without changing its vertex
+count and the JSON comes out byte-identical, `source_md5` still matches, and the
+engine serves the mesh it cached the first time. Nothing reports anything: the
+file on disk is new and the scene in the game is old.
+
+Confirmed directly — the stored hash equalled the live `.gltf` hash while the
+`.bin` had changed:
+
+```
+source_md5="123e1ea4eddd35de345571431668b4d6"   # .godot/imported/....md5
+123e1ea4eddd35de345571431668b4d6                # md5 of the .gltf   -> match
+d8d479ac4f69ddfcadd7b10d33522dd4                # md5 of the .bin    -> ignored
+```
+
+**Fix:** `stamp()` in `scripts/refit_garments.py` and `scripts/forge_base_body.py`
+writes the `.bin`'s md5 into the glTF's `asset.extras`, so the `.gltf`'s own
+checksum moves whenever the geometry does. Any script that rewrites a mesh in
+place must do the same.
+
+**To clear a cache already poisoned:** delete the matching
+`.godot/imported/<name>.gltf-*.md5` and `.scn` and re-import. Touching the file
+does **not** work — the check is a hash, not a timestamp.
+
+This cost three rounds of measurements taken against day-old geometry, and the
+only reason it was caught is that the numbers were *too* identical.
+
 ## The exe won't copy to the Desktop
 
 > `Device or resource busy`

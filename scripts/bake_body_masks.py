@@ -40,7 +40,14 @@ PX = 512
 ## In body units, where the figure is ~1.75 tall — so about 6 cm. Too small and
 ## a loose sleeve stops hiding the arm inside it; too large and the ray from a
 ## shoulder finds the trousers.
-MAX_DIST = 0.06
+## Overridable for the same reason NEAR is, and it is the RIGHT one to move.
+## This clause is DIRECTIONAL — it asks whether there is cloth straight out along
+## this skin's own normal — so extending it can only ever find cloth that really
+## is in front, however far out that cloth sits. Extending NEAR instead marks
+## skin covered by cloth that is merely NEARBY: beside it, behind it, around a
+## limb. On a garment refitted to a different torso that is most of the garment,
+## which is why 0.09 bought G6 and paid for it in G7 holes.
+MAX_DIST = float(os.environ.get("MASK_RAY", "0.06"))
 ## How close cloth has to be for the skin to count as covered.
 ##
 ## THIS IS THE WHOLE FIX FOR THE NECK, and it took a control render to see.
@@ -178,8 +185,28 @@ def covered_vertices(body, garment, above: float = 1e9) -> np.ndarray:
         if garment.ray_cast(o + d * 0.0005, d, distance=MAX_DIST)[0]:
             out[i] = True
             continue
-        ok, loc, _nrm, _face = garment.closest_point_on_mesh(o, distance=NEAR)
-        out[i] = ok and (o - loc).length <= NEAR
+        # SIDE-AWARE, and the difference is whole limbs on a refitted garment.
+        #
+        # The ray above only sees cloth the skin is UNDER. Skin that has come out
+        # THROUGH a garment — which is what a piece cut for another torso does —
+        # has its normal pointing away from the cloth, so the ray finds nothing
+        # and only this clause can catch it. Direction-blind it catches far too
+        # much: at 9 cm a chest vertex reaches the tunic's own side panel and is
+        # deleted for it, which cost 2,769 px of holes in tests/body_audit.
+        #
+        # Asking which SIDE of the cloth the skin is on separates the two. A
+        # vertex standing proud of the garment lies along the garment's outward
+        # normal; one merely beside a panel lies across it, and is left alone.
+        # (A previous session removed proximity cleverness from this file for
+        # good reason. What made those rules misfire was the throat, and the
+        # throat is now excluded by REGION before any of this runs.)
+        ok, loc, nrm, _face = garment.closest_point_on_mesh(o, distance=NEAR)
+        if not ok:
+            continue
+        gap = o - loc
+        if gap.length > NEAR:
+            continue
+        out[i] = gap.dot(Vector(nrm)) > 0.0
     return out
 
 
