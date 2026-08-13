@@ -69,6 +69,7 @@ the thresholds trustworthy rather than argued about.
 | G5 MASKS | a mask per worn garment, present **and** neither blank nor solid | 4 sane | 4 sane |
 | G6 CLOTHED | **no skin visible through cloth** | 17 px | **5,730 px — unmet** |
 | G7 INTACT | **no skin deleted where nothing covers it** | 353 px | **944 px — unmet** |
+| G8 BUILT | **the wardrobe still covers at every setting of the build knobs** | 107 px worst | **5,730 px — unmet** |
 
 **G6 and G7 use no colour heuristic at all**, which is what makes them worth
 believing. G6 renders the dressed figure twice — once normally, once with the
@@ -90,6 +91,30 @@ puts both at partial alpha. One erosion pass took it to 727 and the ceiling was
 set at 900 to suit — then the hole map showed that 727 was still rim, a two-pixel
 line down the inner arm. A second pass brings the pack to **353** and the ceiling
 to 700, and the candidate's real areas survive both passes untouched.
+
+### G8, because no player ships with the factory body
+
+Seven knobs are open at the character forge and a mask is baked ONCE, against
+neutral. G6 proves the wardrobe covers the one body nobody plays. G8 re-measures
+it at both ends of every slider at once (`lean`, `heavy`), at a short broad heavy
+build (`stout`), and at each soft-tissue knob alone.
+
+**The shipping wardrobe holds: 107 px worst case, against 17 at neutral and a
+ceiling of 400.** That is not luck, and the reason is the architecture: the four
+hard knobs scale BONES, and every garment is skinned to those same bones, so
+cloth and skin scale together exactly; the three soft ones drive MORPHS, and
+`author_shapes.py` put the same named morphs on the cloth by binding it to the
+skin and measuring where it went. Both halves were designed to do this and
+neither had ever been checked.
+
+The candidate's worst build scores 5,730 — identical to its neutral G6 — so its
+failure is the fit defect it already had, not anything the knobs do.
+
+**The first run said the SHIPPING body failed at 4,665 px**, and that was the
+check: G8 reused the camera framed on the neutral body, and `height` at 0 shrinks
+the figure to 0.86, sliding the fixed torso window off the torso and onto bare
+arm. Re-framing per build — the pair still shares one camera, which is all the
+diff needs — takes it to 107.
 
 ## What the audit proved about the candidate
 

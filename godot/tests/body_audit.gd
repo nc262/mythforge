@@ -20,6 +20,7 @@ extends Node
 ##   G5 MASKS    a real mask for every garment worn — present, and not blank
 ##   G6 CLOTHED  no skin visible through cloth
 ##   G7 INTACT   no skin deleted where nothing covers it
+##   G8 BUILT     the wardrobe still covers at every setting of the build knobs
 ##
 ## G6 IS THE ONE THAT MATTERS and it is measured without any colour heuristic:
 ## render the dressed figure twice, once normally and once with the skin mesh
@@ -72,6 +73,21 @@ const HOLE_MAX := 700
 ## G3 tolerances, as a fraction of the pack body's own measurement.
 const STANCE_TOL := 0.06
 
+## The builds G8 checks, as the player can actually set them. Both ends of every
+## slider at once first, because a wardrobe that survives all-minimum and
+## all-maximum survives the box they define; then the three that move the most
+## flesh on their own, since a knob can be alone in pushing skin through a seam.
+const BUILDS := {
+	"lean":   {"height": 0, "build": 0, "frame": 0, "weight": 0,
+			   "chest": 0, "seat": 0, "belly": 0},
+	"heavy":  {"height": 100, "build": 100, "frame": 100, "weight": 100,
+			   "chest": 100, "seat": 100, "belly": 100},
+	"stout":  {"height": 0, "build": 100, "frame": 100, "weight": 100},
+	"belly":  {"belly": 100},
+	"chest":  {"chest": 100},
+	"seat":   {"seat": 100},
+}
+
 var _vp: SubViewport = null
 var _doll: ModularDoll = null
 var _cam: Camera3D = null
@@ -107,13 +123,13 @@ func _ready() -> void:
 	for s2 in _soft:
 		print("BODY-AUDIT candidate not ready: %s" % s2)
 	if _fail.is_empty():
-		print("BODY-AUDIT OK — %d bodies, seven goals each%s" % [
+		print("BODY-AUDIT OK — %d bodies, eight goals each%s" % [
 			SHAPES.size(),
 			"" if _soft.is_empty() else "  (%d candidate goal(s) unmet)" % _soft.size()])
 	else:
 		for f in _fail:
 			printerr("BODY-AUDIT FAIL: %s" % f)
-		printerr("BODY-AUDIT FAILED — %d of %d checks" % [_fail.size(), SHAPES.size() * 7])
+		printerr("BODY-AUDIT FAILED — %d of %d checks" % [_fail.size(), SHAPES.size() * 8])
 	get_tree().quit(0 if _fail.is_empty() else 1)
 
 
@@ -259,6 +275,44 @@ func _audit(shape: String) -> void:
 	# wearing its mask but with the CLOTH hidden, against the same body wearing
 	# nothing at all: skin present in one and gone from the other was deleted,
 	# and if no cloth covers that pixel either, it is a hole in the figure.
+	# ── G8 BUILT ────────────────────────────────────────────────────────────
+	# EVERY HERO IS SOMEWHERE ELSE ON THESE SLIDERS. G6 proves the wardrobe
+	# covers a body at the factory setting, which is the one body no player
+	# ships with — seven knobs are open at the character forge and a mask is
+	# baked ONCE, against neutral.
+	#
+	# It should hold, and the reason is worth stating because it is the whole
+	# architecture: the four hard knobs scale BONES, and every garment is skinned
+	# to those same bones, so cloth and skin scale together exactly. The three
+	# soft ones drive MORPHS, and `author_shapes.py` put the same named morphs on
+	# the cloth, measured by binding it to the skin. Neither is a coincidence and
+	# neither is tested, until here.
+	var worst := 0
+	var worst_at := "neutral"
+	for preset in BUILDS:
+		_doll.apply_build(Rules.hero_body({"race": "Human", "sex": "male",
+			"build": BUILDS[preset]}))
+		# RE-FRAMED per build, and it is not optional. The torso window is
+		# fractions of the frame, and `height` at 0 shrinks the figure to 0.86 —
+		# keeping the neutral camera slides that window off the torso and onto
+		# whatever happens to be there, which on the first run was bare arm. The
+		# pair still shares one camera, which is all G6's diff requires.
+		_doll.frame_camera(_cam, 1.0, 0.60)
+		var on := await _grab("%s_%s" % [who, preset])
+		if body != null:
+			body.visible = false
+		var off := await _grab("%s_%s_noskin" % [who, preset])
+		if body != null:
+			body.visible = true
+		var d := _diff(on, off)
+		if d > worst:
+			worst = d
+			worst_at = preset
+	# Back to neutral, or every later measurement inherits the last preset.
+	_doll.apply_build(Rules.hero_body({"race": "Human", "sex": "male"}))
+	_check(who, "G8 BUILT", worst <= POKE_MAX,
+		"worst %d px through cloth at '%s' (ceiling %d)" % [worst, worst_at, POKE_MAX])
+
 	_garments(false)
 	var masked := await _grab("%s_maskedskin" % who)
 	_garments(true)
