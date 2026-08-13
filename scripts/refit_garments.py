@@ -146,6 +146,13 @@ def main() -> None:
 		# shape, and then follows nothing at all.
 		sw = old.modifiers.new("ToNewBody", "SHRINKWRAP")
 		sw.target = new
+		# NEAREST SURFACE, and PROJECT along the normal was tried instead on the
+		# theory that nearest-point folds where two parts of the body face each
+		# other across a gap — an inner arm finding the ribs, an inner thigh
+		# finding the other thigh, which is exactly where tests/body_audit
+		# reports the damage. It produced a BYTE-IDENTICAL .bin. For two bodies
+		# this close the two methods land on the same places, so the
+		# correspondence is not the lever and the simpler setting stays.
 		sw.wrap_method = "NEAREST_SURFACEPOINT"
 
 		report = []
