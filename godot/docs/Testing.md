@@ -67,8 +67,8 @@ the thresholds trustworthy rather than argued about.
 | G3 STANCE | height and span within 6% of the pack body | 1.820 / 1.859 | +0.6% / +4.0% |
 | G4 EYES | the eye mesh sits inside the skull rather than floating off it | ok | ok |
 | G5 MASKS | a mask per worn garment, present **and** neither blank nor solid | 4 sane | 4 sane |
-| G6 CLOTHED | **no skin visible through cloth** | 17 px | 317 px |
-| G7 INTACT | **no skin deleted where nothing covers it** | 353 px | **2,006 px — unmet** |
+| G6 CLOTHED | **no skin visible through cloth** | 17 px | **5,730 px — unmet** |
+| G7 INTACT | **no skin deleted where nothing covers it** | 353 px | **944 px — unmet** |
 
 **G6 and G7 use no colour heuristic at all**, which is what makes them worth
 believing. G6 renders the dressed figure twice — once normally, once with the
@@ -113,16 +113,27 @@ With that instrument sharpened, sweeping `MASK_NEAR` **decomposes the failure**:
 setting. Only the chest band scales. So the candidate has TWO independent
 defects, and they were indistinguishable while G7 was one number:
 
-- **The chest band is the threshold.** It grows with `MASK_NEAR` because a wider
-  radius reaches across the armpit gap and deletes torso skin on the strength of
-  a sleeve that is not in front of it. Tunable, and tuning it trades against G6.
-- **The waist and legs are a FIT defect**, ~654 px of it, immune to every
-  setting. The map shows a solid wedge at the crotch: the refitted leggings
-  genuinely do not cover the inner thigh on this body. No mask rule reaches it.
+- **The chest band was the threshold, and nothing else.** Baked at the shipping
+  0.035 it falls to **290**, level with the pack's own 353 rim. Every chest hole
+  was the mask reaching across the armpit gap and deleting torso skin on the
+  strength of a sleeve that is not in front of it.
+- **The waist and legs are a FIT defect**, ~654 px, immune to every setting. The
+  map shows a solid wedge at the crotch: the refitted leggings genuinely do not
+  cover the inner thigh on this body. No mask rule reaches it.
 
-That is why no value passes both, and it is a better answer than "the threshold
-only chooses which failure to have" — half the failure was never the threshold's
-to choose.
+### And the candidate is baked at 0.035, not 0.09, on purpose
+
+Raising `MASK_NEAR` to 0.09 took G6 from 5,730 to 317 and looked like progress.
+It is not: it is **deleting more body to hide a garment that does not fit**, and
+it paid for the illusion with 1,043 px of holes at the crotch and inner arms —
+places nothing covers.
+
+Hidden-surface removal is meant to delete skin that IS under cloth. Using it to
+delete skin that is *outside* cloth is the same error the swelled-garment
+approach made from the other direction, and it is exactly what these two goals
+exist to catch. So the candidate keeps the shipping value and both numbers report
+the truth: the wardrobe does not fit this body yet, and that is a refit problem,
+not a masking one.
 
 So the MakeHuman body is marked a **candidate** in the harness: its goals are
 measured and printed like any other, it does not fail the run — nothing in the
