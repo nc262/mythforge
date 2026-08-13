@@ -29,15 +29,27 @@ extends Node
 ## showing. Every changed pixel is skin that was visible through the cloth.
 const OUT := "user://audit"
 const SIZE := 900
-const BODY := "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_Male_FullBody%s.gltf"
-const SHAPES := ["", "_makehuman"]
+const BODY := "res://assets3d/bodies/Base Characters/Godot - UE/Superhero_%s_FullBody%s.gltf"
+## body suffix, sex. The pack's own two are the controls; a candidate is
+## compared against the pack body OF ITS OWN SEX, since a female pack body is
+## not a defect for being narrower than a male one.
+const SHAPES := [["", "male"], ["", "female"], ["_makehuman", "male"]]
 ## Bodies that are still CANDIDATES. Their goals are measured and printed like
 ## any other, but they do not fail the run — nothing in the game loads them, and
 ## a suite that is permanently red is a suite people stop reading. What they must
 ## never do is go quiet: the summary always says how many candidate goals are
 ## unmet, so adopting one means making those numbers pass first.
 const CANDIDATE := {"_makehuman": true}
-const DRESS := {"armor": "ranger", "legs": "ranger", "feet": "ranger", "hands": "ranger"}
+## BOTH cuts, because one wardrobe covering a body says nothing about the other.
+## The peasant set is looser and hangs differently, which is exactly the case a
+## mask baked against a fitted tunic is least likely to survive.
+const OUTFITS := {
+	"ranger": {"armor": "ranger", "legs": "ranger", "feet": "ranger", "hands": "ranger"},
+	"peasant": {"armor": "peasant", "legs": "peasant", "feet": "peasant", "hands": "peasant"},
+}
+## The candidate has only the ranger set refitted onto it; peasant on that body
+## would be measuring an unrefitted garment and calling the body guilty.
+const CANDIDATE_OUTFITS := ["ranger"]
 const REFIT := {
 	"armor": "res://assets3d/outfits/Modular Parts/Male_Ranger_Body_makehuman.gltf",
 	"legs": "res://assets3d/outfits/Modular Parts/Male_Ranger_Legs_makehuman.gltf",
@@ -77,6 +89,19 @@ const STANCE_TOL := 0.06
 ## slider at once first, because a wardrobe that survives all-minimum and
 ## all-maximum survives the box they define; then the three that move the most
 ## flesh on their own, since a knob can be alone in pushing skin through a seam.
+## Clip, and how far into it to hold. A wardrobe that covers a figure standing
+## still is the easy half — the old swelled-garment approach passed standing and
+## tore at the knee the moment the rig moved, so a pose sweep is the check that
+## would have caught it. Names are searched across every library and a missing
+## one is skipped, since the two animation packs do not share a naming scheme.
+const POSES := {
+	"stand":  ["Sword_Block", 0.0],
+	"swing":  ["Sword_Regular_Combo", 0.55],
+	"idle":   ["Idle_Loop", 0.40],
+	"cast":   ["Spell_Simple_Enter", 0.35],
+	"wave":   ["Wave", 0.45],
+}
+
 const BUILDS := {
 	"lean":   {"height": 0, "build": 0, "frame": 0, "weight": 0,
 			   "chest": 0, "seat": 0, "belly": 0},
@@ -116,8 +141,8 @@ func _ready() -> void:
 	_cam.fov = 34.0
 	_vp.add_child(_cam)
 
-	for shape in SHAPES:
-		await _audit(shape)
+	for row in SHAPES:
+		await _audit(str(row[0]), str(row[1]))
 
 	print("")
 	for s2 in _soft:
@@ -134,7 +159,7 @@ func _ready() -> void:
 
 
 func _check(who: String, goal: String, ok: bool, detail: String) -> void:
-	var soft: bool = CANDIDATE.has("_" + who)
+	var soft: bool = who.begins_with("makehuman")
 	var tag := "ok" if ok else ("cand" if soft else "FAIL")
 	print("  %-11s %-11s %-5s %s" % [who, goal, tag, detail])
 	if ok:
@@ -145,14 +170,14 @@ func _check(who: String, goal: String, ok: bool, detail: String) -> void:
 		_fail.append("%s %s — %s" % [who, goal, detail])
 
 
-func _audit(shape: String) -> void:
-	var who := "pack" if shape == "" else shape.substr(1)
-	var path: String = BODY % shape
+func _audit(shape: String, sex: String) -> void:
+	var who := ("pack" if shape == "" else shape.substr(1)) + "-" + sex.substr(0, 1)
+	var path: String = BODY % [sex.capitalize(), shape]
 	if not ResourceLoader.exists(path):
 		_check(who, "LOAD", false, "missing %s" % path)
 		return
 	print("\n%s" % who)
-	_doll.sex = "male"
+	_doll.sex = sex
 	_doll.mask_dir = "res://assets3d/masks/makehuman/" if shape != "" \
 		else ModularDoll.MASK_DIR
 	_doll.build(load(path))
@@ -160,17 +185,19 @@ func _audit(shape: String) -> void:
 
 	var body := _skin_mesh()
 	var control := shape == ""
+	var ctl: Dictionary = _pack.get(sex, {})
 
 	# ── G1 RIG ──────────────────────────────────────────────────────────────
 	var bones := {}
 	for i in _doll.skeleton.get_bone_count():
 		bones[_doll.skeleton.get_bone_name(i)] = true
 	if control:
-		_pack["bones"] = bones
+		ctl["bones"] = bones
+		_pack[sex] = ctl
 		_check(who, "G1 RIG", bones.size() > 60, "%d bones" % bones.size())
 	else:
 		var missing: Array = []
-		for b in _pack.get("bones", {}):
+		for b in ctl.get("bones", {}):
 			if not bones.has(b):
 				missing.append(b)
 		_check(who, "G1 RIG", missing.is_empty(),
@@ -199,13 +226,14 @@ func _audit(shape: String) -> void:
 	# ── G3 STANCE ───────────────────────────────────────────────────────────
 	var box: AABB = body.get_aabb() if body != null else AABB()
 	if control:
-		_pack["h"] = box.size.y
-		_pack["w"] = box.size.x
+		ctl["h"] = box.size.y
+		ctl["w"] = box.size.x
+		_pack[sex] = ctl
 		_check(who, "G3 STANCE", box.size.y > 1.0,
 			"height %.3f span %.3f" % [box.size.y, box.size.x])
 	else:
-		var dh: float = absf(box.size.y - _pack["h"]) / _pack["h"]
-		var dw: float = absf(box.size.x - _pack["w"]) / _pack["w"]
+		var dh: float = absf(box.size.y - ctl["h"]) / ctl["h"]
+		var dw: float = absf(box.size.x - ctl["w"]) / ctl["w"]
 		_check(who, "G3 STANCE", dh < STANCE_TOL and dw < STANCE_TOL,
 			"height %.3f (%+.1f%%) span %.3f (%+.1f%%)" % [
 				box.size.y, dh * 100.0, box.size.x, dw * 100.0])
@@ -227,107 +255,135 @@ func _audit(shape: String) -> void:
 	_check(who, "G4 EYES", seated,
 		"eye %.3f vs crown %.3f" % [eye_y, head_top])
 
-	# ── G5 MASKS ────────────────────────────────────────────────────────────
-	var worn := _dress(shape)
-	var bad: Array = []
-	for slot in worn:
-		var img: Image = _doll._mask_for(str(worn[slot]))
-		if img == null:
-			bad.append("%s:absent" % slot)
-			continue
-		# Present is not enough: an all-black mask hides nothing and an all-white
-		# one deletes the whole body, and both load without complaint.
-		var white := 0
-		var step := 8
-		var seen := 0
-		for y in range(0, img.get_height(), step):
-			for x in range(0, img.get_width(), step):
-				seen += 1
-				if img.get_pixel(x, y).r > 0.5:
-					white += 1
-		var frac := float(white) / maxf(1.0, float(seen))
-		if frac < 0.005 or frac > 0.95:
-			bad.append("%s:%.0f%%" % [slot, frac * 100.0])
-	_check(who, "G5 MASKS", bad.is_empty(),
-		"%d worn, %s" % [worn.size(), "all sane" if bad.is_empty() else str(bad)])
+	# ── G5 to G8, ONCE PER OUTFIT ───────────────────────────────────────────
+	# One wardrobe covering a body says nothing about the other. The peasant cut
+	# is looser and hangs differently, which is the case a mask baked against a
+	# fitted tunic is least likely to survive.
+	var cuts: Array = CANDIDATE_OUTFITS if not control else OUTFITS.keys()
+	for cut in cuts:
+		var worn := _dress(shape, str(cut))
+		var tag := "%s/%s" % [who, cut]
 
-	# ── G6 CLOTHED, and G7 its opposite ─────────────────────────────────────
-	# FRAMED ONCE, here, and not touched again. Every capture below has to be
-	# the same camera or the diffs compare two different pictures — and bare and
-	# dressed do not have the same silhouette, so re-framing between them would
-	# quietly move the figure.
-	_doll.frame_camera(_cam, 1.0, 0.60)
-	var dressed := await _grab("%s_dressed" % who)
-	if body != null:
-		body.visible = false
-	var without := await _grab("%s_noskin" % who)
-	if body != null:
-		body.visible = true
-	var poke := _diff(dressed, without)
-	if control:
-		_pack["poke"] = poke
-	_check(who, "G6 CLOTHED", poke <= POKE_MAX,
-		"%d px of skin through cloth (ceiling %d)" % [poke, POKE_MAX])
+		# ── G5 MASKS ────────────────────────────────────────────────────────
+		var bad: Array = []
+		for slot in worn:
+			var img: Image = _doll._mask_for(str(worn[slot]))
+			if img == null:
+				bad.append("%s:absent" % slot)
+				continue
+			# Present is not enough: an all-black mask hides nothing and an
+			# all-white one deletes the whole body, and both load without
+			# complaint.
+			var white := 0
+			var step := 8
+			var seen := 0
+			for y in range(0, img.get_height(), step):
+				for x in range(0, img.get_width(), step):
+					seen += 1
+					if img.get_pixel(x, y).r > 0.5:
+						white += 1
+			var frac := float(white) / maxf(1.0, float(seen))
+			if frac < 0.005 or frac > 0.95:
+				bad.append("%s:%.0f%%" % [slot, frac * 100.0])
+		_check(tag, "G5 MASKS", bad.is_empty(),
+			"%d worn, %s" % [worn.size(), "all sane" if bad.is_empty() else str(bad)])
 
-	# The mask cutting too much reads as a HOLE — at a wrist, at a throat —
-	# and G6 cannot see it: deleting skin that was never showing changes
-	# nothing when the skin is hidden. So it needs its own picture. The body
-	# wearing its mask but with the CLOTH hidden, against the same body wearing
-	# nothing at all: skin present in one and gone from the other was deleted,
-	# and if no cloth covers that pixel either, it is a hole in the figure.
-	# ── G8 BUILT ────────────────────────────────────────────────────────────
-	# EVERY HERO IS SOMEWHERE ELSE ON THESE SLIDERS. G6 proves the wardrobe
-	# covers a body at the factory setting, which is the one body no player
-	# ships with — seven knobs are open at the character forge and a mask is
-	# baked ONCE, against neutral.
-	#
-	# It should hold, and the reason is worth stating because it is the whole
-	# architecture: the four hard knobs scale BONES, and every garment is skinned
-	# to those same bones, so cloth and skin scale together exactly. The three
-	# soft ones drive MORPHS, and `author_shapes.py` put the same named morphs on
-	# the cloth, measured by binding it to the skin. Neither is a coincidence and
-	# neither is tested, until here.
-	var worst := 0
-	var worst_at := "neutral"
-	for preset in BUILDS:
-		_doll.apply_build(Rules.hero_body({"race": "Human", "sex": "male",
-			"build": BUILDS[preset]}))
-		# RE-FRAMED per build, and it is not optional. The torso window is
-		# fractions of the frame, and `height` at 0 shrinks the figure to 0.86 —
-		# keeping the neutral camera slides that window off the torso and onto
-		# whatever happens to be there, which on the first run was bare arm. The
-		# pair still shares one camera, which is all G6's diff requires.
+		# ── G6 CLOTHED ──────────────────────────────────────────────────────
+		# FRAMED ONCE per configuration. Both captures of a pair must share a
+		# camera or the diff compares two different pictures.
+		_doll.stand()
 		_doll.frame_camera(_cam, 1.0, 0.60)
-		var on := await _grab("%s_%s" % [who, preset])
+		var dressed := await _grab("%s_%s_dressed" % [who, cut])
 		if body != null:
 			body.visible = false
-		var off := await _grab("%s_%s_noskin" % [who, preset])
+		var without := await _grab("%s_%s_noskin" % [who, cut])
 		if body != null:
 			body.visible = true
-		var d := _diff(on, off)
-		if d > worst:
-			worst = d
-			worst_at = preset
-	# Back to neutral, or every later measurement inherits the last preset.
-	_doll.apply_build(Rules.hero_body({"race": "Human", "sex": "male"}))
-	_check(who, "G8 BUILT", worst <= POKE_MAX,
-		"worst %d px through cloth at '%s' (ceiling %d)" % [worst, worst_at, POKE_MAX])
+		var poke := _diff(dressed, without, "%s_%s" % [who, cut])
+		_check(tag, "G6 CLOTHED", poke <= POKE_MAX,
+			"%d px of skin through cloth (ceiling %d)" % [poke, POKE_MAX])
 
-	_garments(false)
-	var masked := await _grab("%s_maskedskin" % who)
-	_garments(true)
-	for slot in ModularDoll.RENDERED_SLOTS:
-		_doll.equip(str(slot), "")
-	var naked := await _grab("%s_bare" % who)
-	_who = who
-	var holes := _holes(naked, masked, dressed)
-	var band := []
-	for k in _holes_at:
-		if int(_holes_at[k]) > 0:
-			band.append("%s %d" % [k, _holes_at[k]])
-	_check(who, "G7 INTACT", holes <= HOLE_MAX,
-		"%d px deleted with nothing over it (ceiling %d)%s" % [
-			holes, HOLE_MAX, "" if band.is_empty() else "  [" + ", ".join(band) + "]"])
+		# ── G8 BUILT, across every build AND every pose ─────────────────────
+		# EVERY HERO IS SOMEWHERE ELSE ON THESE SLIDERS, and none of them stands
+		# still. Seven knobs are open at the forge and the mask is baked ONCE,
+		# against a neutral body in a rest pose. The old swelled-garment approach
+		# passed standing and tore at the knee the moment the rig moved, so the
+		# pose half of this sweep is the one that would have caught it.
+		var worst := 0
+		var worst_at := "-"
+		var tried := 0
+		for pose in POSES:
+			if not _pose(str(pose)):
+				continue
+			# THE BUILD'S OWN CONTRIBUTION, not the absolute count. A pose puts
+			# skin legitimately in front of cloth — during a sword swing the hand
+			# and forearm cross the chest, inside the torso window — and an
+			# absolute count calls that poke-through. The shipping body scored
+			# 7,804 px at 'heavy/swing' on the first run for exactly that reason.
+			# Measuring the same pose at neutral first and subtracting cancels
+			# every artifact the pose itself creates, and what is left is the one
+			# thing this goal is asking: does moving the sliders break the cover.
+			_doll.apply_build(Rules.hero_body({"race": "Human", "sex": sex}))
+			_doll.frame_camera(_cam, 1.0, 0.60)
+			var base_on := await _grab("%s_%s_base_%s" % [who, cut, pose])
+			if body != null:
+				body.visible = false
+			var base_off := await _grab("%s_%s_base_%s_noskin" % [who, cut, pose])
+			if body != null:
+				body.visible = true
+			var base := _diff(base_on, base_off)
+
+			for preset in BUILDS:
+				_doll.apply_build(Rules.hero_body({"race": "Human", "sex": sex,
+					"build": BUILDS[preset]}))
+				tried += 1
+				# RE-FRAMED per configuration: the torso window is fractions of
+				# the frame, and `height` at 0 shrinks the figure to 0.86, which
+				# slides that window off the torso and onto bare arm.
+				_doll.frame_camera(_cam, 1.0, 0.60)
+				var on := await _grab("%s_%s_%s_%s" % [who, cut, preset, pose])
+				if body != null:
+					body.visible = false
+				var off := await _grab("%s_%s_%s_%s_noskin" % [who, cut, preset, pose])
+				if body != null:
+					body.visible = true
+				var d := _diff(on, off) - base
+				if d > worst:
+					worst = d
+					worst_at = "%s/%s" % [preset, pose]
+		_check(tag, "G8 BUILT", worst <= POKE_MAX,
+			"%d configs, worst +%d px over the same pose at '%s' (ceiling %d)" % [
+				tried, worst, worst_at, POKE_MAX])
+
+		# BACK TO NEUTRAL AND STANDING before anything else is measured. The
+		# sweep above leaves the doll wearing the last build it tried, in the
+		# last pose it held, and G7 read 879 px in that state against 353 in
+		# this one — a number about the seat slider at full, not about the mask.
+		_doll.apply_build(Rules.hero_body({"race": "Human", "sex": sex}))
+		_doll.stand()
+
+		# ── G7 INTACT ───────────────────────────────────────────────────────
+		# The mask cutting too much reads as a HOLE — at a wrist, at a throat —
+		# and G6 cannot see it: deleting skin that was never showing changes
+		# nothing when the skin is hidden. So it needs its own picture.
+		_doll.frame_camera(_cam, 1.0, 0.60)
+		var clothed := await _grab("%s_%s_clothed" % [who, cut])
+		_garments(false)
+		var masked := await _grab("%s_%s_maskedskin" % [who, cut])
+		_garments(true)
+		for slot in ModularDoll.RENDERED_SLOTS:
+			_doll.equip(str(slot), "")
+		var naked := await _grab("%s_%s_bare" % [who, cut])
+		_who = "%s_%s" % [who, cut]
+		var holes := _holes(naked, masked, clothed)
+		var band := []
+		for k in _holes_at:
+			if int(_holes_at[k]) > 0:
+				band.append("%s %d" % [k, _holes_at[k]])
+		_check(tag, "G7 INTACT", holes <= HOLE_MAX,
+			"%d px deleted with nothing over it (ceiling %d)%s" % [
+				holes, HOLE_MAX, "" if band.is_empty() else "  [" + ", ".join(band) + "]"])
+
 
 
 ## A hole: skin the bare figure draws, the masked figure does not, and no cloth
@@ -417,29 +473,43 @@ func _garments(v: bool) -> void:
 ## Pixels inside the torso window that change when the skin mesh is hidden.
 ## Those are pixels the skin was drawing, which is the definition of showing
 ## through — no colour matching, no threshold on what "skin" looks like.
-func _diff(a: Image, b: Image) -> int:
+func _diff(a: Image, b: Image, dump := "") -> int:
 	var x0 := int(TORSO["x0"] * a.get_width())
 	var x1 := int(TORSO["x1"] * a.get_width())
 	var y0 := int(TORSO["y0"] * a.get_height())
 	var y1 := int(TORSO["y1"] * a.get_height())
+	# The window itself, drawn on request. A count inside a rectangle is only as
+	# honest as the rectangle, and this is the picture that says whether what is
+	# being counted is a belly through a tunic or a hand in front of one.
+	var map: Image = null
+	if dump != "":
+		map = Image.create(a.get_width(), a.get_height(), false, Image.FORMAT_RGBA8)
+		map.fill(Color(0, 0, 0, 0))
 	var n := 0
 	for y in range(y0, y1):
 		for x in range(x0, x1):
 			var p := a.get_pixel(x, y)
 			var q := b.get_pixel(x, y)
-			if absf(p.r - q.r) > DELTA or absf(p.g - q.g) > DELTA \
-					or absf(p.b - q.b) > DELTA or absf(p.a - q.a) > DELTA:
+			var hit := absf(p.r - q.r) > DELTA or absf(p.g - q.g) > DELTA \
+					or absf(p.b - q.b) > DELTA or absf(p.a - q.a) > DELTA
+			if map != null:
+				map.set_pixel(x, y, Color(1, 0.15, 0.15, 1) if hit
+					else Color(0.25, 0.25, 0.28, 1))
+			if hit:
 				n += 1
+	if map != null:
+		map.save_png("%s/%s_poke.png" % [OUT, dump])
 	return n
 
 
-func _dress(shape: String) -> Dictionary:
+func _dress(shape: String, cut: String) -> Dictionary:
 	for slot in ModularDoll.RENDERED_SLOTS:
 		_doll.equip(str(slot), "")
+	var want: Dictionary = OUTFITS[cut]
 	var worn := {}
-	for slot in DRESS:
+	for slot in want:
 		if shape == "":
-			if _doll.equip(str(slot), str(DRESS[slot])):
+			if _doll.equip(str(slot), str(want[slot])):
 				worn[slot] = _doll._worn_file.get(slot, "")
 		else:
 			var p: String = REFIT.get(slot, "")
@@ -447,6 +517,21 @@ func _dress(shape: String) -> Dictionary:
 					and _doll.equip_scene(str(slot), load(p), true):
 				worn[slot] = p
 	return worn
+
+
+## Hold one frame of one clip. Returns false when the library has no such name,
+## which is normal rather than an error: the two animation packs do not share a
+## naming scheme, and a pose this rig does not have is skipped, never faked.
+func _pose(name: String) -> bool:
+	var spec: Array = POSES[name]
+	var ap := _doll._play([str(spec[0])])
+	if ap == null:
+		return false
+	var extra := float(spec[1])
+	if extra > 0.0:
+		ap.advance(extra)
+	ap.pause()
+	return true
 
 
 func _skin_mesh() -> MeshInstance3D:

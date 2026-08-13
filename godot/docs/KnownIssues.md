@@ -51,3 +51,21 @@ collapses to a column. Give it an explicit width and left-align inside it.
 **`Button` never consults a script's `_get_minimum_size()`.** Its native
 implementation wins, so a `class_name X extends Button` that overrides the
 virtual has written dead code. Set `custom_minimum_size` instead.
+
+## The female hero's skin shows through her tunic
+
+**Found by** `tests/body_audit.tscn` G6, the first time anything measured the
+FEMALE body dressed. 1,116 px of skin through the ranger cut and 931 through the
+peasant one, against 66 and 10 for the male — and the map
+(`pack-f_ranger_poke.png`) shows solid areas at both shoulders and across the
+waist, not the hairline rim a silhouette edge gives.
+
+Both the body and the garments are the pack's own, fitted to each other by the
+vendor, so this is not a refit artifact. The masks are not over-reaching either:
+the same configuration scores 24 px on G7, so nothing is being deleted that
+should not be.
+
+**Not fixed.** It is a pre-existing defect in shipping content that nobody had
+looked for, and the audit is red until it is dealt with. Naming it here rather
+than raising a threshold to make the red go away, which would be the same error
+as widening `MASK_NEAR` to hide the candidate's fit problem.
