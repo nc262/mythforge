@@ -60,7 +60,14 @@ const POKE_MAX := 400
 ## Ceiling for G7. Larger than G6's because it reads the WHOLE frame rather than
 ## a window, and because a mask edge that lands a texel inside the cloth line is
 ## a hairline nobody sees — a real hole is thousands of pixels, not dozens.
-const HOLE_MAX := 900
+## How many times the hole mask is eroded before anything is counted. See _holes.
+const EROSION := 2
+## Ceiling for G7, at twice the shipping body's own 353. The first value here was
+## 900, chosen against a ONE-pass erosion that scored the pack at 727 — and the
+## hole map showed that 727 to be a two-pixel rim down the inner arm, so the
+## ceiling had been calibrated against an artifact and would have admitted a real
+## defect of the same size.
+const HOLE_MAX := 700
 
 ## G3 tolerances, as a fraction of the pack body's own measurement.
 const STANCE_TOL := 0.06
@@ -258,6 +265,7 @@ func _audit(shape: String) -> void:
 	for slot in ModularDoll.RENDERED_SLOTS:
 		_doll.equip(str(slot), "")
 	var naked := await _grab("%s_bare" % who)
+	_who = who
 	var holes := _holes(naked, masked, dressed)
 	var band := []
 	for k in _holes_at:
@@ -285,24 +293,49 @@ func _holes(bare: Image, masked: Image, clothed: Image) -> int:
 	var h := bare.get_height()
 	var raw := PackedByteArray()
 	raw.resize(w * h)
+	# A MAP, not just a tally. Bands narrow "where" down to a fifth of the figure
+	# and no further, and the difference between a hole in a chest and a sliver
+	# of background seen through an armpit is a shape, not a count. Written
+	# beside the captures as `<body>_holes.png`: the figure in grey, every
+	# counted pixel in red.
+	var map := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	map.fill(Color(0, 0, 0, 0))
 	for y in h:
 		for x in w:
 			var lost := bare.get_pixel(x, y).a > 0.5 \
 				and masked.get_pixel(x, y).a <= 0.5 \
 				and clothed.get_pixel(x, y).a <= 0.5
 			raw[y * w + x] = 1 if lost else 0
+			if bare.get_pixel(x, y).a > 0.5:
+				map.set_pixel(x, y, Color(0.30, 0.30, 0.32, 1.0))
+			elif clothed.get_pixel(x, y).a > 0.5:
+				map.set_pixel(x, y, Color(0.16, 0.20, 0.16, 1.0))
 	# WHERE, not just how many. A count sends you back to looking at the picture
 	# to find out whether it is a wrist, a throat or a whole torso — which is the
 	# habit this harness exists to break. Reported as bands down the figure,
 	# because the fix differs completely by region.
+	# ERODED TWICE, not once. One pass was calibrated against the shipping body's
+	# 727 — and the hole map showed what that 727 actually is: a two-pixel rim
+	# down the inner arm and across the armpit, where the sleeve's silhouette and
+	# the arm's differ by a hair. A ceiling set to admit that admits anything. A
+	# second pass erases a 2-deep rim and leaves the candidate's real areas —
+	# bands down both inner arms, a wedge at the crotch — standing.
+	for _pass in EROSION:
+		var next := raw.duplicate()
+		for y in range(1, h - 1):
+			for x in range(1, w - 1):
+				if raw[y * w + x] == 0:
+					continue
+				if raw[(y - 1) * w + x] == 0 or raw[(y + 1) * w + x] == 0 \
+						or raw[y * w + x - 1] == 0 or raw[y * w + x + 1] == 0:
+					next[y * w + x] = 0
+		raw = next
+
 	var n := 0
 	_holes_at = {"head": 0, "chest": 0, "waist": 0, "legs": 0, "feet": 0}
 	for y in range(1, h - 1):
 		for x in range(1, w - 1):
-			if raw[y * w + x] == 0:
-				continue
-			if raw[(y - 1) * w + x] == 1 and raw[(y + 1) * w + x] == 1 \
-					and raw[y * w + x - 1] == 1 and raw[y * w + x + 1] == 1:
+			if raw[y * w + x] == 1:
 				n += 1
 				var f := float(y) / float(h)
 				var band := "feet"
@@ -315,6 +348,8 @@ func _holes(bare: Image, masked: Image, clothed: Image) -> int:
 				elif f < 0.80:
 					band = "legs"
 				_holes_at[band] = int(_holes_at[band]) + 1
+				map.set_pixel(x, y, Color(1.0, 0.15, 0.15, 1.0))
+	map.save_png("%s/%s_holes.png" % [OUT, _who])
 	return n
 
 

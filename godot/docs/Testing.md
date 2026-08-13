@@ -68,7 +68,7 @@ the thresholds trustworthy rather than argued about.
 | G4 EYES | the eye mesh sits inside the skull rather than floating off it | ok | ok |
 | G5 MASKS | a mask per worn garment, present **and** neither blank nor solid | 4 sane | 4 sane |
 | G6 CLOTHED | **no skin visible through cloth** | 17 px | 317 px |
-| G7 INTACT | **no skin deleted where nothing covers it** | 727 px | **2,769 px — unmet** |
+| G7 INTACT | **no skin deleted where nothing covers it** | 353 px | **2,006 px — unmet** |
 
 **G6 and G7 use no colour heuristic at all**, which is what makes them worth
 believing. G6 renders the dressed figure twice — once normally, once with the
@@ -82,29 +82,47 @@ G6 earned its place on the first run, catching the candidate at **5,722 px**
 against the control's 17. That settled in one run what a day of renders could
 not: the defect was SKIN, not the mangled belt it equally looked like.
 
-**G7 is eroded by one pixel, and the shipping body is why.** Counted raw it
-scored the pack at 1,491 — and the pack is the one figure known to be correct, so
-that was the CHECK being wrong, not the body. The pixels were a one-deep rim:
-along every garment edge the cloth and skin silhouettes land a pixel apart and
-antialiasing puts both at partial alpha. A hole you can see is a region, so
-requiring the four neighbours to qualify erases the rim exactly.
+**G7 is eroded twice, and the shipping body is why.** Counted raw it scored the
+pack at 1,491 — and the pack is the one figure known to be correct, so that was
+the CHECK being wrong, not the body. The pixels are a rim: along every garment
+edge the cloth and skin silhouettes land a pixel or two apart and antialiasing
+puts both at partial alpha. One erosion pass took it to 727 and the ceiling was
+set at 900 to suit — then the hole map showed that 727 was still rim, a two-pixel
+line down the inner arm. A second pass brings the pack to **353** and the ceiling
+to 700, and the candidate's real areas survive both passes untouched.
 
-## What the audit proved about the candidate, and it is not what was hoped
+## What the audit proved about the candidate
 
-`MASK_NEAR` looked like the fix for G6 and a sweep killed that idea:
+**G7 writes a hole map** — `<body>_holes.png`, the figure in grey and every
+counted pixel in red — because a band count narrows "where" to a fifth of the
+figure and no further, and a hole in a chest and a sliver of background seen
+through an armpit are the same number and different problems. The map is what
+showed the pack's own score to be a rim rather than a hole, which is what
+retired the 900 ceiling.
 
-| `MASK_NEAR` | G6 ≤400 | G7 ≤900 |
-|---|---|---|
-| 0.05 | 2,346 ✗ | 1,953 ✗ |
-| 0.06 | 1,042 ✗ | 2,232 ✗ |
-| 0.07 | 610 ✗ | 2,514 ✗ |
-| 0.09 | **317 ✓** | 2,769 ✗ |
-| *pack* | *17* | *727* |
+With that instrument sharpened, sweeping `MASK_NEAR` **decomposes the failure**:
 
-The two move in opposite directions and **no value passes both** — at the
-tightest setting G7 is still 2.7× the control. The threshold is not the problem;
-it only chooses which failure to have. The garment refit is, and that is where
-the next work goes.
+| `MASK_NEAR` | G6 ≤400 | G7 ≤700 | G7 by band |
+|---|---|---|---|
+| 0.04 | 4,679 ✗ | 1,068 ✗ | chest 414, **waist 376, legs 278** |
+| 0.06 | 1,042 ✗ | 1,541 ✗ | chest 887, **waist 376, legs 278** |
+| 0.09 | **317 ✓** | 2,006 ✗ | chest 1,333, **waist 395, legs 278** |
+| *pack* | *17* | *353* | *chest 353* |
+
+**Waist and legs do not move with the threshold at all.** 376 and 278 at every
+setting. Only the chest band scales. So the candidate has TWO independent
+defects, and they were indistinguishable while G7 was one number:
+
+- **The chest band is the threshold.** It grows with `MASK_NEAR` because a wider
+  radius reaches across the armpit gap and deletes torso skin on the strength of
+  a sleeve that is not in front of it. Tunable, and tuning it trades against G6.
+- **The waist and legs are a FIT defect**, ~654 px of it, immune to every
+  setting. The map shows a solid wedge at the crotch: the refitted leggings
+  genuinely do not cover the inner thigh on this body. No mask rule reaches it.
+
+That is why no value passes both, and it is a better answer than "the threshold
+only chooses which failure to have" — half the failure was never the threshold's
+to choose.
 
 So the MakeHuman body is marked a **candidate** in the harness: its goals are
 measured and printed like any other, it does not fail the run — nothing in the
