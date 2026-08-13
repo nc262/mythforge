@@ -490,8 +490,15 @@ func _diff(a: Image, b: Image, dump := "") -> int:
 		for x in range(x0, x1):
 			var p := a.get_pixel(x, y)
 			var q := b.get_pixel(x, y)
-			var hit := absf(p.r - q.r) > DELTA or absf(p.g - q.g) > DELTA \
-					or absf(p.b - q.b) > DELTA or absf(p.a - q.a) > DELTA
+			# CLOTH MUST BE BEHIND IT. Skin drawing over cloth is poke-through;
+			# skin drawing over BACKGROUND is a hero the vendor cut that way, and
+			# the female ranger set is exactly that — a bare midriff and open
+			# shoulders. Without this clause the check calls a costume a defect,
+			# which is what it did: 1,116 px against the male's 66, every pixel
+			# of it skin that is supposed to show.
+			var behind := q.a > 0.5
+			var hit := behind and (absf(p.r - q.r) > DELTA or absf(p.g - q.g) > DELTA \
+					or absf(p.b - q.b) > DELTA or absf(p.a - q.a) > DELTA)
 			if map != null:
 				map.set_pixel(x, y, Color(1, 0.15, 0.15, 1) if hit
 					else Color(0.25, 0.25, 0.28, 1))

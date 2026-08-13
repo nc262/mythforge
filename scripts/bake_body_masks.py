@@ -72,9 +72,15 @@ MAX_DIST = float(os.environ.get("MASK_RAY", "0.06"))
 ## the cloth is tight — true of a garment modelled against the body wearing it,
 ## and false of a garment refitted onto a different torso, where the skin can
 ## stand clear OUTSIDE the cloth and never come within 3.5 cm of it. The
-## shipping body keeps 0.035; a candidate can be baked and MEASURED at another
-## value (tests/body_audit.tscn, goal G6) instead of the number being argued
-## about.
+## MALE ships at 0.035 and FEMALE at 0.05, and that is a measured split rather
+## than a preference. At 0.035 the female hero had 951 px of skin through her
+## ranger tunic and 685 through the peasant one, against the male's 3 and 1 —
+## shoulders and the belt line, every pixel of it with cloth BEHIND it. At 0.05
+## both fall to 4 and 2 while G7 does not move at all (24 px and 247 px, same as
+## before), which is the pair of numbers that separates a fix from a cover-up:
+## the skin being deleted is skin that was in front of cloth, which is what
+## hidden-surface removal is FOR. 0.07 is identical to 0.05, so the effect
+## saturates and the smaller value is the one kept.
 NEAR = float(os.environ.get("MASK_NEAR", "0.035"))
 ## Pixels of dilation. The mask is sampled per fragment, so a boundary that is
 ## exactly right in UV space still shows a rim of skin where a texel straddles
