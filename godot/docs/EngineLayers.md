@@ -33,7 +33,8 @@ Dependencies point **downward only**; nothing lower reaches up into a view.
 Known upward/cross reaches to unwind over time (tracked, not blocking):
 `Rules.attack_mod → GameState.inv` (pass inv explicitly), `Composer →
 GameState/Chronicle/Rules` (fine as read-only service calls), and the big one:
-`game.gd` does UI **and** gameplay **and** AI orchestration in one ~1.5k-line file.
+`game.gd` does UI **and** gameplay **and** AI orchestration in one file — **3,062
+lines across 106 functions**, measured 2026-08-14.
 
 ## 2. The pattern (already proven in this codebase)
 
@@ -47,27 +48,43 @@ Screens are ALREADY separate scene scripts the play screen just opens:
 **A0 = keep applying this exact pattern** to the dialog builders still inline in
 `game.gd`. No new architecture — the same seam, more of it.
 
-## 3. What's still inline in game.gd (extraction backlog, by coupling)
+## 3. The extraction backlog — DONE, and it did not shrink the file
 
-Lowest coupling first — do them in this order; each is one commit + a playtest.
+**All six rows of the original backlog shipped.** `merchant_window.gd`,
+`levelup_window.gd`, `reaction_prompt.gd`, `gm_tuner.gd`, and the folds into
+`lore_book.gd` / `world_map.gd` all exist; `_open_shop` and `_level_up_ceremony`
+are now exactly the prescribed four lines — instantiate, connect, add_child,
+popup. `game.gd` opens ten windows this way.
 
-| Extract → new scene | Lines (approx) | Couples to | Signal(s) back |
-|---|---|---|---|
-| `_open_shop` → `merchant_window.gd` | ~120 | GameState buy/sell/haggle, Rules stock | `traded(summary)` → GM note |
-| `_open_journal` → fold into `lore_book.gd` (Quests/Chronicle already there) | ~90 | Chronicle, chapters | — (retire the inline one) |
-| `_open_chronicle` / `_open_atlas` → `lore_book`/`world_map` | ~80 | chapters, world.here | `travel(place)` |
-| `_tune_gm` / `_save_chapter` → `gm_panel.gd` | ~70 | gm kind, chapters | `retuned` |
-| `_level_up_ceremony` → `levelup_window.gd` | ~110 | Rules level tables, sheet | `chose(choices)` |
-| reactions overlay → `reaction_prompt.gd` | ~60 | Combat pending | `chose(kind)` |
+The seam worked. **The eleven sibling windows total 3,340 lines — more than
+`game.gd` itself.** What did not happen is the target: the file was ~1.5k lines
+when that plan was written and is **3,062 now**. Extraction moved roughly 600
+lines out while the play screen grew by more than twice that.
 
-**Stays in game.gd** (the play-screen core — the streaming state machine and
-its direct view): `_stream`/`_on_delta`/`_flush_stream`/`_on_done`, the language
-gate, `_apply_world_tags`/`_apply_presentation_tags`, `_render_combat`/init rail,
-the input bar, bubbles, the dice moment. These ARE the play screen; they don't
-belong in a sibling window.
+So the old table is deleted rather than kept. It listed six rows that were all
+complete and a target that had been missed by 4×, which reads as a plan when it
+is a record — and this project has already thrown away one drifting tracker for
+exactly that reason (see [Backlog.md](Backlog.md), the 107-row matrix).
 
-Target: `game.gd` shrinks from ~1.5k to ~700–800 lines of genuine play-screen
-logic, with each window independently testable via the gallery/screenshot harness.
+### What is actually inline now (measured 2026-08-14, top of the file by size)
+
+| Function | Lines | Verdict |
+|---|---|---|
+| `_ready` | 215 | screen construction; assigns ~10 member vars the rest of the file reads |
+| `_create_hero` | 136 | the creation flow, already fronted by `_open_character_forge` |
+| `_apply_world_tags` | 123 | **stays** — the tag protocol is the play screen |
+| `_on_done` | 98 | **stays** — the streaming state machine |
+| `_free_check` | 98 | dice-menu dispatch on magic ids (700–799 recipes, 900/903, 910+) |
+| `_on_sheet_action` | 96 | sheet-action dispatch |
+| `_render_sheet` / `_render_combat` | 82 / 81 | **stays** — the play screen's direct view |
+
+**The window seam is exhausted.** Nothing left is a dialog with its own screen:
+what remains is the streaming/tag core the original plan explicitly protected,
+two dispatch routers wired to `_stream`/`_say_me`/`_render_sheet`, and a long
+`_ready` whose locals become the file's shared state. Shrinking further needs a
+**different** seam — a builder for construction, a table for the dispatchers —
+and choosing one is an architecture decision, not a mechanical extraction. It is
+not scheduled here until someone picks it deliberately.
 
 ## 4. Safety rules for each extraction
 
