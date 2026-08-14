@@ -235,7 +235,17 @@ func _ready() -> void:
 		Mode.enter("CharacterForge")
 		_open_character_forge()  # a fresh adventure begins with a legend
 	else:
-		Mode.enter("Exploration")
+		# NOT UNCONDITIONALLY. `_render_combat()` ten lines above already put the
+		# machine in Combat (or Death) when the save carries a live fight — that
+		# is the whole point of "a fight persisted mid-round resumes where it
+		# stood" — and this line used to throw that away a moment later.
+		#
+		# The player resumed a saved battle into Exploration, where
+		# `can("combat_action")` is false, so every attack on the board refused
+		# until a click reached `_can_fight` and healed it. Combat → Exploration
+		# is a DECLARED transition, so nothing ever warned.
+		if not Mode.fight_owned():
+			Mode.enter("Exploration")
 		# R6 BUG-31/CUT-07 — this said "The tale of <name> continues…", which is
 		# the header two lines above it, restated. Name the PLACE instead: it is
 		# the one thing the player cannot already read on screen.
@@ -1430,7 +1440,7 @@ func _start_combat(foes: String) -> void:
 	#
 	# Not from Death, GameOver or LevelUp: those already own the fight, or the
 	# run is over, and forcing Combat over them steals a death save.
-	if Combat.active() and Mode.state not in ["Combat", "Death", "GameOver", "LevelUp"]:
+	if Combat.active() and not Mode.fight_owned():
 		Mode.enter("Combat")
 	_render_combat()
 
@@ -2145,7 +2155,7 @@ func _render_combat() -> void:
 			Sfx.music(WorldSkin.music_for_id(GameState.world_id()))
 	if not fighting:
 		return
-	if Mode.state not in ["Combat", "Death", "GameOver", "LevelUp"]:
+	if not Mode.fight_owned():
 		Mode.enter("Combat")  # steel is out — whatever mode we drifted to yields
 	if not Combat.pc_down().is_empty():
 		if Mode.state == "Combat":

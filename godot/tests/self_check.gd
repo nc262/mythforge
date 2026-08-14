@@ -703,6 +703,28 @@ func _ready() -> void:
 		assert(str(parts[i]).substr(0, 220).contains("Mode.busy = false"),
 			"a stream is cancelled without clearing Mode.busy — the next adventure will refuse every message")
 
+	# ── RESUMING A SAVED FIGHT MUST NOT LAND IN EXPLORATION ──────────────────
+	# `_boot` renders a persisted fight — which enters Combat — and then used to
+	# call `Mode.enter("Exploration")` unconditionally ten lines later, throwing
+	# that away. The player resumed a saved battle into a mode where
+	# `can("combat_action")` is false and every attack refused until a click
+	# healed it. Nothing warned, because Combat → Exploration is legal.
+	for st in Mode.FIGHT_OWNED:
+		Mode.state = st
+		assert(Mode.fight_owned(), "%s owns the fight and must not be overridden" % st)
+	for st in ["Exploration", "Dialogue", "Merchant", "Camp", "Victory"]:
+		Mode.state = st
+		assert(not Mode.fight_owned(), "%s does not own a fight and may be entered normally" % st)
+	# The boot path itself: the resume must ASK before forcing Exploration. This
+	# is structural — the bug was a correct decision overwritten a few lines
+	# later, which no value check can see, only the order of the two statements.
+	var gsrc_boot := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var after_forge := str(gsrc_boot.split("_open_character_forge()")[1]).substr(0, 900)
+	var guard_at := after_forge.find("Mode.fight_owned()")
+	var force_at := after_forge.find('Mode.enter("Exploration")')
+	assert(guard_at >= 0 and force_at >= 0 and guard_at < force_at,
+		"the resume forces Exploration without asking whether a saved fight is still on")
+
 	Mode.state = "Boot"  # leave the machine as the game boots it
 
 	# Language guard (Issue 4): English passes, wholesale drift is caught,

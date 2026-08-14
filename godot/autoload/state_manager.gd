@@ -60,6 +60,20 @@ var state: StringName = "Boot"
 var busy := false  # a stream (or blocking dialog) is in flight
 
 
+## The states that already own the fight, or own the end of the run. Nothing may
+## force Exploration or Combat over one of them: doing so steals a death save,
+## interrupts the level-up ceremony, or reopens a finished tale.
+##
+## ONE LIST. Three copies of it lived in `game.gd`, and this repo has just paid
+## for what two copies of one fact cost (see TechnicalDebt) — a fourth copy
+## written slightly differently is exactly how the next one starts.
+const FIGHT_OWNED := ["Combat", "Death", "GameOver", "LevelUp"]
+
+
+func fight_owned() -> bool:
+	return String(state) in FIGHT_OWNED
+
+
 func enter(next: StringName) -> void:
 	if next == state:
 		return
