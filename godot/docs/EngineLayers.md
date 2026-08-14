@@ -71,7 +71,7 @@ exactly that reason (see [Backlog.md](Backlog.md), the 107-row matrix).
 | Function | Lines | Verdict |
 |---|---|---|
 | `_ready` | ~~215~~ **20** | **split 2026-08-14** — see §3a |
-| `_create_hero` | 136 | the creation flow, already fronted by `_open_character_forge` |
+| `_create_hero` | ~~136~~ **57** | **sheet construction moved to `GameState.new_hero_sheet` 2026-08-14** — see §3b |
 | `_apply_world_tags` | 123 | **stays** — the tag protocol is the play screen |
 | `_on_done` | 98 | **stays** — the streaming state machine |
 | `_free_check` | 98 | dice-menu dispatch on magic ids (700–799 recipes, 900/903, 910+) |
@@ -113,6 +113,37 @@ order (chrome builds what the room paints into). Both mutation-tested — inline
 
 The file grew by 40 lines doing this, and that is the honest trade: five
 function headers and their docstrings bought a boot sequence you can read.
+
+### 3b. The third seam: pure rules leave the screen entirely
+
+`_create_hero` mixed two jobs. Seventy-nine lines of it were **pure**: ability
+priority, heritage bonuses, skill dedup, class features, a caster's first slots —
+rules about what a hero *is*, reading `Rules` tables and returning a Dictionary.
+The rest is screen work: commit the sheet, hand out the kit, narrate.
+
+The pure half is now `GameState.new_hero_sheet()`. **Not `Rules`** — Rules
+reaching into GameState is the upward dependency §1 already wants unwound, and
+GameState owns `DEFAULT_SHEET`, so calling Rules from there is the sanctioned
+direction. Putting it in Rules would have moved the tangle, not cut it.
+
+**The payoff is a test, not a line count.** Character creation had no direct
+check because it lived in a UI script; `self_check` now builds sheets and asserts
+the look persists, a level-1 Fighter has features, a Wizard leaves with slots, a
+Fighter's best roll goes to STR, and skills are deduped.
+
+**And this is where the greps died.** Three assertions — two in `self_check`, one
+in `ui_playthrough` — tested this by searching `game.gd` for `s["sex"]` and
+`class_features_upto`. All three went red on a move that changed no behaviour
+whatever, which is the tell that they were asserting **where code lived**. They
+are behavioural now. The one that stayed a source check is the kit floor, where
+the defect genuinely is a call site.
+
+One caution earned here: the first dedup assertion passed with the dedup
+**deleted**, because the Dwarf Fighter it used shares no skill with anything.
+238 of the table's class/heritage/background combinations collide; it had picked
+one of the few that do not. It now uses Fighter+Elf+Soldier — perception from
+heritage, athletics from background — and asserts that the case still collides,
+so it cannot quietly decay into decoration.
 
 **The window seam is exhausted.** Nothing left is a dialog with its own screen:
 what remains is the streaming/tag core the original plan explicitly protected,

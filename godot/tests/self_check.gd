@@ -1495,9 +1495,49 @@ The term for spell slots is "Echoes."
 	var fsrc := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
 	assert(fsrc.contains("draft[\"sex\"] = opt"), "forge: the anvil asks for a hero's sex")
 	assert(fsrc.contains("Rules.BUILD_KNOBS"), "forge: ...and offers every build knob")
-	var gsrc5 := FileAccess.get_file_as_string("res://scripts/game.gd")
-	assert(gsrc5.contains("s[\"sex\"]") and gsrc5.contains("s[\"build\"]"),
-		"forge: a forged hero carries its body onto the sheet")
+	# ...AND IT IS ASSERTED BY BUILDING ONE. This used to grep game.gd for
+	# `s["sex"]`, which broke the day the construction moved to GameState with no
+	# behaviour changed — the tell that it was testing where the code lived. A
+	# grep also passes when the value is assigned and then thrown away.
+	var rolls: Array[int] = [15, 14, 13, 12, 10, 8]
+	var forged := GameState.new_hero_sheet("Test", "Dwarf", "Fighter", rolls, "",
+		{"sex": "female", "appearance": "a scarred jaw"})
+	assert(str(forged.get("sex", "")) == "female", "forge: the hero's sex reaches the sheet")
+	assert(forged.get("build") is Dictionary
+		and (forged["build"] as Dictionary).size() == Rules.BUILD_KNOBS.size(),
+		"forge: every build knob reaches the sheet")
+	assert(str(forged.get("look", "")) == "a scarred jaw",
+		"forge: the look is persisted, not handed to one portrait and dropped")
+	# PS-1 — the table had Second Wind at level 1 the whole time and nothing asked.
+	assert(not (forged.get("features", []) as Array).is_empty(),
+		"forge: a level-1 hero leaves with no class features (PS-1)")
+	# Preset + heritage + background can grant the same skill, and the sheet then
+	# reads "athletics, perception, athletics, perception".
+	#
+	# THE COMBINATION IS CHOSEN, NOT CONVENIENT. The Dwarf Fighter above shares no
+	# skill with anything, so deleting the dedup left it green — measured, not
+	# assumed. Fighter+Elf collides on perception through heritage and Fighter+
+	# Soldier collides on athletics through background, so this one exercises both
+	# sources. 238 of the table's combinations overlap; this check would be
+	# decoration if it used one of the few that do not.
+	var dupe := GameState.new_hero_sheet("Test3", "Elf", "Fighter", rolls, "Soldier")
+	var seen_sk := {}
+	for sk in dupe.get("profSkills", []):
+		assert(not seen_sk.has(sk), "forge: %s is listed twice — the skill dedup is gone" % sk)
+		seen_sk[sk] = true
+	assert(seen_sk.has("perception") and seen_sk.has("athletics"),
+		"forge: this case no longer collides — pick another, or the dedup check proves nothing")
+	# The best roll goes where the class wants it: a Fighter is STR-first, and a
+	# caster leads with its casting ability instead.
+	var abil: Dictionary = forged.get("abilities", {})
+	assert(int(abil.get("STR", 0)) >= int(abil.get("CHA", 0)),
+		"forge: a Fighter's best scores are not going to STR")
+	var wiz := GameState.new_hero_sheet("Test2", "Human", "Wizard", rolls)
+	assert(wiz.get("slots") != null, "forge: a caster leaves the anvil with no spell slots")
+	assert(int((wiz["abilities"] as Dictionary).get("INT", 0)) >= int(abil.get("STR", 0)) - 2,
+		"forge: a Wizard's best score is not going to its casting ability")
+	assert(int(forged.get("hp", 0)) == int(forged.get("hpMax", 0)) and int(forged.get("hp", 0)) > 0,
+		"forge: a new hero does not start at full health")
 	print("  build: sex + %d knobs, neutral means heritage, and a tall Dwarf is still a Dwarf"
 		% Rules.BUILD_KNOBS.size())
 

@@ -512,85 +512,13 @@ func _create_hero_forged(d: Dictionary) -> void:
 
 
 func _create_hero(nm: String, race: String, cls: String, rolled: Array[int], background := "", extra := {}) -> void:
-	var preset: Dictionary = Rules.tables.get("class_presets", {}).get(cls, {"hitDie": 8})
-	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(race, {})
-	# Best scores where the class wants them: cast ability or STR/DEX first, CON second.
-	var prio: Array[String] = []
-	var cast_ab: String = Rules.CAST_ABIL.get(cls, "")
-	if cast_ab != "":
-		prio.append(cast_ab)
-	for a in (["DEX", "STR"] if cls in ["Rogue", "Ranger", "Monk"] else ["STR", "DEX"]):
-		if not a in prio:
-			prio.append(a)
-	if not "CON" in prio:
-		prio.insert(1, "CON")
-	for a in Rules.ABILITIES:
-		if not a in prio:
-			prio.append(a)
-	var abilities := {}
-	if extra.get("assign") is Dictionary and not extra["assign"].is_empty():
-		for a2 in Rules.ABILITIES:
-			abilities[a2] = int(extra["assign"].get(a2, 10))
-	else:
-		for i in 6:
-			abilities[prio[i]] = rolled[i] if i < rolled.size() else 10
-	for a in heritage.get("abil", {}):
-		abilities[a] = int(abilities.get(a, 10)) + int(heritage["abil"][a])
-	var s: Dictionary = GameState.DEFAULT_SHEET.duplicate(true)
-	s["name"] = nm
-	s["race"] = race
-	s["cls"] = cls
-	# The body the player shaped at the anvil. It sits on the sheet beside race
-	# because it is the same KIND of fact — what this hero IS, not what they
-	# carry — and every renderer reads it through Rules.hero_body.
-	s["sex"] = str(extra.get("sex", "male"))
-	s["build"] = extra.get("build") if extra.get("build") is Dictionary else Rules.default_build()
-	s["abilities"] = abilities
-	s["hitDie"] = int(preset.get("hitDie", 8))
-	s["hpMax"] = int(preset.get("hitDie", 8)) + Rules.ability_mod(int(abilities.get("CON", 10)))
-	s["hp"] = s["hpMax"]
-	s["gold"] = 10 + randi_range(1, 20)
-	s["profSaves"] = preset.get("saves", [])
-	var bgd: Dictionary = Rules.tables.get("backgrounds", {}).get(background, {})
-	s["background"] = background
-	# Preset + heritage + background can grant the same skill — dedup or the
-	# sheet reads "insight, religion, insight, religion".
-	var skills: Array = []
-	for sk in preset.get("skills", []) + heritage.get("skills", []) + bgd.get("skills", []):
-		if not skills.has(sk):
-			skills.append(sk)
-	s["profSkills"] = skills
-	# CLASS features, not heritage traits. `features` is rendered on the sheet
-	# under "Class Features" and is what GameState.feature_action_key() matches to
-	# put a usable action on the HUD — so writing heritage traits here gave a
-	# level-1 Fighter no Second Wind, a Barbarian no Rage, and a "Class Features"
-	# list that was actually their heritage, repeated again on the Story page.
-	# Heritage traits are not lost: the Story page reads them from the heritage
-	# table, which is where they live (PS-1).
-	s["features"] = Rules.class_features_upto(cls, int(s.get("level", 1)))
-	# The player's own class/background story — the GM reinterprets it inside
-	# whatever world this hero was dropped into (adventure_forge / world card).
-	var story := {}
-	if str(extra.get("cls_story", "")) != "":
-		story["class"] = str(extra["cls_story"])
-	if str(extra.get("bg_story", "")) != "":
-		story["background"] = str(extra["bg_story"])
-	if not story.is_empty():
-		s["story"] = story
-	# THE LOOK GOES ON THE SHEET. It used to be handed to the first portrait
-	# commission and dropped, so nothing downstream could ask what this hero looks
-	# like — the paper doll invented its own person. Persisted here, one identity
-	# serves every render, in this adventure and any later one (Art.hero_look).
-	s["look"] = str(extra.get("appearance", "")).strip_edges()
-	var brush := str(extra.get("style", "")).strip_edges()
-	s["brush"] = brush if brush != "" else "painted"
-	if bool(preset.get("caster", false)):
-		s["slots"] = Rules.full_caster_slots(1)
-		var seed: Array = Rules.tables.get("class_spells", {}).get(cls, [])
-		s["spells"] = []
-		for sp in seed:
-			if sp is Array and sp.size() >= 2 and int(sp[1]) <= 1:
-				s["spells"].append({"name": str(sp[0]), "level": int(sp[1])})
+	# THE SHEET ITSELF IS NOT THE PLAY SCREEN'S BUSINESS. Ability priority,
+	# heritage bonuses, skill dedup, class features and the caster's first slots
+	# are rules about what a hero IS, and they lived here only because this is
+	# where the forge happened to call. GameState owns DEFAULT_SHEET, so it owns
+	# building one — and a pure function returning a Dictionary is finally
+	# something self_check can assert without standing up a scene.
+	var s := GameState.new_hero_sheet(nm, race, cls, rolled, background, extra)
 	GameState.set_sheet(s)
 	# Starting gear. In a compiled world the hero is armed from the world's own
 	# catalogue (material-true, world-flavoured) for their class archetype; a

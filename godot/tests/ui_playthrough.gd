@@ -469,9 +469,19 @@ func ", at + 10)
 ## PS-1 — IS THE CLASS-FEATURE TABLE ACTUALLY WIRED TO THE FORGE?
 ##
 ## self_check proves Rules.class_features_upto() returns the right list. That is
-## worth nothing if _create_hero never calls it — which is exactly the state this
+## worth nothing if the forge never calls it — which is exactly the state this
 ## was in: the table had Second Wind at level 1 the whole time, and nothing asked
-## for it. Asserted on the source, because the defect is a call site.
+## for it.
+##
+## THE FEATURES HALF IS NOW ASSERTED BY BUILDING A SHEET, in self_check, against
+## `GameState.new_hero_sheet`. It used to grep `_create_hero`'s body in game.gd
+## and it broke on 2026-08-14 when that construction moved to GameState without
+## one behaviour changing — which is the tell that it was testing WHERE the code
+## lived. A grep for "class_features_upto" also passes happily if the call is
+## there and its result is thrown away.
+##
+## What stays a source check is the KIT FLOOR, because that defect genuinely is
+## a call site: the floor exists and the question is whether the forge applies it.
 func _check_forge_grants_features() -> void:
 	var path := "res://scripts/game.gd"
 	_ck(FileAccess.file_exists(path), "features: %s exists to be checked" % path)
@@ -483,10 +493,6 @@ func _check_forge_grants_features() -> void:
 	var nxt := src.find("
 func ", at + 10)
 	var body := src.substr(at, (nxt - at) if nxt > at else 4000)
-	_ck(body.find("class_features_upto") >= 0,
-		"features: the forge does not grant class features — a level-1 hero has none (PS-1)")
-	_ck(body.find('"features"] = traits') < 0,
-		"features: heritage traits are being written as class features again (PS-1)")
 	# PS-2 — and the kit floor has to be APPLIED, not merely available.
 	_ck(body.find("kit_gaps") >= 0,
 		"features: the forge applies no kit floor — a hero can leave with one weapon (PS-2)")
