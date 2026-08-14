@@ -1474,6 +1474,60 @@ The term for spell slots is "Echoes."
 		"figurine: late art must refresh the initiative rail, not just the board")
 	print("  figurine: loadout key tracks gear, headless declines, board and rail agree")
 
+	# ── THE ART CACHE HAS TO SAY WHEN IT IS EATING ITSELF ────────────────────
+	# R10 ran for hours: every finished tile evicted an older painting, the total
+	# never moved, and nothing anywhere printed a word. The tiles themselves are
+	# out of the LRU now, so that exact pour cannot recur — but ANY bulk request
+	# still can, and silence was the reason it took hours to notice rather than
+	# minutes. These assert the noise, not the eviction.
+	#
+	# The manifest is swapped for a fake one and put back below. Sizes here are
+	# declared numbers, not files, so nothing on disk is touched: `_evict` only
+	# deletes a path that exists, and none of these do.
+	var art_keep: Dictionary = Art._manifest.duplicate(true)
+	var art_loaded: bool = Art._manifest_loaded
+	var art_bytes: int = Art.evicted_bytes
+	var art_count: int = Art.evicted_count
+	var art_warned: bool = Art.thrash_warned
+	Art._manifest_loaded = true
+	Art.evicted_bytes = 0
+	Art.evicted_count = 0
+	Art.thrash_warned = false
+	var MB := 1024 * 1024
+
+	# Two 400 MB paintings against a 700 MB budget: one has to go, and it has to
+	# be the older one — an LRU that evicts the thing on screen is worse than no
+	# cache at all.
+	Art._manifest = {"stale": {"size": 400 * MB, "used": 100.0},
+		"fresh": {"size": 400 * MB, "used": 900.0}}
+	Art._enforce_budget()
+	assert(not Art._manifest.has("stale"), "art budget: the least recently used painting is the one evicted")
+	assert(Art._manifest.has("fresh"), "art budget: the painting in use survives")
+	assert(Art.evicted_count == 1, "art budget: an eviction is counted, not silent")
+	assert(Art.evicted_bytes == 400 * MB, "art budget: the bytes freed are reported")
+	assert(not Art.thrash_warned, "art budget: one ordinary eviction is not thrashing")
+
+	# Throw away more than the whole budget and it has stopped being a cache.
+	Art._manifest = {"stale2": {"size": 400 * MB, "used": 100.0},
+		"fresh2": {"size": 400 * MB, "used": 900.0}}
+	Art._enforce_budget()
+	assert(Art.evicted_bytes > Art.CACHE_BUDGET, "art budget: the session total carries across rounds")
+	assert(Art.thrash_warned, "art budget: evicting more than the entire budget is named as thrashing")
+
+	# A shipped terrain tile is a library asset. If it ever re-enters the LRU,
+	# R10 comes back exactly as it was.
+	Art._manifest = {}
+	Art._note_asset("tile-grass-01")
+	assert(Art._manifest.is_empty(), "art budget: a shipped terrain tile is never counted against the LRU")
+
+	Art._manifest = art_keep
+	Art._manifest_loaded = art_loaded
+	Art.evicted_bytes = art_bytes
+	Art.evicted_count = art_count
+	Art.thrash_warned = art_warned
+	Art._save_manifest()
+	print("  art budget: LRU order held, evictions counted, thrash named once, tiles exempt")
+
 	# ── THE CONTRAST GATE ────────────────────────────────────────────────────
 	# InteractionLanguage.md has always required body text at >= 4.5:1 "measured
 	# per palette". Nothing measured it, and `horror` shipped `danger` at 3.74:1

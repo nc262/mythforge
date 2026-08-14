@@ -146,8 +146,21 @@ func _write_sidecar(key: String, job: Dictionary, r: Dictionary) -> void:
 		f.close()
 
 
+## What eviction has cost this session. Public because it is the only evidence
+## that the cache is CHURNING rather than caching, and because a number nothing
+## can read is a number nobody will ever see.
+var evicted_bytes := 0
+var evicted_count := 0
+var thrash_warned := false
+
+
 ## Evict least-recently-used paintings until back under budget. Evicted art
 ## self-heals: the next ensure(key, prompt) simply repaints it.
+##
+## AND IT SAYS SO NOW. Eviction used to be perfectly silent: files deleted, no
+## line anywhere. That is what let R10 run for HOURS — every finished tile threw
+## away an older painting, the total never moved, and the only symptom a player
+## could see was that their hero's portrait had quietly stopped existing.
 func _enforce_budget() -> void:
 	var total := 0
 	for k in _manifest:
@@ -156,12 +169,40 @@ func _enforce_budget() -> void:
 		return
 	var keys := _manifest.keys()
 	keys.sort_custom(func(a, b): return float(_manifest[a].get("used", 0)) < float(_manifest[b].get("used", 0)))
+	var freed := 0
+	var gone := 0
 	for k in keys:
 		if total <= CACHE_BUDGET:
 			break
-		total -= int(_manifest[k].get("size", 0))
+		var sz := int(_manifest[k].get("size", 0))
+		total -= sz
+		freed += sz
+		gone += 1
 		_evict(str(k))
 	_save_manifest()
+	if gone == 0:
+		return
+	evicted_bytes += freed
+	evicted_count += gone
+	print("art: evicted %d painting(s), %.1f MB, to stay under the %d MB budget"
+		% [gone, freed / 1048576.0, CACHE_BUDGET / 1048576])
+
+	# THRASH, NAMED. Not "a big queue is coming" — nothing declares a batch size,
+	# and inventing one would mean guessing an average painting's weight and
+	# refusing real work on the guess. This is the thing itself, measured: once a
+	# session has thrown away MORE THAN THE WHOLE BUDGET, the cache is no longer
+	# caching. It is a treadmill, and every lap costs GPU minutes and destroys art
+	# the player already waited for.
+	#
+	# Once per session. A warning that repeats every eviction is the same as no
+	# warning by the fiftieth line.
+	if not thrash_warned and evicted_bytes > CACHE_BUDGET:
+		thrash_warned = true
+		push_warning(("art cache is THRASHING: %d paintings and %.1f MB evicted this session, " +
+			"more than the entire %d MB budget. Generation is now destroying older art as fast " +
+			"as it makes new art, so the total never grows and nothing finishes. Something is " +
+			"asking for more art at once than the cache can hold.")
+			% [evicted_count, evicted_bytes / 1048576.0, CACHE_BUDGET / 1048576])
 
 
 func _evict(key: String) -> void:

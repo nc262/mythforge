@@ -21,7 +21,8 @@ param(
 	[switch]$Full,      # local_stack + bench_gm — real models, real GPU
 	[switch]$Audit,     # body_audit — windowed, slow, pre-release rather than inner loop
 	[switch]$NoExport,  # skip export and the Desktop copy
-	[switch]$Import     # force a re-import first (after new or rewritten assets)
+	[switch]$Import,    # force a re-import first (after new or rewritten assets)
+	[int]$HarnessTimeoutSec = 900   # per harness; a red one hangs rather than fails
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,7 +47,7 @@ Write-Host "godot   $godot" -ForegroundColor DarkGray
 # minutes of wall clock, not one line printed. The identical run redirected to a
 # file finishes in 3.9 s.
 function Invoke-Harness {
-	param([string]$Scene, [string]$Token, [switch]$Windowed)
+	param([string]$Scene, [string]$Token, [switch]$Windowed, [int]$TimeoutSec = $HarnessTimeoutSec)
 	# TWO STATEMENTS, NOT `$flags = if (...) {@('--headless')}`. An `if` that
 	# yields a one-element array hands back the ELEMENT — PowerShell unrolls it —
 	# so `@flags` splatted a string, `--headless` never reached Godot, and every
@@ -57,9 +58,30 @@ function Invoke-Harness {
 	# PID in the name: a leftover run still holding `mythforge-ui_playthrough.log`
 	# took down a good one with "the process cannot access the file".
 	$log = Join-Path ([IO.Path]::GetTempPath()) "mythforge-$PID-$Scene.log"
+	$errLog = "$log.err"
 	Write-Host "`n── $Scene " -NoNewline -ForegroundColor Cyan
-	& $godot @flags --path "$repo\godot" "res://tests/$Scene.tscn" > $log 2>&1
-	$out = Get-Content $log -Raw
+
+	# A TIMEOUT, because a RED HARNESS HANGS. A failed `assert` does not stop
+	# Godot: script execution stops, the scene tree keeps running, and a harness
+	# that only quits after its last check never quits at all. Measured — a
+	# deliberately broken assertion sat there past 90 s and had to be killed. So
+	# the failure mode of the gate itself was "wait forever", which under
+	# `/loop /next` means the loop never comes back.
+	#
+	# STDERR SEPARATELY, because that is where the assertion message goes. The
+	# stdout log holds the harness's own prints and NOT the reason it failed.
+	$proc = Start-Process -FilePath $godot -PassThru -NoNewWindow `
+		-ArgumentList ($flags + @('--path', "$repo\godot", "res://tests/$Scene.tscn")) `
+		-RedirectStandardOutput $log -RedirectStandardError $errLog
+	if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+		$proc.Kill(); $proc.WaitForExit()
+		Write-Host "TIMED OUT after ${TimeoutSec}s" -ForegroundColor Red
+		$script:failed += $Scene
+		((Get-Content $log, $errLog -ErrorAction SilentlyContinue) | Select-Object -Last 20) |
+			ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
+		return
+	}
+	$out = ((Get-Content $log, $errLog -Raw -ErrorAction SilentlyContinue) -join "`n")
 	# ASK FOR THE VERDICT, NOT THE EXIT CODE. Godot exits 0 on a scene that
 	# asserted its way to failure, and it exits non-zero on shutdown noise that
 	# means nothing. The harnesses each print one token when they pass; that

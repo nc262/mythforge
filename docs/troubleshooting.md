@@ -154,6 +154,24 @@ gives 322 characters through `| Out-String` and a **0-byte file** through
 `> out.txt`. Exit codes are correct either way. So: pipe the game, redirect the
 editor. Getting it backwards silently empties whichever log you were trusting.
 
+## A harness that FAILS never comes back
+
+**Symptom:** a harness you expect to fail neither passes nor exits. It sits.
+
+**Root cause:** a failed `assert` does not stop Godot. Script execution stops,
+the **scene tree keeps running**, and a harness that only calls `quit()` after
+its last check never reaches it. So the natural failure mode of every harness
+here is *hang*, not *fail* — measured at over 90 s on a deliberately broken
+assertion before it was killed.
+
+Worse, the reason is on **stderr** while the harness's own prints are on stdout,
+so a log that captures only stdout shows a run that simply stopped mid-way.
+
+**Fix:** `scripts/verify.ps1` runs each harness under a timeout
+(`-HarnessTimeoutSec`, default 900), kills it, captures **both** streams, and
+reports it red. Anything else that drives a harness unattended must do the same
+or it waits forever.
+
 ## The exe won't copy to the Desktop
 
 > `Device or resource busy`
