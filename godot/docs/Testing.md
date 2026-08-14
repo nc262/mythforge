@@ -5,6 +5,10 @@ The first three are offline and deterministic; the next two drive the real model
 on the real GPU and are the only ones that can tell you an answer is *good*
 rather than merely well-shaped.
 
+**One command runs the gate and refuses to export when anything is red** —
+`pwsh scripts/verify.ps1` (`-Full` adds the two that drive the real model,
+`-Audit` adds the windowed body audit). Underneath, it is these:
+
 ```bash
 GODOT=".../Godot_v4.7-stable_win64_console.exe"
 

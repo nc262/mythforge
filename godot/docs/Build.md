@@ -2,6 +2,10 @@
 
 ## The export
 
+**Normally you do not run these by hand.** `pwsh scripts/verify.ps1` gates,
+exports and copies in one step, and refuses to export when a harness is red —
+which is the only reliable way the Desktop copy stays honest. What it does:
+
 ```bash
 godot --headless --path godot --import                                   # once after new assets
 godot --headless --path godot --export-release "Windows Desktop" ../dist/Mythforge.exe

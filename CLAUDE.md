@@ -47,9 +47,28 @@ the game POSTs to it directly. See
 ## Workflow before changing anything
 DISCOVER → PLAN → CHALLENGE → EXECUTE → VERIFY → REVIEW → IMPROVE.
 
+**`/next` runs that loop by itself** — it pulls the top item off
+[Backlog.md](godot/docs/Backlog.md), works it, gates it, commits it, and takes
+the next one, without asking what to do next. `/loop /next` runs it unattended.
+The skill carries the short list of things that genuinely stop for a human
+(taste, anything irreversible, money, a windowed GPU render); everything else it
+decides and says what it decided. Unknowns about the world go to the
+`researcher` agent instead of to you. See
+[.claude/skills/next/SKILL.md](.claude/skills/next/SKILL.md).
+
 ## Verifying changes
-Five harnesses over the game, run from the repo root. The first three are
-offline (`Api.test_mode`); the last two drive the real model.
+**One command is the gate:**
+
+```
+pwsh scripts/verify.ps1          # offline harnesses → export → Desktop copy
+pwsh scripts/verify.ps1 -Full    # + the two that drive the real model
+pwsh scripts/verify.ps1 -Audit   # + the windowed body audit (~4 min)
+```
+
+It refuses to export when anything is red, which is the only reliable way the
+Desktop copy stays honest. Underneath it are five harnesses over the game, run
+from the repo root. The first three are offline (`Api.test_mode`); the last two
+drive the real model.
 
 ```
 <godot> --headless --path godot res://tests/self_check.tscn      # rules, prompts, parsers

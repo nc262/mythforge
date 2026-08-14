@@ -122,6 +122,31 @@ does **not** work — the check is a hash, not a timestamp.
 This cost three rounds of measurements taken against day-old geometry, and the
 only reason it was caught is that the numbers were *too* identical.
 
+## A harness "runs" for ten minutes and prints nothing
+
+**Symptom:** a scripted harness sits there. The Godot process is alive and
+burning CPU, so it looks like slow work — but its log holds only the startup
+banner, and that banner names **Vulkan and the GPU**, which a headless run has
+no reason to touch.
+
+**Root cause:** `--headless` never arrived, so Godot opened a window and waited
+for a player. In `scripts/verify.ps1` the flags were built as
+
+```powershell
+$flags = if ($Windowed) { @() } else { @('--headless') }   # WRONG
+```
+
+and PowerShell **unrolls a one-element array returned from an `if`** — `$flags`
+became the *string* `--headless`, and `@flags` splatted a string rather than an
+argument list. Assign the array directly instead, on its own statement.
+
+**The tell is the banner.** `Vulkan … Using Device #0` in a run that was
+supposed to be headless means the flag was dropped, every time. Same run,
+headless, takes 3.9 s.
+
+**Related, same script:** two runs sharing one log path kill each other with
+*"the process cannot access the file"*, so the log name carries `$PID`.
+
 ## The exe won't copy to the Desktop
 
 > `Device or resource busy`
