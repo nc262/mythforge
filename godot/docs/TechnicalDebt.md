@@ -9,7 +9,6 @@ a check. A new shortcut adds a row here in the same commit.
 | Debt | Where | Ceiling | Upgrade path |
 |---|---|---|---|
 | `game.gd` is a god-script (~2.8k lines: streaming, tags, combat view, panels) | `scripts/game.gd` | every new system lands in the one file that must stay correct | keep extracting windows — the seam and the order are in [EngineLayers.md](EngineLayers.md) |
-| `_streaming` mirrors `Mode.busy` | `scripts/game.gd` | two sources for one fact | delete the alias during the next `game.gd` extraction |
 | `user://tiles` fills for a **player-forged** world | `user://tiles` | a world you forge yourself pours its own terrain — minutes of GPU, and the one art pour a player can still trigger | none available: nobody can pre-bake a world that does not exist yet. The six shipped worlds each carry 272 tiles in the package, so the install itself pours nothing. Deliberately **not** solved by shrinking tiles: see [Terrain.md](Terrain.md) |
 | Object tiles carry an opaque dark-grey background | tile bake | a boulder pasted into a snowfield brings its own grey square | composite the object over the cell's ground role at draw time, or key the flat background out at bake time |
 | A world package unpacks MISSING files only, never changed ones | `world_compiler._unpack_baked` | a package that **replaces** an asset (rather than adding one) is invisible to anyone who already unpacked that world | deliberate: overwriting would clobber a player's own `Compiler.reforge` output. Adding files works, which covers the normal case. A genuine asset replacement needs a stamp in `world.json` and an explicit re-extract |
@@ -27,6 +26,16 @@ a check. A new shortcut adds a row here in the same commit.
 - **Both forges duplicated a ~60-line stage scaffold.** `ui/forge_flow.gd` is
   the base; every forge is stage content only.
 - **`world_map` carried its own pan/zoom.** It uses the shared `MythCamera`.
+- **`_streaming` mirrored `Mode.busy`, and the copy had already drifted.** The
+  row said "two sources for one fact" and filed it behind a `game.gd`
+  extraction. It was not cosmetic: `_leave_to_hall` cleared `_streaming` and
+  forgot `Mode.busy`, which is an **autoload** and survives the scene change. So
+  leaving to the Hall mid-reply stranded `busy = true` forever, and because
+  `Mode.can()` short-circuits on busy, the **next adventure refused every message
+  the player typed** — shake, deny, no explanation — until the app was restarted.
+  `_streaming` is gone; one flag cannot disagree with itself. `self_check` guards
+  both halves: no second flag, and nothing may cancel a stream without clearing
+  `Mode.busy`. Both mutation-tested, the second by restoring the original bug.
 - **Mode drift into Combat was healed, not fixed.** `_start_combat` never
   touched the FSM at all — entering Combat happened inside `_render_combat`, so
   the state change was a side effect of **drawing**, and the machine's own map

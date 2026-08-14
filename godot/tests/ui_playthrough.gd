@@ -108,7 +108,7 @@ func _turn(label: String, msg: String, reply: String, check: Callable) -> void:
 	_game._send(msg)
 	for i in 45:
 		await get_tree().process_frame
-		if not _game._streaming and check.call(true):
+		if not Mode.busy and check.call(true):
 			break
 	_ck(check.call(false), "turn '%s': the tag effect never landed" % label)
 	print("  turn %s: ok" % label)
@@ -126,7 +126,7 @@ func _turn_equip() -> void:
 	_game._send("I take up the sword")
 	for i in 45:
 		await get_tree().process_frame
-		if not _game._streaming and _has_item("Longsword"):
+		if not Mode.busy and _has_item("Longsword"):
 			break
 	_ck(_has_item("Longsword"), "equip: the longsword was never looted")
 	var sword_id := ""
@@ -147,7 +147,7 @@ func _turn_levelup() -> void:
 	_game._send("I finish it")
 	for i in 45:
 		await get_tree().process_frame
-		if not _game._streaming and int(GameState.sheet().get("level", 1)) > lvl0:
+		if not Mode.busy and int(GameState.sheet().get("level", 1)) > lvl0:
 			break
 	_ck(int(GameState.sheet().get("level", 1)) > lvl0, "levelup: never leveled (xp=%d)" % int(GameState.sheet().get("xp", 0)))
 	_ck(int(GameState.sheet().get("hpMax", 0)) > 12, "levelup: hpMax did not grow")
@@ -161,7 +161,7 @@ func _turn_damage_heal() -> void:
 	_game._send("I step on the pressure plate")
 	for i in 45:
 		await get_tree().process_frame
-		if not _game._streaming:
+		if not Mode.busy:
 			break
 	# [[damage]] arms the dice moment — the engine rolls when the player acts.
 	_ck(str(_game._pending_check.get("type", "")) == "damage", "damage: tag did not arm a damage roll")
@@ -174,7 +174,7 @@ func _turn_damage_heal() -> void:
 	_game._send("I press a healing draught to my lips")
 	for i in 45:
 		await get_tree().process_frame
-		if not _game._streaming:
+		if not Mode.busy:
 			break
 	_ck(bool(_game._pending_check.get("heal", false)), "heal: tag did not arm a heal roll")
 	await _game._roll_pending()
@@ -926,7 +926,7 @@ func _check_compiler() -> void:
 func _settle() -> void:
 	for i in 45:
 		await get_tree().process_frame
-		if not _game._streaming:
+		if not Mode.busy:
 			return
 
 
@@ -1020,7 +1020,7 @@ func _check_spells_to_exhaustion() -> void:
 func _settle_idle() -> void:
 	for i in 60:
 		await get_tree().process_frame
-		if not _game._streaming and not Mode.busy:
+		if not Mode.busy:
 			return
 
 

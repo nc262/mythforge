@@ -2,7 +2,14 @@ extends Control
 ## The adventure screen: bubbled narration, streamed tokens, structured
 ## [[tag]] mechanics, the dice moment, and generated art as a living backdrop.
 
-var _streaming := false
+# `Mode.busy` IS the "a reply is in flight" flag. There used to be a `_streaming`
+# beside it holding the same fact, and the copy is what made the bug below
+# possible: `_leave_to_hall` cleared `_streaming` and forgot `Mode.busy`, which
+# is an AUTOLOAD and survives the scene change. Leaving to the Hall mid-reply
+# therefore stranded `busy = true` forever — and since `Mode.can()` short-circuits
+# on busy, the next adventure refused every message the player typed, shaking the
+# box and denying, until the app was restarted. One flag cannot disagree with
+# itself, so the bug is now unrepresentable rather than fixed.
 var _acc := ""          # full raw GM reply
 var _shown := 0         # chars of _acc already printed (tags are held back)
 var _lang_gate := false     # holding the opening back until its language is judged
@@ -362,9 +369,9 @@ func _leave_to_hall() -> void:
 	# transcript the player wasn't looking at, so the door read as dead — and a
 	# turn runs ~45s, so the refusing window is most of the session. The tale is
 	# saved continuously; there is nothing to protect by holding them here.
-	if _streaming:
+	if Mode.busy:
 		Api.cancel_stream()
-		_streaming = false
+		Mode.busy = false   # the reply is cancelled; nothing is in flight any more
 		Art.hold = false
 		_dismiss_thinking()
 	GameState.remember_adventure()   # the Hall remembers where you stopped
@@ -922,7 +929,6 @@ var _last_framed := ""
 
 func _stream(framed: String) -> void:
 	_last_framed = framed
-	_streaming = true
 	Art.hold = true    # the GPU belongs to the narrator until the reply lands
 	Mode.busy = true
 	_acc = ""
@@ -1004,7 +1010,8 @@ func _regen() -> void:
 ## Inline edit (Ctrl+E): your last line comes back into the box to be reworded;
 ## the stale exchange — your bubble and the GM's reply — leaves the thread.
 func _edit_last() -> void:
-	if not Mode.can("send_message") or _last_player_msg == "" or _streaming:
+	# No `or busy` clause: Mode.can() already returns false while busy.
+	if not Mode.can("send_message") or _last_player_msg == "":
 		return
 	if _gm_rt != null:
 		var row := _gm_rt.get_parent().get_parent()
@@ -1099,7 +1106,6 @@ func _on_done(_ok: bool) -> void:
 	# the installer it is the difference between "wait a moment" and "your engine
 	# is not running". Retrying also burns the empty-retry budget for nothing.
 	if not _ok and _acc.strip_edges() == "":
-		_streaming = false
 		Art.hold = false
 		Mode.busy = false
 		_send_btn.disabled = false
@@ -1139,7 +1145,6 @@ func _on_done(_ok: bool) -> void:
 		_stream(_last_framed)
 		return
 	_empty_retry = 0
-	_streaming = false
 	Art.hold = false   # the brush may have the card back
 	Mode.busy = false
 	_send_btn.disabled = false
@@ -1747,7 +1752,7 @@ func _ask_gm(title: String, placeholder: String, frame: Callable) -> void:
 	dlg.confirmed.connect(func():
 		var x := input.text.strip_edges()
 		dlg.queue_free()
-		if x == "" or _streaming:
+		if x == "" or Mode.busy:
 			return
 		_say_me(_bb("I ask about: %s" % x))
 		_last_player_msg = "I ask about " + x
@@ -2963,7 +2968,7 @@ func _open_skill_tree(pulse_level := -1) -> void:
 ## statistics — a reading surface; actions live in the Pack and side sheet.
 ## The Lore Book (M-C): the world's illustrated encyclopedia, grown from play.
 func _open_lore_book(at := "") -> void:
-	if _streaming:
+	if Mode.busy:
 		return
 	var book := preload("res://scenes/ui/lore_book.tscn").instantiate()
 	if at != "":

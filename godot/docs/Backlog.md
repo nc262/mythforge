@@ -15,6 +15,10 @@ Priority **P1** (blocks play) → **P4** (nice to have); effort **S/M/L**.
 
 ## Play and correctness
 
+| # | Item | P | E |
+|---|---|---|---|
+| PL-4 | **A fight can be active while the FSM is in Exploration.** Surfaced 2026-08-14 by the loud net in `_can_fight`, which now warns instead of healing in silence: `ui_playthrough` trips it at `_on_grid_move` during the controller check, with `Combat.active()` true and `Mode.state == "Exploration"`. Not the ambush bug fixed the same day — `_start_combat` enters Combat correctly now — so something else ends or restores a fight without moving the machine. The harness's `Combat.save({"active": false})` writes combat state directly rather than going through `_end_combat`, which is the first place to look. Harmless today because `_can_fight` heals it, but it is the same shape as the bug that stranded `Mode.busy` | P3 | S |
+
 Empty. All three items were audited on 2026-08-04 and none survived — see the
 mis-reported table below. `Rules.attack_mod` now requires its `inv` argument, so
 a caller that forgets it fails to compile rather than silently returning the

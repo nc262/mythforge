@@ -682,6 +682,27 @@ func _ready() -> void:
 	assert(not Mode.STATES["MainMenu"]["to"].has("Combat"), "the menu is not a place a fight can start")
 	assert(not Mode.STATES["GameOver"]["to"].has("Combat"), "the dead do not get ambushed")
 
+	# ── ONE FLAG FOR "A REPLY IS IN FLIGHT" ──────────────────────────────────
+	# `Mode.busy` is an autoload and survives a scene change, so a path that
+	# stops a stream without clearing it strands the game: `Mode.can()`
+	# short-circuits on busy, so the NEXT adventure refuses every message the
+	# player types until the app restarts. That is exactly what happened while a
+	# private `_streaming` mirrored it — `_leave_to_hall` cleared the copy and
+	# forgot the original.
+	#
+	# A SOURCE CHECK, deliberately, and the repo distrusts those for good reason.
+	# It is right here only because the defect IS a fact about the source: the
+	# existence of a second flag. Nothing about behaviour is being inferred from
+	# a string — the behaviour is asserted above, at "busy blocks every action".
+	var gsrc_busy := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(not gsrc_busy.contains("var _streaming"),
+		"a second streaming flag is back; Mode.busy is the one source and a copy will drift from it")
+	# Whatever cancels a stream must say the game is no longer waiting on one.
+	var parts := gsrc_busy.split("Api.cancel_stream()")
+	for i in range(1, parts.size()):
+		assert(str(parts[i]).substr(0, 220).contains("Mode.busy = false"),
+			"a stream is cancelled without clearing Mode.busy — the next adventure will refuse every message")
+
 	Mode.state = "Boot"  # leave the machine as the game boots it
 
 	# Language guard (Issue 4): English passes, wholesale drift is caught,
