@@ -715,6 +715,26 @@ func _ready() -> void:
 	for st in ["Exploration", "Dialogue", "Merchant", "Camp", "Victory"]:
 		Mode.state = st
 		assert(not Mode.fight_owned(), "%s does not own a fight and may be entered normally" % st)
+	# ── THE DICE MENU'S ID BLOCKS MUST NOT COLLIDE ───────────────────────────
+	# A renumbering here does not crash: a colliding item falls through to the
+	# ability-check path and rolls a d20 at the player instead of doing what the
+	# menu said. Silent wrong behaviour, which is the kind this repo asserts.
+	var Play := preload("res://scripts/game.gd")
+	# The expression item sits one below the tray, and the tray is tested FIRST
+	# with `>=`. Move it above and "Roll an expression…" silently becomes a die.
+	assert(Play.DICE_EXPRESSION < Play.DICE_TRAY_BASE,
+		"the raw-dice tray starts at or below the expression item and would swallow it")
+	# Recipes carry an index, so the block has to end before the ask-the-GM ids.
+	assert(Play.DICE_RECIPE_END <= Play.DICE_LEARN_SPELL,
+		"the recipe block runs into the ask-the-GM ids")
+	for a in [Play.DICE_LEARN_SPELL, Play.DICE_RECRUIT, Play.DICE_CRAFT, Play.DICE_INSPIRATION]:
+		assert(a < Play.DICE_EXPRESSION, "an ask-the-GM id collides with the dice items")
+		assert(a >= Play.DICE_RECIPE_END, "an ask-the-GM id falls inside the recipe block")
+	# Skills and raw abilities take small sequential ids; the gap to the special
+	# blocks is what keeps a long skill list from reaching them.
+	assert(Play.DICE_RECIPE_BASE > 200,
+		"the special id blocks are too close to the sequential skill/ability ids")
+
 	# ── THE BOOT STAYS A LIST OF PHASES ──────────────────────────────────────
 	# `_ready` was 215 lines, and that is not a style complaint: PL-4 lived in it.
 	# `_render_combat()` entered Combat and a `Mode.enter("Exploration")` ten

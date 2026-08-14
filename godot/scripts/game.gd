@@ -1644,6 +1644,30 @@ func _roll_pending() -> void:
 
 
 ## 🎲 Roll-anything menu: every skill (with your real modifier) + raw abilities.
+## THE DICE MENU'S IDS, in one place. `_build_dice_menu` writes them and
+## `_free_check` reads them, and until 2026-08-14 both did it with bare integers
+## — two functions agreeing on `903` by hand. That is the exact shape that cost
+## this project a stranded `Mode.busy` and a clobbered combat mode in the same
+## week, and it is worse here because a renumbering would not fail: the menu item
+## would simply fall through to the ability-check path and roll a d20 at you.
+##
+## The two BLOCKS stay ranges rather than becoming enums, because each carries a
+## payload: a recipe id is its index into `Rules.tables.recipes`, and a tray id
+## is the die's own face count. The arithmetic is the point.
+##
+## Skills and raw abilities take small sequential ids from `idx`, which is why
+## the special blocks start at 700 — self_check asserts that gap rather than
+## trusting it.
+const DICE_LEARN_SPELL := 900
+const DICE_RECRUIT := 901
+const DICE_CRAFT := 902
+const DICE_INSPIRATION := 903
+const DICE_EXPRESSION := 909
+const DICE_RECIPE_BASE := 700   # + index into Rules.tables.recipes
+const DICE_RECIPE_END := 800
+const DICE_TRAY_BASE := 910     # + the die's face count
+
+
 func _build_dice_menu() -> void:
 	var pop: PopupMenu = $Margin/Split/ChatBox/Input/Dice.get_popup()
 	pop.clear()
@@ -1666,22 +1690,22 @@ func _build_dice_menu() -> void:
 	pop.add_separator("Raw dice")
 	idx += 1
 	for sides in [4, 6, 8, 10, 12, 20, 100]:
-		pop.add_item("d%d" % sides, 910 + sides)
+		pop.add_item("d%d" % sides, DICE_TRAY_BASE + sides)
 		idx += 1
-	pop.add_icon_item(Ui.ico_tex("die"), "Roll an expression… (2d6+3)", 909)
+	pop.add_icon_item(Ui.ico_tex("die"), "Roll an expression… (2d6+3)", DICE_EXPRESSION)
 	pop.add_separator("Ask the GM")
 	idx += 2
-	pop.add_icon_item(Ui.ico_tex("book"), "Learn a spell…", 900)
-	pop.add_icon_item(Ui.ico_tex("cups"), "Recruit an ally…", 901)
-	pop.add_icon_item(Ui.ico_tex("hammer"), "Craft something…", 902)
+	pop.add_icon_item(Ui.ico_tex("book"), "Learn a spell…", DICE_LEARN_SPELL)
+	pop.add_icon_item(Ui.ico_tex("cups"), "Recruit an ally…", DICE_RECRUIT)
+	pop.add_icon_item(Ui.ico_tex("hammer"), "Craft something…", DICE_CRAFT)
 	# Recipes whose components sit in the pack craft deterministically (v2).
 	var recipes: Array = Rules.tables.get("recipes", [])
 	for ri in recipes.size():
 		if recipes[ri] is Dictionary and GameState.recipe_ready(recipes[ri]):
 			pop.add_icon_item(Ui.ico_tex("hammer"), "Craft: %s  (%s)" % [str(recipes[ri]["name"]),
-				", ".join(recipes[ri]["components"])], 700 + ri)
+				", ".join(recipes[ri]["components"])], DICE_RECIPE_BASE + ri)
 	if bool(GameState.sheet().get("inspiration", false)):
-		pop.add_icon_item(Ui.ico_tex("star"), "Spend Inspiration — advantage on your next roll", 903)
+		pop.add_icon_item(Ui.ico_tex("star"), "Spend Inspiration — advantage on your next roll", DICE_INSPIRATION)
 	for mi in range(pop.item_count):
 		if pop.get_item_icon(mi) != null:
 			pop.set_item_icon_max_width(mi, 18)
@@ -1693,20 +1717,20 @@ func _build_dice_menu() -> void:
 func _free_check(id: int) -> void:
 	if not (Mode.can("roll") or Mode.can("ask_gm")):
 		return
-	if id == 900:
+	if id == DICE_LEARN_SPELL:
 		_ask_gm("Learn a spell", "Which spell do you seek?",
 			func(x): return "[I want to learn the spell %s. As GM, decide honestly if I could access it here and what it costs — gold, a favor, training time. If you grant it, say clearly that I learn it and tag [[spell-learned name=\"%s\"]].]" % [x, x])
 		return
-	if id == 903:
+	if id == DICE_INSPIRATION:
 		_insp_armed = true
 		_say_system("Inspiration armed — your next roll has advantage.", "star")
 		return
-	# Recipe crafting (700-799): the engine consumes components and grants the
-	# result — the GM only narrates the making.
-	if id >= 700 and id < 800:
+	# Recipe crafting: the engine consumes components and grants the result —
+	# the GM only narrates the making. The id carries the recipe's index.
+	if id >= DICE_RECIPE_BASE and id < DICE_RECIPE_END:
 		var recipes: Array = Rules.tables.get("recipes", [])
-		if id - 700 < recipes.size():
-			var note := GameState.craft(str(recipes[id - 700].get("name", "")))
+		if id - DICE_RECIPE_BASE < recipes.size():
+			var note := GameState.craft(str(recipes[id - DICE_RECIPE_BASE].get("name", "")))
 			if note != "":
 				Sfx.play("chime")
 				_say_me(_md(note))
@@ -1716,47 +1740,20 @@ func _free_check(id: int) -> void:
 				_stream(Composer.envelope("[%s Narrate the making briefly.]" % note.replace("*", "")))
 		return
 	# Raw dice tray: table candy, resolved and shown — the GM isn't bothered.
-	if id >= 910:
-		var sides := id - 910
+	if id >= DICE_TRAY_BASE:
+		var sides := id - DICE_TRAY_BASE
 		var r := randi_range(1, sides)
 		await _animate_die(sides, r, "d%d" % sides)
 		_say_system("You roll a d%d: %d." % [sides, r], "die")
 		return
-	if id == 909:
-		var dlg := ConfirmationDialog.new()
-		dlg.title = "Roll dice"
-		dlg.ok_button_text = "Roll"
-		var expr_in := LineEdit.new()
-		expr_in.placeholder_text = "2d6+3"
-		expr_in.custom_minimum_size = Vector2(220, 0)
-		dlg.add_child(expr_in)
-		add_child(dlg)
-		dlg.popup_centered()
-		expr_in.grab_focus()
-		dlg.confirmed.connect(func():
-			var m := RegEx.create_from_string("(?i)^\\s*(\\d*)d(\\d+)\\s*([+-]\\s*\\d+)?\\s*$").search(expr_in.text)
-			dlg.queue_free()
-			if m == null:
-				_say_system("That's not a dice expression — try 2d6+3.")
-				return
-			var n := maxi(1, int(m.get_string(1)) if m.get_string(1) != "" else 1)
-			var die_sides := clampi(int(m.get_string(2)), 2, 1000)
-			var mod := int(m.get_string(3).replace(" ", "")) if m.get_string(3) != "" else 0
-			var total := mod
-			var rolls: Array[String] = []
-			for i in mini(n, 40):
-				var one := randi_range(1, die_sides)
-				total += one
-				rolls.append(str(one))
-			_say_system("You roll %s: [%s]%s = %d." % [expr_in.text.strip_edges(), ", ".join(rolls),
-				(" %+d" % mod) if mod != 0 else "", total], "die"))
-		dlg.close_requested.connect(dlg.queue_free)
+	if id == DICE_EXPRESSION:
+		_open_dice_expression()
 		return
-	if id == 902:
+	if id == DICE_CRAFT:
 		_ask_gm("Craft something", "What do you try to make (and from what)?",
 			func(x): return "[I try to craft: %s. Check my pack in the context — decide honestly if my materials and skills allow it, what it costs (time, gold, a roll), and if I succeed, grant it with [[loot name=\"...\"]] and take costs with [[gold delta=-N]]. You may also award raw crafting components as loot (Healing Herbs, Glass Vial, Oil Flask, Wood Branch, Rag Wick, Herb Bundle, Meat Cut, Bitterleaf, Ash Powder) — the engine crafts known recipes from them.]" % x)
 		return
-	if id == 901:
+	if id == DICE_RECRUIT:
 		_ask_gm("Recruit an ally", "Who do you ask to join you?",
 			func(x): return "[I ask %s to join my party as a companion. Decide honestly from our history whether they agree — if they do, tag [[companion name=\"%s\"]].]" % [x, x])
 		return
@@ -1785,6 +1782,40 @@ func _free_check(id: int) -> void:
 	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.]" % [label, int(res["total"])]))
+
+
+## The dice tray's free expression — "2d6+3" resolved at the table, which the
+## GM is never told about. Thirty lines of dialog that had no business inside a
+## menu-id router; it reaches nothing but `_say_system`.
+func _open_dice_expression() -> void:
+	var dlg := ConfirmationDialog.new()
+	dlg.title = "Roll dice"
+	dlg.ok_button_text = "Roll"
+	var expr_in := LineEdit.new()
+	expr_in.placeholder_text = "2d6+3"
+	expr_in.custom_minimum_size = Vector2(220, 0)
+	dlg.add_child(expr_in)
+	add_child(dlg)
+	dlg.popup_centered()
+	expr_in.grab_focus()
+	dlg.confirmed.connect(func():
+		var m := RegEx.create_from_string("(?i)^\\s*(\\d*)d(\\d+)\\s*([+-]\\s*\\d+)?\\s*$").search(expr_in.text)
+		dlg.queue_free()
+		if m == null:
+			_say_system("That's not a dice expression — try 2d6+3.")
+			return
+		var n := maxi(1, int(m.get_string(1)) if m.get_string(1) != "" else 1)
+		var die_sides := clampi(int(m.get_string(2)), 2, 1000)
+		var mod := int(m.get_string(3).replace(" ", "")) if m.get_string(3) != "" else 0
+		var total := mod
+		var rolls: Array[String] = []
+		for i in mini(n, 40):
+			var one := randi_range(1, die_sides)
+			total += one
+			rolls.append(str(one))
+		_say_system("You roll %s: [%s]%s = %d." % [expr_in.text.strip_edges(), ", ".join(rolls),
+			(" %+d" % mod) if mod != 0 else "", total], "die"))
+	dlg.close_requested.connect(dlg.queue_free)
 
 
 ## A one-line ask that the GM adjudicates (learn a spell, recruit an ally).
