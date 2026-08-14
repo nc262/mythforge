@@ -715,6 +715,23 @@ func _ready() -> void:
 	for st in ["Exploration", "Dialogue", "Merchant", "Camp", "Victory"]:
 		Mode.state = st
 		assert(not Mode.fight_owned(), "%s does not own a fight and may be entered normally" % st)
+	# ── THE BOOT STAYS A LIST OF PHASES ──────────────────────────────────────
+	# `_ready` was 215 lines, and that is not a style complaint: PL-4 lived in it.
+	# `_render_combat()` entered Combat and a `Mode.enter("Exploration")` ten
+	# lines later threw it away — invisible in a wall of code, obvious in a list
+	# of five named calls. The ceiling is what protects that, so it is asserted:
+	# the day someone inlines a sixth thing back into the boot, this fails.
+	var gsrc_ready := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var ready_body := str(gsrc_ready.split("func _ready() -> void:")[1]).split("\nfunc ")[0]
+	assert(ready_body.split("\n").size() < 30,
+		"_ready is growing back into a wall (%d lines) — the boot is a list of phases, put the work in one" % ready_body.split("\n").size())
+	var phase_order := ["_wire_signals()", "_build_chrome()", "_open_the_room()", "_open_the_adventure()"]
+	var at := -1
+	for ph in phase_order:
+		var here := ready_body.find(ph)
+		assert(here > at, "the boot phases are out of order at %s — chrome builds what the room paints into" % ph)
+		at = here
+
 	# The boot path itself: the resume must ASK before forcing Exploration. This
 	# is structural — the bug was a correct decision overwritten a few lines
 	# later, which no value check can see, only the order of the two statements.

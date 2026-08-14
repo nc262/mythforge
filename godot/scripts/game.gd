@@ -48,6 +48,29 @@ var _mood_layer: ColorRect = null   # A3: the presentation mood wash (never touc
 
 func _ready() -> void:
 	theme = Ui.theme
+	# THE BOOT IS A LIST OF PHASES, AND THE ORDER IS THE POINT. This was one
+	# 215-line function, which is how PL-4 happened: `_open_the_adventure`
+	# renders a persisted fight — entering Combat — and then decided the mode a
+	# few lines later and threw that away. Ten lines apart in a wall of code is
+	# invisible; two named phases in a list are not.
+	#
+	# Each phase is self-contained: no local crosses between them, which is what
+	# made the split safe to do verbatim. They must run in THIS order — chrome
+	# builds the nodes the room paints into, and the room seats the hero the
+	# adventure then hydrates.
+	_wire_signals()
+	_build_chrome()
+	_open_the_room()
+	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
+	# THE BOOT ENDS HERE for that persona; there is no adventure to hydrate.
+	if not GameState.is_dm():
+		_open_companion_table()
+		return
+	await _open_the_adventure()
+
+
+## Engine and panel signals, and every button on the input bar.
+func _wire_signals() -> void:
 	Api.sse_delta.connect(_on_delta)
 	Api.sse_event.connect(_on_event)
 	Api.sse_done.connect(_on_done)
@@ -108,6 +131,11 @@ func _ready() -> void:
 	_battle_grid.token_clicked.connect(_on_grid_token)
 	Combat.changed.connect(_render_combat)
 	GameState.leveled_up.connect(_level_up_ceremony)
+
+
+## The widgets this screen owns outright: the initiative rail, the mood wash,
+## and the toolbar buttons that are built rather than placed in the scene.
+func _build_chrome() -> void:
 	_init_rail = HBoxContainer.new()
 	_init_rail.name = "InitRail"
 	_init_rail.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -130,6 +158,11 @@ func _ready() -> void:
 	_mood_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_mood_layer)
 	move_child(_mood_layer, $ArtScrim.get_index() + 1)
+
+
+## The room the player sits in: the campaign name, the hero in her seat, the
+## world's music and its key art.
+func _open_the_room() -> void:
 	Chronicle.reset()
 	# The campaign name already carries the world — never show the raw world_id.
 	$Margin/Split/ChatBox/Header.text = "✦ %s" % str(GameState.character.get("name", "?"))
@@ -154,54 +187,61 @@ func _ready() -> void:
 		# The first bubble eases it back behind the text (see _bubble).
 		_scene_art.modulate.a = 0.6
 		_ken_burns()
-	# Companion chat (non-DM persona): a quiet table for two — no dice, no HUD.
-	if not GameState.is_dm():
-		Mode.enter("Dialogue")
-		for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "Bag", "ShortRest", "LongRest", "Scene"]:
-			$Margin/Split/ChatBox/Input.get_node(btn).visible = false
-		# EAS: the fireside room behind the talk, and the companion's painted
-		# face at the table — a conversation, not a bare chat log.
-		var comp_name := str(GameState.character.get("name", "?")).split(":")[0]
-		Art.ensure_environment("env-fireside")
-		var fire := Art.texture_for(Art.env_resolved("env-fireside"))
-		if fire != null:
-			_scene_art.texture = fire
-			_scene_art.modulate.a = 0.5
-			_ken_burns()
-		var slug := "npc-" + comp_name.to_lower().replace(" ", "-")
-		if not Art.has_art(slug):
-			Art.ensure(slug, "character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [comp_name, Art.subject_style("char")], "1024x1024", true)
-		var face := MythPortrait.new(132, "gold", true)
-		face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1))
-		face.anchor_left = 1.0
-		face.anchor_right = 1.0
-		face.offset_left = -164
-		face.offset_top = 18
-		face.offset_right = -32
-		face.offset_bottom = 150
-		add_child(face)
-		Ui.breathe(face)
-		Art.art_ready.connect(func(k):
-			if str(k) == slug and is_instance_valid(face):
-				face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1)))
-		# Clear-chat: sweep the table and start the talk fresh.
-		var clear_b := Button.new()
-		clear_b.theme_type_variation = "GhostButton"
-		clear_b.text = "Clear the table"
-		clear_b.anchor_left = 1.0
-		clear_b.anchor_right = 1.0
-		clear_b.offset_left = -196
-		clear_b.offset_top = 158
-		clear_b.offset_right = -32
-		clear_b.offset_bottom = 192
-		clear_b.pressed.connect(func():
-			for r in _thread.get_children():
-				r.queue_free()
-			Chronicle.reset()
-			_say_system("The table is cleared — speak fresh."))
-		add_child(clear_b)
-		_say_system("You sit down with %s." % comp_name)
-		return
+
+
+## A conversation, not a bare chat log: the fireside, the companion's painted
+## face at the table, and a way to sweep it clean.
+func _open_companion_table() -> void:
+	Mode.enter("Dialogue")
+	for btn in ["SheetBtn", "CodexBtn", "Dice", "Shop", "Bag", "ShortRest", "LongRest", "Scene"]:
+		$Margin/Split/ChatBox/Input.get_node(btn).visible = false
+	# EAS: the fireside room behind the talk, and the companion's painted
+	# face at the table — a conversation, not a bare chat log.
+	var comp_name := str(GameState.character.get("name", "?")).split(":")[0]
+	Art.ensure_environment("env-fireside")
+	var fire := Art.texture_for(Art.env_resolved("env-fireside"))
+	if fire != null:
+		_scene_art.texture = fire
+		_scene_art.modulate.a = 0.5
+		_ken_burns()
+	var slug := "npc-" + comp_name.to_lower().replace(" ", "-")
+	if not Art.has_art(slug):
+		Art.ensure(slug, "character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [comp_name, Art.subject_style("char")], "1024x1024", true)
+	var face := MythPortrait.new(132, "gold", true)
+	face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1))
+	face.anchor_left = 1.0
+	face.anchor_right = 1.0
+	face.offset_left = -164
+	face.offset_top = 18
+	face.offset_right = -32
+	face.offset_bottom = 150
+	add_child(face)
+	Ui.breathe(face)
+	Art.art_ready.connect(func(k):
+		if str(k) == slug and is_instance_valid(face):
+			face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1)))
+	# Clear-chat: sweep the table and start the talk fresh.
+	var clear_b := Button.new()
+	clear_b.theme_type_variation = "GhostButton"
+	clear_b.text = "Clear the table"
+	clear_b.anchor_left = 1.0
+	clear_b.anchor_right = 1.0
+	clear_b.offset_left = -196
+	clear_b.offset_top = 158
+	clear_b.offset_right = -32
+	clear_b.offset_bottom = 192
+	clear_b.pressed.connect(func():
+		for r in _thread.get_children():
+			r.queue_free()
+		Chronicle.reset()
+		_say_system("The table is cleared — speak fresh."))
+	add_child(clear_b)
+	_say_system("You sit down with %s." % comp_name)
+
+
+## The tale itself — hydrate the save, seat the party, build the HUD, and
+## settle the machine into the mode the save actually left it in.
+func _open_the_adventure() -> void:
 	MythLoading.mark(0.6, "Recalling the tale…")
 	await GameState.hydrate()
 	_seed_forged_party()  # companions chosen at the adventure table ride in on day one

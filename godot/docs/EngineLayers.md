@@ -70,13 +70,49 @@ exactly that reason (see [Backlog.md](Backlog.md), the 107-row matrix).
 
 | Function | Lines | Verdict |
 |---|---|---|
-| `_ready` | 215 | screen construction; assigns ~10 member vars the rest of the file reads |
+| `_ready` | ~~215~~ **20** | **split 2026-08-14** — see §3a |
 | `_create_hero` | 136 | the creation flow, already fronted by `_open_character_forge` |
 | `_apply_world_tags` | 123 | **stays** — the tag protocol is the play screen |
 | `_on_done` | 98 | **stays** — the streaming state machine |
 | `_free_check` | 98 | dice-menu dispatch on magic ids (700–799 recipes, 900/903, 910+) |
 | `_on_sheet_action` | 96 | sheet-action dispatch |
 | `_render_sheet` / `_render_combat` | 82 / 81 | **stays** — the play screen's direct view |
+
+### 3a. The second seam: a phase list, not a new file
+
+`_ready` was the largest function in the project and the obvious candidate to
+extract — but **a cross-file extraction here would have broken this document's
+own rule 3.** A `screen_builder.gd` would need to reach back into ~15 member
+vars and ~20 private methods of `game.gd`; that is a back-reference, which the
+window pattern forbids precisely because it is not a seam, it is a tangle.
+
+So the seam is *inside* the file, and it is about **order**, not location:
+
+```gdscript
+func _ready() -> void:
+	theme = Ui.theme
+	_wire_signals()          # engine + panel signals, and every button on the bar
+	_build_chrome()          # the widgets this screen owns: init rail, mood wash
+	_open_the_room()         # campaign name, hero in her seat, world music, key art
+	if not GameState.is_dm():
+		_open_companion_table()   # the boot ENDS here for that persona
+		return
+	await _open_the_adventure()   # hydrate, party, HUD, and the mode the save left
+```
+
+**This is not tidying — it is the fix for a bug class.** PL-4 lived in that
+215-line wall: `_open_the_adventure` renders a persisted fight (entering Combat)
+and then decided the mode a few lines later, throwing it away. Ten lines apart
+in a wall is invisible; two named phases in a list are not.
+
+The split was safe to do verbatim because **no local crosses a section** —
+checked before the cut, not after. `self_check` asserts both properties that
+make it worth anything: `_ready` stays under 30 lines, and the phases stay in
+order (chrome builds what the room paints into). Both mutation-tested — inline
+26 lines back into the boot, or swap two phases, and it names which.
+
+The file grew by 40 lines doing this, and that is the honest trade: five
+function headers and their docstrings bought a boot sequence you can read.
 
 **The window seam is exhausted.** Nothing left is a dialog with its own screen:
 what remains is the streaming/tag core the original plan explicitly protected,
