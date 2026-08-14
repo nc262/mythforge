@@ -14,6 +14,21 @@ signal changed(prev: StringName, next: StringName)
 ## Actions vocabulary: send_message, roll, death_save, combat_action,
 ## rest, shop, buy, conjure, panels, retell, ask_gm, edit_hero, levelup,
 ## navigate, start_adventure, forge, settings.
+##
+## ONE DERIVED RULE, asserted in self_check rather than trusted here: any state
+## that allows `send_message` must declare **Combat** as a legal exit. The GM can
+## answer any message with a fight — an ambush mid-conversation, a robbery at the
+## stall, a second wave after a victory — so every state where the player can
+## still talk is a state a fight can start in.
+##
+## Dialogue, Merchant, Victory and Camp did not declare it, which is why
+## `_render_combat` had to force the transition and `Mode.enter` logged a
+## warning every time steel came out during a conversation. The exits were wrong,
+## not the fights.
+##
+## `GameOver` is the deliberate exception: the player can still speak, but the
+## run is over and no fight follows. `Cutscene` and `Crafting` allow nothing at
+## all, so nothing can be declared from them.
 const STATES := {
 	"Boot":              {"allowed": [], "to": ["MainMenu", "Loading"]},
 	"MainMenu":          {"allowed": ["navigate", "start_adventure", "forge", "settings"], "to": ["Settings", "CharacterCreation", "CampaignForge", "CharacterForge", "Loading", "MainMenu"]},
@@ -23,18 +38,18 @@ const STATES := {
 	"Loading":           {"allowed": [], "to": ["Exploration", "Dialogue", "CharacterCreation", "CharacterForge", "MainMenu"]},
 	"CharacterCreation": {"allowed": ["edit_hero"], "to": ["Exploration", "MainMenu"]},
 	"Exploration":       {"allowed": ["send_message", "roll", "rest", "shop", "buy", "conjure", "panels", "retell", "ask_gm"], "to": ["Combat", "Dialogue", "Merchant", "Travel", "Camp", "LongRest", "LevelUp", "Cutscene", "Death", "MainMenu", "Pause", "Inventory", "CharacterSheet"]},
-	"Dialogue":          {"allowed": ["send_message", "retell"], "to": ["Exploration", "MainMenu", "Pause"]},
+	"Dialogue":          {"allowed": ["send_message", "retell"], "to": ["Exploration", "MainMenu", "Pause", "Combat"]},
 	"Combat":            {"allowed": ["send_message", "roll", "combat_action", "panels", "retell", "conjure"], "to": ["Exploration", "Death", "Victory", "MainMenu", "Pause"]},
 	"Death":             {"allowed": ["death_save", "send_message", "panels"], "to": ["Combat", "Exploration", "GameOver"]},
-	"Victory":           {"allowed": ["send_message", "panels", "roll"], "to": ["Exploration", "LevelUp"]},
+	"Victory":           {"allowed": ["send_message", "panels", "roll"], "to": ["Exploration", "LevelUp", "Combat"]},
 	"GameOver":          {"allowed": ["send_message", "rest", "navigate"], "to": ["Exploration", "MainMenu"]},
 	"LevelUp":           {"allowed": ["levelup"], "to": ["Exploration", "Combat", "Victory"]},
-	"Merchant":          {"allowed": ["buy", "shop", "send_message", "panels"], "to": ["Exploration"]},
+	"Merchant":          {"allowed": ["buy", "shop", "send_message", "panels"], "to": ["Exploration", "Combat"]},
 	# ── Declared, wired when their systems land (see FeatureMatrix) ──
 	"Inventory":         {"allowed": ["panels"], "to": ["Exploration", "Combat"]},
 	"CharacterSheet":    {"allowed": ["panels"], "to": ["Exploration", "Combat"]},
 	"Crafting":          {"allowed": [], "to": ["Exploration"]},
-	"Camp":              {"allowed": ["send_message", "rest"], "to": ["Exploration", "LongRest"]},
+	"Camp":              {"allowed": ["send_message", "rest"], "to": ["Exploration", "LongRest", "Combat"]},
 	"LongRest":          {"allowed": [], "to": ["Exploration", "Combat"]},
 	"Travel":            {"allowed": ["navigate"], "to": ["Exploration", "Combat"]},
 	"Cutscene":          {"allowed": [], "to": ["Exploration", "MainMenu"]},

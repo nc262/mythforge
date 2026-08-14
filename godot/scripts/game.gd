@@ -1417,6 +1417,16 @@ func _start_combat(foes: String) -> void:
 				first = false
 			else:
 				Combat.add_foe(label)
+	# THE MODE CHANGES HERE, AT THE CAUSE. It used to change only inside
+	# `_render_combat`, which made entering Combat a side effect of DRAWING —
+	# so the FSM's own map never described how a fight begins, and every
+	# transition out of a conversation was logged as undeclared. The renderer
+	# keeps its guard as a backstop; from here it is a no-op.
+	#
+	# Not from Death, GameOver or LevelUp: those already own the fight, or the
+	# run is over, and forcing Combat over them steals a death save.
+	if Combat.active() and Mode.state not in ["Combat", "Death", "GameOver", "LevelUp"]:
+		Mode.enter("Combat")
 	_render_combat()
 
 
@@ -1836,10 +1846,20 @@ var _auto_round := false            # End Turn's auto-sweep paused on a reaction
 var _round_gm: Array[String] = []   # enemy-turn GM notes, streamed once per sweep
 
 
-## The one gate for every combat click — self-heals Mode drift (a fight is on
-## but the FSM sat in Dialogue/whatever: enter Combat) and never fails silent.
+## The one gate for every combat click. It still catches Mode drift, but the
+## drift it was written for is fixed: a fight now enters Combat at `_start_combat`
+## and Dialogue/Merchant/Victory/Camp declare Combat as a legal exit, so this
+## branch should be unreachable.
+##
+## SO IT SAYS SO WHEN IT FIRES. It used to heal silently, which is what kept the
+## real bug — an undeclared transition — invisible for as long as it was. Left in
+## place rather than deleted because the alternative failure is worse: without
+## it, a drifted FSM makes the attack button do nothing at all, with no message,
+## which is the one thing this gate exists to prevent.
 func _can_fight() -> bool:
 	if Combat.active() and not Mode.busy and Mode.state not in ["Combat", "Death", "GameOver"]:
+		push_warning("Mode drift: a fight is active while the FSM sat in %s — " % Mode.state
+			+ "something started combat without entering it. Healing, but this is a bug.")
 		Mode.enter("Combat")
 	if Mode.can("combat_action"):
 		return true

@@ -10,7 +10,6 @@ a check. A new shortcut adds a row here in the same commit.
 |---|---|---|---|
 | `game.gd` is a god-script (~2.8k lines: streaming, tags, combat view, panels) | `scripts/game.gd` | every new system lands in the one file that must stay correct | keep extracting windows — the seam and the order are in [EngineLayers.md](EngineLayers.md) |
 | `_streaming` mirrors `Mode.busy` | `scripts/game.gd` | two sources for one fact | delete the alias during the next `game.gd` extraction |
-| Mode drift self-heal | `game.gd._can_fight` | combat clicks force-enter Combat when the FSM has drifted; the real bug is hidden, not fixed | declare Combat a legal target from every in-game state |
 | `user://tiles` fills for a **player-forged** world | `user://tiles` | a world you forge yourself pours its own terrain — minutes of GPU, and the one art pour a player can still trigger | none available: nobody can pre-bake a world that does not exist yet. The six shipped worlds each carry 272 tiles in the package, so the install itself pours nothing. Deliberately **not** solved by shrinking tiles: see [Terrain.md](Terrain.md) |
 | Object tiles carry an opaque dark-grey background | tile bake | a boulder pasted into a snowfield brings its own grey square | composite the object over the cell's ground role at draw time, or key the flat background out at bake time |
 | A world package unpacks MISSING files only, never changed ones | `world_compiler._unpack_baked` | a package that **replaces** an asset (rather than adding one) is invisible to anyone who already unpacked that world | deliberate: overwriting would clobber a player's own `Compiler.reforge` output. Adding files works, which covers the normal case. A genuine asset replacement needs a stamp in `world.json` and an explicit re-extract |
@@ -28,6 +27,24 @@ a check. A new shortcut adds a row here in the same commit.
 - **Both forges duplicated a ~60-line stage scaffold.** `ui/forge_flow.gd` is
   the base; every forge is stage content only.
 - **`world_map` carried its own pan/zoom.** It uses the shared `MythCamera`.
+- **Mode drift into Combat was healed, not fixed.** `_start_combat` never
+  touched the FSM at all — entering Combat happened inside `_render_combat`, so
+  the state change was a side effect of **drawing**, and the machine's own map
+  never described how a fight begins. Dialogue, Merchant, Victory and Camp had no
+  Combat exit, so every ambush mid-conversation was an undeclared transition that
+  `Mode.enter` warned about and performed anyway.
+
+  Fixed at the cause: `_start_combat` enters Combat itself, and the four states
+  declare the exit. The rule is **derived, not listed** — `self_check` walks the
+  machine and asserts that any state allowing `send_message` can reach Combat,
+  because the GM can answer any message with a fight. A fifth state added later
+  fails the day it lands rather than repeating this quietly. `GameOver` is the
+  exception and is asserted as one.
+
+  `_can_fight`'s net stays, and now `push_warning`s when it fires. Deleting it
+  would trade a silent heal for a silent *failure* — a drifted FSM would make the
+  attack button do nothing, with no message, which is the one thing that gate
+  exists to prevent.
 - **Eviction was completely silent.** `_enforce_budget` deleted paintings and
   printed nothing, which is why R10 ran for *hours* rather than minutes before
   anyone noticed the hero portraits were gone. It now reports every round, and

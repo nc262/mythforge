@@ -660,6 +660,28 @@ func _ready() -> void:
 	for st in Mode.STATES:  # every declared exit leads to a declared state
 		for nxt in Mode.STATES[st]["to"]:
 			assert(Mode.STATES.has(nxt), "undeclared target %s from %s" % [nxt, st])
+
+	# ── IF YOU CAN STILL TALK, A FIGHT CAN STILL START ───────────────────────
+	# The GM answers any message, and one of the answers is an ambush. So every
+	# state that allows send_message has to declare Combat as a legal exit, or
+	# the fight that follows is an undeclared transition the renderer forces
+	# while Mode.enter logs a warning — which is exactly how Dialogue, Merchant,
+	# Victory and Camp sat broken.
+	#
+	# DERIVED, NOT LISTED. A hardcoded list of four states would pass forever
+	# while a fifth state added next year quietly repeats the bug. This reads the
+	# machine and re-derives the rule, so the new state fails the day it lands.
+	for st in Mode.STATES:
+		var acts: Array = Mode.STATES[st]["allowed"]
+		if not acts.has("send_message") or st in ["Combat", "GameOver"]:
+			continue   # already fighting, or the run is over — see state_manager
+		assert(Mode.STATES[st]["to"].has("Combat"),
+			"%s lets the player speak but cannot enter Combat — a fight declared there is an undeclared transition" % st)
+	# And the converse, so "just add Combat everywhere" is not the fix: a state
+	# where nothing can be said must not reach Combat either.
+	assert(not Mode.STATES["MainMenu"]["to"].has("Combat"), "the menu is not a place a fight can start")
+	assert(not Mode.STATES["GameOver"]["to"].has("Combat"), "the dead do not get ambushed")
+
 	Mode.state = "Boot"  # leave the machine as the game boots it
 
 	# Language guard (Issue 4): English passes, wholesale drift is caught,
