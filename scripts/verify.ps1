@@ -102,6 +102,21 @@ if ($Audit) {
 	Invoke-Harness -Scene 'body_audit' -Token 'BODY-AUDIT OK' -Windowed
 }
 
+# ── The first-run script, which is not the game but ships with it ────────────
+# Offline, no network, a few seconds. It belongs in the gate because the download
+# is the one part of this project a harness could never see: the code can be
+# perfect and the thing a stranger installs still broken.
+Write-Host "`n── check-bootstrap " -NoNewline -ForegroundColor Cyan
+$bootLog = Join-Path ([IO.Path]::GetTempPath()) "mythforge-$PID-bootstrap.log"
+& pwsh -NoProfile -File "$repo\installer\check-bootstrap.ps1" > $bootLog 2>&1
+if ((Get-Content $bootLog -Raw) -match 'BOOTSTRAP-CHECK OK') {
+	Write-Host 'BOOTSTRAP-CHECK OK' -ForegroundColor Green
+} else {
+	Write-Host 'FAILED' -ForegroundColor Red
+	$failed += 'check-bootstrap'
+	Get-Content $bootLog | Select-String 'FAIL' | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
+}
+
 if ($failed.Count) {
 	Write-Host "`nRED: $($failed -join ', ')" -ForegroundColor Red
 	Write-Host 'Not exporting. A red gate must not reach the Desktop.' -ForegroundColor Red

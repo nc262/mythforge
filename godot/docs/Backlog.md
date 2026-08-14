@@ -49,7 +49,7 @@ answer: a spatial arrangement is strictly harder than a silhouette, and
 
 | # | Item | P | E |
 |---|---|---|---|
-| DI-1 | **`bootstrap.ps1` has never run on a clean machine** — ~10 GB of downloads, GPU detection, three models and the image engine. Narrowed on 2026-08-04: the *installer* is now proven (compile → silent install → uninstall, no residue), so what is left is specifically the first-run fetch. Still the biggest risk in the download, and still not something the harnesses can reach | P2 | M |
+| DI-1 | **The ~10 GB first-run fetch has never run on a clean machine.** Narrowed twice. 2026-08-04: the *installer* is proven (compile → silent install → uninstall, no residue). 2026-08-14: `bootstrap.ps1`'s own logic is proven — `installer/check-bootstrap.ps1` runs the real script against throwaway roots and asserts the repair path skips all six worlds by name, a missing world is named rather than swallowed, `baked/` is created, an unreadable zip is caught by the `--mf-worlds` probe, and an incomplete payload throws instead of shrugging. Mutation-tested both ways. **What is left is only `scripts/install.ps1`** — GPU detection, the three models, the image engine — which needs a clean machine and a real connection, and nothing on this box can stand in for either | P2 | M |
 
 ## Not built
 

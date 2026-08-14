@@ -9,9 +9,16 @@
 #   powershell -ExecutionPolicy Bypass -File .\installer\bootstrap.ps1
 #   -ReleaseUrl <url>   the Mythforge.exe game-client download (GitHub release asset)
 #   -Yes                no prompts (installer passes this)
+#   -SkipEngine         leave the models and image engine alone; repair the
+#                       download only. Step 1 is the ~10 GB half and the only
+#                       half that needs a GPU, so skipping it is both the honest
+#                       "one world failed, fetch it again" repair AND the only
+#                       way installer\check-bootstrap.ps1 can run this script for
+#                       real rather than reading it and hoping.
 param(
     [string]$ReleaseUrl = $env:MYTHFORGE_CLIENT_URL,
-    [switch]$Yes
+    [switch]$Yes,
+    [switch]$SkipEngine
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $PSScriptRoot     # install dir = app source root
@@ -28,11 +35,18 @@ $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' +
 #    model, and installs stable-diffusion.cpp + a checkpoint.
 Step 'Setting up the engine (GPU, models, image engine)'
 $install = Join-Path $Root 'scripts\install.ps1'
+# CHECKED EVEN WHEN SKIPPING. A missing install.ps1 means the payload is
+# incomplete, and that is worth saying on a repair run too — the alternative is
+# a bootstrap that looks like it worked and leaves a game with no narrator.
 if (-not (Test-Path $install)) { throw "scripts\install.ps1 missing — the install payload is incomplete." }
-$installArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $install)
-if ($Yes) { $installArgs += '-Yes' }
-& powershell @installArgs
-if ($LASTEXITCODE -ne 0) { throw "engine setup failed (exit $LASTEXITCODE) — see output above." }
+if ($SkipEngine) {
+    Write-Host '  -SkipEngine: leaving models and image engine as they are'
+} else {
+    $installArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $install)
+    if ($Yes) { $installArgs += '-Yes' }
+    & powershell @installArgs
+    if ($LASTEXITCODE -ne 0) { throw "engine setup failed (exit $LASTEXITCODE) — see output above." }
+}
 
 # 2. The game itself — now a ~130 MB executable, because the worlds ship BESIDE
 #    it rather than inside it (a bundled build was 3.02 GB, over GitHub's 2 GiB

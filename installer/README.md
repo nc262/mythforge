@@ -97,10 +97,18 @@ Compiling it first time found four things that reading it had not:
 
 **Still not exercised — validate before shipping wide:**
 
-- **A full first-run `bootstrap` on a fresh box.** This is the remaining risk and
-  it is the big one: ~10 GB of downloads, GPU detection, three models and the
-  image engine, none of it run here so as not to disturb the dev install. What is
-  proven above is the *installer*; `bootstrap.ps1` is still unproven.
+- **The ~10 GB fetch on a fresh box** — GPU detection, three models, the image
+  engine. That is `scripts/install.ps1`, and it is not run here so as not to
+  disturb the dev install. It remains the big one.
+
+  What is no longer unproven is `bootstrap.ps1` **itself**. `pwsh
+  installer\check-bootstrap.ps1` runs the real script against throwaway roots
+  with `-SkipEngine`, offline, in a few seconds, and asserts the decisions:
+  a repair skips all six worlds by name rather than re-fetching 2.9 GB, missing
+  worlds are listed so a player knows what to download, `baked\` is created,
+  an unreadable zip is caught by the `--mf-worlds` probe rather than counted,
+  and an incomplete payload throws instead of shrugging. Both halves were
+  mutation-tested — break the skip or soften the throw and it goes red.
 - An NVIDIA card. Both engines are Vulkan, so there is no vendor branch left to
   get wrong — but "should work" is not "was run".
 

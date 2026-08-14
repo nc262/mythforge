@@ -147,6 +147,13 @@ headless, takes 3.9 s.
 **Related, same script:** two runs sharing one log path kill each other with
 *"the process cannot access the file"*, so the log name carries `$PID`.
 
+**And the exported game is the mirror image of this.** `Mythforge.exe` is a
+GUI-subsystem binary that reattaches to the parent console, so its output
+survives a **pipe** and is lost to a **file redirect** — `--headless --mf-worlds`
+gives 322 characters through `| Out-String` and a **0-byte file** through
+`> out.txt`. Exit codes are correct either way. So: pipe the game, redirect the
+editor. Getting it backwards silently empties whichever log you were trusting.
+
 ## The exe won't copy to the Desktop
 
 > `Device or resource busy`

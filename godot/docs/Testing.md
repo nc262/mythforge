@@ -29,6 +29,7 @@ $GODOT --headless --path godot res://tests/bench_gm.tscn        # latency + repe
 | `local_stack` | the model actually answers, with schemas honoured and concurrent calls kept apart | timing under load |
 | `bench_gm` | turn latency and repetition across many turns | correctness of the rules underneath |
 | `clean-room` | that a **stranger** can fetch all 13 downloads a first run needs | that any of it runs — no GPU, no Vulkan, no Windows in the container |
+| `check-bootstrap` | every decision `bootstrap.ps1` makes: the repair path skips worlds by name, missing ones are listed, `baked\` is created, an unreadable zip is caught, an incomplete payload throws | the ~10 GB fetch itself — that is `scripts/install.ps1` and it needs a clean machine |
 
 ## The two that need a window
 
