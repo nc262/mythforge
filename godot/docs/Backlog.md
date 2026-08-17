@@ -53,12 +53,20 @@ audio diagnosis and means the count is not a useful signal on its own.
   `check-bootstrap` seeds text files named `.zip` to prove the probe catches an
   unreadable world.
 
-**Two gaps this sweep could not cover**, both worth closing before calling the
-list complete: `local_stack` and `bench_gm` have **never been swept** (they drive
-the real model and GPU, so their logs are not in any gate run here), and **no
-windowed play session survives** — those logs were rotated away by gate runs
-before `max_log_files` went to 30, so nothing here is evidence about what the
-game prints while a person is actually playing it.
+**`local_stack` was swept on 2026-08-17** (`-Full`, real model on the GPU) and it
+was the one worth running — ten complaints nobody had ever read, and they are not
+noise. See PL-9. `bench_gm` is healthy in the same run: 2.4 s and 3.1 s per turn
+after a 9.0 s first turn that carries the model load, vocabulary overlap 16 %,
+and **0/3 openings on atmosphere** — the CRAFT line still holds.
+
+**One gap remains:** no windowed play session log survives. Those were rotated
+away by gate runs before `max_log_files` went to 30, so nothing here is evidence
+about what the game prints while a person is actually playing it.
+
+| # | Item | P | E |
+|---|---|---|---|
+| PL-9 | **`start_worker()` is asynchronous, and the next two calls are thrown away.** In `LocalGM.complete_json()` the node is created, `start_worker()` is called, and then — in the same frame — `set_sampler_preset_constrain_with_json_schema()` and `reset_context()`. NobodyWho answers both: *"Worker not started, dropping sampler config"* and *"Attempted to reset context, but no worker is running. Doing nothing."* So on the **first structured call of a session** the schema constraint is silently discarded and the call is not stateless. `Parse JSON failed. Error at line 0: Unexpected character` appears in the same run, which is what an unconstrained call produces — this repo's own [LocalLLM-Tuning](LocalLLM-Tuning.md) records that a schema-constrained call is what makes JSON parse at all. Same shape at `local_gm.gd:169` for the narrator's `_chat`. **Fix:** configure on the worker-ready signal, or await it, rather than on the line after `start_worker()`. **Verify by the absence of those three lines in a `-Full` run**, not by reading the code | P2 | S |
+| PL-10 | **`tokenizer.ggml.add_bos_token not found in GGUF metadata, defaulting to true`**, five times per `-Full` run, from NobodyWho. A property of the shipped `.gguf`, not of this code, and the default it picks is the right one — but it is five lines of noise in a log people are now expected to read. Decide: filter it by name in `verify.ps1` the way the deliberate thrash warning is, or accept it. Not a defect | P4 | S |
 
 | # | Item | P | E |
 |---|---|---|---|
