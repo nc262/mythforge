@@ -87,6 +87,38 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
   This was written twice before it stuck.
 
+## A dialog's exit button walks off the bottom of the screen
+
+**Symptom:** a panel opens fine, then reveals some content — a detail strip, a
+longer page — and its exit button is *gone*. Escape does nothing, clicking
+outside does nothing, nothing scrolls. Task Manager is the only way out. This
+soft-locked the merchant counter for weeks (PL-7).
+
+- **Cause, and both halves are needed to explain it:** a `Window` with
+  `wrap_controls` only ever **grows** to its contents minimum and never shrinks
+  back, and it grows **downward** from the origin `popup_centered()` fixed when
+  it was shorter. Measured on the counter: 86 px of new content took the dialog
+  from 541 px to **1002 px** against a contents minimum of **627**, putting the
+  OK button at **y=875 on an 800 px screen**. The over-growth comes from a
+  transient — a freshly-revealed autowrapped label measures ~1 px wide mid-layout
+  and reports an enormous height — and the window keeps it forever.
+- **Fix:** `Skin._cap_panel_content` calls `reset_size()` (re-fit to what the
+  contents actually ask for) and then clamps `position` so the whole window is on
+  screen, and it runs on `content.minimum_size_changed` — deferred, or it re-fits
+  to the very transient that caused the problem — as well as on root resize.
+- **Three earlier attempts failed because each was half the fix.** A re-fit alone
+  still hangs off a stale origin; a clamp alone cannot place a 1002 px window on
+  an 800 px screen. Both were reasoned from screenshots.
+- **Why no harness saw it:** `click_driver` opened the shop and audited it — in
+  the one state where nothing is wrong, because it never clicked a ware. And its
+  on-screen check asked `b.get_viewport().get_visible_rect()`, which for a control
+  inside a dialog **is the dialog**, and the dialog grows with the button. It now
+  measures in root coordinates.
+- **Headless lies about screen size.** With no window, the root viewport reported
+  a square **1280x1280** — 480 px taller than the shipped 1280x800 — so every
+  "does this fit on screen" question was being asked of a screen no player owns.
+  `click_driver` now pins the root to the size in `project.godot`.
+
 ## A mesh was rewritten and Godot kept serving the old one
 
 **Symptom:** a `.gltf` is re-exported with new geometry, `--import` is run, the

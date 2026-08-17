@@ -300,11 +300,31 @@ func _cap_panel_content(dlg: AcceptDialog, content: Control) -> void:
 		var cap := maxf(120.0, avail.y - 8.0 - PANEL_RESERVE)
 		if content.get_combined_minimum_size().y > cap:
 			content.custom_minimum_size.y = cap
+		# PL-7, and the cap above was never the whole story. A Window only ever
+		# GROWS to its contents and never shrinks back, and it grows DOWNWARD from
+		# the origin popup_centered fixed when it was shorter. Measured on the
+		# merchant counter: revealing an 86 px detail strip took the dialog from
+		# 541 px to 1002 px — against a contents minimum of 627 — and carried
+		# "Leave the counter" to y=875 on an 800 px screen. The exit was the
+		# dialog's own OK button, so there was no way out of the shop at all.
+		# Re-fit to what the contents actually ask for, then put the panel back on
+		# screen. Both halves are needed: a re-fit alone still hangs off a stale
+		# origin, and a clamp alone cannot place a window taller than the screen.
+		dlg.reset_size()
+		var room := Vector2i(avail) - dlg.size
+		dlg.position = dlg.position.clamp(Vector2i.ZERO, Vector2i(maxi(0, room.x), maxi(0, room.y)))
 	# Deferred: the content's real minimum height only exists once its children
 	# are in the tree, and callers dress the panel while still building it.
 	apply.call_deferred()
 	if not dlg.get_tree().root.size_changed.is_connected(apply):
 		dlg.get_tree().root.size_changed.connect(apply)
+	# …and again whenever the content changes height, which is the case the
+	# original build-time-only pass could not see. Deferred, because the signal
+	# fires mid-layout when a freshly-revealed autowrapped label still measures at
+	# one pixel wide, and re-fitting to THAT is how the window got tall in the
+	# first place.
+	if not content.minimum_size_changed.is_connected(apply):
+		content.minimum_size_changed.connect(apply, CONNECT_DEFERRED)
 
 
 ## A full-bleed opaque backing for a plain-Control surface (the Lore Book), so
