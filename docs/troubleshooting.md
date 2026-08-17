@@ -87,6 +87,29 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
   This was written twice before it stuck.
 
+## llama.cpp aborts with "Rust cannot catch foreign exceptions"
+
+**Symptom:** exit `0xC0000409`, no Godot stack, the last worker line is
+`Worker writing until done`.
+
+- **Not the double BOS.** `check_double_bos_eos: … starts with 2 BOS tokens`
+  appears **38 times in a `local_stack` run that exits 0** and prints
+  `LOCAL STACK OK`. It is noise. Neither is it fixable from the game:
+  `NobodyWhoModel` exposes only `model_path` and `projection_model_path`, and
+  `NobodyWhoChat` only `model_node`, `system_prompt`, `allow_thinking`,
+  `context_length` — there is no `add_bos_token` to set.
+- **Measured cause (five runs, one variable each):** a **constrained** sampler —
+  a `JsonSchema` or `Grammar` step — reaching a worker that has genuinely started,
+  as that worker's first act. The same worker with an unconstrained builder chain
+  generates for seven minutes without complaint, and once it has done one
+  unconstrained turn, eleven `JsonSchema` configs land and work.
+- **Read the sampler config out of the worker log before theorising.**
+  `set_sampler_preset_json` looks grammar-free and is not: it installs a default
+  GBNF `Grammar` step, which made one bisection arm prove the opposite of what it
+  appeared to.
+- **Method:** the whole thing was settled by one grep of a *passing* log and five
+  single-variable runs. Every earlier theory came from reading a failing log only.
+
 ## A dialog's exit button walks off the bottom of the screen
 
 **Symptom:** a panel opens fine, then reveals some content — a detail strip, a
