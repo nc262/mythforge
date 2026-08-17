@@ -18,6 +18,36 @@ speech-to-text. Saves are JSON files under `user://`. The one other process is
 the game POSTs to it directly. See
 [godot/docs/Architecture.md](godot/docs/Architecture.md).
 
+## MEASURE FIRST. NEVER GUESS.
+
+**Before writing a fix, state the measurement that identifies the cause.** Not
+the mechanism you find plausible — the number, the log line, the pixel count, the
+printed value. If you cannot name one, you do not know the cause yet, and
+**getting an instrument is the task** before the fix is.
+
+Four things that follow, each of which cost a wasted cycle here:
+
+1. **Confirm the instrument runs before trusting what it says.** An `_exit_tree`
+   fix for the audio leak was written, shipped through a gate, and moved nothing
+   — the `print()` inside it had never fired, because `_exit_tree` does not run
+   for an autoload on that quit path. The hook was wrong, not the logic, and one
+   `print()` first would have said so.
+2. **A fix that does not move the number is not a fix.** Revert it. Do not leave
+   it behind a comment claiming it fixed something. A change that moves no pixel
+   is a change to delete.
+3. **Never reason from the same weak evidence twice.** Two PL-7 fixes were
+   inferred from screenshots and both missed. The second one was the mistake; the
+   first was a guess, the second was a habit.
+4. **Record the negative result where the next attempt will read it** — the
+   backlog row, or a comment at the code. "`_exit_tree` never fires here" and
+   "the cap is 876 px against 600 px of content" are worth more than another
+   plausible theory.
+
+Three separate wrong diagnoses in this project's history were each settled in
+minutes by *rendering it, printing it, or counting it* — and every one of them
+had a confident explanation attached first. See
+[docs/troubleshooting.md](docs/troubleshooting.md).
+
 ## Hard rules / gotchas (don't relearn these)
 - **A grammar and a sampler chain REPLACE each other** in NobodyWho, so a
   schema-constrained call runs with no top-k/top-p/temperature/penalties. Never

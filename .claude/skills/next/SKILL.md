@@ -45,6 +45,19 @@ search answers better than they could.
 - **Unknown about behaviour** → *measure it*. Render it, print it, count pixels.
   Reading the code told the wrong story five of the last dozen times.
 
+**MEASURE FIRST — this is the one rule that is not negotiable.** Before you write
+a fix, say the measurement that identifies the cause: the number, the log line,
+the printed value. If you cannot name one, **getting the instrument is the task**
+and the fix comes after. Then:
+
+- **Prove the instrument runs before trusting it.** A `print()` inside a hook
+  that never fires reads exactly like a hook that fires and finds nothing.
+- **A fix that does not move the number is not a fix.** Revert it. Never leave it
+  behind a comment claiming otherwise.
+- **Do not reason from the same weak evidence twice.** One inference from a
+  screenshot is a guess; two is a habit, and the second is the real mistake.
+- **Write the negative result into the backlog row** before moving on.
+
 Write the answer down where it will be found again: an RCA in
 [docs/troubleshooting.md](../../../docs/troubleshooting.md) for a
 symptom → cause → fix, a comment at the code for a negative result. A negative
