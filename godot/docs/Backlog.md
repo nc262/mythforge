@@ -19,16 +19,46 @@ The rows below were found by making the gate print engine complaints from
 **passing** runs — they had been in every green log for an unknown length of
 time, on a stream nothing read.
 
-**The whole list, so it can be driven to zero.** A gate run produces exactly
-five distinct complaints; one is raised on purpose:
+**The whole list, so it can be driven to zero.** Every log on the box was swept
+on 2026-08-17 — 205 files, 307 matching lines, 30 distinct. **It produced no new
+defects.** Four rows survive triage; everything else is historical or deliberate,
+and is listed below so nobody triages the same thirty lines twice.
 
-| Complaint | Harness | Row |
+| Complaint | Seen in | Row |
 |---|---|---|
-| `6 ObjectDB instances were leaked at exit` | click_driver, ui_playthrough | PL-8 |
-| `3 resources still in use at exit` | click_driver, ui_playthrough | PL-8 (same cause) |
+| `N ObjectDB instances were leaked at exit` | click_driver, ui_playthrough | PL-8 |
+| `N resources still in use at exit` | click_driver, ui_playthrough | PL-8 (same cause) |
 | `Attempting to make child window exclusive…` | ui_playthrough | PL-6 |
 | `Lambda capture at index 0 was freed` | click_driver | PL-5 |
-| `art cache is THRASHING` | self_check | **intentional** — the harness drives the cache past its budget to prove the warning fires; filtered by name in `verify.ps1` |
+| merchant counter has no exit once an item is picked | played by hand | PL-7 |
+
+**N varies — 2 and 1 in some runs, 6 and 3 in others.** It tracks how many
+distinct sounds a session played, which is the strongest evidence for PL-8's
+audio diagnosis and means the count is not a useful signal on its own.
+
+**Cleared, do not re-file:**
+
+- `Mode: transition Combat → LevelUp is not declared` (18×), `Mode drift: a fight
+  is active while the FSM sat in Exploration` — **fixed** 2026-08-14 (PL-4 and the
+  LevelUp declarations). Historical logs still carry them.
+- `Invalid access to property or key '_streaming'` (7×), `Assertion failed: forge:
+  a forged hero carries its body onto the sheet`, and eleven `PLAYTHROUGH check
+  failed: multiclass/spells/equip/shop/features` — all **transient breakage from
+  the refactors of 2026-08-14**, red at the time, green now.
+- `Assertion failed: art budget: a shipped terrain tile…` — a **mutation test**
+  deliberately breaking the code to prove the check fails.
+- `art cache is THRASHING` (27×) — **intentional**: `self_check` drives the cache
+  past its budget to prove the warning fires. Filtered by name in `verify.ps1`.
+- `MF-WORLDS <world>: CANNOT OPEN …/mf-boot-*/baked/*.zip` (12×) — **intentional**:
+  `check-bootstrap` seeds text files named `.zip` to prove the probe catches an
+  unreadable world.
+
+**Two gaps this sweep could not cover**, both worth closing before calling the
+list complete: `local_stack` and `bench_gm` have **never been swept** (they drive
+the real model and GPU, so their logs are not in any gate run here), and **no
+windowed play session survives** — those logs were rotated away by gate runs
+before `max_log_files` went to 30, so nothing here is evidence about what the
+game prints while a person is actually playing it.
 
 | # | Item | P | E |
 |---|---|---|---|
