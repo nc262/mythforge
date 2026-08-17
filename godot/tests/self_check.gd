@@ -456,6 +456,31 @@ func _ready() -> void:
 				"%s's %s ground is a real role" % [wid, slot])
 		assert(int(Combat.ROLES[str(ground["open"])]["move"]) == 1,
 			"%s's open ground is walkable at full speed" % wid)
+	# An object tile is prompted onto "a plain flat dark grey background", so a
+	# boulder arrives as a grey SQUARE. `board_paint._key_background` lifts that
+	# field out at composite time. Nothing proved it — TechnicalDebt still carried
+	# the row as open, which is how a paid debt starts looking like an open one.
+	#
+	# ASSERT BOTH DIRECTIONS. "an object tile has transparency" alone passes for a
+	# keyer that has gone mad and erased the boulder too, so the ground roles are
+	# checked to be FULLY opaque in the same breath. Measured on fimbulreach:
+	# boulder 68.5 %, crates 78.3 %, grass and dirt 0.0 %.
+	var bp := load("res://scenes/combat/board_paint.gd")
+	for probe in [["boulder", true], ["crates", true], ["grass", false], ["dirt", false]]:
+		var pi: Image = bp._tile("fimbulreach", str(probe[0]), 1)
+		assert(pi != null, "board paint: no '%s' tile for fimbulreach — is the world package unpacked?" % probe[0])
+		var clear := 0
+		for py in pi.get_height():
+			for px in pi.get_width():
+				if pi.get_pixelv(Vector2i(px, py)).a < 0.02:
+					clear += 1
+		var pct := 100.0 * float(clear) / float(pi.get_width() * pi.get_height())
+		if bool(probe[1]):
+			assert(pct > 25.0, "board paint: '%s' keeps its studio background (%.1f%% clear) — it will draw as a grey square" % [probe[0], pct])
+			assert(pct < 95.0, "board paint: '%s' was keyed away almost entirely (%.1f%% clear) — the object is gone, not its background" % [probe[0], pct])
+		else:
+			assert(pct < 2.0, "board paint: ground role '%s' is %.1f%% transparent — the keyer is eating material tiles" % [probe[0], pct])
+	print("  board paint: object tiles keyed off their studio field, ground tiles left opaque")
 	var first_lay: Dictionary = Combat.data().get("cells", {}).duplicate()
 	Combat.lay_battlefield("shore", "fimbulreach", 7)
 	assert(Combat.data().get("cells", {}) == first_lay, "the same seed lays the same field")
