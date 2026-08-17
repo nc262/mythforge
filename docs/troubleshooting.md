@@ -87,6 +87,27 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
   This was written twice before it stuck.
 
+## A source-reading check fails on code that is obviously correct
+
+**Symptom:** `ui_playthrough` reports "the road network is defined but never
+called" while the call is right there in `world_map.gd`. The definition checks in
+the same block pass, so the file was read fine.
+
+- **Cause:** the check split the file on a **literal newline pasted inside the
+  string**. `core.autocrlf` is `true` here, so the working tree is genuinely
+  mixed — `world_map.gd` is LF, and any file rewritten by a tool in text mode
+  becomes CRLF. A CRLF harness splitting an LF file yields **one** line, and
+  every per-line match silently fails. Measured: `parts=1` against 692 newlines
+  in the file.
+- **Fix:** `split("\n")` — the escape, not a pasted newline. `strip_edges()`
+  already removes a trailing `\r`, so the escape is correct on both. All three
+  such splits in `ui_playthrough.gd` now use it.
+- **It never shows in `git status`.** Git normalises on commit, so a whole-file
+  CRLF conversion is invisible in the diff and the gate goes red with a clean
+  tree — which reads exactly like a real regression.
+- **Writing files from a script on this box:** open in binary, or pass
+  `newline=""`. Python's default text mode rewrites every line ending in the file.
+
 ## "Lambda capture at index N was freed. Passed null instead."
 
 - **A lambda that captures `self` is NOT the suspect.** Godot binds such a lambda

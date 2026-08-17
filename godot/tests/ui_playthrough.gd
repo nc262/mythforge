@@ -152,6 +152,28 @@ func _turn_levelup() -> void:
 	_ck(int(GameState.sheet().get("level", 1)) > lvl0, "levelup: never leveled (xp=%d)" % int(GameState.sheet().get("xp", 0)))
 	_ck(int(GameState.sheet().get("hpMax", 0)) > 12, "levelup: hpMax did not grow")
 	print("  turn levelup: ok (now level %d, HP %d)" % [int(GameState.sheet().get("level", 1)), int(GameState.sheet().get("hpMax", 0))])
+	# PL-6 — DISMISS IT, the way a player has to. The ceremony's window is
+	# `exclusive`, and leaving it up left this harness holding a modal nothing
+	# could open beside it: every later window raised "the parent window already
+	# has another exclusive child", and the shop only opened at all because the
+	# harness forced the FSM out of LevelUp. A player has no such lever — `Mode`
+	# refuses `shop` during the ceremony, and the modal eats the click besides —
+	# so the complaint was this harness's own posture, not a defect in the game.
+	var lw: Window = null
+	for ch in _game.get_children():
+		if ch is Window and ch.get_script() != null \
+				and str(ch.get_script().resource_path).ends_with("levelup_window.gd"):
+			lw = ch
+	_ck(lw != null, "levelup: the ceremony window never opened")
+	if lw != null:
+		lw.get_ok_button().pressed.emit()
+		for i in 20:
+			await get_tree().process_frame
+		_ck(not is_instance_valid(lw) or lw.is_queued_for_deletion(),
+			"levelup: 'Embrace it' did not close the ceremony window")
+	for ch in _game.get_children():
+		_ck(not (ch is Window and (ch as Window).exclusive and (ch as Window).visible),
+			"levelup: an exclusive modal is still up after the ceremony (%s)" % ch.name)
 
 
 ## The damage/heal tag path — the core of combat's HP math, driven for real.
@@ -534,8 +556,7 @@ func _check_refusals_land_near_the_button() -> void:
 		# Matching on wording instead caught "X waits by the fire — choose them
 		# at the Party stage", which is a confirmation, and the check failed
 		# against correct code. Match the control flow, not the prose.
-		var lines := src.split("
-")
+		var lines := src.split("\n")
 		var stray := 0
 		for i in lines.size():
 			var t := str(lines[i]).strip_edges()
@@ -664,8 +685,11 @@ func _check_atlas_reads_as_a_map() -> void:
 	# "is it plugged in" check was answered by the thing it was checking.
 	var calls_roads := false
 	var calls_legend := false
-	for line in src.split("
-"):
+	# "\n" as an ESCAPE, not a literal newline pasted into the string. This file
+	# and world_map.gd do not have to agree about line endings, and for a while
+	# they did not: a CRLF copy of this harness split an LF copy of world_map.gd
+	# into ONE line, so both AT-1 checks below failed on code that was correct.
+	for line in src.split("\n"):
 		var t := str(line).strip_edges()
 		if t.begins_with("func "):
 			continue
@@ -1270,7 +1294,8 @@ func _build_windows() -> void:
 	# Drive the real merchant open (now scenes/ui/merchant_window.gd) so a crash
 	# there surfaces here, not when a player walks up to a keeper mid-adventure —
 	# and assert the counter is genuinely stocked, not a bare dialog.
-	Mode.enter("Exploration")  # the level-up ceremony left the FSM in LevelUp; a player shops from Exploration
+	# No Mode.enter() crowbar here any more: the ceremony restores the previous
+	# mode itself once "Embrace it" is pressed, which _turn_levelup now does.
 	_game._open_shop()
 	await get_tree().process_frame
 	var shop: Node = null
