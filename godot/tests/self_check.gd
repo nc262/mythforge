@@ -800,6 +800,21 @@ func _ready() -> void:
 	var force_at := after_forge.find('Mode.enter("Exploration")')
 	assert(guard_at >= 0 and force_at >= 0 and guard_at < force_at,
 		"the resume forces Exploration without asking whether a saved fight is still on")
+	# PL-9, and structural for the same reason: the narrator must be woken BEHIND
+	# the curtain. Its nodes are built lazily by the first `stream()`, so the
+	# ~4.6 GB load used to land on the player's first sentence — `bench_gm`
+	# measured turn 1 at 9.0 s against 2-4 s after. Warming under `MythLoading`
+	# put 4.5 s of labelled progress on the loading screen and brought turn 1 to
+	# 3.6 s. The seconds did not vanish; they became visible. Nothing offline can
+	# measure that (no model under `Api.test_mode`), but the wiring is exactly
+	# what would rot: reorder these two and the load walks back into turn 1 with
+	# every harness still green.
+	var warm_at := gsrc_boot.find("await LocalGM.warm()")
+	var lift_at := gsrc_boot.find("MythLoading.lift()")
+	assert(warm_at >= 0, "boot: the narrator is never warmed — turn 1 pays the model load again (PL-9)")
+	assert(lift_at >= 0, "boot: the loading curtain is never lifted")
+	assert(warm_at < lift_at,
+		"boot: the curtain lifts BEFORE the narrator is warm — the load moves back into the player's first sentence")
 
 	Mode.state = "Boot"  # leave the machine as the game boots it
 

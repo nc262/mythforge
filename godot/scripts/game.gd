@@ -293,6 +293,15 @@ func _open_the_adventure() -> void:
 		_say_system(("You are at %s." % _here) if _here != "" else "The tale continues…", "compass")
 		_recap()
 	_msg.grab_focus()
+	# PL-9 — and the narrator is NOT built yet. Its nodes were made lazily by the
+	# first `stream()`, so a ~4.6 GB load sat inside the player's first sentence:
+	# `bench_gm` measured turn 1 at 9.0 s against 2-4 s for every turn after it.
+	# The seconds do not go away — the weights have to be read — but they belong
+	# under the curtain, where a line of text can say what is happening, rather
+	# than behind an input box that looks frozen. Measured after: 4.5 s of
+	# labelled progress here, and turn 1 down to 3.6 s.
+	MythLoading.mark(0.95, "Waking the storyteller…")
+	await LocalGM.warm()
 	# MIL §7 — the screen is genuinely built now; only now does the curtain lift.
 	await get_tree().process_frame
 	MythLoading.lift()

@@ -38,6 +38,26 @@ printed `CLICKDRIVE OK` through every run of this bug and would have kept doing
 so. Proved by reverting the fix and watching the gate fail on a passing
 harness.
 
+**PL-9 is closed** (2026-08-17), in two halves that needed different fixes. The
+correctness half was the await: all three lazy-worker sites now wait for
+`worker_started` — `complete_json`'s `_json_chat` and the memory encoder — and
+a `-Full` run prints none of the three lines it was filed for. The latency half
+was NOT the await, and measuring said so: with the await in and nothing else
+changed, `bench_gm` turn 1 was **8.8 s against the 9.0 s filed**. The row's own
+note that "the narrator is already warmed at `_setup`" was wrong twice over —
+there is no `_setup` in `local_gm.gd` at all, and the narrator's nodes were
+built lazily by the first `stream()`, so a ~4.6 GB load sat inside the player's
+first sentence. The fix is the one the row eventually proposed:
+`LocalGM.warm()` builds the narrator and waits for readiness, and
+`_open_the_adventure` holds the curtain over it at *"Waking the storyteller…"*
+(0.95). **Measured: 4.5 s of labelled progress on the loading screen, and turn
+1 from 9.0 s to 3.6-4.2 s** — in line with turns 2 and 3 rather than three
+times them. The seconds did not vanish and the code says so; they became
+visible. `bench_gm` warms first now, because the shipped game does, so its old
+"turn 1 includes model load" caveat is gone. `self_check` asserts the order
+structurally — nothing offline can drive a real model — and both mutations were
+watched failing: removing the warm, and moving it after `lift()`.
+
 **PL-10 is closed** (2026-08-17) and it was never this project's bug. Six local
 runs had narrowed it to "a constrained sampler on an explicitly-started worker
 aborts"; the `researcher` agent then found the mechanism upstream, and it
@@ -142,7 +162,6 @@ shown** — but it did settle two open questions:
 
 | # | Item | P | E |
 |---|---|---|---|
-| PL-9 | **The correctness half shipped; the LATENCY half did not, and the number says so.** All three lazy-worker sites now await `worker_started` — `complete_json`'s `_json_chat`, and the memory encoder in `local_memory.gd` — and a `-Full` run prints **none** of the three lines (`Worker not started, dropping sampler config`, `Attempted to reset context…`, `Worker was not started yet…`). `LOCAL STACK OK`, exit 0. **What did NOT move: `bench_gm` turn 1 is 8.8 s against the 9.0 s filed** — noise, not an improvement — because the narrator's `_chat` already called `start_worker()` at `_setup`, and the ~4.6 GB load happens inside `ask()` regardless of when the worker was asked to start. Starting early is not the same as being loaded. **So the row's own better idea is what remains, and it is a UI change, not a model one:** hold the loading curtain until the worker reports ready — `MythLoading.mark(fraction, line)` / `lift()` in `godot/ui/myth_loading.gd`, already driven by the boot at *"Recalling the tale…"* (0.6) and *"Setting the table…"* (0.9). Add a mark such as *"Waking the storyteller…"* and move `lift()` to after readiness, so those 8.8 s read as honest progress instead of a frozen first sentence. The readiness signal is known and proven: `worker_started`. **Verify by a first turn that shows progress, and do not claim the seconds went away — they did not, they became visible** | P3 | S |
 
 Empty. All three items were audited on 2026-08-04 and none survived — see the
 mis-reported table below. `Rules.attack_mod` now requires its `inv` argument, so

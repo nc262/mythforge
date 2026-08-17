@@ -45,6 +45,9 @@ const GEN_DEADLINE := 180.0
 var _model: Node = null
 var _chat: Node = null
 var _busy := false
+## Whether the narrator's worker has reported ready. One await, once — awaiting
+## `worker_started` after it has already fired waits for a signal never coming.
+var _chat_warm := false
 ## A SECOND chat over the same model, for structured answers.
 ##
 ## The sampler is per-chat-node, so constraining the narrator's node to JSON
@@ -168,6 +171,33 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	# needs to look alive.
 	if _chat.has_method("start_worker"):
 		_chat.call("start_worker")
+	return true
+
+
+## Build the narrator and WAIT for its worker, so the ~4.6 GB load happens
+## somewhere the player can see it working instead of inside their first
+## sentence.
+##
+## The nodes were built lazily by the first `stream()`, which is why `bench_gm`
+## measured turn 1 at 9.0 s against 3-4 s for every turn after it. PL-9's first
+## attempt tried to fix that by calling `start_worker()` earlier and measured
+## that it does not help: starting early is not being loaded, and `ask()` waits
+## for the weights whenever the worker was asked to start. The only thing that
+## moves the felt cost is waiting for readiness somewhere else — behind the
+## loading curtain, which `_open_the_adventure` already holds up.
+##
+## Returns false when there is no local narrator at all; the caller simply lifts
+## the curtain and the game says so honestly at the first turn, as before.
+func warm() -> bool:
+	if not available():
+		return false
+	if not _ensure_nodes(""):
+		return false
+	if _chat_warm:
+		return true
+	_chat_warm = true
+	if _chat.has_signal("worker_started"):
+		await _chat.worker_started
 	return true
 
 
