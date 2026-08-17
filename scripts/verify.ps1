@@ -88,6 +88,24 @@ function Invoke-Harness {
 	# token is the only thing here that is trusted.
 	if ($out -match [regex]::Escape($Token)) {
 		Write-Host "$Token" -ForegroundColor Green
+		# GREEN IS NOT SILENT. A harness prints its pass token and its complaints
+		# to two different streams, so an engine error in a PASSING run was
+		# invisible — which is how "Mode: transition Combat → LevelUp is not
+		# declared" survived every green gate until someone read a log by hand.
+		# Noted, not failed: these need triage, and a gate that goes red on
+		# upstream shutdown noise is a gate people learn to ignore.
+		# The filter holds upstream shutdown chatter, and exactly one warning a
+		# harness RAISES ON PURPOSE: self_check drives the art cache past its
+		# budget to prove the thrash warning fires at all. Suppressing that is
+		# not hiding a defect — printing it every run is how a person learns to
+		# skim this section, which is the failure mode the section exists to fix.
+		$noise = 'ObjectDB instances were leaked|resources still in use|Godot Engine v|Initialize godot-rust|art cache is THRASHING'
+		$gripes = ($out -split "`n") | Where-Object { $_ -match 'WARNING:|SCRIPT ERROR|ERROR:' -and $_ -notmatch $noise }
+		if ($gripes) {
+			Write-Host "     $($gripes.Count) engine complaint(s) in a passing run:" -ForegroundColor DarkYellow
+			$gripes | Select-Object -First 3 | ForEach-Object { Write-Host "       $($_.Trim())" -ForegroundColor DarkYellow }
+			if ($gripes.Count -gt 3) { Write-Host "       … and $($gripes.Count - 3) more in $log" -ForegroundColor DarkYellow }
+		}
 	} else {
 		Write-Host 'FAILED' -ForegroundColor Red
 		$script:failed += $Scene

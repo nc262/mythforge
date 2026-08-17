@@ -15,6 +15,15 @@ Priority **P1** (blocks play) → **P4** (nice to have); effort **S/M/L**.
 
 ## Play and correctness
 
+Both rows below were found on 2026-08-14 by making the gate print engine
+complaints from **passing** runs — they had been in every green log for an
+unknown length of time, on a stream nothing read.
+
+| # | Item | P | E |
+|---|---|---|---|
+| PL-5 | **`Lambda capture at index 0 was freed. Passed "null" instead.`** in every `click_driver` run. A connected lambda outlives a node it captured, so it fires with a null capture. Harmless where the body only touches the capture through `is_instance_valid`, a crash or a silent no-op where it does not — and there is no way to know which without finding it. `game.gd` connects several capturing lambdas (`Art.art_ready`, `Chronicle.chronicle_updated`, the companion portrait, the clear-table button); the portrait one already guards with `is_instance_valid`, which is the pattern the others should follow | P3 | S |
+| PL-6 | **Two exclusive child windows at once** — `Attempting to make child window exclusive, but the parent window already has another exclusive child`, raised from `_open_shop` during `ui_playthrough._build_windows`. Most likely a harness artifact: it opens every window back to back without closing. Worth ten minutes to confirm, because if a player can reach two modals at once the second one is unreachable and the first cannot be dismissed | P4 | S |
+
 Empty. All three items were audited on 2026-08-04 and none survived — see the
 mis-reported table below. `Rules.attack_mod` now requires its `inv` argument, so
 a caller that forgets it fails to compile rather than silently returning the
