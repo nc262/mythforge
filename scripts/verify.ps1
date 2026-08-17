@@ -70,8 +70,17 @@ function Invoke-Harness {
 	#
 	# STDERR SEPARATELY, because that is where the assertion message goes. The
 	# stdout log holds the harness's own prints and NOT the reason it failed.
+	# `--log-file` KEEPS THE HARNESSES OUT OF THE PLAYER'S LOG FOLDER. Godot writes
+	# every session to `user://logs` and keeps only the last N, and one gate run
+	# starts FIVE Godot processes — so running the gate deleted the log of every
+	# real play session before anyone could read it. That is not a tidiness
+	# problem: it is why "no errors in play" could not be claimed at all, because
+	# the evidence was destroyed by the act of checking for it.
+	#
+	# `--log-file` writes "instead of the default location defined by the
+	# project", so a harness now touches nothing a player produced.
 	$proc = Start-Process -FilePath $godot -PassThru -NoNewWindow `
-		-ArgumentList ($flags + @('--path', "$repo\godot", "res://tests/$Scene.tscn")) `
+		-ArgumentList ($flags + @('--log-file', "$log.engine", '--path', "$repo\godot", "res://tests/$Scene.tscn")) `
 		-RedirectStandardOutput $log -RedirectStandardError $errLog
 	if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
 		$proc.Kill(); $proc.WaitForExit()
@@ -115,7 +124,7 @@ function Invoke-Harness {
 
 if ($Import) {
 	Write-Host "`n── import" -ForegroundColor Cyan
-	& $godot --headless --path "$repo\godot" --import > (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-import.log') 2>&1
+	& $godot --headless --log-file (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-import.engine') --path "$repo\godot" --import > (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-import.log') 2>&1
 }
 
 # ── The offline gate — deterministic, no model, no GPU ───────────────────────
@@ -132,7 +141,7 @@ if ($Full) {
 	# It is printed so a regression stays visible; the judgement stays human.
 	Write-Host "`n── bench_gm (report only)" -ForegroundColor Cyan
 	$bench = Join-Path ([IO.Path]::GetTempPath()) 'mythforge-bench_gm.log'
-	& $godot --headless --path "$repo\godot" 'res://tests/bench_gm.tscn' > $bench 2>&1
+	& $godot --headless --log-file "$bench.engine" --path "$repo\godot" 'res://tests/bench_gm.tscn' > $bench 2>&1
 	Get-Content $bench | Where-Object { $_ -match 'turn \d+:|REPETITION' } |
 		ForEach-Object { Write-Host "  $($_.TrimEnd())" -ForegroundColor DarkGray }
 }
@@ -167,7 +176,7 @@ if ($failed.Count) {
 if (-not $NoExport) {
 	Write-Host "`n── export " -NoNewline -ForegroundColor Cyan
 	New-Item -ItemType Directory -Force "$repo\dist" | Out-Null
-	& $godot --headless --path "$repo\godot" --export-release 'Windows Desktop' '../dist/Mythforge.exe' `
+	& $godot --headless --log-file (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-export.engine') --path "$repo\godot" --export-release 'Windows Desktop' '../dist/Mythforge.exe' `
 		> (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-export.log') 2>&1
 	$exe = "$repo\dist\Mythforge.exe"
 	if (-not (Test-Path $exe)) { Write-Host 'FAILED' -ForegroundColor Red; exit 1 }
