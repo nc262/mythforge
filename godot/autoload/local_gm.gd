@@ -255,6 +255,22 @@ func complete_json(prompt: String, schema := "") -> String:
 				_deliver(""))
 		if _json_chat.has_method("start_worker"):
 			_json_chat.call("start_worker")
+			# WAIT for it. `start_worker()` is asynchronous, so configuring in the
+			# same breath raced it and NobodyWho answered "Worker not started,
+			# dropping sampler config" and "Attempted to reset context, but no
+			# worker is running" — the first structured call of a session ran
+			# unconstrained and not stateless, silently.
+			#
+			# This await was written once before and REVERTED, because it turned a
+			# warning into `fatal runtime error: Rust cannot catch foreign
+			# exceptions` (0xC0000409). That abort was upstream: NobodyWho ran the
+			# GBNF grammar AFTER the truncation samplers, so when truncation left
+			# no grammar-valid token, llama.cpp threw a C++ exception across the FFI
+			# boundary and Rust aborted. Fixed upstream in nobodywho-godot-v9.6.0
+			# (issues #421/#487, PR #644); this project pinned v9.5.0 until then.
+			# Do not re-pin below v9.6.0 — the crash comes back and it is silent.
+			if _json_chat.has_signal("worker_started"):
+				await _json_chat.worker_started
 	# The sampler is set EVERY call, not once, because `prose()` and this share the
 	# node and each clobbers the other's config.
 	if schema != "" and _json_chat.has_method("set_sampler_preset_constrain_with_json_schema"):

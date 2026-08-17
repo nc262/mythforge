@@ -108,7 +108,13 @@ function Invoke-Harness {
 		# budget to prove the thrash warning fires at all. Suppressing that is
 		# not hiding a defect — printing it every run is how a person learns to
 		# skim this section, which is the failure mode the section exists to fix.
-		$noise = 'ObjectDB instances were leaked|resources still in use|Godot Engine v|Initialize godot-rust|art cache is THRASHING'
+		# `add_bos_token` joined this list on 2026-08-17 only after being EXONERATED
+		# by measurement, not because it was noisy: it appeared 38 times in a run
+		# that exits 0, and the shipped GGUF carries no such metadata while neither
+		# NobodyWhoModel nor NobodyWhoChat exposes a property to set it. There is
+		# nothing to act on, and it was for a while read as the cause of a crash it
+		# had nothing to do with. See KnownIssues and docs/troubleshooting.md.
+		$noise = 'ObjectDB instances were leaked|resources still in use|Godot Engine v|Initialize godot-rust|art cache is THRASHING|add_bos_token not found in GGUF metadata'
 		$gripes = ($out -split "`n") | Where-Object { $_ -match 'WARNING:|SCRIPT ERROR|ERROR:' -and $_ -notmatch $noise }
 		if ($gripes) {
 			Write-Host "     $($gripes.Count) engine complaint(s) in a passing run:" -ForegroundColor DarkYellow

@@ -35,6 +35,10 @@ const EMBED_HINTS := ["embed", "minilm", "nomic", "bge", "gte", "e5-"]
 
 var _model: Node = null
 var _enc: Node = null
+## Whether the encoder's worker has reported ready. One await, once — awaiting
+## `worker_started` again after it has fired would wait for a signal that is
+## never coming.
+var _enc_ready := false
 var _cache: Dictionary = {}   # key -> Array[{text, day, vec}]
 
 
@@ -90,6 +94,7 @@ func _ensure() -> bool:
 	_enc.set("model_node", _model)
 	add_child(_enc)
 	# Load the weights now, not inside the first beat of a story.
+	_enc_ready = false
 	if _enc.has_method("start_worker"):
 		_enc.call("start_worker")
 	return true
@@ -98,6 +103,17 @@ func _ensure() -> bool:
 func _encode(text: String) -> PackedFloat32Array:
 	if not _ensure():
 		return PackedFloat32Array()
+	# …and WAIT for it, because `start_worker()` above is asynchronous. Starting
+	# early is not the same as being ready: the first beat of a session reached
+	# `encode()` anyway and NobodyWho started the worker lazily underneath it —
+	# "Worker was not started yet, starting now… You may want to call
+	# `start_worker()` ahead of time to avoid waiting", which the game was already
+	# doing. The load moved into the first beat regardless. This is PL-9's third
+	# site; the other two are in `local_gm.gd`.
+	if not _enc_ready:
+		_enc_ready = true
+		if _enc.has_signal("worker_started"):
+			await _enc.worker_started
 	return await _enc.encode(text)
 
 

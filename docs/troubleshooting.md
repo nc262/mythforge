@@ -127,7 +127,32 @@ the same block pass, so the file was read fine.
   body, so the marker that follows the error names the caller, and the marker that
   precedes it names the caller's caller.
 
-## llama.cpp aborts with "Rust cannot catch foreign exceptions"
+## llama.cpp aborts with "Rust cannot catch foreign exceptions" — SOLVED
+
+**Upstream bug, fixed in `nobodywho-godot-v9.6.0`.** This project was pinned to
+v9.5.0. Exit `0xC0000409`, no Godot stack, last worker line `Worker writing until
+done`.
+
+- **Cause:** NobodyWho ran the GBNF grammar **after** the truncation samplers
+  (top-k/top-p/temperature). When truncation leaves no grammar-valid token,
+  llama.cpp throws a C++ exception across the FFI boundary and Rust aborts.
+  Upstream issues #421 and #487, fixed by PR #644.
+- **Fix:** bump the pin in `scripts/fetch_nobodywho.py` **and**
+  `installer/clean-room/check-downloads.ps1`, delete
+  `godot/addons/nobodywho/libnobodywho-*.dll`, re-run the fetch. **Never pin
+  below v9.6.0.**
+- **The confound that cost six local runs.** It looked like "explicit
+  `start_worker()` + a constrained sampler aborts, lazy start is fine". It is
+  not: with a lazy start the first sampler config is *dropped* ("Worker not
+  started"), so the first generation runs unconstrained and later constrained
+  ones land in a context that happens not to collide. The trigger is
+  content-dependent, so a same-variable bisection can point straight at the wrong
+  thing while every arm reproduces.
+- **The old section below is kept**: everything it says about what was ruled out
+  locally is still true and still the right method — it simply could not reach a
+  cause that lived upstream.
+
+## What the local bisection ruled out (still valid method notes)
 
 **Symptom:** exit `0xC0000409`, no Godot stack, the last worker line is
 `Worker writing until done`.
