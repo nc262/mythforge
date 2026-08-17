@@ -102,3 +102,18 @@ installer/Output/
 # the art cache, never at these.
 !godot/spike3d/models/*.png
 !godot/spike3d/materials/*.png
+
+# ── Untracked-on-purpose, and NAMED so nobody guesses ────────────────────────
+# The Quaternius CC0 archives the shipped art was extracted from — Modular
+# Outfits, Universal Base Characters, the Animation Library, Medieval Weapons.
+# 426 MB, ignored because the EXTRACTED assets are already in godot/assets3d
+# and the zips would double the repo. Kept on disk on purpose: re-cutting a
+# garment or re-baking a body means going back to these, and re-downloading is
+# the only alternative. Provenance is in godot/assets3d/SOURCE.md.
+assets-cc0/
+
+# Runtime state of the web app this repo USED to be, retired in the pivot to the
+# game. Not the game's, not source, and not deleted here — that is a decision
+# for whoever wants the disk back.
+chroma/
+data/

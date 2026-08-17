@@ -3,6 +3,13 @@
 Downloaded 2026-08-05 from Quaternius (https://quaternius.com), **CC0 / public
 domain, no attribution required, commercial use fine**.
 
+**The original archives are kept at `assets-cc0/` in the repo root** (gitignored,
+426 MB): `ModularOutfitsFantasy.zip`, `UniversalBaseCharacters.zip`,
+`UniversalAnimationLibrary2.zip`, `MedievalWeapons.zip`. They are the only copy
+on this machine — re-cutting a garment or re-baking a body starts from them, and
+the alternative is downloading 426 MB again. They sat untracked and unexplained
+until 2026-08-17, which is one `git clean -xd` away from gone.
+
 | Folder | Pack | What |
 |---|---|---|
 | `bodies/` | Universal Base Characters | Base bodies, plus 5 hairstyles and a beard rigged to the head bone |
