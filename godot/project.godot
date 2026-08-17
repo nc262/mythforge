@@ -33,6 +33,19 @@ Worldsmith="*res://autoload/worldsmith.gd"
 
 driver/enable_input=true
 
+[debug]
+
+; KEEP ENOUGH LOGS TO SEE A PLAYED SESSION. Godot's default is 5, and one
+; `verify.ps1` run starts FOUR Godot processes — so a single gate wiped every
+; log a player had produced, and the evidence from an actual playthrough was
+; gone before anyone could read it. That is how a windowed session was wrongly
+; declared "does not write logs" on 2026-08-14: the file had simply been rotated
+; out from under it.
+;
+; A log is a few KB. Thirty of them is nothing, and it is the difference between
+; "the game printed an error yesterday" and finding out what it was.
+file_logging/max_log_files=30
+
 [display]
 
 window/size/viewport_width=1280
