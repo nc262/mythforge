@@ -87,6 +87,25 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
   This was written twice before it stuck.
 
+## "Lambda capture at index N was freed. Passed null instead."
+
+- **A lambda that captures `self` is NOT the suspect.** Godot binds such a lambda
+  to `self` and disconnects it automatically when the node frees — the connection
+  dump prints it as `<anonymous lambda>(self lambda)`. Chasing those wastes the
+  afternoon; the ones to look at print as plain `(lambda)`.
+- **An `is_instance_valid()` guard cannot silence it.** The error is raised when
+  the Callable is *invoked* with a dead capture, before the first line of the body
+  runs. If you see the error and the guard both, the guard is working and the
+  error is still real.
+- **Fix by making the capture RefCounted**, not by guarding harder: hold the node
+  in a one-element Array and test `arr[0]`. An Array is never "freed", so the
+  guard does its job in silence.
+- **Instrument:** dump `sig.get_connections()` and print `c["callable"]` — it
+  reports `(self lambda)` vs `(lambda)`. Then put a `printerr` as the first
+  statement of each candidate; the engine error prints immediately *before* the
+  body, so the marker that follows the error names the caller, and the marker that
+  precedes it names the caller's caller.
+
 ## llama.cpp aborts with "Rust cannot catch foreign exceptions"
 
 **Symptom:** exit `0xC0000409`, no Godot stack, the last worker line is

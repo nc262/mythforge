@@ -115,6 +115,20 @@ function Invoke-Harness {
 			$gripes | Select-Object -First 3 | ForEach-Object { Write-Host "       $($_.Trim())" -ForegroundColor DarkYellow }
 			if ($gripes.Count -gt 3) { Write-Host "       … and $($gripes.Count - 3) more in $log" -ForegroundColor DarkYellow }
 		}
+		# …and a SHORT list that goes RED rather than yellow. A complaint that has
+		# been chased to its cause, fixed, and measured to zero is no longer triage:
+		# its return is a regression, and nothing else in the gate would notice,
+		# because a passing token plus a yellow line is exactly what it looked like
+		# for the unknown number of months it went unread. Only add a pattern here
+		# once it is actually at zero — a permanently-red gate teaches the same
+		# skimming this section exists to prevent.
+		$regressions = 'Lambda capture at index \d+ was freed'
+		$back = ($out -split "`n") | Where-Object { $_ -match $regressions }
+		if ($back) {
+			Write-Host "     REGRESSION — a complaint that was fixed is back:" -ForegroundColor Red
+			$back | Select-Object -First 3 | ForEach-Object { Write-Host "       $($_.Trim())" -ForegroundColor Red }
+			$script:failed += "$Scene (regression)"
+		}
 	} else {
 		Write-Host 'FAILED' -ForegroundColor Red
 		$script:failed += $Scene

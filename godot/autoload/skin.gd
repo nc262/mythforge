@@ -702,18 +702,28 @@ func ritual_open(dlg: Window) -> void:
 		if not reduce_motion:
 			scrim.create_tween().tween_property(scrim, "color:a", ALPHA["scrim"], TIME["base"])
 		var closed := [false]  # the close sound fires once, however the window dies
+		# PL-5, and the scrim rides in an Array for the same reason `closed` does.
+		# `lift` is called TWICE — once when the window hides, once when it leaves
+		# the tree — and the first call frees the scrim. A captured Object that has
+		# been freed makes GDScript print `Lambda capture at index 0 was freed`
+		# BEFORE the body runs, so the `is_instance_valid` guard below cannot
+		# prevent it; the engine has already complained by the time it is reached.
+		# Measured: exactly one such error per click_driver run, raised the frame the
+		# Record's exit is clicked. An Array is RefCounted, so it is never "freed" —
+		# the guard then does its job in silence.
+		var sc := [scrim]
 		var lift := func():
-			if not is_instance_valid(scrim):
+			if not is_instance_valid(sc[0]):
 				return
 			if not closed[0]:
 				closed[0] = true
 				Sfx.ui("ui_close")
 			if reduce_motion:
-				scrim.queue_free()
+				sc[0].queue_free()
 				return
-			var tw := scrim.create_tween()
-			tw.tween_property(scrim, "color:a", 0.0, TIME["base"])
-			tw.tween_callback(scrim.queue_free)
+			var tw: Tween = sc[0].create_tween()
+			tw.tween_property(sc[0], "color:a", 0.0, TIME["base"])
+			tw.tween_callback(sc[0].queue_free)
 		dlg.visibility_changed.connect(func():
 			if not dlg.visible:
 				lift.call())
