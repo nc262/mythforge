@@ -15,20 +15,29 @@ signal changed(prev: StringName, next: StringName)
 ## rest, shop, buy, conjure, panels, retell, ask_gm, edit_hero, levelup,
 ## navigate, start_adventure, forge, settings.
 ##
-## ONE DERIVED RULE, asserted in self_check rather than trusted here: any state
-## that allows `send_message` must declare **Combat** as a legal exit. The GM can
-## answer any message with a fight — an ambush mid-conversation, a robbery at the
-## stall, a second wave after a victory — so every state where the player can
-## still talk is a state a fight can start in.
+## TWO DERIVED RULES, asserted in self_check rather than trusted here. Both come
+## from the same fact: **the GM answers any message, and two of its answers change
+## the mode.** So every state where the player can still talk is a state those
+## two can happen in.
 ##
-## Dialogue, Merchant, Victory and Camp did not declare it, which is why
-## `_render_combat` had to force the transition and `Mode.enter` logged a
-## warning every time steel came out during a conversation. The exits were wrong,
-## not the fights.
+## 1. A state that allows `send_message` must declare **Combat** as a legal exit.
+##    An ambush mid-conversation, a robbery at the stall, a second wave after a
+##    victory. Dialogue, Merchant, Victory and Camp did not, which is why
+##    `_render_combat` had to force it and `Mode.enter` warned every time steel
+##    came out during a conversation.
 ##
-## `GameOver` is the deliberate exception: the player can still speak, but the
-## run is over and no fight follows. `Cutscene` and `Crafting` allow nothing at
-## all, so nothing can be declared from them.
+## 2. …and **LevelUp** too, because the same reply can award XP. Dialogue,
+##    Combat, Death, Merchant and Camp did not, and `Combat → LevelUp` is the one
+##    that fired in practice: killing the last enemy levels you mid-fight, and
+##    the ceremony forced an undeclared transition every single time.
+##
+## The exits were wrong in both cases. The fights and the levels were fine.
+##
+## `GameOver` is the deliberate exception to both: the player can still speak,
+## but the run is over — no fight follows and no level is celebrated over an
+## epitaph, which `_level_up_ceremony` enforces by refusing outright.
+## `Cutscene` and `Crafting` allow nothing at all, so nothing can be declared
+## from them.
 const STATES := {
 	"Boot":              {"allowed": [], "to": ["MainMenu", "Loading"]},
 	"MainMenu":          {"allowed": ["navigate", "start_adventure", "forge", "settings"], "to": ["Settings", "CharacterCreation", "CampaignForge", "CharacterForge", "Loading", "MainMenu"]},
@@ -38,18 +47,18 @@ const STATES := {
 	"Loading":           {"allowed": [], "to": ["Exploration", "Dialogue", "CharacterCreation", "CharacterForge", "MainMenu"]},
 	"CharacterCreation": {"allowed": ["edit_hero"], "to": ["Exploration", "MainMenu"]},
 	"Exploration":       {"allowed": ["send_message", "roll", "rest", "shop", "buy", "conjure", "panels", "retell", "ask_gm"], "to": ["Combat", "Dialogue", "Merchant", "Travel", "Camp", "LongRest", "LevelUp", "Cutscene", "Death", "MainMenu", "Pause", "Inventory", "CharacterSheet"]},
-	"Dialogue":          {"allowed": ["send_message", "retell"], "to": ["Exploration", "MainMenu", "Pause", "Combat"]},
-	"Combat":            {"allowed": ["send_message", "roll", "combat_action", "panels", "retell", "conjure"], "to": ["Exploration", "Death", "Victory", "MainMenu", "Pause"]},
-	"Death":             {"allowed": ["death_save", "send_message", "panels"], "to": ["Combat", "Exploration", "GameOver"]},
+	"Dialogue":          {"allowed": ["send_message", "retell"], "to": ["Exploration", "MainMenu", "Pause", "Combat", "LevelUp"]},
+	"Combat":            {"allowed": ["send_message", "roll", "combat_action", "panels", "retell", "conjure"], "to": ["Exploration", "Death", "Victory", "MainMenu", "Pause", "LevelUp"]},
+	"Death":             {"allowed": ["death_save", "send_message", "panels"], "to": ["Combat", "Exploration", "GameOver", "LevelUp"]},
 	"Victory":           {"allowed": ["send_message", "panels", "roll"], "to": ["Exploration", "LevelUp", "Combat"]},
 	"GameOver":          {"allowed": ["send_message", "rest", "navigate"], "to": ["Exploration", "MainMenu"]},
 	"LevelUp":           {"allowed": ["levelup"], "to": ["Exploration", "Combat", "Victory"]},
-	"Merchant":          {"allowed": ["buy", "shop", "send_message", "panels"], "to": ["Exploration", "Combat"]},
+	"Merchant":          {"allowed": ["buy", "shop", "send_message", "panels"], "to": ["Exploration", "Combat", "LevelUp"]},
 	# ── Declared, wired when their systems land (see FeatureMatrix) ──
 	"Inventory":         {"allowed": ["panels"], "to": ["Exploration", "Combat"]},
 	"CharacterSheet":    {"allowed": ["panels"], "to": ["Exploration", "Combat"]},
 	"Crafting":          {"allowed": [], "to": ["Exploration"]},
-	"Camp":              {"allowed": ["send_message", "rest"], "to": ["Exploration", "LongRest", "Combat"]},
+	"Camp":              {"allowed": ["send_message", "rest"], "to": ["Exploration", "LongRest", "Combat", "LevelUp"]},
 	"LongRest":          {"allowed": [], "to": ["Exploration", "Combat"]},
 	"Travel":            {"allowed": ["navigate"], "to": ["Exploration", "Combat"]},
 	"Cutscene":          {"allowed": [], "to": ["Exploration", "MainMenu"]},

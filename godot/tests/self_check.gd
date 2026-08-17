@@ -673,14 +673,28 @@ func _ready() -> void:
 	# machine and re-derives the rule, so the new state fails the day it lands.
 	for st in Mode.STATES:
 		var acts: Array = Mode.STATES[st]["allowed"]
-		if not acts.has("send_message") or st in ["Combat", "GameOver"]:
-			continue   # already fighting, or the run is over — see state_manager
-		assert(Mode.STATES[st]["to"].has("Combat"),
-			"%s lets the player speak but cannot enter Combat — a fight declared there is an undeclared transition" % st)
+		if not acts.has("send_message") or st == "GameOver":
+			continue   # the run is over — see state_manager
+		if st != "Combat":
+			assert(Mode.STATES[st]["to"].has("Combat"),
+				"%s lets the player speak but cannot enter Combat — a fight declared there is an undeclared transition" % st)
+		# ...and the same reply can award XP. Combat → LevelUp is the one that
+		# fired in practice: killing the last enemy levels you mid-fight, and the
+		# ceremony forced an undeclared transition every time.
+		if st != "LevelUp":
+			assert(Mode.STATES[st]["to"].has("LevelUp"),
+				"%s lets the player speak but cannot enter LevelUp — XP awarded there is an undeclared transition" % st)
 	# And the converse, so "just add Combat everywhere" is not the fix: a state
 	# where nothing can be said must not reach Combat either.
 	assert(not Mode.STATES["MainMenu"]["to"].has("Combat"), "the menu is not a place a fight can start")
 	assert(not Mode.STATES["GameOver"]["to"].has("Combat"), "the dead do not get ambushed")
+	assert(not Mode.STATES["GameOver"]["to"].has("LevelUp"), "no level-up ceremony over an epitaph")
+	# ...and the screen must agree with the map, or the transition is merely
+	# forced with a warning instead of declared — which is how it was.
+	var gsrc_lvl := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var cer := str(gsrc_lvl.split("func _level_up_ceremony")[1]).substr(0, 500)
+	assert(cer.find("GameOver") >= 0 and cer.find("GameOver") < cer.find('Mode.enter("LevelUp")'),
+		"the level-up ceremony opens over a finished run — it must refuse before changing mode")
 
 	# ── ONE FLAG FOR "A REPLY IS IN FLIGHT" ──────────────────────────────────
 	# `Mode.busy` is an autoload and survives a scene change, so a path that

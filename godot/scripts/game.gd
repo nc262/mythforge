@@ -1426,6 +1426,11 @@ func _end_combat() -> void:
 ## The play screen keeps the mode bracket and the aftermath: dice menu rebuild,
 ## re-render, the announcement, and the skill-tree reward beat.
 func _level_up_ceremony(from_level: int, to_level: int) -> void:
+	# NOT OVER AN EPITAPH. GameOver still allows send_message, so a GM reply after
+	# the tale ends can award XP and land here — and the run is finished. The XP is
+	# already banked on the sheet by `award_xp`; only the ceremony is refused.
+	if Mode.state == "GameOver":
+		return
 	var prev_mode: StringName = Mode.state
 	Mode.enter("LevelUp")
 	var win := preload("res://scenes/ui/levelup_window.gd").new()
