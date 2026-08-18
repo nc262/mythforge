@@ -119,6 +119,48 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(told_at >= 0, "amounts: the counter-left prompt is gone")
 	assert(shop_src.substr(maxi(0, told_at - 400), 800).contains("without_amounts"),
 		"amounts: the counter-left prompt hands the narrator the raw summary again")
+
+	# PY-4 - THE ENGINE MUST NOT TELL THE NARRATOR THE WRONG WORD. The sheet
+	# summary hardcoded "Purse: %d gold" for every world, so Neon Spire handed the
+	# GM "Purse: 95 gold" and it duly charged the player "50 gold pieces" in a city
+	# whose HUD, merchant and starting kit all say credits. The model was
+	# repeating us, not inventing. Asserted per world, because a summary that said
+	# "credits" everywhere would be the same bug pointing the other way.
+	var world_was = GameState.character.get("world_id", "")
+	for pair in [["embervale", "gold"], ["neonspire", "credits"]]:
+		GameState.character["world_id"] = str(pair[0])
+		assert(GameState.currency() == str(pair[1]),
+			"currency: %s should trade in %s" % [pair[0], pair[1]])
+		var told := Composer.sheet_summary(GameState.sheet())
+		assert(told.contains("Purse: %d %s" % [int(GameState.sheet().get("gold", 0)), str(pair[1])]),
+			"currency: the narrator is not told %s calls its money %s" % [pair[0], pair[1]])
+	GameState.character["world_id"] = "neonspire"
+	assert(not Composer.sheet_summary(GameState.sheet()).contains(" gold."),
+		"currency: the sheet still says gold in a credits world")
+
+	# PY-6 - THE BANNER FOLLOWS THE PURSE. Buying a 25-credit blade left the
+	# merchant reading "Your purse: 4 credits" while the chip row above it still
+	# said 29 - two truths on one screen for as long as the player kept shopping.
+	# Announced from add_gold, which every delta goes through, so a [[gold]] tag
+	# and a sale are covered too and not just the case that was noticed.
+	var purse_fired := [0, -1]
+	GameState.purse_changed.connect(func(t): purse_fired[0] += 1; purse_fired[1] = t)
+	# A known purse first: add_gold clamps at zero, so a delta bigger than the
+	# balance would make the arithmetic here wrong rather than the code.
+	var s_purse := GameState.sheet()
+	s_purse["gold"] = 40
+	GameState.set_sheet(s_purse)
+	GameState.add_gold(-25)
+	assert(purse_fired[0] == 1, "purse: add_gold did not announce the change")
+	assert(purse_fired[1] == 15, "purse: announced %d, the sheet says 15" % purse_fired[1])
+	assert(int(GameState.sheet().get("gold", 0)) == 15, "purse: the sheet itself did not move")
+	GameState.add_gold(5)
+	assert(purse_fired[0] == 2 and purse_fired[1] == 20, "purse: a credit does not announce")
+	# ...and the play screen must actually listen, or the signal is decoration.
+	var chips_src := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(chips_src.contains("GameState.purse_changed.connect("),
+		"purse: the play screen does not listen for a purse change")
+	GameState.character["world_id"] = world_was
 	assert(c["ability"] == "DEX" and c["skill"] == "Stealth" and int(c["dc"]) == 13 and c["adv"] == "adv")
 	c = Tags.check_from_tags(Tags.parse('The blade bites. [[damage roll=2d6+3]]')["tags"])
 	assert(c["type"] == "damage" and c["n"] == 2 and c["sides"] == 6 and c["bonus"] == 3)

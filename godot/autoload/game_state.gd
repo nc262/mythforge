@@ -44,6 +44,13 @@ signal mood_changed(mood: String)
 ## Every path that moves the clock goes through advance_time(), so this fires
 ## from all of them for free: rests, travel, tags, the world tick.
 signal day_changed(day: int, time_of_day: String)
+## PY-6 - the purse moved and the banner did not. Buying a 25-credit blade left
+## the merchant reading "Your purse: 4 credits" while the chip row above it still
+## said 29: two truths on one screen for as long as the player kept shopping,
+## because the banner only repainted when the counter closed. Announced from
+## `add_gold`, which every delta in the game goes through, so a `[[gold]]` tag or
+## a sale fixes the banner too - not just the case that was noticed.
+signal purse_changed(total: int)
 
 var character: Dictionary = {}
 var state: Dictionary = {}
@@ -541,6 +548,7 @@ func add_gold(delta: int) -> int:
 	var s := sheet()
 	s["gold"] = maxi(0, roundi(int(s.get("gold", 0)) + delta))
 	set_sheet(s)
+	purse_changed.emit(int(s["gold"]))
 	return s["gold"]
 
 

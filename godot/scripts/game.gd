@@ -109,6 +109,10 @@ func _wire_signals() -> void:
 		_sheet_panel.visible = on
 		if on:
 			_render_codex())
+	# PY-6 - the banner follows the purse. It used to repaint only when the shop
+	# closed, so a player mid-purchase read 4 credits in the counter and 29 above
+	# it. `_render_chips` is cheap and the signal only fires on a real delta.
+	GameState.purse_changed.connect(_on_purse_changed)
 	Chronicle.chronicle_updated.connect(func():
 		if _panel_mode == "codex" and _sheet_panel.visible:
 			_render_codex()
@@ -263,6 +267,27 @@ func _open_the_adventure() -> void:
 	mini.offset_bottom = -72
 	add_child(mini)
 	_mini_map = mini
+	# PY-5 - AND THE CHAT LOG MUST NOT RUN UNDER IT. The comment above says the
+	# minimap was moved bottom-left "where nothing else lives"; the transcript
+	# lives there. Measured: the chart occupies (14,604)-(204,728) and the scroll
+	# (20,131)-(1260,688), so an 84x184 band of GM prose was drawn underneath an
+	# opaque chart - "What do you do next?" rendered as "next?" in a played
+	# session, and it costs words every turn once the log reaches the bottom.
+	#
+	# A SIBLING SPACER rather than padding inside the thread: messages are appended
+	# from five different places, and a trailing spacer would have to be re-moved to
+	# last in all five. The VBox shrinks the expanding scroll to make room, so the
+	# overlap becomes impossible by construction rather than by remembering. It
+	# mirrors the chart's own visibility, so a fight - where the chart hides itself
+	# - gets the height straight back.
+	var chatbox := $Margin/Split/ChatBox
+	_mini_gap = Control.new()
+	_mini_gap.custom_minimum_size = Vector2(0, MINI_GAP_PX)
+	_mini_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chatbox.add_child(_mini_gap)
+	chatbox.move_child(_mini_gap, _scroll.get_index() + 1)
+	_mini_gap.visible = mini.visible
+	mini.visibility_changed.connect(_sync_mini_gap)
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
@@ -1866,6 +1891,13 @@ func _on_sheet_action(meta) -> void:
 # ── Combat actions ───────────────────────────────────────────────────────────
 var _init_rail: HBoxContainer       # the initiative rail: faces in turn order
 var _mini_map: Control              # the corner chart (it hides itself in combat)
+## The band the chart occupies above the input row, held out of the transcript so
+## no line of GM prose is ever drawn under it (PY-5). A constant rather than
+## arithmetic off the chart's anchors, and `click_driver` asserts the two rects
+## do not intersect - so if the layout moves and this number goes stale, the
+## harness says so instead of the player finding it.
+const MINI_GAP_PX := 92
+var _mini_gap: Control = null
 var _rail_turn_id := ""             # whose chip pulsed last
 var _rail_chips := {}               # id → MythPortrait, reused across renders
 var _rail_ids: Array = []           # roster signature; rebuild only when it changes
@@ -2878,6 +2910,20 @@ func _apply_time_tint() -> void:
 
 
 ## The banner chips: time · weather · place · quest · party wounds.
+## The chart hides itself in combat; the gap it reserves goes with it.
+func _sync_mini_gap() -> void:
+	if is_instance_valid(_mini_gap) and is_instance_valid(_mini_map):
+		_mini_gap.visible = _mini_map.visible
+
+
+## The signal carries the new total and `_render_chips` takes none, so this is
+## the adaptor. A METHOD rather than a lambda on purpose: PL-5 is open about
+## freed lambda captures on autoload signals, and a bound method is dropped
+## automatically when the node goes.
+func _on_purse_changed(_total: int) -> void:
+	_render_chips()
+
+
 func _render_chips() -> void:
 	_apply_time_tint()
 	_render_suggestions()   # the verbs track the same state the chips do

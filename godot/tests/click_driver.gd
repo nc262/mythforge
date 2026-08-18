@@ -51,6 +51,17 @@ func _ready() -> void:
 	await _boot_game()
 	# ── Station: the play screen ──
 	await _visit("play-screen", _game)
+	# PY-5 - THE CHART MUST NOT BE DRAWN OVER THE TRANSCRIPT. Measured before the
+	# fix: the chart sat at (14,604)-(204,728) and the scroll at (20,131)-(1260,688),
+	# so an 84x184 band of GM prose rendered underneath an opaque chart - a played
+	# session read "What do you do next?" as "next?". The reserved band is a
+	# constant in game.gd, so this is what stops that number going stale quietly.
+	var mini: Control = _game.get("_mini_map")
+	var chat: Control = _game.get_node_or_null("Margin/Split/ChatBox/Scroll")
+	await _must(mini != null and chat != null, "play screen: no minimap or no transcript to measure")
+	if mini.visible:
+		var why := "the chart is drawn over the transcript — chart %s, transcript %s (PY-5)" % [mini.get_global_rect(), chat.get_global_rect()]
+		await _must(not mini.get_global_rect().intersects(chat.get_global_rect()), why)
 	# ── Station: THE MENU via a real click on the Sheet button ──
 	await _click(_game.get_node("Margin/Split/ChatBox/Input/SheetBtn"))
 	await _settle(10)

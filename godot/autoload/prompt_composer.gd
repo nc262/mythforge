@@ -60,7 +60,7 @@ func envelope(player_msg: String, beats: Array = []) -> String:
 		# supplied a reason. The sheet states WHAT is true and never WHY, so the
 		# only cure is to say out loud that the why is not the model's to invent.
 		# Recalled beats are the one place a cause may legitimately come from.
-		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s | These values are FACTS, but their CAUSES are not yours to invent. If the sheet shows lost hit points, missing gold, or a condition, you do NOT know how it happened unless the recalled beats below say so. Never explain a number by inventing an event — no battles, wounds, thefts or bargains that are not in the established context. If a cause matters and none is recorded, have a character ask rather than assert.]" % summary)
+		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s | These values are FACTS, but their CAUSES are not yours to invent. If the sheet shows lost hit points, missing %s, or a condition, you do NOT know how it happened unless the recalled beats below say so. Never explain a number by inventing an event — no battles, wounds, thefts or bargains that are not in the established context. If a cause matters and none is recorded, have a character ask rather than assert.]" % [summary, GameState.currency()])
 	parts.append("[%s]" % scene_context())
 	parts.append("[%s]" % GameState.clock_text())
 	for extra in [GameState.inv_text(), GameState.spell_text(),
@@ -301,10 +301,15 @@ func sheet_summary(s: Dictionary) -> String:
 		if not bits.is_empty():
 			story_line = " The player wrote their own story — honor it and weave it into THIS world's setting, renaming places/factions to fit: %s" % " ".join(bits)
 	var dc := Rules.spell_save_dc(s)
-	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s%s%s" % [
+	# PY-4 - THE ENGINE WAS TELLING THE NARRATOR THE WRONG WORD. This read
+	# "Purse: %d gold" for every world, so in Neon Spire the sheet handed the GM
+	# "Purse: 95 gold" and it duly charged the player "50 gold pieces" in a city
+	# whose HUD, merchant and kit all say credits. The model was not guessing; it
+	# was repeating us. GameState.currency() has been the UI's source all along.
+	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d %s. Abilities: %s. Conditions: %s.%s%s%s" % [
 		str(s.get("name", "the hero")), int(s.get("level", 1)), Rules.class_label(s),
 		int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv()),
-		Rules.passive_perception(s), int(s.get("gold", 0)),
+		Rules.passive_perception(s), int(s.get("gold", 0)), GameState.currency(),
 		", ".join(ab_parts),
 		", ".join(cond_names) if not cond_names.is_empty() else "none",
 		(" Spell save DC %d, spell attack +%d (enemies roll saves against this; use these numbers)." % [dc, Rules.spell_attack(s)]) if dc > 0 else "",
