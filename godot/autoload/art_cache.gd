@@ -558,11 +558,20 @@ func item_flavor() -> String:
 ## the World Skin's setting, so a cyberpunk campaign gets a cyber war room, not
 ## a fantasy one (per-world EAS variants — the World Style Guide driving
 ## environment generation). Fantasy keeps its richly-authored ENV_PROMPTS.
+##
+## THE %s MUST REACH THE NOUNS, not just sit in front of them (PY-24). These read
+## "a %s merchant's STALL interior: wares, CURIOS and coin on WORN SHELVES, warm
+## LAMPLIGHT" — a pre-industrial scene with an adjective bolted on, so Neon Spire
+## painted a wooden market stall and put it behind a counter selling Pulse Rifles
+## for credits. Seen in a played session. `env-fireside` already had the right
+## technique and is untouched: it asks for "a source of warmth and light" rather
+## than a hearth, and lets the setting decide what that is. Say the FUNCTION of
+## the room and the materials of the world; never name the furniture.
 const ENV_ROLE := {
 	"env-wartable": "a %s campaign war room seen from a seated player's view: a great table spread with a huge map, markers, plans, and the tools of command, dramatic focused light, dust in the air, ultra detailed interior illustration, no people, no text",
 	"env-forge": "a %s place of making where heroes are equipped and created: the tools and energy of creation glowing against deep shadow, sparks of light, ultra detailed interior illustration, no people, no text",
-	"env-pack": "an opened %s traveler's kit laid out on a surface: pouches, gear, and belongings, warm focused light, ultra detailed still life, slightly top-down view, no people, no text",
-	"env-merchant": "a %s merchant's stall interior: wares, curios, and coin on worn shelves, warm lamplight and deep shadow, ultra detailed interior illustration, no people, no text",
+	"env-pack": "one traveller's belongings from a %s setting, laid out on a surface: their carried gear and containers in that setting's own materials, focused light, ultra detailed still life, slightly top-down view, no people, no text",
+	"env-merchant": "the inside of a %s place where goods are sold, seen from the customer's side: a service counter, stock racked and cased behind it, the light and materials of that setting, deep shadow, ultra detailed interior illustration, no people, no text",
 	"env-journal": "a %s archive where the world's lore is kept and read: an open record on a desk under focused warm light, ultra detailed still life, slightly top-down view, no people, no text",
 	"env-maptable": "a %s cartographer's table seen from above: a chart with route markers and instruments, a light at one corner, ultra detailed still life, no people, no text",
 	"env-fireside": "a warm %s gathering corner: two seats across a small table, a source of warmth and light, rich shadow, ultra detailed interior illustration, no people, no text",
@@ -571,9 +580,16 @@ const ENV_ROLE := {
 
 ## The active skin's family scopes the cache key so each world keeps its own
 ## rooms; fantasy reuses the base key (and its authored art).
+## Bumped when a skinned prompt changes, because the key is role+family and knows
+## nothing about the words: without this, anyone who had already painted an
+## `env-merchant-cyber` would keep the wooden stall for ever (PY-24). Fantasy is
+## deliberately outside it — its keys and its authored art are untouched.
+const ENV_SKIN_REV := 2
+
+
 func env_resolved(base_key: String) -> String:
 	var fam := WorldSkin.family_for_id(GameState.world_id())
-	return base_key if fam == "fantasy" else "%s-%s" % [base_key, fam]
+	return base_key if fam == "fantasy" else "%s-%s-v%d" % [base_key, fam, ENV_SKIN_REV]
 
 
 func env_prompt(base_key: String) -> String:

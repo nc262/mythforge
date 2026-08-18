@@ -1356,6 +1356,22 @@ The term for spell slots is "Echoes."
 		assert(WorldSkin.shop_word("embervale", "nonsense") == "nonsense",
 			"shop words: an unknown key returns itself rather than an empty label")
 		print("  shop words: the counter speaks each world's own vocabulary")
+		# PY-24 - a skinned room prompt must not name medieval furniture. These read
+		# "a %s merchant's STALL interior ... on WORN SHELVES, warm LAMPLIGHT", so
+		# Neon Spire painted a wooden market and stood it behind a counter selling
+		# Pulse Rifles. Asserted as a WORD BAN rather than by rendering, because
+		# rendering costs a GPU minute per room and the defect is in the text.
+		var period_nouns := ["stall", "lamplight", "curio", "torch", "parchment",
+			"tavern", "hearth", "candle", "scroll", "pouch"]
+		for role_key in Art.ENV_ROLE:
+			var tmpl := str(Art.ENV_ROLE[role_key]).to_lower()
+			for noun in period_nouns:
+				assert(not tmpl.contains(noun),
+					"env prompt: the skinned '%s' names '%s' - every world gets that furniture" % [role_key, noun])
+		# ...and the skinned key must move when the words do, or a player who has
+		# already painted the room keeps it for ever.
+		assert(Art.ENV_SKIN_REV >= 2, "env prompt: the skinned cache key was not revved after a prompt change")
+		print("  env prompts: no skinned room names period furniture")
 		assert(ModularDoll.HORN_COLORS.has(ModularDoll.DEFAULT_HORN),
 			"q-doll: the default horn colour is one of the palette")
 		assert(ModularDoll.SKIN_TONES.has(ModularDoll.DEFAULT_SKIN),
