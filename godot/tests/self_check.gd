@@ -1342,6 +1342,20 @@ The term for spell slots is "Echoes."
 			"heritage look: a Tiefling carries more geometry than a Human — the features are really on the rig")
 		qd.apply_look({"hair": "", "beard": "", "horns": ""})
 		print("  heritage look: horns and tail reach the rig from the heritage table")
+		# PY-25 - the counter's nouns follow the world, as its currency already did.
+		# A Neon Spire fixer sold Mono-Knives for credits from behind "The trading
+		# post", and the Record said those credits were "in the purse". Found by
+		# playing it. Asserted as a DIFFERENCE, not a spelling: a lexicon that
+		# returns the fantasy word for every family would pass a spelling check.
+		assert(WorldSkin.shop_word("embervale", "post") == "The trading post",
+			"shop words: a fantasy world keeps the fantasy default")
+		for fam_world in ["neonspire", "everyday"]:
+			for key in ["post", "keeper", "wares", "purse"]:
+				assert(WorldSkin.shop_word(str(fam_world), key) != WorldSkin.shop_word("embervale", key),
+					"shop words: %s still says the fantasy '%s'" % [fam_world, key])
+		assert(WorldSkin.shop_word("embervale", "nonsense") == "nonsense",
+			"shop words: an unknown key returns itself rather than an empty label")
+		print("  shop words: the counter speaks each world's own vocabulary")
 		assert(ModularDoll.HORN_COLORS.has(ModularDoll.DEFAULT_HORN),
 			"q-doll: the default horn colour is one of the palette")
 		assert(ModularDoll.SKIN_TONES.has(ModularDoll.DEFAULT_SKIN),

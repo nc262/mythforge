@@ -236,7 +236,9 @@ func _hero_panel() -> Control:
 	var purse := Label.new()
 	purse.theme_type_variation = "HintLabel"
 	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	purse.text = "%d %s in the purse" % [int(s.get("gold", 0)), GameState.currency()]
+	# PY-25 - a neon-city runner does not keep a purse.
+	purse.text = "%d %s in the %s" % [int(s.get("gold", 0)), GameState.currency(),
+		WorldSkin.shop_word(GameState.world_id(), "purse")]
 	col.add_child(purse)
 	var conds: Array = s.get("conditions", [])
 	if not conds.is_empty():

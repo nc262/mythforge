@@ -185,6 +185,31 @@ func place_kind(world_id: String, kind: String) -> Dictionary:
 		"icon": str(PLACE_ICON.get(k, "pin"))}
 
 
+## The counter's own vocabulary, per family. "The trading post", "the keeper's
+## wares" and "your purse" are fantasy nouns, and they were sitting beside a
+## currency the game had already correctly renamed: a Neon Spire fixer sells you
+## a Mono-Knife for credits from behind "The trading post", and the Record says
+## the credits are "in the purse" (PY-25, found by playing it).
+##
+## Same shape as PLACE_LABEL above — a family overrides the words it cares about
+## and anything it does not name keeps the fantasy default, so a new family is a
+## few entries rather than a rewrite.
+const SHOP_WORDS := {
+	"cyber": {"post": "The exchange", "keeper": "dealer", "wares": "The dealer's stock", "purse": "account"},
+	"everyday": {"post": "The shop", "keeper": "shopkeeper", "wares": "On the shelves", "purse": "wallet"},
+	"space": {"post": "The commissary", "keeper": "quartermaster", "wares": "The commissary's stock", "purse": "account"},
+	"steam": {"post": "The emporium", "keeper": "proprietor", "wares": "The proprietor's wares", "purse": "billfold"},
+	"pirate": {"post": "The chandlery", "keeper": "quartermaster", "wares": "The quartermaster's stock", "purse": "coffer"},
+}
+const SHOP_DEFAULT := {"post": "The trading post", "keeper": "keeper",
+	"wares": "The keeper's wares", "purse": "purse"}
+
+
+func shop_word(world_id: String, key: String) -> String:
+	var fam := family_for_id(world_id)
+	return str(SHOP_WORDS.get(fam, {}).get(key, SHOP_DEFAULT.get(key, key)))
+
+
 ## The name of a hero's progression road, per family (Issue 6 flavor).
 const TREE := {"cyber": "Augment Web", "steam": "Clockwork", "pirate": "Navigator's Chart"}
 
