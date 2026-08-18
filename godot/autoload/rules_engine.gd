@@ -673,6 +673,28 @@ const CAST_ABIL := {"Wizard": "INT", "Cleric": "WIS", "Druid": "WIS", "Bard": "C
 	"Sorcerer": "CHA", "Warlock": "CHA", "Paladin": "CHA", "Ranger": "WIS", "Artificer": "INT"}
 
 
+## The order a class wants its scores in, best first (PY-9).
+##
+## The forge promised "the best land where your class wants them" and then sorted
+## the dice descending and poured them into STR, DEX, CON, INT, WIS, CHA - so a
+## WARLOCK was handed 15 STR and a 9 in the CHA every one of its spells keys off.
+## Right by accident for a Fighter, exactly backwards for the seven casters.
+##
+## `class_prime` already knows every primary, casters and martials both, so this
+## only has to say what comes after it: CON, because nobody wants to be
+## fragile, then DEX for the armour class, then whatever is left in the canonical
+## order so the result is stable rather than arbitrary.
+func ability_priority(cls: String) -> Array:
+	var want: Array = [class_prime(cls)]
+	for ab in ["CON", "DEX"]:
+		if not want.has(ab):
+			want.append(ab)
+	for ab in ABILITIES:
+		if not want.has(ab):
+			want.append(ab)
+	return want
+
+
 # ── Multiclass ───────────────────────────────────────────────────────────────
 ## A sheet's classes as [{cls, level, subclass}]. Legacy single-class sheets
 ## derive one entry from cls/level/subclass — no migration pass ever needed.

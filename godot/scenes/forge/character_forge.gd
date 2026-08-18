@@ -33,6 +33,10 @@ const ARRAY_VALUES := [15, 14, 13, 12, 10, 8]
 const Card := preload("res://ui/myth_choice_card.gd")
 const Fold := preload("res://ui/myth_fold.gd")
 
+## What each ability had before its last pick, so a swap knows what to hand back
+## (PY-10). Kept beside the draft rather than inside the closure because the two
+## pickers involved in a swap are different objects.
+var _last_pick := {}
 var draft := {"name": "", "race": "", "cls": "", "bg": "", "rolled": [], "assign": {},
 	"appearance": "", "style": "painted", "kit": [], "origin": "",
 	"cls_story": "", "bg_story": "", "portrait_key": "",
@@ -362,7 +366,11 @@ func _stage_nature() -> void:
 	var show_roll := func():
 		for ch in dice_row.get_children():
 			ch.queue_free()
-		var order: Array = Rules.ABILITIES
+		# The order the SHEET will use, not the canonical one. This showed the roll
+		# against STR, DEX, CON, INT, WIS, CHA while new_hero_sheet assigned by class
+		# priority, so a Warlock read "15 STR / 9 CHA" on a page whose whole promise
+		# is "the best land where your class wants them" (PY-9).
+		var order: Array = Rules.ability_priority(str(draft["cls"]))
 		for i in draft["rolled"].size():
 			var face := PanelContainer.new()
 			face.add_theme_stylebox_override("panel", Ui.sb_card())
@@ -413,6 +421,22 @@ func _stage_nature() -> void:
 		opt.selected = Rules.ABILITIES.find(ab)
 		row.add_child(opt)
 		pickers[ab] = opt
+		# SWAP, do not duplicate (PY-10). Choosing 15 for CHA used to leave STR on 15
+		# too and drop the 8 entirely, so the player built a state the array does not
+		# allow and only found out when "Strike" refused it. The refusal below is a
+		# real guard and stays; this makes it unreachable by construction, which is
+		# the difference between being told no and never being able to be wrong.
+		opt.item_selected.connect(func(idx: int):
+			var taken: int = ARRAY_VALUES[idx]
+			for other in pickers:
+				if other == ab:
+					continue
+				if ARRAY_VALUES[pickers[other].selected] == taken:
+					pickers[other].selected = _last_pick.get(ab, Rules.ABILITIES.find(ab))
+					_last_pick[other] = pickers[other].selected
+					break
+			_last_pick[ab] = idx)
+		_last_pick[ab] = opt.selected
 		adv.content.add_child(row)
 	var ac := CenterContainer.new()
 	ac.add_child(adv)

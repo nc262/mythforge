@@ -443,19 +443,12 @@ func new_hero_sheet(nm: String, race: String, cls: String, rolled: Array[int],
 		background := "", extra := {}) -> Dictionary:
 	var preset: Dictionary = Rules.tables.get("class_presets", {}).get(cls, {"hitDie": 8})
 	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(race, {})
-	# Best scores where the class wants them: cast ability or STR/DEX first, CON second.
-	var prio: Array[String] = []
-	var cast_ab: String = Rules.CAST_ABIL.get(cls, "")
-	if cast_ab != "":
-		prio.append(cast_ab)
-	for a in (["DEX", "STR"] if cls in ["Rogue", "Ranger", "Monk"] else ["STR", "DEX"]):
-		if not a in prio:
-			prio.append(a)
-	if not "CON" in prio:
-		prio.insert(1, "CON")
-	for a in Rules.ABILITIES:
-		if not a in prio:
-			prio.append(a)
+	# ONE source for "where does the class want its best score" (PY-9). This built
+	# its own priority list and the forge displayed the roll against the canonical
+	# STR..CHA order, so the Nature page showed a Warlock 15 STR and 9 CHA while
+	# the sheet it would actually commit put the 15 on CHA. The numbers were never
+	# wrong; the screen the player rerolls from was. Both ends ask Rules now.
+	var prio: Array = Rules.ability_priority(cls)
 	var abilities := {}
 	if extra.get("assign") is Dictionary and not extra["assign"].is_empty():
 		for a2 in Rules.ABILITIES:

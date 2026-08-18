@@ -160,6 +160,35 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	var chips_src := FileAccess.get_file_as_string("res://scripts/game.gd")
 	assert(chips_src.contains("GameState.purse_changed.connect("),
 		"purse: the play screen does not listen for a purse change")
+	# PY-9 - THE NATURE PAGE MUST SHOW THE ORDER THE SHEET WILL USE. It displayed
+	# the sorted roll against the canonical STR..CHA order while new_hero_sheet
+	# assigned by class priority, so a Warlock read "15 STR / 9 CHA" on the one
+	# page whose promise is "the best land where your class wants them" - and a
+	# player rerolls off that screen. The numbers committed were always right; the
+	# screen was the lie, which is why this asserts the two AGREE rather than
+	# asserting either alone.
+	for cls_ab in [["Warlock", "CHA"], ["Wizard", "INT"], ["Cleric", "WIS"], ["Fighter", "STR"], ["Rogue", "DEX"]]:
+		var prio_now := Rules.ability_priority(str(cls_ab[0]))
+		assert(str(prio_now[0]) == str(cls_ab[1]),
+			"nature: a %s wants its best score in %s, not %s" % [cls_ab[0], cls_ab[1], prio_now[0]])
+		var built := GameState.new_hero_sheet("Probe", "Human", str(cls_ab[0]), [15, 14, 13, 12, 10, 8] as Array[int])
+		var abil: Dictionary = built.get("abilities", {})
+		var best := ""
+		for ab_k in abil:
+			if best == "" or int(abil[ab_k]) > int(abil[best]):
+				best = str(ab_k)
+		assert(best == str(cls_ab[1]),
+			"nature: a %s committed its best score to %s, but the page shows %s" % [cls_ab[0], best, cls_ab[1]])
+	# The forge must READ that same order rather than keeping its own copy.
+	var forge_src := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
+	assert(forge_src.contains("Rules.ability_priority(str(draft[\"cls\"]))"),
+		"nature: the forge displays the roll against its own order again")
+	# PY-10 - the standard array can no longer be built into an illegal state. The
+	# refusal on Strike is real and stays; the pickers swap so it is unreachable.
+	assert(forge_src.contains("SWAP, do not duplicate"),
+		"nature: the standard-array pickers no longer swap")
+	assert(forge_src.contains("must be used exactly once"),
+		"nature: the array refusal was removed — the swap is a convenience, not the guard")
 	GameState.character["world_id"] = world_was
 	assert(c["ability"] == "DEX" and c["skill"] == "Stealth" and int(c["dc"]) == 13 and c["adv"] == "adv")
 	c = Tags.check_from_tags(Tags.parse('The blade bites. [[damage roll=2d6+3]]')["tags"])
