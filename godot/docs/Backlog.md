@@ -19,7 +19,9 @@ The rows below were found by making the gate print engine complaints from
 **passing** runs — they had been in every green log for an unknown length of
 time, on a stream nothing read.
 
-**PL-5 is closed** (2026-08-17), and its filed mechanism was wrong — the ninth
+**PL-5 IS NOT CLOSED — reopened the same day by playing the game.** The fix below is real and the harness number was real, but the harness was the wrong instrument. `click_driver` went 1 -> 0, and a forty-minute played session on the exported build (exe stamped 18:39, fix committed 16:11, so the fix IS in it) produced **eleven** freed-capture errors: six at index **1** and five at index **0**, from two distinct call sites (`gdscript_lambda_callable.cpp:242` and `:110`). So there is at least one more index-0 lambda the harness never reaches, and a whole separate index-1 capture nobody has looked at. The play log holds nothing else at all — those eleven lines are the entire error output of a real session. **The lesson is the one this repo keeps paying for:** a green harness means the paths it walks are clean, not that the game is. The next attempt should drive the FORGE and the merchant from `click_driver` (both were walked by hand here) rather than trusting the existing stations.
+
+The original entry, still accurate as far as it goes: PL-5's filed mechanism was wrong — the ninth
 mis-reported row in this backlog's history. The row blamed `game.gd`'s
 capturing lambdas on `Art.art_ready` / `Chronicle.chronicle_updated`. Every one
 of those was ruled out by dumping `get_connections()` on all three autoload
@@ -167,6 +169,48 @@ Empty. All three items were audited on 2026-08-04 and none survived — see the
 mis-reported table below. `Rules.attack_mod` now requires its `inv` argument, so
 a caller that forgets it fails to compile rather than silently returning the
 unarmed number.
+
+## Played by hand, 2026-08-17 — Neon Spire, "The Mercer Job"
+
+A real session: a Tiefling Warlock forged from Raw Metal through all ten runes, a
+world and tale chosen, six GM turns of real dialogue, a purchase at a merchant,
+and the sheet read. Roughly forty minutes. Everything below was seen on screen or
+measured, not inferred.
+
+**The narrator is the best thing in this build.** It lifted the *ledger* out of a
+class backstory typed twenty minutes earlier and made it the first image of the
+opening scene, held an NPC's voice across four turns, and honoured a house rule
+("my patron never speaks directly") without being reminded. The world skin is
+convincing too: the currency reads *credits*, the merchant sells Mono-Knives and
+Riot Shields, and the starting kit arrives reskinned — Bedroll → Thermal Blanket,
+Torch → Glowstrip, Hempen Rope → Grapple Line.
+
+**The failures are almost all at the seams**, not in the model: numbers the
+narrator should never have written, tags that leaked as raw text, a skill rolled
+against the wrong ability, and a currency the envelope never told it about.
+
+| # | Item | P | E |
+|---|---|---|---|
+| PY-1 | **The GM states numbers, and got one wrong.** After a 25-credit Shock Blade (purse 29 → 4, correct), the GM wrote *"Your purse is 30 credits lighter from buying the Shock Blade."* The engine had handed it the right figure — `*At the trader: bought a Shock Blade (25 credits).*` — and it restated it as 30. This breaks the game's own central contract: the MECHANICS PROTOCOL in the envelope forbids the narrator from stating numeric outcomes, because **the table owns every number**. A player who trusts the prose now holds two truths. Fix at the seam rather than in the prompt — the tag pipeline should scrub or refuse bare numeric claims about purse/HP/XP in narration, the way it already refuses to let the GM roll | P1 | M |
+| PY-2 | **Malformed tags print to the player as raw markup and lose their effect.** Seen twice: first the tail `dc=15]` alone, then the whole of `[check ability=WIS insight dc=15]` rendered as prose in the log. The GM had used SINGLE brackets instead of `[[…]]`. The parser correctly declined to match, then displayed it verbatim — so the player reads markup *and* loses the roll that was meant to happen. The model had the ability right that time (WIS for Insight); only the bracket form was wrong. Two cheap fixes, both worth having: accept single brackets as a tolerant fallback, and scrub anything shaped like a tag out of narration before it renders | P1 | S |
+| PY-3 | **A skill is rolled against whatever ability the GM names, not its own.** The GM asked for *"Intelligence (Insight)"*; the bar read `d20 +1` and resolved `*Intelligence (Insight)* → d20 16 +1 = 17`. The game's own Skills tab lists **Insight (WIS) +0**. The correct mapping exists in the engine and the roll path ignores it, taking `ability=` from the model at face value — so any class can be handed the wrong modifier by a model that misremembers a skill. Fix: when a tag names both `skill` and `ability`, the skill's own ability wins, and the disagreement gets logged | P1 | S |
+| PY-4 | **The world's currency never reaches the narrator.** HUD, merchant and kit all say *credits*; Dr. Mercer demanded *"50 gold pieces"* in a neon city on turn two. `GameState.currency()` is plumbed into the UI but is either absent from the envelope or stated too weakly for the model to follow | P2 | S |
+| PY-5 | **The minimap sits on top of the chat log and eats words.** Bottom-left, opaque, drawn over the text column: *"…a makeshift netrunner's console"* lost its opening words and *"What do you do next?"* rendered as *"next?"*. It costs GM prose every turn once the log reaches the bottom. The comment at `game.gd` says the minimap was put bottom-left "where nothing else lives" — the chat log lives there | P2 | S |
+| PY-6 | **The HUD purse does not refresh on a purchase.** Immediately after buying, the merchant read *"Your purse: 4 credits"* while the top bar still read *"29 credits"* — two values on screen at once. It corrects only when the counter closes, so the stale window lasts exactly as long as the player keeps shopping | P2 | S |
+| PY-7 | **The GM relocates the player with no travel, and `counter_left` invites it.** A successful Insight roll *inside Mercer's clinic* was answered by a scene opening *"You stand outside the dimly lit entrance of Vex's Den"* — no transition, and the roll's own outcome never narrated. Later, leaving the merchant put the player in a *Night Market in The Sprawl* with Vex somehow present, then the next turn was back in the club. `_on_counter_left` asks the GM to "briefly color the exchange" and the GM answers by inventing a **place**. The prompt should name where the player is and forbid moving them | P2 | M |
+| PY-8 | **"Envision this hero" is inert.** In the Appearance rune, with text in the box, it produced no portrait, no spinner, no error. It is not doing nothing: sd-server went from 102 MB idle to 124 MB and burned **16 s of CPU**, and no PNG landed anywhere under `user://`. The image is generated and discarded. **"Re-strike the portrait" on the final rune works** and gave a good likeness in ~25 s — two buttons for one job, and the prominent one is broken | P2 | M |
+| PY-9 | **The ability array is not class-aware, though it says it is.** Under the caption *"the best land where your class wants them"*, a **Warlock** got 15 in STR and the dump 9 in CHA. Three rerolls — 15/13/12/11/10/9, then 14/13/13/11/10/10, then 16/16/15/14/14/11 — every one strictly descending down STR→DEX→CON→INT→WIS→CHA. It sorts the dice and pours them into the canonical order: right by accident for a Fighter, exactly backwards for the seven casting classes | P2 | S |
+| PY-10 | **The standard array accepts illegal arrays.** "15 14 13 12 10 8, assigned by hand" — setting CHA to 15 left STR at 15 and dropped the 8 entirely: two 15s and no 8. No swap, no validation, every value still offered in every dropdown. 15 in all six is reachable | P2 | S |
+| PY-11 | **Card text clamps to three lines and cuts mid-word, with no ellipsis.** Barbarian ends *"answer them i"*, Bard *"mock their w"*, The Embervale *"quiet adventu"*, Neon Spire *"never sleeps or for"*, The Mercer Job *"stolen blueprt"*. Even the House Rules **placeholder** is truncated: *"(or leave the table's r"*. The writing on these cards is among the best things in the game and it is amputated on four separate screens | P3 | S |
+| PY-12 | **An unstyled flat panel is used in at least four places** — Session Zero, the adventure preview, the merchant, and as a bare empty rectangle over the background art on the Heritage rune: hard-edged, borderless, unrounded, against a UI where every other panel has all three. Session Zero is the worst case, a grey debug-looking box over a fully skinned neon screen | P3 | S |
+| PY-13 | **Roster cards do not show portraits that exist.** A hero forged and painted seconds earlier showed the generic flag glyph on "Who Plays Tonight?", while the pre-made Corin Vale showed his face. The portrait renders correctly on the Record, so the art is there and the card is not asking for it | P3 | S |
+| PY-14 | **The world accent is only half applied.** In Neon Spire the title, input border and primary buttons go magenta; the eleven-icon toolbar, the Session Zero sliders and the HP bar stay gold — two accents on one screen | P3 | S |
+| PY-15 | **Elyrien has no key art** (a generic diamond where the other seven worlds have paintings), and the world grid's bottom row is **clipped by its container** — Elyrien's "2 tales + free roam" is sliced in half | P3 | S |
+| PY-16 | **Duplicate art-progress lines** — "Painting Cael Mercer…" appeared twice, identically, in the log | P3 | S |
+| PY-17 | **No progress while the forge paints.** "Re-strike the portrait" takes ~25 s with no ghost state, no spinner, no line of text — the exact failure `myth_plate.gd`'s own comment names ("silence for 25 s is indistinguishable from failure"). In play the system *does* narrate ("Painting Cael Mercer…"); the forge does not | P3 | S |
+| PY-18 | **Two of the ten forge runes ask nothing.** *Ruleset* offers one selectable option, already pre-chosen (the other two read "a future forging"); *The Voice* is a placeholder that "wakes when the provider does". *The Party* is a single toggle. The ritual is this game's signature and should not contain steps that are a click for nothing | P4 | S |
+| PY-19 | **Large dead vertical space.** The chat log is a band across the top with the middle ~40 % of the window empty; the Record leaves its left panel empty below the equipment list and its right column empty below the saving throws; the 3D body in the Appearance rune renders as a thumbnail in a large empty panel though seven sliders drive it | P4 | M |
+| PY-20 | **The titlebar maximize button did not respond** to a direct click, while double-clicking the titlebar worked. Ten minutes to confirm it is not a dead control | P4 | S |
 
 ## The Atlas
 
