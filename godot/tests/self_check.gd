@@ -800,6 +800,30 @@ func _ready() -> void:
 	var force_at := after_forge.find('Mode.enter("Exploration")')
 	assert(guard_at >= 0 and force_at >= 0 and guard_at < force_at,
 		"the resume forces Exploration without asking whether a saved fight is still on")
+	# PY-22 — EVERY SHIPPED WORLD'S KIT MUST RESOLVE. A kit id that misses is not
+	# a cosmetic miss: `kit_for` returns an empty array, `character_forge` falls
+	# back to its hardcoded FANTASY kit, and a Warlock in a neon city is handed a
+	# Quarterstaff, Traveler's Leathers and a Healing Potion. Found by playing the
+	# game, not by any harness. Measured at the time: 66 ids across five worlds did
+	# not resolve — neonspire, everyday and fimbulreach 16 of 20 each — and the
+	# fallback was SILENT, which is why it survived to a played session.
+	#
+	# A world shipping no kits.json is skipped; a world that has one must resolve
+	# every id in it.
+	for wid in ["embervale", "neonspire", "brasshaven", "everyday", "fimbulreach"]:
+		var kp := "%s/data/kits.json" % Compiler.world_dir(wid)
+		if not FileAccess.file_exists(kp):
+			continue
+		var kdata = JSON.parse_string(FileAccess.get_file_as_string(kp))
+		if not (kdata is Dictionary):
+			continue
+		for arch in kdata:
+			var want_n := int((kdata[arch].get("items", []) as Array).size())
+			var got_n := int(Compiler.kit_for(wid, str(arch)).size())
+			assert(got_n == want_n,
+				"world kit: %s/%s resolved %d of %d items — the forge falls back to the generic FANTASY kit" % [wid, arch, got_n, want_n])
+	print("  world kits: every archetype in every shipped world resolves to real catalogue items")
+
 	# PL-9, and structural for the same reason: the narrator must be woken BEHIND
 	# the curtain. Its nodes are built lazily by the first `stream()`, so the
 	# ~4.6 GB load used to land on the player's first sentence — `bench_gm`

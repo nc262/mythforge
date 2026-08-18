@@ -1893,10 +1893,53 @@ func kit_for(world_id: String, archetype: String) -> Array:
 	if not (ids is Array):
 		return []
 	var by_id := {}
+	var by_form := {}
 	for it in catalogue_for(world_id):
-		by_id[str(it.get("id", ""))] = it
+		var iid := str(it.get("id", ""))
+		by_id[iid] = it
+		var seg := iid.split(".")
+		if seg.size() >= 3:
+			if not by_form.has(seg[0]):
+				by_form[seg[0]] = []
+			by_form[seg[0]].append(it)
 	var out: Array = []
 	for id in ids:
-		if by_id.has(str(id)):
-			out.append(by_id[str(id)])
+		var want := str(id)
+		if by_id.has(want):
+			out.append(by_id[want])
+			continue
+		var sub = _kit_substitute(by_form, want)
+		if sub != null:
+			out.append(sub)
 	return out
+
+
+## A kit id is `form.material.rarity`, and the material the compiler wrote is not
+## always one THIS world actually forged: neonspire's caster kit asks for
+## `focus_rod.brine_iron.common`, and brine iron is Saltmarsh's material. The id
+## missed, `kit_for` returned an empty array, and `character_forge` fell back to
+## its hardcoded FANTASY kit — which is how a Warlock in a neon city was handed a
+## Quarterstaff, Traveler's Leathers and a Healing Potion.
+##
+## Measured before this existed: **66 kit ids across five worlds did not resolve**
+## (neonspire, everyday and fimbulreach 16 of 20 each; embervale and brasshaven 9
+## of 20), and EVERY ONE of the 66 had its form present under some other material.
+##
+## So match on the FORM — which is the part the kit is really specifying — and let
+## the world supply the material. That is more correct than the literal id, not
+## less: the whole point of a per-world catalogue is that the world picks what
+## things are made of. Rarity is honoured first so a starting kit cannot promote
+## itself, and the plainest tier wins when the asked-for one is absent.
+func _kit_substitute(by_form: Dictionary, want: String):
+	var seg := want.split(".")
+	if seg.size() < 3 or not by_form.has(seg[0]):
+		return null
+	var pool: Array = by_form[seg[0]]
+	for it in pool:
+		if str(it.get("id", "")).ends_with("." + seg[2]):
+			return it
+	for r in ["common", "uncommon", "rare", "epic", "legendary"]:
+		for it in pool:
+			if str(it.get("id", "")).ends_with("." + r):
+				return it
+	return pool[0] if not pool.is_empty() else null
