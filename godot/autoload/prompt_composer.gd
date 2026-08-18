@@ -311,3 +311,26 @@ func sheet_summary(s: Dictionary) -> String:
 		exh_line,
 		story_line,
 	])
+
+
+## Strip quantities out of something the narrator is about to be told (PY-1).
+##
+## The engine handed the GM "bought a Shock Blade (25 credits)" and asked it to
+## colour the exchange. It answered "your purse is 30 credits lighter" - a figure
+## nothing in the engine ever produced, in a game whose entire contract is that
+## THE TABLE OWNS EVERY NUMBER. The envelope already forbids the narrator from
+## stating numeric outcomes; this stops the game from inviting one.
+##
+## The player is not deprived of anything: the exact amount is in the line the
+## engine wrote for them a moment earlier. Only the copy the model sees is
+## stripped, and only parentheticals carrying a digit - so "(25 credits)" goes
+## and "(the one with the cracked grip)" stays.
+##
+## This closes the case where the game asks for the paraphrase. A model inventing
+## a number unprompted is a different failure, and the envelope's ban is what
+## covers that one.
+var _amount_re := RegEx.create_from_string("\\s*\\([^)]*\\d[^)]*\\)")
+
+
+func without_amounts(text: String) -> String:
+	return _amount_re.sub(text, "", true).replace("  ", " ")

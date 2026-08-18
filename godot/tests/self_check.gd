@@ -99,6 +99,26 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	# The real protocol still parses, including across a newline.
 	assert(Tags.parse("[[check ability=DEX skill=Stealth dc=13]]")["tags"].size() == 1,
 		"tag debris: the widened scrubber must not stop a real tag parsing")
+
+	# PY-1 - THE NARRATOR IS NOT TOLD THE NUMBER. Seen in play: the engine handed
+	# the GM "bought a Shock Blade (25 credits)" and asked it to colour the
+	# exchange, and it wrote "your purse is 30 credits lighter" - a figure nothing
+	# in the engine ever produced, in a game whose contract is that the table owns
+	# every number. The player keeps the exact amount; only the model's copy loses
+	# it, and only parentheticals carrying a digit.
+	assert(Composer.without_amounts("bought a Shock Blade (25 credits)") == "bought a Shock Blade",
+		"amounts: the price still reaches the narrator")
+	assert(Composer.without_amounts("sold a Mono-Knife (3 credits); haggled (won a fifth off)")
+		== "sold a Mono-Knife; haggled (won a fifth off)",
+		"amounts: a parenthetical WITHOUT a number is flavour and must survive")
+	assert(not Composer.without_amounts("At the trader: bought a Shock Blade (25 credits).").contains("25"),
+		"amounts: a digit survived into the narrator's copy")
+	# The play screen must actually USE it - the helper existing proves nothing.
+	var shop_src := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var told_at := shop_src.find("Briefly color the exchange")
+	assert(told_at >= 0, "amounts: the counter-left prompt is gone")
+	assert(shop_src.substr(maxi(0, told_at - 400), 800).contains("without_amounts"),
+		"amounts: the counter-left prompt hands the narrator the raw summary again")
 	assert(c["ability"] == "DEX" and c["skill"] == "Stealth" and int(c["dc"]) == 13 and c["adv"] == "adv")
 	c = Tags.check_from_tags(Tags.parse('The blade bites. [[damage roll=2d6+3]]')["tags"])
 	assert(c["type"] == "damage" and c["n"] == 2 and c["sides"] == 6 and c["bonus"] == 3)

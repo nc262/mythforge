@@ -2557,7 +2557,13 @@ func _on_counter_left(deals: Array) -> void:
 		var summary := "*At the trader: %s.*" % "; ".join(deals)
 		_say_me(_md(summary))
 		_last_player_msg = summary
-		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail.]" % summary.replace("*", "")))
+		# PY-1 - THE GM NEVER SEES THE NUMBER. It was handed "bought a Shock Blade
+		# (25 credits)", asked to colour the exchange, and wrote "your purse is 30
+		# credits lighter" - a figure no part of the engine ever produced, in a game
+		# whose whole contract is that the table owns every number. The player has
+		# already read the exact amount in the line above, which the engine wrote.
+		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail. Do NOT state amounts, prices or totals; the table has already told the player.]"
+			% Composer.without_amounts(summary.replace("*", ""))))
 
 
 # ── The codex panel: the cast you've met and the threads you're pulling ─────
