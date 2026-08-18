@@ -823,6 +823,24 @@ func prof_bonus(sheet: Dictionary) -> int:
 	return 2 + floori((int(sheet.get("level", 1)) - 1) / 4.0)
 
 
+## The ability a check REALLY uses. `SKILL2AB` has always known that Insight is
+## WIS, and only `is_proficient` ever asked it: `check_mod` took `check.ability`
+## from the tag at face value, so when the narrator wrote
+## `[[check ability=INT skill=Insight]]` the table rolled Insight off INTELLIGENCE
+## while the player's own Skills tab, three clicks away, read "Insight (WIS) +0"
+## (PY-3, seen in play — the bar said d20 +1 and resolved 16 +1 = 17).
+##
+## The model is allowed to be wrong about which ability a skill uses; it is not
+## allowed to change the sheet. So a named skill the engine recognises wins, and
+## `ability` is honoured only for bare ability checks and saves — which is where
+## the tag is the only source there is.
+func check_ability(check: Dictionary) -> String:
+	var skill := str(check.get("skill", "")).to_lower()
+	if skill != "" and not skill.contains("sav") and SKILL2AB.has(skill):
+		return str(SKILL2AB[skill])
+	return str(check.get("ability", ""))
+
+
 func is_proficient(sheet: Dictionary, check: Dictionary) -> bool:
 	var skill := str(check.get("skill", "")).to_lower()
 	if skill.contains("sav"):
@@ -833,7 +851,7 @@ func is_proficient(sheet: Dictionary, check: Dictionary) -> bool:
 
 
 func check_mod(sheet: Dictionary, check: Dictionary) -> int:
-	var ab := str(check.get("ability", ""))
+	var ab := check_ability(check)
 	var abilities: Dictionary = sheet.get("abilities", {})
 	var mod := ability_mod(int(abilities.get(ab, 10))) if ab != "" else 0
 	if is_proficient(sheet, check):
@@ -881,7 +899,9 @@ func d20_text(r: Dictionary) -> String:
 
 
 func check_label(c: Dictionary) -> String:
-	var ab: String = AB_NAME.get(str(c.get("ability", "")), str(c.get("ability", "")))
+	# The corrected ability, or the label lies about the number beside it.
+	var raw_ab := check_ability(c)
+	var ab: String = AB_NAME.get(raw_ab, raw_ab)
 	var skill := str(c.get("skill", ""))
 	if skill == "":
 		return "%s check" % ab

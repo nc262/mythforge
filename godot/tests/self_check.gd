@@ -16,6 +16,30 @@ func _ready() -> void:
 	assert(Rules.check_mod(sheet, {"ability": "DEX", "skill": "Stealth"}) == 6)  # 3 + prof
 	assert(Rules.check_mod(sheet, {"ability": "DEX", "skill": "save"}) == 6)     # save prof
 	assert(Rules.check_mod(sheet, {"ability": "WIS", "skill": "Insight"}) == 2)  # untrained
+	# PY-3 - THE SHEET OWNS WHICH ABILITY A SKILL USES, not the narrator. Seen in
+	# play: the GM wrote Insight against INT, the bar read d20 +1 and resolved
+	# 16 +1 = 17, while the player's own Skills tab said "Insight (WIS) +0" three
+	# clicks away. SKILL2AB had known the right answer since it was written and
+	# only is_proficient ever asked it.
+	#
+	# The wrong ability is passed DELIBERATELY here, because that is what the
+	# defect looked like - a check that only ever passed the right one would go
+	# green with the bug still in.
+	assert(Rules.check_ability({"ability": "INT", "skill": "Insight"}) == "WIS",
+		"check ability: a named skill overrules the ability the narrator asked for")
+	assert(Rules.check_mod(sheet, {"ability": "INT", "skill": "Insight"})
+		== Rules.check_mod(sheet, {"ability": "WIS", "skill": "Insight"}),
+		"check ability: ...and the modifier is the same either way")
+	assert(Rules.check_label({"ability": "INT", "skill": "Insight"}).begins_with("Wisdom"),
+		"check ability: ...and the label does not still say Intelligence")
+	# A bare ability check and a saving throw have no skill to appeal to, so the
+	# tag stays the only source and must be honoured.
+	assert(Rules.check_ability({"ability": "STR"}) == "STR",
+		"check ability: a bare ability check keeps the ability it was given")
+	assert(Rules.check_ability({"ability": "CHA", "skill": "save"}) == "CHA",
+		"check ability: a saving throw keeps its ability")
+	assert(Rules.check_ability({"ability": "INT", "skill": "Hotwiring"}) == "INT",
+		"check ability: a skill the engine does not know keeps the narrator's ability")
 	assert(Rules.passive_perception(sheet) == 15)  # 10 + 2 + prof 3
 	assert(Rules.attack_mod(sheet, {}) == 6)  # max(STR,DEX) + prof; {} = no gear, said out loud
 
