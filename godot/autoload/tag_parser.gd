@@ -23,7 +23,22 @@ var _pseudo_tag_re := RegEx.create_from_string(
 	+ "combat-start|combat-end|scene|companion|npc|terrain|mood|music|lore|portrait|"
 	+ "athletics|acrobatics|sleight of hand|stealth|arcana|history|investigation|nature|religion|"
 	+ "animal handling|insight|medicine|perception|survival|deception|intimidation|performance|persuasion)"
-	+ "[^\\]\\n]{0,40}\\]")
+	# PY-2 - WIDENED after a played session showed a player raw markup twice:
+	# `dc=15]` alone on a line, then all of `[check ability=WIS insight dc=15]`.
+	# Measured against the old pattern, three shapes escaped it, and each renders
+	# as visible text AND silently loses the roll it was asking for:
+	#   a tag split across a line - the old [^\]\n] cannot cross the newline
+	#   attributes over 40 chars  - one reason="..." is enough to exceed it
+	#   an orphan tail            - dc=15] has no [ for anything to anchor on
+	# So: 80 characters, and a SINGLE newline may sit inside a tag - never a
+	# blank line, because a tag has no paragraph break in it and prose does. That
+	# one lookahead is what keeps the player's own multi-paragraph aside alive.
+	+ "(?:[^\\]\\n]|\\n(?!\\s*\\n)){0,80}\\]")
+## The tail a split tag leaves once its head is taken, and what a model writes
+## when it forgets the opening bracket: an attribute fragment alone on its own
+## line. Narrow on purpose - key=value then ] and nothing else on the line -
+## because that shape is game-speak and prose almost never is.
+var _tag_tail_re := RegEx.create_from_string("(?m)^[ \\t]*\\w[\\w-]*\\s*=\\s*[^\\]\\n]{0,40}\\]\\s*$")
 ## Left behind once spans are cut: doubled spaces and orphaned blank lines.
 var _gap_re := RegEx.create_from_string("[ \\t]{2,}")
 var _blank_re := RegEx.create_from_string("\\n{3,}")
@@ -41,6 +56,7 @@ func parse(text: String) -> Dictionary:
 	# Whatever the tag regex could not claim, but which is plainly not narration.
 	clean = _open_tag_re.sub(clean, "", true)
 	clean = _pseudo_tag_re.sub(clean, "", true)
+	clean = _tag_tail_re.sub(clean, "", true)
 	clean = _gap_re.sub(clean, " ", true)
 	clean = _blank_re.sub(clean, "\n\n", true)
 	return {"clean": clean.strip_edges(), "tags": tags}

@@ -63,6 +63,42 @@ func _ready() -> void:
 	assert(p["tags"].size() == 1)
 	assert(not str(p["clean"]).contains("[["))
 	var c := Tags.check_from_tags(p["tags"])
+
+	# PY-2 - TAG DEBRIS THE PLAYER ACTUALLY SAW. A played session put raw markup
+	# in the chat twice: `dc=15]` alone on a line, then all of
+	# `[check ability=WIS insight dc=15]`. The model had used SINGLE brackets, so
+	# the parser correctly declined to act on it and then showed it verbatim - the
+	# player reads markup AND loses the roll. Three shapes escaped the old
+	# scrubber; these are the exact strings, not paraphrases of them.
+	for debris in [
+			"The console hums.
+[check ability=WIS insight
+dc=15]",
+			"Vex leans in with interest.
+
+dc=15]",
+			"Echo looks up. [check ability=WIS insight dc=15]",
+			"You steady your hand. [check ability=WIS skill=Insight adv=1 reason=\"reading the ledger\" dc=15]",
+			"[Active Perception]"]:
+		var scrubbed := str(Tags.parse(str(debris))["clean"])
+		assert(not scrubbed.contains("dc=15]") and not scrubbed.contains("[check")
+			and not scrubbed.contains("[Active"),
+			"tag debris: %s survived into the bubble" % scrubbed)
+	# ...and PROSE MUST SURVIVE. A scrubber that eats a bracketed aside is a worse
+	# bug than the one it fixes, and the blank-line guard is what protects it.
+	assert(Tags.parse("He paused [he always did] and looked up.")["clean"].contains("[he always did]"),
+		"tag debris: a bracketed aside in prose was eaten")
+	assert(Tags.parse("She left.
+
+[I never saw her again.]
+
+The rain kept on.")["clean"].contains("[I never saw her again.]"),
+		"tag debris: an aside across paragraphs was eaten")
+	assert(Tags.parse("the sign read [VEX'S] in faded letters")["clean"].contains("[VEX'S]"),
+		"tag debris: a bracketed sign in prose was eaten")
+	# The real protocol still parses, including across a newline.
+	assert(Tags.parse("[[check ability=DEX skill=Stealth dc=13]]")["tags"].size() == 1,
+		"tag debris: the widened scrubber must not stop a real tag parsing")
 	assert(c["ability"] == "DEX" and c["skill"] == "Stealth" and int(c["dc"]) == 13 and c["adv"] == "adv")
 	c = Tags.check_from_tags(Tags.parse('The blade bites. [[damage roll=2d6+3]]')["tags"])
 	assert(c["type"] == "damage" and c["n"] == 2 and c["sides"] == 6 and c["bonus"] == 3)
