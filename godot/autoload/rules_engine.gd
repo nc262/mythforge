@@ -526,6 +526,26 @@ func heritage_features(race: String) -> Array:
 	return f if f is Array else []
 
 
+## The doll `look` a heritage implies — the missing wire between the table and
+## the rig (PY-21). `heritage_features()` above has declared `["horns", "tail"]`
+## for a Tiefling since it was written and had **no callers at all**, while
+## `modular_doll` carried four horn styles and a tail in both sexes, grown on
+## purpose by `scripts/author_horns.py` because no free pack ships them. So a
+## Tiefling previewed in the forge as a plain human, and the 2D portrait — which
+## goes to the image model and does read the heritage — came back with horns.
+## Two pictures of one character, disagreeing on the same screen.
+##
+## Absent and empty mean different things to `apply_look`: absent falls back to
+## the rig default, empty is an explicit "none". Every key is therefore stated,
+## so a Human is bald of horns because we said so and not by omission.
+func heritage_look(race: String) -> Dictionary:
+	var f := heritage_features(race)
+	return {
+		"horns": "swept" if f.has("horns") else "",
+		"tail": "drake" if f.has("tail") else "",
+	}
+
+
 ## Every worn slot the paper doll knows (key, label). Rings are two slots.
 const EQUIP_SLOTS := [
 	["head", "Head"], ["neck", "Neck"], ["cloak", "Cloak"], ["armor", "Chest"],

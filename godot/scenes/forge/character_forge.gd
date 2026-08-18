@@ -477,6 +477,10 @@ func _body_column() -> Control:
 			return
 		var probe := {"race": str(draft["race"]), "sex": str(draft["sex"]), "build": draft["build"]}
 		_look_doll.doll.apply_build(Rules.hero_body(probe))
+		# …and the heritage's own features, not just its proportions (PY-21). The
+		# race reached the body as height and girth and never as horns, so a
+		# Tiefling shaped this page as a plain human while the portrait grew horns.
+		_look_doll.doll.apply_look(Rules.heritage_look(str(draft["race"])))
 
 	# Sex first: it chooses the base body AND the cut of every garment, so it
 	# has to settle before the knobs mean anything.

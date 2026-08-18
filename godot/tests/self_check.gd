@@ -1317,6 +1317,31 @@ The term for spell slots is "Echoes."
 		qd.equip("head", "")
 		qd.apply_look({"hair": "", "beard": "", "horns": ""})
 		assert(qd._all_meshes(qd).size() == plain, "q-doll: and they come off again")
+		# PY-21 — THE HERITAGE MUST REACH THE RIG, not just the proportions. The
+		# table has declared `features: ["horns", "tail"]` for a Tiefling since it
+		# was written, `Rules.heritage_features()` was built to read it, and it had
+		# ZERO callers — so a Tiefling previewed as a plain human while the 2D
+		# portrait, which does read the heritage, came back with horns. Found by
+		# playing the game and looking at the two pictures side by side.
+		#
+		# Asserted through the DOLL, not just the table, or this passes while the
+		# wire is cut again: a lookup returning the right dictionary proves nothing
+		# if nobody applies it.
+		assert(Rules.heritage_look("Human")["horns"] == "", "heritage look: a Human grows no horns")
+		assert(Rules.heritage_look("Human")["tail"] == "", "heritage look: a Human grows no tail")
+		assert(str(Rules.heritage_look("Tiefling")["horns"]) != "", "heritage look: a Tiefling has horns")
+		assert(str(Rules.heritage_look("Tiefling")["tail"]) != "", "heritage look: a Tiefling has a tail")
+		assert(str(Rules.heritage_look("Dragonborn")["tail"]) != "", "heritage look: a Dragonborn has a tail")
+		qd.apply_look(Rules.heritage_look("Human"))
+		var human_meshes := qd._all_meshes(qd).size()
+		assert(qd.worn("horns") == "", "heritage look: a Human doll wears no horns")
+		qd.apply_look(Rules.heritage_look("Tiefling"))
+		assert(qd.worn("horns") != "", "heritage look: a Tiefling doll actually WEARS its horns")
+		assert(qd.worn("tail") != "", "heritage look: ...and its tail")
+		assert(qd._all_meshes(qd).size() > human_meshes,
+			"heritage look: a Tiefling carries more geometry than a Human — the features are really on the rig")
+		qd.apply_look({"hair": "", "beard": "", "horns": ""})
+		print("  heritage look: horns and tail reach the rig from the heritage table")
 		assert(ModularDoll.HORN_COLORS.has(ModularDoll.DEFAULT_HORN),
 			"q-doll: the default horn colour is one of the palette")
 		assert(ModularDoll.SKIN_TONES.has(ModularDoll.DEFAULT_SKIN),
