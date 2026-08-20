@@ -57,7 +57,20 @@ had a confident explanation attached first. See
 - **The narrator must be the only thing on the card when it loads.** llama.cpp
   fixes its GPU/CPU split once, at load time, and keeps it for the life of the
   process. A resident image stack cost 19.3 s per turn; with nothing else on the
-  card it is **3.7 s**. sd-server idles at 118 MB because it loads per request.
+  card it is **3.7 s**.
+
+  **"sd-server idles at 118 MB because it loads per request" was wrong**, and it
+  is worth knowing why it looked true: that 118 MB is its SYSTEM RAM. Its own log
+  says what it really does at startup, BEFORE it begins listening -
+  `total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)`. The
+  checkpoint sits on the GPU for the whole life of the process. Reading RSS and
+  concluding "not resident" is the trap; the weights were never going to appear
+  there.
+
+  So THE ORDER OF THE TWO LOADS is the whole game. Start the image engine first
+  and the narrator inherits a card 6.6 GB down for the session. `Services` no
+  longer starts it at boot: `_open_the_adventure` starts it immediately after
+  `LocalGM.warm()` returns, which is the first safe moment.
 - **`--vae-tiling` is load-bearing, not tuning.** Without it the VAE decode asks
   for a Vulkan buffer past this device's limit, falls back to a slow path, and
   eats 36.2 s of a 50.4 s image. Tiled: 3.1 s decode, 19.9 s image,

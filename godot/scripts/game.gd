@@ -327,6 +327,13 @@ func _open_the_adventure() -> void:
 	# labelled progress here, and turn 1 down to 3.6 s.
 	MythLoading.mark(0.95, "Waking the storyteller…")
 	await LocalGM.warm()
+	# ...and ONLY NOW the image engine. sd-server puts 6.6 GB into VRAM at startup
+	# (its own log: "total params memory size = 6624.11MB (VRAM 6624.11MB)"), and
+	# llama.cpp fixes its GPU/CPU split once, at load. Start the engine first and
+	# the narrator spends the whole session on a card that is 6.6 GB down - the
+	# 19.3 s per turn against 3.7 s in CLAUDE.md. The narrator has just finished
+	# loading on the line above, so this is the first safe moment.
+	Services.ensure_engine()
 	# MIL §7 — the screen is genuinely built now; only now does the curtain lift.
 	await get_tree().process_frame
 	MythLoading.lift()

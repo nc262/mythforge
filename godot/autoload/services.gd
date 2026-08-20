@@ -86,7 +86,23 @@ func _ready() -> void:
 	# would be neither fast nor honest about what it was measuring.
 	if Api.test_mode or OS.has_feature("editor"):
 		return
-	call_deferred("ensure_engine")
+	# NOT HERE. Starting the engine at boot is what a supervisor obviously ought
+	# to do and it is wrong on this hardware, because sd-server takes the card
+	# before the narrator does.
+	#
+	# Measured from its own log: sd-server loads the WHOLE checkpoint into VRAM at
+	# startup, before it begins listening -
+	#   total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)
+	# and only then prints "listening on". Its ~105 MB working set is system RAM,
+	# which is why "sd-server idles at 118 MB because it loads per request" has
+	# been repeated in this repo and is not true - the 6.6 GB is resident on the
+	# GPU for as long as the process lives.
+	#
+	# llama.cpp fixes its GPU/CPU split ONCE, at load time. Bring the image engine
+	# up first and the narrator inherits a card that is 6.6 GB down for the rest of
+	# the session: the 19.3 s per turn against 3.7 s that CLAUDE.md records. So the
+	# engine is started by `_open_the_adventure`, immediately AFTER `LocalGM.warm()`
+	# has finished taking what it needs. Order is the whole point.
 
 
 ## Start the image engine unless someone else already has. Fire-and-forget: the
