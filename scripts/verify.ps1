@@ -217,6 +217,27 @@ if (-not $NoExport) {
 		New-Item -ItemType Directory -Force -Path $deskScripts | Out-Null
 		Copy-Item (Join-Path $repo 'scripts\*.ps1') $deskScripts -Force -ErrorAction SilentlyContinue
 		Write-Host "desktop scripts/ ($((Get-ChildItem $deskScripts -Filter *.ps1).Count) launchers)" -ForegroundColor Green
+		# AND THE SAME MARKER THE INSTALLER WRITES. A real install records where it
+		# put the image engine in image-engine.path, because the engine lives
+		# outside {app} on purpose and a convention is not a location. The Desktop
+		# copy has no installer to write it, so its engine was unfindable and the
+		# supervisor could only be tested by hand-setting SDCPP_DIR — which is
+		# exactly the kind of "works on the dev box for a reason nobody wrote down"
+		# this file exists to prevent. Resolve it once, here, the same way.
+		$sdHunt = @()
+		$upSd = $repo
+		for ($i = 0; $i -lt 5 -and $upSd; $i++) {
+			$upSd = Split-Path -Parent $upSd
+			if ($upSd) { $sdHunt += (Join-Path $upSd 'stable-diffusion.cpp') }
+		}
+		if ($env:SDCPP_DIR) { $sdHunt = @($env:SDCPP_DIR) + $sdHunt }
+		$sdFound = $sdHunt | Where-Object { $_ -and (Test-Path (Join-Path $_ 'sd-server.exe')) } | Select-Object -First 1
+		if ($sdFound) {
+			Set-Content -Path (Join-Path ([Environment]::GetFolderPath('Desktop')) 'image-engine.path') -Value $sdFound -Encoding utf8
+			Write-Host "desktop image-engine.path -> $sdFound" -ForegroundColor Green
+		} else {
+			Write-Host 'desktop image-engine.path: no sd-server found — the Desktop build will play with baked art' -ForegroundColor DarkYellow
+		}
 	} catch {
 		# LOUD, NEVER SILENT. A locked Desktop copy means the game is open, and a
 		# stale Desktop build is the one that gets playtested by mistake.

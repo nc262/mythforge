@@ -52,6 +52,23 @@ $repo = Split-Path -Parent $PSScriptRoot
 $sib  = Split-Path -Parent $repo
 
 if (-not $Exe) {
+  # WHAT THE INSTALLER WROTE DOWN, first and without argument. Everything below
+  # this is a search, and a search is what you do when nobody told you. The
+  # installer knows exactly where it put the engine — including when the player
+  # chose a custom directory, which no parent-walk can ever recover — so it
+  # records it and this reads it. `image-engine.path` sits beside the exe.
+  foreach ($near in @($PSScriptRoot, (Split-Path -Parent $PSScriptRoot))) {
+    $marker = Join-Path $near 'image-engine.path'
+    if (Test-Path $marker) {
+      $told = (Get-Content $marker -Raw -ErrorAction SilentlyContinue).Trim()
+      if ($told -and (Test-Path (Join-Path $told 'sd-server.exe'))) {
+        $Exe = Join-Path $told 'sd-server.exe'
+        break
+      }
+    }
+  }
+}
+if (-not $Exe) {
   $hunt = @(
     (Join-Path $sib 'stable-diffusion.cpp\sd-server.exe'),
     (Join-Path $repo 'stable-diffusion.cpp\sd-server.exe')
@@ -95,7 +112,11 @@ if (-not $Checkpoint) {
   # the file sat untouched on disk. Find the library instead of being told about
   # it: every directory beside the checkout, and the same walk up the parents the
   # exe hunt does, looking for the layout these tools all share.
-  $libRoots = @($sib)
+  # BESIDE THE ENGINE FIRST. install.ps1 puts stable-diffusion.cpp and any model
+  # library as siblings, and once the marker has told us where the engine is, its
+  # neighbour is a far better guess than anything near this script — which, for a
+  # Desktop or custom install, may be nowhere near either.
+  $libRoots = @((Split-Path -Parent (Split-Path -Parent $Exe)), $sib)
   $upLib = $repo
   for ($i = 0; $i -lt 4 -and $upLib; $i++) {
     $upLib = Split-Path -Parent $upLib
