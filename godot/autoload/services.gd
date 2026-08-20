@@ -60,6 +60,13 @@ func _probe() -> bool:
 	if Api.test_mode:
 		return false
 	var req := HTTPRequest.new()
+	# A TIMEOUT, or this never returns. HTTPRequest.timeout defaults to 0, which
+	# means "wait for ever" — so probing a port with nothing behind it parked the
+	# caller permanently. Measured: the exported game reached "probing :8189" and
+	# printed nothing again, so the engine was never started and `warm_art`'s poll
+	# loop had been stalling on its first probe rather than retrying. Two seconds
+	# is generous for a loopback connection that either answers or refuses.
+	req.timeout = 2.0
 	add_child(req)
 	if req.request(Art.IMAGE_SERVER + "/v1/models") != OK:
 		req.queue_free()
@@ -88,6 +95,7 @@ func ensure_engine() -> void:
 	if Api.test_mode:
 		return
 	if await _probe():          # somebody else's — adopt it, never seize it
+		print("Services: image engine already up — adopted, and not ours to stop")
 		_up = true
 		art_ready.emit()
 		return
@@ -100,10 +108,16 @@ func ensure_engine() -> void:
 	if FileAccess.file_exists(existing):
 		var prior := FileAccess.get_file_as_string(existing).strip_edges()
 		if prior.is_valid_int() and OS.is_process_running(int(prior)):
+			print("Services: engine pid %s is already starting — leaving it to its owner" % prior)
 			return
 	var script := _launcher_script()
 	if script == "":
-		return                  # no install layout we recognise; play with baked art
+		# NEVER SILENTLY. This returned "" and said nothing, so a Desktop copy with
+		# no scripts/ beside it looked exactly like a working supervisor that had
+		# decided not to bother. Name what was looked for.
+		push_warning("Services: no start-image-sdcpp.ps1 beside the exe or in the project — art will be baked-only. Looked in: %s" % ", ".join(_script_candidates()))
+		print("Services: no image-engine launcher found; playing with baked art only")
+		return
 	var pid_file := _pid_path()
 	DirAccess.remove_absolute(pid_file)
 	# OUR OWN PID goes with it. The script arms a watchdog on it, so the engine
@@ -115,6 +129,7 @@ func ensure_engine() -> void:
 		"-PidFile", pid_file, "-ParentPid", str(OS.get_process_id())]
 	# create_process, not execute: execute BLOCKS, and this script waits up to two
 	# minutes for the port. The Hall must open now.
+	print("Services: starting the image engine via %s" % script)
 	if OS.create_process("powershell.exe", args) <= 0:
 		push_warning("Services: could not start the image engine; art will be baked-only")
 		return
@@ -132,6 +147,7 @@ func _adopt_spawned_pid(pid_file: String) -> void:
 		var txt := FileAccess.get_file_as_string(pid_file).strip_edges()
 		if txt.is_valid_int():
 			_engine_pid = int(txt)
+			print("Services: image engine started as pid %d — ours to stop" % _engine_pid)
 			return
 
 
@@ -171,13 +187,17 @@ func _exit_tree() -> void:
 ## `<repo>/scripts/…` when running from source. Returns "" when neither exists,
 ## which is a normal state — a player without the image engine still plays.
 func _launcher_script() -> String:
-	var here := OS.get_executable_path().get_base_dir()
-	var repo := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
-	for cand in [here.path_join("scripts/start-image-sdcpp.ps1"),
-			repo.path_join("scripts/start-image-sdcpp.ps1")]:
+	for cand in _script_candidates():
 		if FileAccess.file_exists(cand):
 			return cand
 	return ""
+
+
+func _script_candidates() -> Array:
+	var here := OS.get_executable_path().get_base_dir()
+	var repo := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
+	return [here.path_join("scripts/start-image-sdcpp.ps1"),
+		repo.path_join("scripts/start-image-sdcpp.ps1")]
 
 
 func _pid_path() -> String:

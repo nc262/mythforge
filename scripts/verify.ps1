@@ -206,6 +206,17 @@ if (-not $NoExport) {
 	try {
 		Copy-Item $exe $desk -Force -ErrorAction Stop
 		Write-Host "desktop $desk" -ForegroundColor Green
+		# AND THE SCRIPTS BESIDE IT, because the Desktop copy is the build that
+		# actually gets played and it has to behave like a real install. A shipped
+		# install has {app}\scripts (the installer puts it there) and the game
+		# looks for start-image-sdcpp.ps1 next to its own exe to start the image
+		# engine. A bare exe on the Desktop finds nothing, silently plays with
+		# baked art only, and the supervisor path is untestable by the one copy a
+		# human ever launches - which is exactly how it shipped unproven.
+		$deskScripts = Join-Path ([Environment]::GetFolderPath('Desktop')) 'scripts'
+		New-Item -ItemType Directory -Force -Path $deskScripts | Out-Null
+		Copy-Item (Join-Path $repo 'scripts\*.ps1') $deskScripts -Force -ErrorAction SilentlyContinue
+		Write-Host "desktop scripts/ ($((Get-ChildItem $deskScripts -Filter *.ps1).Count) launchers)" -ForegroundColor Green
 	} catch {
 		# LOUD, NEVER SILENT. A locked Desktop copy means the game is open, and a
 		# stale Desktop build is the one that gets playtested by mistake.
