@@ -21,6 +21,33 @@ time, on a stream nothing read.
 
 **PL-5 IS NOT CLOSED — reopened the same day by playing the game.** The fix below is real and the harness number was real, but the harness was the wrong instrument. `click_driver` went 1 -> 0, and a forty-minute played session on the exported build (exe stamped 18:39, fix committed 16:11, so the fix IS in it) produced **eleven** freed-capture errors: six at index **1** and five at index **0**, from two distinct call sites (`gdscript_lambda_callable.cpp:242` and `:110`). So there is at least one more index-0 lambda the harness never reaches, and a whole separate index-1 capture nobody has looked at. The play log holds nothing else at all — those eleven lines are the entire error output of a real session. **The lesson is the one this repo keeps paying for:** a green harness means the paths it walks are clean, not that the game is. The next attempt should drive the FORGE and the merchant from `click_driver` (both were walked by hand here) rather than trusting the existing stations.
 
+**2026-08-21, later — the SECOND call site was not it, and here is the negative
+result so nobody spends the afternoon on it again.** `character_forge.gd` held
+three `Art.art_ready.connect(func(k): …)` lambdas reaching no member of `self`.
+`Art` is an autoload that never dies, so on the stated Godot rule those
+connections are owned by nothing and outlive the scene — the same shape as the
+`skin.gd` root-window leak, which DID reproduce. This one does not:
+
+  · the gate went red once with the lambdas present (2 errors, index 0 and 1)
+  · six `ui_playthrough` runs green after converting all three to methods
+  · **restoring one lambda failed to reproduce it** — 2 runs, 0 errors
+  · a probe counting `Art.get_signal_connection_list("art_ready")` at the end of
+    a playthrough reported **"1 conns, 0 ownerless" WITH and WITHOUT** the
+    lambda. Nothing accumulates on that signal by end of run.
+
+So the accumulation theory is not supported by the one instrument that can see
+it directly, and green runs prove nothing here — this row has nine wrong
+diagnoses on it precisely because six clean runs kept getting promoted to a fix.
+The lambdas were converted anyway (correct on ownership semantics, costs
+nothing) but that is HYGIENE, not the fix. Whatever produces the pairs is still
+unfound.
+
+Worth knowing for the next attempt: commissioning art for all three forge racks
+(9 heritages + 12 classes + 8 backgrounds instead of one clicked card) made
+`art_ready` fire ~29x more often per forge, and THAT is what turned the gate red
+— so the reproduction rate is now much higher than it was. Run the gate several
+times rather than once.
+
 **2026-08-21 — a real cause found, and it fits the eleven.** `Ui.dress_dialog`
 → `_cap_panel_content` connected its `apply` lambda to **`dlg.get_tree().root`'s
 `size_changed`**. Root is the signal's EMITTER and never dies, and Godot only
