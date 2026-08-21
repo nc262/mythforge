@@ -21,6 +21,31 @@ time, on a stream nothing read.
 
 **PL-5 IS NOT CLOSED — reopened the same day by playing the game.** The fix below is real and the harness number was real, but the harness was the wrong instrument. `click_driver` went 1 -> 0, and a forty-minute played session on the exported build (exe stamped 18:39, fix committed 16:11, so the fix IS in it) produced **eleven** freed-capture errors: six at index **1** and five at index **0**, from two distinct call sites (`gdscript_lambda_callable.cpp:242` and `:110`). So there is at least one more index-0 lambda the harness never reaches, and a whole separate index-1 capture nobody has looked at. The play log holds nothing else at all — those eleven lines are the entire error output of a real session. **The lesson is the one this repo keeps paying for:** a green harness means the paths it walks are clean, not that the game is. The next attempt should drive the FORGE and the merchant from `click_driver` (both were walked by hand here) rather than trusting the existing stations.
 
+**2026-08-21 — a real cause found, and it fits the eleven.** `Ui.dress_dialog`
+→ `_cap_panel_content` connected its `apply` lambda to **`dlg.get_tree().root`'s
+`size_changed`**. Root is the signal's EMITTER and never dies, and Godot only
+tears a connection down when the emitter does — so the connection outlived every
+dialog that made it, and the next window resize called `apply` with `dlg` and
+`content` already freed. That lambda captures exactly two objects, which is why
+the errors come in index-0/index-1 pairs; five-and-six across a session is that
+one lambda firing five or six times. The `is_connected(apply)` guard never
+caught it because **each call builds a fresh lambda**, so no two are ever the
+same Callable — one permanent connection per dialog ever dressed, which is also
+why it grows with session length. Fixed by disconnecting on `tree_exited`
+(`skin.gd`). The gate caught the original on a doc-only run, and three
+`ui_playthrough` runs are clean after.
+
+**Still open, and here is the honest reason.** Three clean runs is weak evidence
+against an intermittent failure, and there is no deterministic check. One was
+written — count `root.get_signal_connection_list("size_changed")` across three
+dressed-and-freed dialogs — and it **counted 0 with the fix and 0 without**, so
+it proved nothing and was removed rather than shipped as false coverage. Why the
+count comes back empty headless is itself unknown and is the next thing to
+learn; until then `verify.ps1`'s regression list is the only watcher, and it only
+sees the error when a resize happens to follow a freed dialog. The backlog's own
+advice above still stands: drive the FORGE and the merchant from `click_driver`,
+and close this on a played session, not a harness.
+
 The original entry, still accurate as far as it goes: PL-5's filed mechanism was wrong — the ninth
 mis-reported row in this backlog's history. The row blamed `game.gd`'s
 capturing lambdas on `Art.art_ready` / `Chronicle.chronicle_updated`. Every one
