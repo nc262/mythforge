@@ -46,6 +46,18 @@ var draft := {"name": "", "race": "", "cls": "", "bg": "", "rolled": [], "assign
 var menu_mode := false        # true = forging a draft from the main menu
 var start_at_quench := false  # a banked draft resumes at the reveal
 var _embers: Array = []
+## PL-5. `Art` is an autoload: it outlives this forge, and Godot only drops a
+## connection when the EMITTER dies or when the Callable's own OBJECT does. A
+## lambda that reaches no member of `self` belongs to neither, so it sat on
+## Art.art_ready for the rest of the session and fired at freed TextureRects —
+## "Lambda capture at index 0/1 was freed", in pairs, one pair per forge ever
+## opened. Method Callables are owned by this node and go when it does. These
+## members exist only to carry what those lambdas used to capture.
+var _race_port: TextureRect = null
+var _race_showing := ""
+var _prev_port: TextureRect = null
+var _quench_portrait: MythPortrait = null
+var _quench_key := ""
 var _story_edit: TextEdit = null   # the current stage's optional free-text story
 
 
@@ -240,6 +252,7 @@ func _stage_heritage() -> void:
 			int(h.get("speed", 30)), "\n".join(traits.map(func(t): return "• " + str(t).replace("[", "[lb]")))]
 		var key := Art.race_key(str(nm))
 		cur_key["k"] = key
+		_race_showing = key
 		var tex := Art.texture_for(key)
 		if tex != null:
 			port.texture = tex
@@ -266,11 +279,9 @@ func _stage_heritage() -> void:
 		grid.add_child(card)
 	split.add_child(grid)
 	_stage_box.add_child(split)
-	Art.art_ready.connect(func(k):
-		if str(k) == cur_key["k"] and is_instance_valid(port):
-			port.texture = Art.texture_for(str(k))
-			_status.text = ""
-			Ui.pulse(port))
+	_race_port = port
+	if not Art.art_ready.is_connected(_on_race_art):
+		Art.art_ready.connect(_on_race_art)
 	if str(draft["race"]) != "":
 		show_race.call(str(draft["race"]))
 	_nav(1, "Strike ›", func():
@@ -278,6 +289,31 @@ func _stage_heritage() -> void:
 			_refuse("The metal needs a heritage — choose one.")
 			return
 		_enter_stage(3))
+
+
+## The three art handlers the lambdas above became. Each guards its own target,
+## because a stage can be left before its painting lands.
+func _on_race_art(k: String) -> void:
+	if str(k) != _race_showing or not is_instance_valid(_race_port):
+		return
+	_race_port.texture = Art.texture_for(str(k))
+	_status.text = ""
+	Ui.pulse(_race_port)
+
+
+func _on_prev_art(k: String) -> void:
+	if str(k) != "heroprev" or not is_instance_valid(_prev_port):
+		return
+	_prev_port.texture = Art.texture_for("heroprev")
+	_status.text = ""
+	Ui.pulse(_prev_port)
+
+
+func _on_quench_art(k: String) -> void:
+	if str(k) != _quench_key or not is_instance_valid(_quench_portrait):
+		return
+	_quench_portrait.set_portrait(Art.round_tex(_quench_key), "?")
+	Ui.pulse(_quench_portrait)
 
 
 func _stage_class() -> void:
@@ -637,11 +673,9 @@ func _stage_appearance() -> void:
 	right.add_child(envision)
 	split.add_child(right)
 	_stage_box.add_child(split)
-	Art.art_ready.connect(func(k):
-		if str(k) == "heroprev" and is_instance_valid(port):
-			port.texture = Art.texture_for("heroprev")
-			_status.text = ""
-			Ui.pulse(port))
+	_prev_port = port
+	if not Art.art_ready.is_connected(_on_prev_art):
+		Art.art_ready.connect(_on_prev_art)
 	_nav(5, "Strike ›", func():
 		draft["appearance"] = desc.text.strip_edges()
 		_enter_stage(7))
@@ -684,10 +718,10 @@ func _stage_quenching() -> void:
 		draft["portrait_key"] = pkey
 		Art.ensure(pkey, _portrait_prompt(str(draft["name"])))
 	portrait.set_portrait(Art.round_tex(pkey), str(draft["name"]).left(1) if str(draft["name"]) != "" else "?")
-	Art.art_ready.connect(func(k):
-		if str(k) == pkey and is_instance_valid(portrait):
-			portrait.set_portrait(Art.round_tex(pkey), "?")
-			Ui.pulse(portrait))
+	_quench_portrait = portrait
+	_quench_key = pkey
+	if not Art.art_ready.is_connected(_on_quench_art):
+		Art.art_ready.connect(_on_quench_art)
 	var pc := CenterContainer.new()
 	pc.add_child(portrait)
 	_stage_box.add_child(pc)

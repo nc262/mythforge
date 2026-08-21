@@ -36,8 +36,15 @@ const FAMILIES := {
 		"flavor": {"map": "chart", "pack": "pack", "book": "saga", "world": "norse saga fantasy"}},
 }
 
+## EVERY shipped world must be here. `_by_id` is only filled by `remember()`,
+## which runs when a world is entered — so a world missing from this map
+## resolves to the "fantasy" default on any cold lookup, and since art keys
+## are family-scoped it then SHARES EMBERVALE'S PAINTINGS. saltmarsh did
+## exactly that: a warm run over all six worlds painted 42 pictures each for
+## five of them and 0 for saltmarsh, in 0.0 minutes, because every key it
+## asked for was already on disk under fantasy. self_check now counts this.
 const BUILTIN := {"embervale": "fantasy", "neonspire": "cyber", "everyday": "everyday",
-	"fimbulreach": "norse", "brasshaven": "steam"}
+	"saltmarsh": "pirate", "fimbulreach": "norse", "brasshaven": "steam"}
 
 ## The World Style Guide's generative + voice descriptors, per family (A1 —
 ## ArchitectureEvolution §6). Referenced by the Art prompt builders (character

@@ -514,6 +514,19 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	GameState.character = {"id": "dm-key-probe", "world_id": "neonspire"}
 	assert(Art.fam_base(Art.beast_key("ogre")) == "beast-ogre")  # the slug survives the round trip
 	GameState.character = keep_w
+	# …and every SHIPPED world must resolve to its own family without anyone
+	# having entered it first. A world absent from BUILTIN falls through to the
+	# "fantasy" default, and because art keys are family-scoped it then eats
+	# Embervale's paintings whole. saltmarsh shipped that way and it took a
+	# real warm run to notice: 0 pictures painted, 0.0 minutes, everything it
+	# asked for already on disk.
+	var shipped: Array = Rules.worlds_json.get("worlds", [])
+	for w in shipped:
+		var wid := str(w.get("id", ""))
+		if wid == "":
+			continue
+		assert(WorldSkin.BUILTIN.has(wid),
+			"shipped world '%s' is not in WorldSkin.BUILTIN — it resolves to the fantasy default and will be served Embervale's art" % wid)
 
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")

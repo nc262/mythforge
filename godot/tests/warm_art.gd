@@ -68,7 +68,10 @@ func _ready() -> void:
 
 
 func _wait() -> void:
-	var deadline := Time.get_ticks_msec() + 15 * 60 * 1000
+	# 15 min was written when this warmed a demo cast of about a dozen. It now
+	# warms the three forge catalogs as well - ~45 paintings a world at ~17 s
+	# each - so the old ceiling sat right on top of the real runtime.
+	var deadline := Time.get_ticks_msec() + 45 * 60 * 1000
 	while Time.get_ticks_msec() < deadline:
 		var missing := []
 		for k in _want:
