@@ -59,18 +59,35 @@ had a confident explanation attached first. See
   process. A resident image stack cost 19.3 s per turn; with nothing else on the
   card it is **3.7 s**.
 
-  **"sd-server idles at 118 MB because it loads per request" was wrong**, and it
-  is worth knowing why it looked true: that 118 MB is its SYSTEM RAM. Its own log
-  says what it really does at startup, BEFORE it begins listening -
-  `total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)`. The
-  checkpoint sits on the GPU for the whole life of the process. Reading RSS and
-  concluding "not resident" is the trap; the weights were never going to appear
-  there.
+  **What costs the card is the FIRST IMAGE, not the engine.** Two wrong answers
+  were written here before anyone sampled the GPU counter, so here is the counter
+  (`\GPU Adapter Memory(*)\Dedicated Usage`, summed, RX 7900 GRE):
 
-  So THE ORDER OF THE TWO LOADS is the whole game. Start the image engine first
-  and the narrator inherits a card 6.6 GB down for the session. `Services` no
-  longer starts it at boot: `_open_the_adventure` starts it immediately after
-  `LocalGM.warm()` returns, which is the first safe moment.
+  | moment | dedicated VRAM |
+  |---|---|
+  | nothing running | 2271 MB |
+  | sd-server listening, never asked for an image | 2398 MB |
+  | immediately after its first image | 8989 MB |
+  | 20 s idle after that image | 8977 MB |
+  | after killing sd-server | 2264 MB |
+
+  So an idle engine costs **127 MB**, it takes **6.6 GB on first generation**, and
+  it **never gives that back** while the process lives. Killing it reclaims all
+  of it.
+
+  Both earlier claims misread the same log line. sd-server prints
+  `total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)` *before*
+  `listening on:` — but that is an allocation PLAN, not a transfer. It reaches
+  "listening" in **0.8 s**, which is far too fast to have moved 6.6 GB, and the
+  `model_loader.cpp:1305 - loading tensors completed` lines land afterwards,
+  during the first request. Reading RSS was one trap; reading the plan line as a
+  completed load was the second, and the second was written while correcting the
+  first.
+
+  So THE ORDER THAT MATTERS is narrator-loads-before-first-image, not
+  narrator-loads-before-engine-starts. Having the engine merely *up* is nearly
+  free. `_open_the_adventure` starts it after `LocalGM.warm()` returns, which
+  satisfies the real rule with room to spare.
 - **`--vae-tiling` is load-bearing, not tuning.** Without it the VAE decode asks
   for a Vulkan buffer past this device's limit, falls back to a slow path, and
   eats 36.2 s of a 50.4 s image. Tiled: 3.1 s decode, 19.9 s image,

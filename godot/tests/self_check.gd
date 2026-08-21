@@ -994,14 +994,15 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	# checkpoint into VRAM at startup, before it listens - its own log says
 	# "total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)" - and its
 	# small working set is system RAM, which is what made "it loads per request"
-	# look true for so long. llama.cpp fixes its GPU/CPU split once, at load, so an
-	# engine started first costs 19.3 s per turn against 3.7 s for the whole
-	# session. Structural, like the curtain above: the order is the fix, and the
-	# order is what rots.
+	# look true for so long. llama.cpp fixes its GPU/CPU split once, at load, and
+	# the engine's first image takes 6.6 GB it never gives back - 19.3 s per turn
+	# against 3.7 s for the whole session. Warming first is what keeps the engine
+	# from ever generating before the narrator has its split. Structural, like the
+	# curtain above: the order is the fix, and the order is what rots.
 	var eng_at := gsrc_boot.find("Services.ensure_engine()")
 	assert(eng_at >= 0, "boot: nothing starts the image engine — art will never appear")
 	assert(warm_at < eng_at,
-		"boot: the image engine is started BEFORE the narrator warms — it takes 6.6 GB of VRAM and the narrator keeps the worse split all session")
+		"boot: the image engine is started BEFORE the narrator warms — its first image takes 6.6 GB it never returns, and the narrator would keep the worse split all session")
 	var svc_src := FileAccess.get_file_as_string("res://autoload/services.gd")
 	assert(not svc_src.contains("call_deferred(\"ensure_engine\")"),
 		"boot: Services starts the engine at boot again — that is before the narrator loads")
