@@ -20,6 +20,8 @@ var _nav_hint: Label = null
 var _col: VBoxContainer   # exposed so a forge can slot extra rows (the ledger)
 var _phase := 0.0
 var _busy := false
+## art key → the card waiting for it. Rebuilt per stage, because the cards are.
+var _art_cards: Dictionary = {}
 
 
 # ── The subclass contract ────────────────────────────────────────────────────
@@ -169,14 +171,21 @@ func _refuse(msg: String) -> void:
 
 
 ## A grid of choice cards with single-select behavior — the forge staple.
+## Entries may carry `art_key` (+ `art_prompt`): the card shows its drawn icon
+## until the painting exists, then swaps to it. Every card in the grid is
+## commissioned, not just the selected one — the whole point is that the rack
+## fills in while the player reads it, instead of nine heritages sitting blank
+## until each is clicked in turn.
 func _card_grid(entries: Array, cols: int, selected_title: String, on_pick: Callable) -> void:
 	var cards: Array = []
+	_art_cards.clear()
 	var grid := GridContainer.new()
 	grid.columns = cols
 	grid.add_theme_constant_override("h_separation", Ui.SPACE["s"])
 	grid.add_theme_constant_override("v_separation", Ui.SPACE["s"])
 	for e in entries:
 		var card := CardT.new(e)
+		_wire_card_art(card, str(e.get("art_key", "")), str(e.get("art_prompt", "")))
 		card.set_selected(str(e.get("title", "")) == selected_title)
 		card.pressed.connect(func():
 			for c in cards:
@@ -187,3 +196,32 @@ func _card_grid(entries: Array, cols: int, selected_title: String, on_pick: Call
 	var gc := CenterContainer.new()
 	gc.add_child(grid)
 	_stage_box.add_child(gc)
+## Show the painting if we have it, commission it if we do not, and remember
+## which card is waiting. Public to the forges, because the heritage rack builds
+## its own grid (it has a portrait panel beside it) and must not re-implement it.
+func _wire_card_art(card: Object, akey: String, prompt: String) -> void:
+	if akey == "":
+		return
+	var have := Art.texture_for(akey)
+	if have != null:
+		card.set_art(have)
+		return
+	_art_cards[akey] = card
+	Art.ensure(akey, prompt, "1024x1024", false)
+	# A METHOD, never a lambda. `Art` is an autoload: it outlives this forge, and
+	# Godot only drops a connection when the EMITTER dies or when the Callable's
+	# own object does. A method Callable is owned by this node, so it goes when
+	# the forge does. A lambda capturing locals is owned by nothing and would sit
+	# on Art.art_ready for the rest of the session, firing at freed cards — the
+	# PL-5 "Lambda capture at index 0 was freed" shape exactly.
+	if not Art.art_ready.is_connected(_on_card_art):
+		Art.art_ready.connect(_on_card_art)
+
+
+func _on_card_art(key: String) -> void:
+	var card = _art_cards.get(key)
+	if card == null or not is_instance_valid(card):
+		_art_cards.erase(key)
+		return
+	card.set_art(Art.texture_for(key))
+	_art_cards.erase(key)

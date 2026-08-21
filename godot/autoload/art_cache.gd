@@ -622,6 +622,40 @@ func race_key(nm: String) -> String:
 	return fam_key("race-" + nm.to_lower().replace(" ", "-").validate_filename())
 
 
+## THE PROMPT BELONGS WITH THE KEY. These were briefly written out in both the
+## forge and the warm harness, which is the same hand-copying that let five
+## `"item-" + nm` spellings drift apart. One caller cannot change a prompt
+## without changing what every other caller paints.
+const _CATALOG_POSE := "head and shoulders, neutral heroic pose, detailed face and costume, dramatic rim light, dark background, painted illustration, no text"
+
+
+func race_prompt(nm: String, h: Dictionary) -> String:
+	var traits: Array = h.get("traits", [])
+	var look := str(traits[0]).split("—")[0].strip_edges() if not traits.is_empty() else ""
+	return "character concept portrait of a %s%s, %s, %s" % [
+		nm, (", " + look) if look != "" else "", world_flavor(), _CATALOG_POSE]
+
+
+func class_prompt(nm: String, lore: Dictionary) -> String:
+	var blurb := str(lore.get("blurb", "")).split(".")[0].strip_edges()
+	return "character concept portrait of a %s%s, %s, %s" % [
+		nm, (", " + blurb) if blurb != "" else "", world_flavor(), _CATALOG_POSE]
+
+
+func bg_prompt(nm: String, bg: Dictionary) -> String:
+	var line := str(bg.get("line", "")).split(".")[0].strip_edges()
+	return "character concept portrait of a %s%s, %s, everyday dress of their trade, %s" % [
+		nm, (", " + line) if line != "" else "", world_flavor(), _CATALOG_POSE]
+
+
+func class_key(nm: String) -> String:
+	return fam_key("class-" + nm.to_lower().replace(" ", "-").validate_filename())
+
+
+func bg_key(nm: String) -> String:
+	return fam_key("bg-" + nm.to_lower().replace(" ", "-").validate_filename())
+
+
 func beast_key(slug: String) -> String:
 	return fam_key("beast-" + slug)
 

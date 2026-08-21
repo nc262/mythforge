@@ -246,7 +246,7 @@ func _stage_heritage() -> void:
 		else:
 			port.texture = null
 			_status.text = "Painting the %s…" % nm
-			Art.ensure(key, _race_prompt(nm, h))
+			Art.ensure(key, Art.race_prompt(nm, h))
 	for nm in names:
 		var h: Dictionary = hs[nm]
 		var traits: Array = h.get("traits", [])
@@ -254,6 +254,9 @@ func _stage_heritage() -> void:
 			"body": str(traits[0]).split("—")[0].strip_edges() if not traits.is_empty() else "",
 			"foot": "%d ft" % int(h.get("speed", 30))})
 		card.set_selected(str(draft["race"]) == str(nm))
+		# Every heritage is commissioned, not only the one that gets clicked —
+		# the rack used to sit blank until each was selected in turn.
+		_wire_card_art(card, Art.race_key(str(nm)), Art.race_prompt(str(nm), h))
 		card.pressed.connect(func():
 			draft["race"] = str(nm)
 			for c in cards:
@@ -277,14 +280,6 @@ func _stage_heritage() -> void:
 		_enter_stage(3))
 
 
-## The commission for a heritage reference portrait — world-flavored.
-func _race_prompt(nm: String, h: Dictionary) -> String:
-	var traits: Array = h.get("traits", [])
-	var look := str(traits[0]).split("—")[0].strip_edges() if not traits.is_empty() else ""
-	return "character concept portrait of a %s%s, %s fantasy, head and shoulders, neutral heroic pose, detailed face and costume, dramatic rim light, dark background, painted illustration, no text" % [
-		nm, (", " + look) if look != "" else "", Art.world_flavor()]
-
-
 func _stage_class() -> void:
 	_title_label("Choose Your Class")
 	var entries: Array = []
@@ -295,7 +290,8 @@ func _stage_class() -> void:
 		var l: Dictionary = lore.get(nm, {}) if lore is Dictionary else {}
 		entries.append({"glyph": str(l.get("icon", "⚔")), "title": str(nm),
 			"body": str(l.get("blurb", "")).left(90),
-			"foot": "d%d" % int(Rules.tables["class_presets"][nm].get("hitDie", 8))})
+			"foot": "d%d" % int(Rules.tables["class_presets"][nm].get("hitDie", 8)),
+			"art_key": Art.class_key(str(nm)), "art_prompt": Art.class_prompt(str(nm), l)})
 	_card_grid(entries, 4, str(draft["cls"]), func(e): draft["cls"] = str(e["title"]))
 	var story := _story_fold("Make this path your own (optional)",
 		"Why did you take up this class? A mentor, a curse, a debt, a calling — the GM weaves it into whatever world you're dropped into.",
@@ -319,7 +315,8 @@ func _stage_background() -> void:
 	for nm in names:
 		var b: Dictionary = bgs[nm]
 		entries.append({"glyph": "🕯", "title": str(nm), "body": str(b.get("line", "")).left(90),
-			"foot": ", ".join(b.get("skills", []))})
+			"foot": ", ".join(b.get("skills", [])),
+			"art_key": Art.bg_key(str(nm)), "art_prompt": Art.bg_prompt(str(nm), b)})
 	_card_grid(entries, 4, str(draft["bg"]), func(e): draft["bg"] = str(e["title"]))
 	var story := _story_fold("Your story, in your words (optional)",
 		"Where do you come from, and what set you on the road? The GM reinterprets your past inside whatever world the tale drops you into.",

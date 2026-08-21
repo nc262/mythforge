@@ -6,12 +6,24 @@ extends Node
 var _want: Array = []
 
 
+## Which world to warm. The catalogs below are world-FLAVORED, so warming
+## embervale does nothing for neonspire — run it once per world you care about:
+##   godot --path godot res://tests/warm_art.tscn -- --world=neonspire
+func _world() -> String:
+	for a in OS.get_cmdline_user_args():
+		if str(a).begins_with("--world="):
+			return str(a).trim_prefix("--world=")
+	return "embervale"
+
+
 func _ready() -> void:
-	Ui.apply("embervale")
-	GameState.character = {"id": "dm-godot-demo", "name": "The Hollow Bell", "world_id": "embervale"}
+	var wid := _world()
+	Ui.apply(wid)
+	GameState.character = {"id": "dm-godot-demo", "name": "The Hollow Bell", "world_id": wid}
 	GameState.state = {"world": {"here": "Embervale village square"}}
+	print("warming '%s' (family %s)" % [wid, WorldSkin.family_for_id(wid)])
 	var sheet := {"name": "Wren Ashvale", "race": "Half-Elf", "cls": "Wizard"}
-	Art.ensure("embervale")
+	Art.ensure(wid)
 	Art.ensure_hero_portrait("dm-godot-demo", sheet)
 	_want.append("hero-dm-godot-demo")
 	for foe in ["Goblin", "Goblin Boss"]:
@@ -25,6 +37,25 @@ func _ready() -> void:
 		_want.append(Art.item_key(nm))
 	_want.append(Art.ensure_battle_map("Embervale village square"))
 	_want.append(Art.ensure_world_chart("embervale", "Embervale"))
+	# THE FORGE CATALOGS. Nine heritages, twelve classes, eight backgrounds — the
+	# racks a player meets before they ever reach a scene, and until now the only
+	# one of the three that was ever painted was the single heritage they clicked.
+	var hs: Dictionary = Rules.tables.get("heritages", {})
+	for nm in hs:
+		var key := Art.race_key(str(nm))
+		Art.ensure(key, Art.race_prompt(str(nm), hs[nm]))
+		_want.append(key)
+	var cls: Dictionary = Rules.tables.get("class_presets", {})
+	for nm in cls:
+		var key := Art.class_key(str(nm))
+		Art.ensure(key, Art.class_prompt(str(nm), Rules.class_lore.get(nm, {}) if Rules.class_lore is Dictionary else {}))
+		_want.append(key)
+	var bgs: Dictionary = Rules.tables.get("backgrounds", {})
+	for nm in bgs:
+		var key := Art.bg_key(str(nm))
+		Art.ensure(key, Art.bg_prompt(str(nm), bgs[nm]))
+		_want.append(key)
+
 	# The EAS rooms — the illustrated environments every screen stands in.
 	for env in Art.ENV_PROMPTS:
 		Art.ensure_environment(str(env))
