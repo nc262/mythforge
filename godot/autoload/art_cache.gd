@@ -592,6 +592,44 @@ func env_resolved(base_key: String) -> String:
 	return base_key if fam == "fantasy" else "%s-%s-v%d" % [base_key, fam, ENV_SKIN_REV]
 
 
+## The same idea as `env_resolved`, for every OTHER key whose PROMPT carries
+## `world_flavor()` but whose KEY did not carry the world. Those keys collided:
+## `race-tiefling.png` painted in Embervale was served straight back in
+## Neonspire, because `has_art` hit and nothing in the key said which world had
+## commissioned it. Fantasy stays unsuffixed — its files are already on disk and
+## it was here first.
+##
+## Build keys through these, never by hand. The old inline `"item-" + nm` was
+## written out in five places and that is precisely how three of them drifted.
+func fam_key(base: String) -> String:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	return base if fam == "fantasy" else "%s-%s" % [base, fam]
+
+
+## The inverse, for the code that parses a key back into a slug.
+func fam_base(key: String) -> String:
+	for f in WorldSkin.FAMILIES:
+		if str(f) != "fantasy" and key.ends_with("-" + str(f)):
+			return key.trim_suffix("-" + str(f))
+	return key
+
+
+func item_key(nm: String) -> String:
+	return fam_key("item-" + nm.to_lower().replace(" ", "-"))
+
+
+func race_key(nm: String) -> String:
+	return fam_key("race-" + nm.to_lower().replace(" ", "-").validate_filename())
+
+
+func beast_key(slug: String) -> String:
+	return fam_key("beast-" + slug)
+
+
+func map_key(place: String) -> String:
+	return fam_key("map-" + place.to_lower().replace(" ", "-").validate_filename())
+
+
 func env_prompt(base_key: String) -> String:
 	var fam := WorldSkin.family_for_id(GameState.world_id())
 	if fam == "fantasy" or not ENV_ROLE.has(base_key):
@@ -713,14 +751,14 @@ func ensure_item_icon(nm: String) -> void:
 	# cartouches from a prompt that forbade both.
 	var shape := Rules.shape_clause(nm)
 	var subject: String = shape if shape != "" else nm
-	ensure("item-" + nm.to_lower().replace(" ", "-"),
+	ensure(item_key(nm),
 		"%s, made of %s. a single %s, alone, floating centered against a flat empty black background. %s, game inventory icon, sharp silhouette, whole object in frame" % [
 			subject, subject_style("item"), nm, item_flavor()], "1024x1024")
 
 
 func item_tex(nm: String) -> Texture2D:
 	var baked := Compiler.named_icon(GameState.world_id(), nm)
-	return baked if baked != null else texture_for("item-" + nm.to_lower().replace(" ", "-"))
+	return baked if baked != null else texture_for(item_key(nm))
 
 
 ## The right icon for an inventory item: a compiled catalogue item carries its
@@ -995,7 +1033,7 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 		return round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))
 	var entry := Combat.bestiary_for(str(m.get("name", "")))
 	if not entry.is_empty():
-		var key := "beast-" + str(entry.get("slug", ""))
+		var key := beast_key(str(entry.get("slug", "")))
 		# R6 FUN-12/BLANK-29 — the world's beasts were painted at bake time; a
 		# fight was commissioning them again because it only checked the cache.
 		var baked: Texture2D = Compiler.roster_art(GameState.world_id(), key)
@@ -1029,7 +1067,7 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 
 
 func ensure_battle_map(place: String) -> String:
-	var key := "map-" + place.to_lower().replace(" ", "-").validate_filename()
+	var key := map_key(place)
 	ensure(key, "top-down tabletop RPG battle map of %s, %s style, overhead view, painted terrain, no grid lines, no tokens, no text, muted lighting" % [place, world_flavor()], "1024x1024", true)
 	return key
 

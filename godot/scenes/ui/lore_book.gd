@@ -186,7 +186,7 @@ func _places() -> void:
 		if not (l is Dictionary):
 			continue
 		var nm := str(l.get("name", "?"))
-		var key := "map-" + nm.to_lower().replace(" ", "-").validate_filename()
+		var key := Art.map_key(nm)
 		var body := str(l.get("desc", l.get("lore", l.get("blurb", ""))))
 		# The kind rides as a world-skinned chip (drawn icon + skinned label) —
 		# never the raw lowercase engine taxonomy.
@@ -242,7 +242,7 @@ func _bestiary() -> void:
 			continue
 		var nm := str(b.get("name", "?"))
 		var slug := str(b.get("slug", nm.to_lower().replace(" ", "-")))
-		_host.add_child(_entry(nm, str(b.get("desc", b.get("art", ""))), "beast-" + slug,
+		_host.add_child(_entry(nm, str(b.get("desc", b.get("art", ""))), Art.beast_key(slug),
 			str(b.get("art", "a %s" % nm)) + ", painted creature portrait, dark background, no text"))
 
 

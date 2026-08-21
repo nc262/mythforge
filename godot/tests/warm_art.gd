@@ -17,12 +17,12 @@ func _ready() -> void:
 	for foe in ["Goblin", "Goblin Boss"]:
 		var entry := Combat.bestiary_for(foe)
 		if not entry.is_empty():
-			var key := "beast-" + str(entry.get("slug", ""))
+			var key := Art.beast_key(str(entry.get("slug", "")))
 			Art.ensure(key, str(entry.get("art", "")) + ", painted creature portrait, dark background, no text")
 			_want.append(key)
 	for nm in ["Silvered Dagger", "Traveler's Leathers", "Healing Potion"]:
 		Art.ensure_item_icon(nm)
-		_want.append("item-" + nm.to_lower().replace(" ", "-"))
+		_want.append(Art.item_key(nm))
 	_want.append(Art.ensure_battle_map("Embervale village square"))
 	_want.append(Art.ensure_world_chart("embervale", "Embervale"))
 	# The EAS rooms — the illustrated environments every screen stands in.

@@ -494,6 +494,25 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(item_f != "")
 	assert(not item_f.contains(","))          # medium only, no trailing weather
 	assert(flav_full.begins_with(item_f))     # and it is genuinely the head of it
+	# …and every key whose PROMPT carries that flavour must carry the world in
+	# the KEY too, or one world is served another's paintings. `race-tiefling.png`
+	# sat in the cache with no family on it while `_race_prompt` fed it
+	# `world_flavor()` — so a Tiefling painted in Embervale was handed straight
+	# back in Neonspire. Fantasy stays unsuffixed on purpose; every other family
+	# must differ from it AND from each other.
+	var fam_keys := {}
+	for probe in [["embervale", "fantasy"], ["neonspire", "cyber"], ["brasshaven", "steam"]]:
+		GameState.character = {"id": "dm-key-probe", "world_id": str(probe[0])}
+		for k in [Art.race_key("Tiefling"), Art.item_key("Healing Potion"),
+				Art.beast_key("ogre"), Art.map_key("The Ember & Oak")]:
+			assert(not fam_keys.has(k),
+				"art key '%s' is reused across worlds — its prompt is world-flavored, so the first world to paint it wins" % k)
+			fam_keys[k] = true
+	GameState.character = {"id": "dm-key-probe", "world_id": "embervale"}
+	assert(Art.race_key("Tiefling") == "race-tiefling")        # fantasy: unsuffixed, as shipped
+	assert(Art.fam_base(Art.beast_key("ogre")) == "beast-ogre")
+	GameState.character = {"id": "dm-key-probe", "world_id": "neonspire"}
+	assert(Art.fam_base(Art.beast_key("ogre")) == "beast-ogre")  # the slug survives the round trip
 	GameState.character = keep_w
 
 	# Phase 3: combat helpers

@@ -1713,7 +1713,7 @@ func roster_art(world_id: String, key: String) -> Texture2D:
 	var slug := ""
 	if key.begins_with("beast-"):
 		sub = "creatures"
-		slug = key.trim_prefix("beast-")
+		slug = Art.fam_base(key.trim_prefix("beast-"))
 	elif key.begins_with("creature-"):
 		sub = "creatures"
 		slug = key.trim_prefix("creature-")

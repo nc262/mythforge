@@ -238,7 +238,7 @@ func _stage_heritage() -> void:
 		var traits: Array = h.get("traits", [])
 		ptraits.text = "[color=%s]%d ft speed[/color]\n%s" % [Ui.c("gold_soft").to_html(false),
 			int(h.get("speed", 30)), "\n".join(traits.map(func(t): return "• " + str(t).replace("[", "[lb]")))]
-		var key := "race-" + str(nm).to_lower().replace(" ", "-").validate_filename()
+		var key := Art.race_key(str(nm))
 		cur_key["k"] = key
 		var tex := Art.texture_for(key)
 		if tex != null:
