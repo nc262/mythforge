@@ -54,10 +54,25 @@ had a confident explanation attached first. See
   let one call both invent and serialise — think in prose, then serialise. This
   cost three wrong diagnoses before it was measured; see
   [godot/docs/LocalLLM-Tuning.md](godot/docs/LocalLLM-Tuning.md).
-- **The narrator must be the only thing on the card when it loads.** llama.cpp
-  fixes its GPU/CPU split once, at load time, and keeps it for the life of the
-  process. A resident image stack cost 19.3 s per turn; with nothing else on the
-  card it is **3.7 s**.
+- **Two different rules, and the docs carried only the first for a year.**
+  (1) llama.cpp fixes its GPU/CPU split once, at load time. The narrator needs
+  **~5.9 GB**; leave it less and layers land on the CPU for the life of the
+  process — that is the 19.3 s per turn against 3.7 s, and the tenant that caused
+  it was a CUDA-shimmed ComfyUI-Zluda holding 7.4 GB, not sd-server.
+  (2) **Do not paint while the narrator talks.** Measured three ways below; the
+  load-order rule turns out not to bind for sd-server at all, and concurrency
+  does.
+
+  | | turn 1 | 2 | 3 | … | 6 |
+  |---|---|---|---|---|---|
+  | narrator alone, clean card | 3.0 s | 3.5 s | 3.5 s | | |
+  | engine already holding 6.6 GB at narrator load | 3.3 s | 3.6 s | 3.5 s | | |
+  | engine generating 1024×1024 during the turns | 3.9 s | 4.4 s | 4.6 s | … | **6.1 s** |
+
+  Peak VRAM in that last run was 15310 MB of 16384 — it never ran out, so nothing
+  was evicted. They were contending for shaders, not memory. `Art.hold` in
+  [godot/scripts/game.gd](godot/scripts/game.gd) already holds the art queue for
+  the whole stream; that table is what the flag is worth.
 
   **What costs the card is the FIRST IMAGE, not the engine.** Two wrong answers
   were written here before anyone sampled the GPU counter, so here is the counter

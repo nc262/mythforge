@@ -32,13 +32,22 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 
 ## Turns are slow (tens of seconds)
 
-- **Cause, almost always:** the model is not fully resident on the GPU. A
-  llama.cpp GPU/CPU split is decided **once, at load time**, so anything holding
-  VRAM when the model loads costs you for the life of the process.
-- **Fix:** make sure nothing else is on the card when the game starts.
-  stable-diffusion.cpp idles at ~118 MB and loads per request, so it is not the
-  culprit; a resident image stack (7+ GB) absolutely is. Measured on this box:
-  19.3 s per turn with one resident, 3.7 s without.
+- **Cause 1 — a bad split, permanent.** A llama.cpp GPU/CPU split is decided
+  **once, at load time**. The narrator needs ~5.9 GB; if less is free when it
+  loads, layers land on the CPU and stay there for the life of the process.
+  Measured: 19.3 s per turn with a CUDA-shimmed ComfyUI-Zluda holding ~7.4 GB at
+  load, against 3.7 s with the card clear.
+- **Cause 2 — a picture is being painted right now.** This one is temporary,
+  and it is the one you will actually hit. Two processes on the same shaders:
+  turns went 3.5 s → 6.1 s while sd-server generated 1024×1024 images, with peak
+  VRAM at 15310 MB of 16384 — nothing was evicted, they were simply competing.
+- **Fix:** for cause 1, check what is on the card *before the game starts* —
+  sd-server is NOT the usual culprit (127 MB until its first image, 6.6 GB after,
+  which still leaves the narrator enough on a 16 GB card); a Python image stack
+  is. For cause 2, confirm `Art.hold` is still being set around the stream in
+  `game.gd` — that flag is the fix and it already exists.
+- **NOT the cause:** sd-server merely being up when the narrator loads. Measured
+  at 3.3/3.6/3.5 s against 3.0/3.5/3.5 s on a clear card — no penalty.
 - See [godot/docs/Performance.md](../godot/docs/Performance.md).
 
 ## A structured call takes 90+ seconds and then fails

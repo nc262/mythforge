@@ -316,8 +316,17 @@ func _cap_panel_content(dlg: AcceptDialog, content: Control) -> void:
 	# Deferred: the content's real minimum height only exists once its children
 	# are in the tree, and callers dress the panel while still building it.
 	apply.call_deferred()
-	if not dlg.get_tree().root.size_changed.is_connected(apply):
-		dlg.get_tree().root.size_changed.connect(apply)
+	# PL-5. `root` OUTLIVES every dialog, and Godot only tears a connection down
+	# when the EMITTER dies — so this one survived the panel that owned it, and
+	# the next window resize called `apply` with dlg/content already freed:
+	# "Lambda capture at index 0 was freed." Two captures, two errors, once per
+	# dialog ever dressed — and `is_connected` never caught it, because each call
+	# builds a FRESH lambda and no two are ever the same Callable. The content
+	# signal below needs none of this care: content is its own emitter and takes
+	# its connections with it when it goes.
+	var root := dlg.get_tree().root
+	root.size_changed.connect(apply)
+	dlg.tree_exited.connect(root.disconnect.bind("size_changed", apply), CONNECT_ONE_SHOT)
 	# …and again whenever the content changes height, which is the case the
 	# original build-time-only pass could not see. Deferred, because the signal
 	# fires mid-layout when a freshly-revealed autowrapped label still measures at
