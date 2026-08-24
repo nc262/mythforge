@@ -182,9 +182,7 @@ func _open_the_room() -> void:
 	# game on — rendered ~60% empty void. Six worlds, ~1800 painted images, and
 	# the reason none of them showed up here was the wrong lookup. Ask the
 	# compiler first; keep the cache as the fallback for uncompiled worlds.
-	var world_tex: Texture2D = Compiler.key_art(GameState.world_id())
-	if world_tex == null:
-		world_tex = Art.texture_for(str(GameState.character.get("world_id", "")))
+	var world_tex: Texture2D = Art.world_tex(GameState.world_id())
 	if world_tex != null:
 		_scene_art.texture = world_tex
 		# Empty-state: before any words exist the scene IS the screen — bright.

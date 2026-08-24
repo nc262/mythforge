@@ -183,7 +183,7 @@ func _stage_campaign_world() -> void:
 		var world: Dictionary = w
 		var wid := str(world.get("id", ""))
 		var stories := _stories_for(world)
-		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid),
+		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid),
 			"title": str(world.get("name", "an unnamed world")).left(26),
 			"body": str(world.get("tagline", "")).left(60),
 			"foot": "%d tale%s + free roam" % [stories.size(), "" if stories.size() == 1 else "s"]})
@@ -222,7 +222,7 @@ func _stage_campaign_tale() -> void:
 			blurb = str(story.get("hook", story.get("premise", story.get("blurb", "")))).strip_edges()
 			if blurb == "":
 				blurb = "a tale of %s" % str(_camp_world.get("name", "this world"))
-		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
+		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid), "title": title.left(26),
 			"body": blurb.left(60),
 			"foot": str(_camp_world.get("name", ""))})
 		card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))

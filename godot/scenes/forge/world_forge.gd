@@ -468,7 +468,7 @@ func _stage_atlas() -> void:
 	sky.custom_minimum_size = Vector2(680, 190)
 	sky.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	sky.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	sky.texture = Art.texture_for(str(w.get("id", "")))
+	sky.texture = Art.world_tex(str(w.get("id", "")))
 	Art.art_ready.connect(func(k):
 		if str(k) == str(w.get("id", "")) and is_instance_valid(sky):
 			sky.texture = Art.texture_for(str(k)))

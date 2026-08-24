@@ -1039,6 +1039,35 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(not svc_src.contains("call_deferred(\"ensure_engine\")"),
 		"boot: Services starts the engine at boot again — that is before the narrator loads")
 
+	# PY-15. EVERY shipped world must be able to produce an establishing prompt,
+	# and it must fit inside SDXL's first 77-token chunk — past that, text still
+	# reaches cross-attention but never touches the POOLED embedding that carries
+	# global style, so a long prompt gives each world a different amount of
+	# style-bearing text. Three of six worlds had no prompt at all and `request()`
+	# returned silently for them. ~1.3 CLIP tokens per English word.
+	for w in Rules.builtin_worlds():
+		var pw := Art.world_prompt(str(w.get("id", "")))
+		assert(pw != "",
+			"world '%s' can produce no establishing prompt — its card will be a bare glyph for ever" % str(w.get("id", "")))
+		var approx := int(float(pw.split(" ").size()) * 1.3) + pw.count(",")
+		assert(approx <= 75,
+			"world '%s' prompt is ~%d tokens — past chunk 0, where SDXL's style vector stops looking" % [str(w.get("id", "")), approx])
+
+	# PY-15, structural. A world's key art lives in TWO places — the compiled
+	# package (`art/key.png`) and the art cache — and the fallback between them
+	# was spelled out by hand at five call sites in three different spellings.
+	# Two were wrong, in opposite directions: world_forge asked the cache only
+	# (so a compiled world's baked art never showed) and adventure_forge asked
+	# the package only (so an uncompiled world's painted art never showed). That
+	# is the fifth appearance of the RCA art_cache.gd already carries for
+	# `roster_art`. `Art.world_tex` is the one spelling now.
+	for f in ["res://scripts/main_menu.gd", "res://scripts/game.gd",
+			"res://scenes/forge/world_forge.gd", "res://scenes/forge/adventure_forge.gd"]:
+		var wsrc := FileAccess.get_file_as_string(f)
+		assert(wsrc != "", "self_check: %s could not be read" % f)
+		assert(not wsrc.contains("Compiler.key_art("),
+			"%s spells the key-art fallback by hand — use Art.world_tex(), which asks the package before the cache" % f)
+
 	Mode.state = "Boot"  # leave the machine as the game boots it
 
 	# Language guard (Issue 4): English passes, wholesale drift is caught,

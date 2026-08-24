@@ -315,8 +315,12 @@ func request(key: String, prompt := "", opts := {}) -> void:
 			cb.call(key)     # already painted — answer immediately, still routed
 		return
 	if prompt == "":
-		prompt = WORLD_PROMPTS.get(key, "")
+		prompt = world_prompt(key)   # the table first, then the world's own data
 	if prompt == "":
+		# SILENCE IS WHAT HID PY-15. This returned with no signal at all, so
+		# `Art.ensure("saltmarsh")` looked like it worked and painted nothing for
+		# as long as the world has existed. Say so.
+		push_warning("ArtCache: nothing to paint for '%s' — no prompt given and none could be derived" % key)
 		return
 	if cb is Callable and cb.is_valid():
 		var list: Array = _callbacks.get(key, [])
@@ -788,6 +792,72 @@ func ensure_item_icon(nm: String) -> void:
 	ensure(item_key(nm),
 		"%s, made of %s. a single %s, alone, floating centered against a flat empty black background. %s, game inventory icon, sharp silhouette, whole object in frame" % [
 			subject, subject_style("item"), nm, item_flavor()], "1024x1024")
+
+
+## A world's key art: THE PACKAGE FIRST, then the cache. PY-15.
+##
+## The fifth appearance of the root cause this file already carries an RCA for
+## (see `roster_art` below). Both world-card builders in `main_menu.gd` asked
+## `Art.texture_for(wid)` — the art CACHE — and nothing else, so a COMPILED
+## world that ships a painted `art/key.png` in its package rendered as the
+## generic diamond regardless. Ask the package first, exactly as `item_tex`
+## already does for icons, and the baked art is found.
+## A world's establishing prompt, DERIVED when no one hand-wrote it. PY-15.
+##
+## WORLD_PROMPTS held three entries for six shipped worlds, and `request()`
+## answered the other three by returning — silently — so saltmarsh, fimbulreach
+## and brasshaven could never have key art at all. A table cannot be the answer
+## anyway: PY-15's own example is Elyrien, a world the PLAYER forged, which no
+## table will ever contain.
+##
+## WHY IT STOPS AT THE TAGLINE, measured rather than chosen. sd-server does not
+## truncate a long prompt — it splits it into 77-token chunks and concatenates
+## the encodings (`tokenizer.cpp` / `conditioner.hpp` at our pinned commit). But
+## SDXL's POOLED embedding, the global vector that carries overall style, is
+## built from CHUNK 0 ONLY. Text past ~75 tokens still reaches cross-attention
+## and never touches the style vector. Counted on the six shipped worlds:
+##
+##   anchor + kind + tagline    29-38 tokens   inside chunk 0, all six
+##   …with lore appended        88-106 tokens  overflows, by a DIFFERENT amount
+##                                             per world
+##
+## So appending lore would give six worlds six different amounts of style-bearing
+## text, which is precisely the cross-world drift this is meant to prevent. The
+## anchor leads for the same reason. Nothing here needs chunk-aware machinery —
+## it needs a prompt that fits in one chunk.
+func world_prompt(wid: String) -> String:
+	if wid == "" or WORLD_PROMPTS.has(wid):
+		return str(WORLD_PROMPTS.get(wid, ""))
+	var w := _world_by_id(wid)
+	if w.is_empty():
+		return ""
+	var fam := WorldSkin.family_for_id(wid)
+	var anchor := str(WorldSkin.FAMILIES.get(fam, {}).get("art", ""))
+	var kind := str(w.get("kind", "")).to_lower().strip_edges()
+	var tag := str(w.get("tagline", "")).strip_edges().trim_suffix(".")
+	if anchor == "" and kind == "":
+		return ""
+	var bits: Array = []
+	if anchor != "":
+		bits.append(anchor)
+	bits.append("cinematic establishing shot of %s" % (kind if kind != "" else "a strange land"))
+	if tag != "":
+		bits.append(tag)
+	return ", ".join(bits)
+
+
+func _world_by_id(wid: String) -> Dictionary:
+	for w in Rules.builtin_worlds() + GameState.global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == wid:
+			return w
+	return {}
+
+
+func world_tex(wid: String) -> Texture2D:
+	if wid == "":
+		return null
+	var baked: Texture2D = Compiler.key_art(wid)
+	return baked if baked != null else texture_for(wid)
 
 
 func item_tex(nm: String) -> Texture2D:

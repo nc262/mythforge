@@ -261,9 +261,7 @@ func _paint_continue() -> void:
 			"world_id": last.get("world_id", "")})
 		# R6 root cause #1 again: prefer the world's BAKED establishing shot over
 		# whatever the art cache happens to hold under the bare world id.
-		var tex: Texture2D = Compiler.key_art(str(last.get("world_id", "")))
-		if tex == null:
-			tex = Art.texture_for(str(last.get("world_id", "")))
+		var tex: Texture2D = Art.world_tex(str(last.get("world_id", "")))
 		if tex != null:
 			$KeyArt.texture = tex
 
@@ -422,7 +420,7 @@ func _world_card(w: Dictionary) -> Button:
 	var pal: Dictionary = Ui.PALETTES.get(str(WorldSkin.skin_for_id(wid).get("palette", "arcane")), Ui.PALETTES["arcane"])
 	var btn := _big_card("%s\n" % str(w.get("name", "?")), "", pal["gold"])
 	btn.clip_contents = true
-	var tex := Art.texture_for(wid)
+	var tex := Art.world_tex(wid)
 	if tex != null:
 		var art := TextureRect.new()
 		art.texture = tex
@@ -988,7 +986,7 @@ func _chronicle_card(t: Dictionary, last_id: String) -> Control:
 	panel.custom_minimum_size = Vector2(440, 172)
 	panel.add_theme_stylebox_override("panel", Ui.sb_card("legendary" if is_last else "common"))
 	panel.clip_contents = true
-	var tex := Art.texture_for(wid)
+	var tex := Art.world_tex(wid)
 	if tex != null:  # the world's key art is the cover
 		var art := TextureRect.new()
 		art.texture = tex
