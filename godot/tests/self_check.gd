@@ -1092,6 +1092,22 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-27. THE WORLD IS CHOSEN BEFORE THE HERO. Everything the character forge
+	# commits — kit, body, portrait, heritage art — is world-flavored, so a hero
+	# forged before the world is known is dressed for the wrong one. That is the
+	# upstream half of PY-21, PY-22 and PY-23. The menu already announced
+	# "world > campaign > hero"; only this rail disagreed.
+	var afsrc := FileAccess.get_file_as_string("res://scenes/forge/adventure_forge.gd")
+	assert(afsrc != "", "self_check: adventure_forge.gd could not be read")
+	var af_stages := afsrc.split("const STAGES := [")
+	assert(af_stages.size() > 1, "PY-27: adventure_forge has no STAGES to check")
+	var af_first := str(af_stages[1]).split("]")[0]
+	assert(af_first.find("The Campaign") < af_first.find("The Hero"),
+		"PY-27: the Adventure Forge asks for the hero before the world — the kit is then committed for a world nobody has chosen (Invariants.md)")
+	# …and the child forge must be TOLD which world, not left to read a stale one.
+	assert(afsrc.contains("GameState.character = {\"id\": \"forge-draft\", \"world_id\""),
+		"PY-27: the hero forge is spawned without publishing the chosen world, so world_flavor() reads whatever was last played")
+
 	# PY-28, structural. The npc-/foe- prefixes were spelled by hand at FOURTEEN
 	# sites, which is how they stayed unscoped while race-/item-/beast-/map- were
 	# fixed. A cast portrait's prompt is world-flavored (lore_book appends
