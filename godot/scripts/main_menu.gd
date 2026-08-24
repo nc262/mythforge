@@ -8,6 +8,12 @@ const GAME_SCENE := "res://scenes/game.tscn"
 
 var _busy := false
 var _cworlds: Array = []
+## PL-5. `Art` is an autoload and never dies, and Godot drops a connection only
+## when the EMITTER dies or the Callable's own OBJECT does. A lambda that reaches
+## no member of `self` belongs to neither, so it outlived this scene and kept
+## firing at freed nodes — "Lambda capture at index N was freed", one pair per
+## screen ever opened. A method Callable is owned by this node and goes with it.
+var _banner: TextureRect = null
 var _templates: Array = []
 
 @onready var _title: CenterContainer = $Title
@@ -61,10 +67,9 @@ func _ready() -> void:
 	banner.visible = banner.texture != null
 	$Title/Box.add_child(banner)
 	$Title/Box.move_child(banner, 0)
-	Art.art_ready.connect(func(k):
-		if str(k) == "prop-banner" and is_instance_valid(banner):
-			banner.texture = Art.texture_for("prop-banner")
-			banner.visible = true)
+	_banner = banner
+	if not Art.art_ready.is_connected(_on_banner_art):
+		Art.art_ready.connect(_on_banner_art)
 	_boot_cinematic()
 	_refresh()
 
@@ -412,6 +417,13 @@ func _import_world() -> void:
 		Art.ensure(str(world["id"]), str(world.get("backdrop", "")))
 		_show_detail(world))
 	dlg.canceled.connect(func(): dlg.queue_free())
+
+
+func _on_banner_art(k: String) -> void:
+	if str(k) != "prop-banner" or not is_instance_valid(_banner):
+		return
+	_banner.texture = Art.texture_for("prop-banner")
+	_banner.visible = true
 
 
 func _world_card(w: Dictionary) -> Button:

@@ -219,9 +219,11 @@ func _open_companion_table() -> void:
 	face.offset_bottom = 150
 	add_child(face)
 	Ui.breathe(face)
-	Art.art_ready.connect(func(k):
-		if str(k) == slug and is_instance_valid(face):
-			face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1)))
+	_comp_face = face
+	_comp_slug = slug
+	_comp_initial = comp_name.left(1)
+	if not Art.art_ready.is_connected(_on_comp_art):
+		Art.art_ready.connect(_on_comp_art)
 	# Clear-chat: sweep the table and start the talk fresh.
 	var clear_b := Button.new()
 	clear_b.theme_type_variation = "GhostButton"
@@ -765,10 +767,11 @@ func _seat_the_hero() -> void:
 	# the ring got no texture and no letter, and drew as an empty circle. Keep the
 	# initial: it is what MythPortrait falls back to, and it is never wrong.
 	var initial := str(GameState.sheet().get("name", "?")).left(1).to_upper()
-	Art.art_ready.connect(func(k):
-		if str(k) == key and is_instance_valid(face):
-			face.set_portrait(Art.round_tex(key, 38), initial)
-			Ui.pulse(face))
+	_ring_face = face
+	_ring_key = key
+	_ring_initial = initial
+	if not Art.art_ready.is_connected(_on_ring_art):
+		Art.art_ready.connect(_on_ring_art)
 
 
 ## ── Suggested actions (R6 PLAY-04 / STR-02 / STR-03, all Critical) ──────────
@@ -943,6 +946,30 @@ func _send(raw: String) -> void:
 
 
 var _last_framed := ""
+## PL-5. `Art` is an autoload that never dies, and Godot drops a connection only
+## when the EMITTER dies or the Callable's own OBJECT does. A lambda reaching no
+## member of `self` belongs to neither, so it outlived this screen and kept
+## firing at freed portraits. These members carry what those lambdas captured,
+## so the connections can be METHOD Callables this node owns.
+var _comp_face = null
+var _comp_slug := ""
+var _comp_initial := "?"
+var _ring_face = null
+var _ring_key := ""
+var _ring_initial := "?"
+
+
+func _on_comp_art(k: String) -> void:
+	if str(k) != _comp_slug or not is_instance_valid(_comp_face):
+		return
+	_comp_face.set_portrait(Art.round_tex(_comp_slug, 132), _comp_initial)
+
+
+func _on_ring_art(k: String) -> void:
+	if str(k) != _ring_key or not is_instance_valid(_ring_face):
+		return
+	_ring_face.set_portrait(Art.round_tex(_ring_key, 38), _ring_initial)
+	Ui.pulse(_ring_face)
 
 
 func _stream(framed: String) -> void:

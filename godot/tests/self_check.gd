@@ -1122,6 +1122,33 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
 	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
 
+	# PY-13. Banking a hero must PIN THEIR FACE, and the hero the forge just
+	# painted is exactly the one it failed for. `hero_portrait_key` refuses the
+	# shared "heroprev" scratch key by design, and `bank_hero` asked IT for the
+	# copy source — so a menu-forged hero (portrait_key == "heroprev") yielded
+	# "", the copy never ran, and the roster card asked the same refusing
+	# function and got "" for ever. Real save: 2 of 4 heroes stranded that way.
+	var pin_keep := Art._manifest.duplicate(true)
+	Art._manifest_loaded = true
+	var pin_img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	pin_img.fill(Color.RED)
+	pin_img.save_png(Art.path_for("heroprev"))
+	var pin_hero := {"name": "Unit Pin", "id": null, "portrait_key": "heroprev"}
+	GameState.bank_hero(pin_hero)
+	var pinned: Array = GameState.banked_heroes().filter(func(h): return str(h.get("name", "")) == "Unit Pin")
+	assert(pinned.size() == 1, "PY-13: the banked hero was not written")
+	var pk := str(pinned[0].get("portrait_key", ""))
+	assert(pk != "heroprev",
+		"PY-13: a banked hero is still pinned to the shared scratch key — the next forging overwrites their face")
+	assert(Art.has_art(pk), "PY-13: the banked hero's portrait key names no file")
+	assert(GameState.hero_portrait_key(pinned[0]) != "",
+		"PY-13: the roster card will show a glyph for a hero who has a portrait")
+	GameState.unbank_hero("Unit Pin")
+	Art.forget(pk)
+	Art.forget("heroprev")
+	Art._manifest = pin_keep
+	print("  PY-13: banking pins the forge's scratch portrait to the hero's own key")
+
 	# A2 art manifest: an asset is noted, and NOTHING removes it behind the
 	# player's back. `_evict` used to live here.
 	Art._manifest_loaded = true  # skip the disk scan in this unit check

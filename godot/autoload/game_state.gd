@@ -110,7 +110,10 @@ func bank_hero(d: Dictionary) -> void:
 	# pin a copy to this hero's own id, or the roster shows a stranger's face
 	# (and blank cards, since the roster art key is "hero-<id>").
 	var h := d.duplicate(true)
-	if str(h.get("id", "")) == "":
+	# `null` is not `""`. A hero saved with an explicit null id read back as the
+	# string "<null>" here, sailed past this guard, and became the art key
+	# "hero-<null>". heroes.json on this machine has one (Quin).
+	if h.get("id") == null or str(h["id"]).strip_edges() == "":
 		h["id"] = str(h["name"]).validate_filename().to_lower()
 	var own := "hero-" + str(h["id"]).validate_filename()
 	# Prefer the hero's OWN pinned key, but only claim it if the copy really
@@ -118,7 +121,20 @@ func bank_hero(d: Dictionary) -> void:
 	# failure, which was honest, and then every reader ignored the field anyway
 	# (see hero_portrait_key). If the copy fails we keep the working key rather
 	# than a dangling one.
+	# THE ONE PLACE "heroprev" MUST BE HONOURED, and it was the one place asking
+	# a function that can never return it. `hero_portrait_key` refuses the shared
+	# scratch key on purpose — a hero pinned to it wears the NEXT forging's face
+	# — but banking is precisely the act of copying AWAY from it, so the source
+	# lookup cannot be the reader lookup. A hero forged from the menu carries
+	# portrait_key == "heroprev" (character_forge, menu_mode), so `src` came back
+	# "", the copy never ran, portrait_key stayed "heroprev", and the roster card
+	# asked the same refusing function and got "" for ever: a generic glyph on a
+	# hero painted seconds earlier. Two of the four heroes in heroes.json here.
 	var src := hero_portrait_key(h)
+	if src == "":
+		var raw := str(h.get("portrait_key", ""))
+		if raw != "" and Art.has_art(raw):
+			src = raw
 	if src != "" and Art.copy(src, own):
 		h["portrait_key"] = own
 	elif src != "":
