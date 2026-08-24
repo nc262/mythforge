@@ -832,17 +832,37 @@ func world_prompt(wid: String) -> String:
 	if w.is_empty():
 		return ""
 	var fam := WorldSkin.family_for_id(wid)
-	var anchor := str(WorldSkin.FAMILIES.get(fam, {}).get("art", ""))
+	# THE MEDIUM ONLY — the rest of the anchor is prop vocabulary. These strings
+	# were authored to be APPENDED to prompts that already have a subject (an
+	# item, a face) via `world_flavor()`, so they carry material cues: norse ends
+	# "…cold fjord light, RUNE-CARVED WOOD". In a landscape prompt that is an
+	# object the model will happily paint instead of the place — fimbulreach came
+	# back twice as carved rune-posts on a plinth, once with the anchor leading
+	# and again with it trailing, so ORDER WAS NOT THE FIX. Taking the head
+	# clause is what `item_flavor()` already does for the same reason ("medium
+	# only, no trailing weather"); the world's kind and tagline carry the content.
+	var anchor := str(WorldSkin.FAMILIES.get(fam, {}).get("art", "")).split(",")[0].strip_edges()
 	var kind := str(w.get("kind", "")).to_lower().strip_edges()
 	var tag := str(w.get("tagline", "")).strip_edges().trim_suffix(".")
 	if anchor == "" and kind == "":
 		return ""
-	var bits: Array = []
-	if anchor != "":
-		bits.append(anchor)
-	bits.append("cinematic establishing shot of %s" % (kind if kind != "" else "a strange land"))
+	# SUBJECT FIRST, ANCHOR LAST — and both rules that decide this are real.
+	# Leading with the anchor (which the pooled-embedding note above argues for)
+	# put `norse`'s anchor, "…cold fjord light, RUNE-CARVED WOOD", at the front,
+	# and the model did what this file already documents at `ensure_item_icon`:
+	# "a diffusion model paints the first concrete noun it is given". Fimbulreach
+	# came back as a carved rune-signboard standing on ice — a product shot, with
+	# invented glyphs on it — instead of a fjord. saltmarsh and brasshaven were
+	# fine because their anchors are pure atmosphere with no object noun to grab.
+	# At ~35 tokens the anchor is inside chunk 0 wherever it sits, so it reaches
+	# the style vector either way; it only has to stop being the leading noun.
+	# This is also how the three hand-authored prompts read: subject, details,
+	# then "cinematic high fantasy establishing shot" at the end.
+	var bits: Array = ["wide cinematic establishing shot of %s" % (kind if kind != "" else "a strange land")]
 	if tag != "":
 		bits.append(tag)
+	if anchor != "":
+		bits.append(anchor)
 	return ", ".join(bits)
 
 

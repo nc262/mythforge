@@ -23,7 +23,13 @@ func _ready() -> void:
 	GameState.state = {"world": {"here": "Embervale village square"}}
 	print("warming '%s' (family %s)" % [wid, WorldSkin.family_for_id(wid)])
 	var sheet := {"name": "Wren Ashvale", "race": "Half-Elf", "cls": "Wizard"}
+	# …and WAIT for it. This asked for the world backdrop and never added it to
+	# `_want`, so with everything else already cached `_wait()` saw nothing
+	# outstanding and quit Godot within a second - the run reported success
+	# having painted nothing. That is how three missing backdrops survived a
+	# warm over all six worlds.
 	Art.ensure(wid)
+	_want.append(wid)
 	Art.ensure_hero_portrait("dm-godot-demo", sheet)
 	_want.append("hero-dm-godot-demo")
 	for foe in ["Goblin", "Goblin Boss"]:
