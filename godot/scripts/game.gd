@@ -2685,7 +2685,12 @@ func _auto_portrait() -> void:
 	for n in codex:
 		if n is Dictionary and str(n.get("name", "")) != "":
 			var key := "npc-" + str(n["name"]).to_lower().replace(" ", "-")
-			if not Art.has_art(key):
+			# PY-16. `has_art` is only true once the paint FINISHES, ~20 s later,
+			# so every codex update inside that window called this again and said
+			# "Painting Cael Mercer…" a second time. `request` refused the
+			# duplicate work correctly — it was only the narration that doubled.
+			# `Art.status` knows the difference between finished and in flight.
+			if Art.status(key) == "":
 				_conjure_portrait(str(n["name"]))
 				return
 

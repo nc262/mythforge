@@ -58,6 +58,7 @@ var _race_showing := ""
 var _prev_port: TextureRect = null
 var _quench_portrait: MythPortrait = null
 var _quench_key := ""
+var _restrike: Button = null
 var _story_edit: TextEdit = null   # the current stage's optional free-text story
 
 
@@ -309,11 +310,27 @@ func _on_prev_art(k: String) -> void:
 	Ui.pulse(_prev_port)
 
 
+func _on_quench_progress(k: String, state: String) -> void:
+	if str(k) != _quench_key or not is_instance_valid(_restrike):
+		return
+	var st := str(state)
+	if st != "failed" and st != "cancelled":
+		return
+	_status.text = "The forge could not paint that face — try again, or press on."
+	_restrike.disabled = false
+	_restrike.text = "Re-strike the portrait"
+
+
 func _on_quench_art(k: String) -> void:
 	if str(k) != _quench_key or not is_instance_valid(_quench_portrait):
 		return
 	_quench_portrait.set_portrait(Art.round_tex(_quench_key), "?")
 	Ui.pulse(_quench_portrait)
+	# …and give the re-strike back, or the button stays dead after the first use.
+	_status.text = ""
+	if is_instance_valid(_restrike):
+		_restrike.disabled = false
+		_restrike.text = "Re-strike the portrait"
 
 
 func _stage_class() -> void:
@@ -722,6 +739,11 @@ func _stage_quenching() -> void:
 	_quench_key = pkey
 	if not Art.art_ready.is_connected(_on_quench_art):
 		Art.art_ready.connect(_on_quench_art)
+	# A PAINT THAT FAILS NEVER EMITS art_ready. Without this the re-strike button
+	# would sit disabled reading "The forge paints…" for the rest of the session
+	# — a silent 25 s wait replaced by a permanent one, which is worse.
+	if not Art.art_progress.is_connected(_on_quench_progress):
+		Art.art_progress.connect(_on_quench_progress)
 	var pc := CenterContainer.new()
 	pc.add_child(portrait)
 	_stage_box.add_child(pc)
@@ -772,10 +794,19 @@ func _stage_quenching() -> void:
 	var restrike := Button.new()
 	restrike.theme_type_variation = "GhostButton"
 	restrike.text = "Re-strike the portrait"
+	# PY-17. This used to set the portrait to "…" and then say nothing at all for
+	# the ~25 s the paint takes — the exact failure myth_plate.gd's own comment
+	# names, "silence for 25 s is indistinguishable from failure" — while leaving
+	# the button live to be pressed again. The character screen's own re-strike
+	# already does this; the forge's did not.
+	_restrike = restrike
 	restrike.pressed.connect(func():
 		Art.forget(pkey)
 		portrait.set_portrait(null, "…")
 		draft["name"] = name_in.text.strip_edges()
+		restrike.disabled = true
+		restrike.text = "The forge paints…"
+		_status.text = "Painting %s…" % (name_in.text.strip_edges() if name_in.text.strip_edges() != "" else "your hero")
 		Art.ensure(pkey, _portrait_prompt(name_in.text.strip_edges())))
 	var rsc := CenterContainer.new()
 	rsc.add_child(restrike)

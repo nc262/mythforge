@@ -1122,6 +1122,30 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
 	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
 
+	# PY-16 / PY-17 both turn on ONE primitive: the difference between "not
+	# painted" and "being painted". `Art.status` is the only thing that knows it.
+	Art._generating["unit-inflight"] = true
+	assert(Art.status("unit-inflight") == "queued",
+		"art: a commission in flight must not look the same as one never asked for")
+	assert(Art.status("unit-never") == "", "art: an unasked key is empty, not queued")
+	Art._generating.erase("unit-inflight")
+
+	# PY-16: the codex sweep narrated "Painting X…" once per UPDATE rather than
+	# once per commission, because it asked `has_art` — true only when the paint
+	# FINISHES, ~20 s later. The work was never duplicated; the line was.
+	var gsrc5 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(gsrc5.contains("if Art.status(key) == \"\":"),
+		"PY-16: _auto_portrait must skip a portrait already in flight, or it narrates the same one twice")
+
+	# PY-17: the forge's re-strike went silent for the ~25 s it paints, and left
+	# itself pressable. It must say so AND come back — including when the paint
+	# fails, which never emits art_ready at all.
+	var cfsrc := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
+	assert(cfsrc.contains("restrike.text = \"The forge paints…\""),
+		"PY-17: the re-strike must say it is working — 25 s of silence reads as failure")
+	assert(cfsrc.contains("func _on_quench_progress"),
+		"PY-17: a failed paint emits no art_ready, so the button would stay dead for ever without a progress handler")
+
 	# PY-13. Banking a hero must PIN THEIR FACE, and the hero the forge just
 	# painted is exactly the one it failed for. `hero_portrait_key` refuses the
 	# shared "heroprev" scratch key by design, and `bank_hero` asked IT for the
