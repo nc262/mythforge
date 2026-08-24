@@ -1737,7 +1737,7 @@ func _free_check(id: int) -> void:
 				_render_sheet()
 				_build_dice_menu()  # the crafted recipe may no longer be ready
 				_last_player_msg = note
-				_stream(Composer.envelope("[%s Narrate the making briefly.]" % note.replace("*", "")))
+				_stream(Composer.envelope("[%s Narrate the making briefly.%s]" % [note.replace("*", ""), GameState.here_pin()]))
 		return
 	# Raw dice tray: table candy, resolved and shown — the GM isn't bothered.
 	if id >= DICE_TRAY_BASE:
@@ -1781,7 +1781,11 @@ func _free_check(id: int) -> void:
 	await _animate_die(20, int(res.get("roll", res["total"])), label)
 	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
-	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.]" % [label, int(res["total"])]))
+	# PY-7's first symptom: a successful Insight roll INSIDE Mercer's clinic was
+	# answered by "You stand outside the dimly lit entrance of Vex's Den" — a new
+	# place, no transition, and the roll's own outcome never narrated. A roll does
+	# not move anybody.
+	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.%s]" % [label, int(res["total"]), GameState.here_pin()]))
 
 
 ## The dice tray's free expression — "2d6+3" resolved at the table, which the
@@ -1970,7 +1974,7 @@ func _on_combat_action(meta) -> void:
 	if m == "cend":
 		_end_combat()
 		_last_player_msg = "The fight ends."
-		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.]"))
+		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.%s]" % GameState.here_pin()))
 		return
 	if m == "cnext":
 		_run_round()
@@ -2627,8 +2631,17 @@ func _on_counter_left(deals: Array) -> void:
 		# credits lighter" - a figure no part of the engine ever produced, in a game
 		# whose whole contract is that the table owns every number. The player has
 		# already read the exact amount in the line above, which the engine wrote.
-		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail. Do NOT state amounts, prices or totals; the table has already told the player.]"
-			% Composer.without_amounts(summary.replace("*", ""))))
+		# PY-7 — AND SAY WHERE THEY ARE. Asking the GM to colour an exchange, with
+		# no location riding along, is an open invitation to invent a scene — and
+		# the GM took it: leaving the merchant
+		# put the player in a Night Market in The Sprawl, with a character from
+		# another location somehow present. `here_pin()` already exists and says
+		# exactly this — it was written for CN-1 (camped at a barrow-mound, woke
+		# in a mead-hall) and applied only to the REST paths. Its own comment has
+		# the reason it must ride here: "recency wins in a long context, so the
+		# pin has to travel WITH the instruction, not sit above it."
+		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail. Do NOT state amounts, prices or totals; the table has already told the player.%s]"
+			% [Composer.without_amounts(summary.replace("*", "")), GameState.here_pin()]))
 
 
 # ── The codex panel: the cast you've met and the threads you're pulling ─────

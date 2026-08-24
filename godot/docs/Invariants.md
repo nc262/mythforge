@@ -50,6 +50,7 @@ visibly a gap rather than invisibly a comment.
 | Card prose is cut with `Ui.trim()`, never `.left(N)` — at a word, with an ellipsis | `self_check` — *"truncates card prose with .left()"* | PY-11. "quiet adventu", "stolen blueprt", "answer them i" — the best writing in the game, amputated on four screens |
 | Every dialog is dressed with `Ui.dress_dialog()`, and that assigns `theme` — a Window does not inherit one | `self_check` — *"is a dialog that never gets dressed"*, *"dress_dialog does not give the dialog the theme"* | PY-12. Three of five dialogs were never dressed, and the dressed ones still had engine-grey innards |
 | A control that paints itself in `_draw()` calls `Ui.repaint_on_skin(self)` — a theme change does not invalidate it | `self_check` — *"paints itself but never repaints on a skin change"* | PY-14. 13 of 14 self-drawn controls never asked: themed widgets went magenta in Neon Spire while the toolbar, sliders and HP bar stayed gold |
+| A trailing GM instruction that does NOT move the player carries `GameState.here_pin()`; one that does must not | `self_check` — *"is a stay-put instruction with no location pin"* | PY-7. The GM answered a merchant exchange and an Insight roll by inventing a new place. The pin existed for rest paths only |
 | Models are matched by NAME, not position | `self_check` + `verify.ps1` | Picking the wrong one fails silently rather than loudly |
 
 ## Not yet enforced — these are gaps, not decisions

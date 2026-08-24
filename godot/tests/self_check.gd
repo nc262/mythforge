@@ -1092,6 +1092,40 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-7. AN INSTRUCTION THAT DOES NOT MOVE THE PLAYER MUST SAY SO. The location
+	# is already in the envelope, near the top — and a trailing "briefly color the
+	# exchange" or "narrate the outcome" is an open invitation to invent a scene.
+	# Recency wins in a long context. `GameState.here_pin()` was written for CN-1
+	# (camped at a barrow-mound, woke in a mead-hall) and applied ONLY to the rest
+	# paths, so the merchant counter and the roll result — PY-7's two symptoms —
+	# never carried it. Travel and resume must NOT be pinned: they move on purpose.
+	var g7 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	# WINDOWED, not line-by-line. The counter-left statement wraps, so `here_pin()`
+	# sits on the continuation line — the first version of this check demanded it
+	# on the SAME line and failed against correct code.
+	var stay := ["Briefly color the exchange", "Narrate the outcome — set a DC",
+		"Narrate the making briefly", "Narrate the aftermath of the battle"]
+	var moves := ["I travel to %s — but something finds me", "We resume from this saved chapter"]
+	for s in stay:
+		var pin_at := g7.find(s)
+		assert(pin_at >= 0, "PY-7: the stay-put instruction \"%s\" is gone — this check has gone blind" % s)
+		assert(g7.substr(pin_at, 340).contains("here_pin()"),
+			"PY-7: \"%s\" is a stay-put instruction with no location pin — the GM will invent a place (Invariants.md)" % s)
+	for m in moves:
+		var move_at := g7.find(m)
+		if move_at < 0:
+			continue
+		assert(not g7.substr(move_at, 340).contains("here_pin()"),
+			"PY-7: a TRAVEL instruction must not be pinned in place — the player is moving on purpose")
+	# …and the pin has to actually name somewhere.
+	var keep7 := GameState.state
+	GameState.state = {"world": {"here": "Mercer's clinic"}}
+	assert(GameState.here_pin().contains("Mercer's clinic"), "PY-7: the pin does not name where the player is")
+	assert(GameState.here_pin().contains("not travelled"), "PY-7: the pin does not forbid moving them")
+	GameState.state = {}
+	assert(GameState.here_pin().contains("do not relocate"), "PY-7: with no location the pin must still forbid a move")
+	GameState.state = keep7
+
 	# PY-14. A CONTROL THAT PAINTS ITSELF MUST ASK TO BE REPAINTED. Godot re-runs
 	# `_draw()` only on `queue_redraw()`, so a widget reading `Ui.c()` inside
 	# `_draw()` keeps whatever palette was live when it last painted. 13 of 14
