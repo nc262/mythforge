@@ -286,6 +286,12 @@ against the wrong ability, and a currency the envelope never told it about.
 | PY-19 | **Large dead vertical space.** The chat log is a band across the top with the middle ~40 % of the window empty; the Record leaves its left panel empty below the equipment list and its right column empty below the saving throws; the 3D body in the Appearance rune renders as a thumbnail in a large empty panel though seven sliders drive it | P4 | M |
 | PY-20 | **The titlebar maximize button did not respond** to a direct click, while double-clicking the titlebar worked. Ten minutes to confirm it is not a dead control | P4 | S |
 
+### The fifth leaking prefix, found while fixing PY-16
+
+| id | what | pri | size |
+|---|---|---|---|
+| PY-28 | **`npc-` keys are not world-scoped, and the prefix is hand-spelled in nine places.** `2b1aee9` fixed exactly this for `race-`, `item-`, `beast-` and `map-`: the PROMPT carries `world_flavor()` but the KEY did not carry the world, so the first world to paint a name owned it everywhere. `npc-` was missed. Its prompts are world-flavored too — `lore_book.gd:209` appends `Art.world_flavor()`, `game.gd:2703` picks a style word by world id — and the key is built by hand at nine sites (`art_cache` ×4, `campaign_forge`, `persona_forge`, `lore_book` ×3, `game.gd`), which is the same duplication that let five spellings of `"item-" + nm` drift apart. **Two things make it more than a repeat:** (1) `Compiler.roster_art(world_id, key)` parses the slug back out of the key, so it needs the `fam_base` treatment `beast-` got; (2) it carries a DESIGN question the others did not — two campaigns in different worlds with an NPC of the same name would currently share one face, and whether that is wrong is a call about whether a name is an identity. Route every site through an `Art.npc_key()` once that is decided | P3 | M |
+
 ### The skin stops at the surface — found by re-reading the session, then the code
 
 Three things looked wrong in the screenshots and all three were real. Chasing
