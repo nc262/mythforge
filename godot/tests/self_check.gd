@@ -1092,6 +1092,29 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-11. Card prose was cut with `.left(N)`, which severs mid-word and gives no
+	# sign it happened: "quiet adventu", "stolen blueprt", "answer them i", on four
+	# separate screens. Ui.trim cuts at a word and says so.
+	assert(Ui.trim("a short one", 60) == "a short one", "trim: text that fits is untouched")
+	var t11 := Ui.trim("A snug realm of hearth-fires, hedge-magic, and quiet adventure.", 60)
+	assert(t11.ends_with("…"), "PY-11: a trimmed line must SAY it was trimmed")
+	assert(not t11.contains("adventu…"), "PY-11: trimmed mid-word — the whole point is to cut at a space")
+	assert(t11.length() <= 61, "PY-11: trim overshot its budget")
+	# One very long word still has to be cut, or the line collapses to nothing.
+	assert(Ui.trim("Supercalifragilisticexpialidocious", 10).ends_with("…"))
+	assert(Ui.trim("Supercalifragilisticexpialidocious", 10).length() > 3, "PY-11: an early space must not eat the line")
+	# …and no card payload may go back to raw truncation. LINE-AWARE: `.left(1)`
+	# for a name's initial is fine and common, so the file-wide test this started
+	# as fired on innocent code. Only a line that builds a card FIELD counts.
+	var NEWLINE2 := char(10)
+	for cf in ["res://scenes/forge/adventure_forge.gd", "res://scenes/forge/character_forge.gd"]:
+		var csrc := FileAccess.get_file_as_string(cf)
+		assert(csrc != "", "self_check: %s could not be read" % cf)
+		for cline in csrc.split(NEWLINE2):
+			var is_payload := cline.contains("\"body\":") or cline.contains("\"title\":") or cline.contains("\"foot\":")
+			assert(not (is_payload and cline.contains(".left(")),
+				"%s truncates card prose with .left() — use Ui.trim(), which cuts at a word (Invariants.md)" % cf)
+
 	# PY-27. THE WORLD IS CHOSEN BEFORE THE HERO. Everything the character forge
 	# commits — kit, body, portrait, heritage art — is world-flavored, so a hero
 	# forged before the world is known is dressed for the wrong one. That is the

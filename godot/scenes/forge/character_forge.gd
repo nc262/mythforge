@@ -342,7 +342,7 @@ func _stage_class() -> void:
 	for nm in names:
 		var l: Dictionary = lore.get(nm, {}) if lore is Dictionary else {}
 		entries.append({"glyph": str(l.get("icon", "⚔")), "title": str(nm),
-			"body": str(l.get("blurb", "")).left(90),
+			"body": Ui.trim(str(l.get("blurb", "")), 90),
 			"foot": "d%d" % int(Rules.tables["class_presets"][nm].get("hitDie", 8)),
 			"art_key": Art.class_key(str(nm)), "art_prompt": Art.class_prompt(str(nm), l)})
 	_card_grid(entries, 4, str(draft["cls"]), func(e): draft["cls"] = str(e["title"]))
@@ -367,7 +367,7 @@ func _stage_background() -> void:
 	names.sort()
 	for nm in names:
 		var b: Dictionary = bgs[nm]
-		entries.append({"glyph": "🕯", "title": str(nm), "body": str(b.get("line", "")).left(90),
+		entries.append({"glyph": "🕯", "title": str(nm), "body": Ui.trim(str(b.get("line", "")), 90),
 			"foot": ", ".join(b.get("skills", [])),
 			"art_key": Art.bg_key(str(nm)), "art_prompt": Art.bg_prompt(str(nm), b)})
 	_card_grid(entries, 4, str(draft["bg"]), func(e): draft["bg"] = str(e["title"]))

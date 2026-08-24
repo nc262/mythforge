@@ -353,6 +353,24 @@ func _apply_when_built(dlg: AcceptDialog, content: Control, apply: Callable) -> 
 		apply.call()
 
 
+## PY-11 — CUT AT A WORD, AND SAY THAT YOU CUT. Six card payloads used `.left(N)`
+## on prose, which severs mid-word with no signal: "quiet adventu", "stolen
+## blueprt", "answer them i". The writing on those cards is among the best things
+## in the game and it was being amputated on four screens. A cut sentence reads as
+## a bug; an ellipsis reads as a summary.
+func trim(s: String, n: int) -> String:
+	var t := s.strip_edges()
+	if t.length() <= n:
+		return t
+	var cut := t.substr(0, n)
+	var sp := cut.rfind(" ")
+	# Honour a space only if it is not absurdly early — one very long word should
+	# still be cut rather than collapsing the whole line to nothing.
+	if sp > int(n / 2.0):
+		cut = cut.substr(0, sp)
+	return cut.rstrip(" ,;:.-") + "…"
+
+
 ## A full-bleed opaque backing for a plain-Control surface (the Lore Book), so
 ## it stops compositing over live gameplay. R6 BUG-05 / BLANK-09 / AES-24.
 func panel_backing(host: Control, opacity := 0.985) -> PanelContainer:

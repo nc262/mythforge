@@ -209,8 +209,8 @@ func _stage_campaign_world() -> void:
 		var wid := str(world.get("id", ""))
 		var stories := _stories_for(world)
 		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid),
-			"title": str(world.get("name", "an unnamed world")).left(26),
-			"body": str(world.get("tagline", "")).left(60),
+			"title": Ui.trim(str(world.get("name", "an unnamed world")), 26),
+			"body": Ui.trim(str(world.get("tagline", "")), 60),
 			"foot": "%d tale%s + free roam" % [stories.size(), "" if stories.size() == 1 else "s"]})
 		card.set_selected(str(draft["adv"].get("world_id", "")) == wid)
 		card.pressed.connect(func():
@@ -247,8 +247,8 @@ func _stage_campaign_tale() -> void:
 			blurb = str(story.get("hook", story.get("premise", story.get("blurb", "")))).strip_edges()
 			if blurb == "":
 				blurb = "a tale of %s" % str(_camp_world.get("name", "this world"))
-		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid), "title": title.left(26),
-			"body": blurb.left(60),
+		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid), "title": Ui.trim(title, 26),
+			"body": Ui.trim(blurb, 60),
 			"foot": str(_camp_world.get("name", ""))})
 		card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))
 		card.pressed.connect(func():
@@ -370,7 +370,10 @@ func _stage_difficulty() -> void:
 func _stage_house() -> void:
 	_title_label("House Rules")
 	var house := LineEdit.new()
-	house.placeholder_text = "In your words — e.g. no resurrection, critical fumbles hurt… (or leave the table's rules alone)"
+	# Short enough to READ. The full sentence was clipped by the field to
+	# "(or leave the table's r" — a placeholder that cuts itself off is worse
+	# than a shorter one (PY-11).
+	house.placeholder_text = "In your words — e.g. no resurrection, fumbles hurt…"
 	house.text = str(draft["house"])
 	house.custom_minimum_size = Vector2(560, 0)
 	var hc := CenterContainer.new()
