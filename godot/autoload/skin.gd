@@ -315,7 +315,17 @@ func _cap_panel_content(dlg: AcceptDialog, content: Control) -> void:
 		dlg.position = dlg.position.clamp(Vector2i.ZERO, Vector2i(maxi(0, room.x), maxi(0, room.y)))
 	# Deferred: the content's real minimum height only exists once its children
 	# are in the tree, and callers dress the panel while still building it.
-	apply.call_deferred()
+	# PL-5, FOUND AT LAST — and it was never a leaked connection. A deferred
+	# LAMBDA is bound to no object, so Godot cannot cancel it when the dialog
+	# dies; it flushes on the next idle and rebinds two dead captures, `dlg` and
+	# `content`, which is the index-0/index-1 PAIR the reports always came in.
+	# Close a panel in the frame it opens and you get one pair, every time.
+	#
+	# `apply`'s own is_instance_valid guard cannot help: the error is emitted when
+	# the Callable is INVOKED, before its body runs. So the guard has to sit at
+	# the CALL SITE, in a method that takes the nodes as ARGUMENTS — arguments are
+	# checkable, captures are not.
+	_apply_when_built(dlg, content, apply)
 	# PL-5. `root` OUTLIVES every dialog, and Godot only tears a connection down
 	# when the EMITTER dies — so this one survived the panel that owned it, and
 	# the next window resize called `apply` with dlg/content already freed:
@@ -334,6 +344,13 @@ func _cap_panel_content(dlg: AcceptDialog, content: Control) -> void:
 	# first place.
 	if not content.minimum_size_changed.is_connected(apply):
 		content.minimum_size_changed.connect(apply, CONNECT_DEFERRED)
+
+
+## One frame later, and only if the panel still exists. See the note at the call.
+func _apply_when_built(dlg: AcceptDialog, content: Control, apply: Callable) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(dlg) and is_instance_valid(content):
+		apply.call()
 
 
 ## A full-bleed opaque backing for a plain-Control surface (the Lore Book), so

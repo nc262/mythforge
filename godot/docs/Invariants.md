@@ -45,6 +45,7 @@ visibly a gap rather than invisibly a comment.
 | `--vae-tiling` on every path that LAUNCHES sd-server | `verify.ps1` — *"launches sd-server without --vae-tiling"* | 36.2 s of a 50.4 s image, for a pixel-identical result at the same seed |
 | Never paint while the narrator talks — `Art.hold` set around the stream and released on every exit | `self_check` — *"nothing holds the art queue while the narrator streams"* | 3.5 s to 6.1 s per turn. VRAM peaked at 15310/16384, so nothing was evicted: they contend for shaders |
 | Godot's RegEx is PCRE2 — a backslash-u escape does not exist there | `self_check` — *"uses a backslash-u escape in a RegEx"* | A pattern compiles clean and then silently matches nothing |
+| **Never `call_deferred()` a lambda that captures nodes.** Defer a METHOD and pass the nodes as arguments, so the call site can check them | `pl5_probe` in the gate — dresses five dialogs and frees each in the same frame | PL-5. Nine wrong diagnoses over a year. A deferred lambda is bound to no object, so Godot cannot cancel it when the node dies |
 | Models are matched by NAME, not position | `self_check` + `verify.ps1` | Picking the wrong one fails silently rather than loudly |
 
 ## Not yet enforced — these are gaps, not decisions
@@ -70,25 +71,41 @@ the check comes first.
 check. Moving a row up when you write its check is still a human step, and it is
 the step that failed within the hour.
 
-## PL-5 — what NOT to conclude
+## PL-5 — SOLVED 2026-08-24, and how
 
-The freed-lambda-capture bug is **open after four disproven theories**, and this row
-exists to stop a fifth being written the same way.
+Nine wrong diagnoses over a year, four more disproven in one day. It was never a
+leaked signal connection. It was **the only deferred lambda in the codebase**:
+`skin.gd:_cap_panel_content` ended with `apply.call_deferred()`, and `apply`
+captured `dlg` and `content` — the index-0/index-1 PAIR every report described.
+Free the dialog before the next idle and both captures are dead when Godot
+rebinds them.
 
-- `ui_playthrough` has produced **20+ clean runs on BOTH sides** of every theory.
-  **Green runs are not evidence here.** Only a mutation that REPRODUCES the error
-  counts, and none ever has.
-- `art_ready` barely fires in the harness — `_finish` returns before the emit when
-  `ok` is false, and offline `_paint` always returns empty. Any theory resting on
-  runs where that signal never fired is resting on nothing.
-- "The lambda reaches `self`, so it is bound and safe" is **NOT sufficient**. The
-  two call sites in the reports are `gdscript_lambda_callable.cpp:110` and `:242` —
-  the plain and SELF lambda `call()` implementations. A self-bound lambda still
-  validates its other captures.
-- Test the WHOLE hypothesis. One theory died because only one of its four
-  candidate sites was reverted, and the negative result was read as refuting all
-  four.
+**Why nine people looked straight at it and saw nothing.** `apply` opens with
+`if not is_instance_valid(dlg) or not is_instance_valid(content): return`. That
+guard reads as correct and is useless here: Godot validates captures when the
+Callable is INVOKED, before any body runs. A guard inside the lambda can never
+prevent this error. The fix had to move to the call site, into a method taking
+the nodes as ARGUMENTS — arguments are checkable, captures are not.
 
-The way in is an instrument, not a fifth theory: catch the leak FORMING —
-`NOTIFICATION_PREDELETE` on captured nodes, or dump `get_connections()` on every
-autoload signal at each scene transition.
+**What found it, after four theories that could not:** elimination by
+measurement, in this order.
+
+1. Count every autoload signal's connections at the start and end of a
+   playthrough. **None grew** — so the whole "an unowned lambda stays connected
+   and later fires" family is false, not merely unproven.
+2. Add the root `Window`, which outlives every scene and is not an autoload.
+   **Still none.**
+3. Therefore the lambda is invoked by something that is NOT a connection.
+   `grep` for deferred lambdas returned exactly one line.
+4. Build the scenario on purpose: dress five dialogs, free each in the frame it
+   was dressed. **10 errors, 10/10 runs, indices alternating 0,1** — the first
+   deterministic reproduction in the bug's life. Zero after the fix.
+
+**The lesson worth more than the fix.** Every earlier attempt, mine included,
+proposed a mechanism and then looked for agreement. Twenty-plus clean runs were
+read as evidence on both sides of every theory. What worked was ruling mechanisms
+OUT with a census that could not lie, until only one candidate remained — and
+then making it fail on demand before fixing it.
+
+`pl5_probe` stays in the gate. It exists to fail.
+

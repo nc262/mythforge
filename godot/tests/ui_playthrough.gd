@@ -37,6 +37,7 @@ func _ready() -> void:
 	_check_rest_place()
 	_check_multiclass()
 	# The five gaps Testing.md listed as never covered. Spells must follow the
+	var _sig_before := _autoload_connections()
 	# multiclass check — that is what leaves a caster with slots to run out of.
 	_check_spells_to_exhaustion()
 	await _check_merchant_trade()
@@ -48,6 +49,8 @@ func _ready() -> void:
 	if is_instance_valid(_game):
 		_game.queue_free()
 	await get_tree().process_frame
+	await get_tree().process_frame   # queue_free lands on the NEXT idle, not this one
+	_report_leaked_connections(_sig_before)
 	if _fails.is_empty():
 		print("PLAYTHROUGH OK")
 		get_tree().quit(0)
@@ -984,6 +987,58 @@ func _slots1() -> Dictionary:
 ## had never run in a real game, and neither had the long rest that undoes it.
 ## Runs after _check_multiclass, which leaves a Fighter 2 / Wizard 1 holding INT
 ## 13 and an open first-level slot.
+## PL-5 INSTRUMENT. Godot exposes no way to inspect a lambda's captures, so the
+## error itself cannot be traced to a call site. But a leaked connection has a
+## property that IS visible: it outlives the scene that made it. Every screen this
+## harness opens is freed before the end, so any autoload signal holding MORE
+## connections at the end than at the start is holding one for a dead node.
+##
+## This is the instrument Invariants.md asks for instead of a fifth theory — it
+## catches the leak FORMING rather than waiting for it to fire, which matters
+## because the error is intermittent and 20+ clean runs have proved nothing.
+const _AUTOLOADS := ["Mode", "Services", "Ui", "Api", "GameState", "Rules", "Tags",
+	"Composer", "Combat", "Chronicle", "Art", "Sfx", "WorldSkin", "Pad", "Compiler",
+	"LocalGM", "LocalMemory", "Worldsmith"]
+
+
+func _autoload_connections() -> Dictionary:
+	var out := {}
+	var watched: Array = []
+	for name in _AUTOLOADS:
+		var node = get_node_or_null("/root/" + name)
+		if node != null:
+			watched.append([name, node])
+	# THE ROOT WINDOW TOO. It is not an autoload but it outlives every scene, and
+	# it is exactly what `skin.gd` leaked onto: `_cap_panel_content` connected a
+	# panel's lambda to root.size_changed, root never dies, so the connection
+	# survived every dialog that made one. An instrument that watches only
+	# autoloads cannot see that whole class.
+	watched.append(["root", get_tree().root])
+	for pair in watched:
+		var node: Object = pair[1]
+		for s in node.get_signal_list():
+			var sn := str(s["name"])
+			out["%s.%s" % [str(pair[0]), sn]] = node.get_signal_connection_list(sn).size()
+	return out
+
+
+func _report_leaked_connections(before: Dictionary) -> void:
+	var after := _autoload_connections()
+	var grew: Array = []
+	for k in after:
+		var b := int(before.get(k, 0))
+		var a := int(after[k])
+		if a > b:
+			grew.append("%s  %d -> %d  (+%d)" % [k, b, a, a - b])
+	grew.sort()
+	if grew.is_empty():
+		print("SIGNAL-LEAK none — every autoload signal ended where it started")
+		return
+	print("SIGNAL-LEAK %d signal(s) hold connections for scenes that are gone:" % grew.size())
+	for g in grew:
+		print("   ", g)
+
+
 func _check_spells_to_exhaustion() -> void:
 	var s := GameState.sheet()
 	var dc := Rules.spell_save_dc(s)

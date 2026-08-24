@@ -19,6 +19,35 @@ The rows below were found by making the gate print engine complaints from
 **passing** runs — they had been in every green log for an unknown length of
 time, on a stream nothing read.
 
+**PL-5 IS CLOSED — 2026-08-24, reproduced deterministically before it was fixed.**
+It was never a leaked signal connection. It was `skin.gd:_cap_panel_content`
+ending with **`apply.call_deferred()`** — the only deferred lambda in the
+codebase — where `apply` captures `dlg` and `content`, which is the
+index-0/index-1 PAIR every report carried. A deferred LAMBDA is bound to no
+object, so Godot cannot cancel it when the dialog dies; it flushes on the next
+idle and rebinds two dead captures. Close a panel in the frame it opens and you
+get one pair, reliably.
+
+`apply` already began with `if not is_instance_valid(dlg) ...: return`, which is
+why nine diagnoses looked at it and saw nothing wrong. **That guard cannot work
+here:** the error is emitted when the Callable is INVOKED, before its body runs.
+The fix moved the guard to the call site, into `_apply_when_built(dlg, content,
+apply)` — a method whose nodes are ARGUMENTS, which are checkable.
+
+Found by elimination, not by theory: a census of every autoload signal's
+connections across a playthrough showed **none grew** (killing the whole leaked-
+connection family), the root Window showed none either, therefore the lambda was
+reached by something that is not a connection — and grep found exactly one
+deferred lambda. `tests/pl5_probe.tscn` then made it fail on demand: **10 errors,
+10/10 runs**, zero after the fix. It is in the gate now and exists to fail.
+
+The four theories disproven on the way, and why each looked like evidence, are in
+[Invariants.md](Invariants.md). The short version: 20+ clean runs were read as
+support on BOTH sides of every theory, and none of them could ever make the bug
+happen.
+
+**The original entry, kept because its lesson stands:**
+
 **PL-5 IS NOT CLOSED — reopened the same day by playing the game.** The fix below is real and the harness number was real, but the harness was the wrong instrument. `click_driver` went 1 -> 0, and a forty-minute played session on the exported build (exe stamped 18:39, fix committed 16:11, so the fix IS in it) produced **eleven** freed-capture errors: six at index **1** and five at index **0**, from two distinct call sites (`gdscript_lambda_callable.cpp:242` and `:110`). So there is at least one more index-0 lambda the harness never reaches, and a whole separate index-1 capture nobody has looked at. The play log holds nothing else at all — those eleven lines are the entire error output of a real session. **The lesson is the one this repo keeps paying for:** a green harness means the paths it walks are clean, not that the game is. The next attempt should drive the FORGE and the merchant from `click_driver` (both were walked by hand here) rather than trusting the existing stations.
 
 **2026-08-24 — a THIRD theory, also disproven, and the ownership rule is not

@@ -152,6 +152,15 @@ Invoke-Harness -Scene 'self_check'     -Token 'SELF-CHECK OK'
 Invoke-Harness -Scene 'click_driver'   -Token 'CLICKDRIVE OK'
 Invoke-Harness -Scene 'ui_playthrough' -Token 'PLAYTHROUGH OK'
 
+# ── PL-5's reproduction, kept as a guard ─────────────────────────────────────
+# This one FAILS DELIBERATELY without the fix: it dresses five dialogs and frees
+# each in the frame it was dressed, which is what a player does closing a panel
+# the instant it opens. Before the fix that printed ten "Lambda capture at index
+# N was freed" errors, 10/10, every run — the first deterministic reproduction
+# after four disproven theories. The regression list above catches the error
+# string, so this scene only has to CAUSE it.
+Invoke-Harness -Scene 'pl5_probe' -Token 'PL5-PROBE DONE'
+
 # ── The ones that can say an answer is GOOD, not merely well-shaped ──────────
 if ($Full) {
 	Invoke-Harness -Scene 'local_stack' -Token 'LOCAL STACK OK'
