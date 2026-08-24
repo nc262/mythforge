@@ -1092,6 +1092,33 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-23. A world may be plain; it may not be MEDIEVAL by accident. Forms carry
+	# "a shape prompt only" on the theory that the world's anchor makes them
+	# world-true — which holds for a circlet and fails for a halberd. Neon Spire
+	# shipped halberds, mail coifs and kite shields and offered no pistol at all.
+	var fantasy_forms: Array = Compiler._forms({})
+	var cyber_forms: Array = Compiler._forms({"family": "cyber"})
+	assert(fantasy_forms.size() > 40, "PY-23: the base form spine collapsed")
+	var fids := {}
+	for f in fantasy_forms:
+		fids[str(f.get("id", ""))] = true
+	var cids := {}
+	for f in cyber_forms:
+		cids[str(f.get("id", ""))] = true
+	# The era-locked shapes must be GONE from a cyber world…
+	for banned in ["halberd", "glaive", "pike", "coif", "mail_chausses", "greaves",
+			"kite_shield", "targe", "mail_gloves", "gauntlets", "sandals", "parry_dagger"]:
+		if fids.has(banned):
+			assert(not cids.has(banned),
+				"PY-23: a cyber world is still offered '%s' — no prompt anchor makes that cyberpunk (Invariants.md)" % banned)
+	# …and it must actually have something of its own to swing and shoot.
+	for want in ["monoblade", "service_pistol", "deck"]:
+		assert(cids.has(want), "PY-23: a cyber world has no '%s' — the override table is not reaching _forms()" % want)
+	# A family with no overrides keeps the universal spine, unchanged.
+	var norse_forms: Array = Compiler._forms({"family": "norse"})
+	assert(norse_forms.size() == fantasy_forms.size(),
+		"PY-23: a family with no overrides must keep the universal shapes, not lose them")
+
 	# PY-7. AN INSTRUCTION THAT DOES NOT MOVE THE PLAYER MUST SAY SO. The location
 	# is already in the envelope, near the top — and a trailing "briefly color the
 	# exchange" or "narrate the outcome" is an open invitation to invent a scene.
