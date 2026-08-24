@@ -378,6 +378,21 @@ func trim(s: String, n: int) -> String:
 	return cut.rstrip(" ,;:.-") + "…"
 
 
+## PY-14 — A THEME CHANGE DOES NOT REPAINT A CONTROL THAT PAINTS ITSELF.
+## Godot re-runs `_draw()` only when something calls `queue_redraw()`, so a widget
+## reading `Ui.c()` inside `_draw()` keeps whatever palette was live when it last
+## painted. THIRTEEN OF FOURTEEN self-drawn controls never asked, which is the
+## "two accents on one screen" report: the title, input border and buttons are
+## THEMED and went magenta in Neon Spire, while the eleven-icon toolbar, the
+## Session Zero sliders and the HP bar are SELF-DRAWN and stayed gold.
+##
+## `queue_redraw` is a method Callable owned by the control, so Godot drops the
+## connection when the control frees — the PL-5-safe shape, deliberately.
+func repaint_on_skin(c: CanvasItem) -> void:
+	if c != null and not changed.is_connected(c.queue_redraw):
+		changed.connect(c.queue_redraw)
+
+
 ## A full-bleed opaque backing for a plain-Control surface (the Lore Book), so
 ## it stops compositing over live gameplay. R6 BUG-05 / BLANK-09 / AES-24.
 func panel_backing(host: Control, opacity := 0.985) -> PanelContainer:

@@ -28,6 +28,8 @@ func _init() -> void:
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	for k in SHOTS:
 		Art.ensure(k, str(Art.CINE_PROMPTS.get(k, "")), "1344x768")
 	for i in 90:

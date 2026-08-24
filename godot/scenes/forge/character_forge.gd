@@ -63,6 +63,8 @@ var _story_edit: TextEdit = null   # the current stage's optional free-text stor
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	for i in 26:
 		_embers.append([randf(), randf(), 0.35 + randf() * 0.9])
 	super._ready()

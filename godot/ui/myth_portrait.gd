@@ -11,6 +11,8 @@ var turn := false             # this one acts now: outer gold ring
 
 
 func _init(size_px := 96, ring := "gold", with_halo := false) -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	ring_role = ring
 	halo = with_halo
 	custom_minimum_size = Vector2(size_px, size_px)

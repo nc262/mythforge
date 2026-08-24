@@ -23,6 +23,8 @@ var _press_cell: Array = [-1, -1]
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	# The cover-fit underlay overshoots the rect on purpose — clip it, or the
 	# painting floods the whole chat column (RCA'd: "only map, no text").
 	clip_contents = true

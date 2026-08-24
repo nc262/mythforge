@@ -135,6 +135,8 @@ const KIND_LABEL := {"tavern": "inn", "shop": "trade", "landmark": "landmark",
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true  # cover-fit paper must never flood the neighbors
 	custom_minimum_size = Vector2(680, 430)

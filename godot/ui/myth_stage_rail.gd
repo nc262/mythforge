@@ -10,6 +10,8 @@ var current := 0
 
 
 func _init(t: Array = []) -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	titles = t
 	custom_minimum_size = Vector2(0, 44)
 	mouse_filter = Control.MOUSE_FILTER_STOP

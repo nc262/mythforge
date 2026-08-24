@@ -10,6 +10,8 @@ var _phase := 0.0
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	# The chart is drawn COVER-FIT, so it is always larger than this box on one
 	# axis and spilled outside the frame — a slab of map floating over the scene
 	# with a border round part of it. That is the "random rectangle on the

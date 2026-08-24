@@ -69,6 +69,8 @@ var _cgms: Array = []   # forged GM personas from the gallery (GM Forge)
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	# The table's ledger — built BEFORE the scaffold because entering stage 0
 	# (inside super._ready) already writes it via _ledger().
 	_table_note = Label.new()

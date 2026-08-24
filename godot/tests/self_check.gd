@@ -1092,6 +1092,32 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-14. A CONTROL THAT PAINTS ITSELF MUST ASK TO BE REPAINTED. Godot re-runs
+	# `_draw()` only on `queue_redraw()`, so a widget reading `Ui.c()` inside
+	# `_draw()` keeps whatever palette was live when it last painted. 13 of 14
+	# self-drawn controls never asked: the title, input border and buttons are
+	# THEMED and went magenta in Neon Spire while the toolbar, the Session Zero
+	# sliders and the HP bar are SELF-DRAWN and stayed gold. Two accents, one
+	# screen. `backdrop.gd` is the one that always did it right.
+	var NL14 := char(10)
+	for df in ["res://scenes/combat/battle_grid.gd", "res://scenes/ui/mini_map.gd",
+			"res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd",
+			"res://scenes/ui/cinematic.gd", "res://ui/myth_environment.gd",
+			"res://ui/myth_gauge.gd", "res://ui/myth_icon.gd",
+			"res://ui/myth_portrait.gd", "res://ui/myth_stage_rail.gd",
+			"res://ui/forge_flow.gd"]:
+		var dsrc2 := FileAccess.get_file_as_string(df)
+		assert(dsrc2 != "", "self_check: %s could not be read" % df)
+		var self_drawn := false
+		for dl in dsrc2.split(NL14):
+			if dl.begins_with("func _draw("):
+				self_drawn = true
+				break
+		if not self_drawn:
+			continue
+		assert(dsrc2.contains("Ui.repaint_on_skin(self)") or dsrc2.contains("Ui.changed.connect"),
+			"%s paints itself but never repaints on a skin change — it will hold the old world's accent (Invariants.md)" % df)
+
 	# PY-12. EVERY dialog is dressed, and a dressed dialog carries the THEME. In
 	# Godot 4 a Window starts a new theme context, so a PanelContainer inside an
 	# undressed dialog renders in the engine default — hard-edged, borderless,

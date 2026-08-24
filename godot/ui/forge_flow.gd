@@ -56,6 +56,10 @@ func _on_stage_entered(_i: int) -> void:
 
 # ── The scaffold ─────────────────────────────────────────────────────────────
 func _ready() -> void:
+	# PY-14 — every forge paints parts of itself in _draw(), and a theme change
+	# does not repaint a self-drawn control. Here, so a forge that defines no
+	# _ready of its own (world_forge) is covered too. The helper is idempotent.
+	Ui.repaint_on_skin(self)
 	theme = Ui.theme
 	set_process(not Ui.reduce_motion)
 	var env := _env()

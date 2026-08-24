@@ -43,6 +43,8 @@ static func resolve(glyph: String) -> String:
 
 
 func _init(name_ := "compass", size_px := 30, role := "gold") -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	icon = name_
 	tint_role = role
 	custom_minimum_size = Vector2(size_px, size_px)

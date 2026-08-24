@@ -13,6 +13,8 @@ var grade_by_fill := false
 
 
 func _init(cap := "", role := "gold") -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	caption = cap
 	fill_role = role
 	custom_minimum_size = Vector2(120, 18)
