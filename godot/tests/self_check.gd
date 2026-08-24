@@ -1122,6 +1122,43 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
 	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
 
+	# INVARIANT: never paint while the narrator talks. Measured three ways - a
+	# resident engine at narrator load costs NOTHING (3.3/3.6/3.5 s against
+	# 3.0/3.5/3.5), but generating 1024x1024 DURING the turns takes them to 6.1 s
+	# by the sixth. Peak VRAM there was 15310 MB of 16384, so nothing was evicted:
+	# the two processes contend for shaders, not memory. `Art.hold` around the
+	# stream is the whole fix, and until now nothing asserted it existed.
+	# LINE-AWARE, because `contains` matched the guard COMMENTED OUT. Mutation-
+	# testing this check is what found that: the first version passed against
+	# "# Art.hold = true MUTATION", which is exactly the change it must catch.
+	var hsrc := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var hold_on := 0
+	var hold_off := 0
+	for line in hsrc.split("
+"):
+		var t := line.strip_edges()
+		if t.begins_with("Art.hold = true"):
+			hold_on += 1
+		elif t.begins_with("Art.hold = false"):
+			hold_off += 1
+	assert(hold_on >= 1,
+		"invariant: nothing holds the art queue while the narrator streams - turns go 3.5 s to 6.1 s (Invariants.md)")
+	assert(hold_off >= 3,
+		"invariant: every exit from a stream must release Art.hold - done, cancel and leaving the table are three paths")
+
+	# INVARIANT: Godot's RegEx is PCRE2, where a \u escape does NOT exist. A
+	# pattern using one compiles clean and then silently matches nothing, which is
+	# the worst failure shape available: no error, no match, no clue.
+	# The needle is BUILT, not escaped: char(92) is a backslash, so this line
+	# cannot itself trip the very parse error it is looking for. It did, once.
+	var u_esc := char(92) + "u"
+	for rf in ["res://autoload/tag_parser.gd", "res://autoload/prompt_composer.gd",
+			"res://autoload/rules_engine.gd", "res://autoload/world_skin.gd"]:
+		var rsrc2 := FileAccess.get_file_as_string(rf)
+		for line in rsrc2.split("\n"):
+			assert(not (line.contains(".compile(") and line.contains(u_esc)),
+				"invariant: %s uses a backslash-u escape in a RegEx - PCRE2 does not know it, so the pattern matches nothing (Invariants.md)" % rf)
+
 	# PY-16 / PY-17 both turn on ONE primitive: the difference between "not
 	# painted" and "being painted". `Art.status` is the only thing that knows it.
 	Art._generating["unit-inflight"] = true

@@ -186,6 +186,27 @@ if ((Get-Content $bootLog -Raw) -match 'BOOTSTRAP-CHECK OK') {
 	Get-Content $bootLog | Select-String 'FAIL' | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
 }
 
+# ── INVARIANT: --vae-tiling is load-bearing, not tuning ──────────────────────
+# Without it the VAE decode asks for a Vulkan buffer past this device's limit and
+# falls back to a slow path: 36.2 s of a 50.4 s image, for a pixel-identical
+# result at the same seed. There is ONE launch path today and it passes the flag;
+# this check exists so a SECOND one cannot appear without it. `self_check` cannot
+# see these files — they live outside res:// — so the guard belongs here.
+Write-Host "`n── invariant: --vae-tiling " -NoNewline -ForegroundColor Cyan
+$launchers = Get-ChildItem "$repo" -Recurse -Filter *.ps1 -EA SilentlyContinue | Where-Object {
+	$t = Get-Content $_.FullName -Raw
+	# an actual LAUNCH: names the exe AND passes it a model
+	$t -match 'sd-server\.exe' -and $t -match "'-m'|`"-m`"|\s-m\s"
+}
+$noTiling = @($launchers | Where-Object { (Get-Content $_.FullName -Raw) -notmatch '--vae-tiling' })
+if ($noTiling.Count) {
+	Write-Host 'FAILED' -ForegroundColor Red
+	$failed += 'invariant:--vae-tiling'
+	$noTiling | ForEach-Object { Write-Host "  launches sd-server without --vae-tiling: $($_.FullName)" -ForegroundColor DarkRed }
+} else {
+	Write-Host ("OK ({0} launch path(s))" -f $launchers.Count) -ForegroundColor Green
+}
+
 if ($failed.Count) {
 	Write-Host "`nRED: $($failed -join ', ')" -ForegroundColor Red
 	Write-Host 'Not exporting. A red gate must not reach the Desktop.' -ForegroundColor Red

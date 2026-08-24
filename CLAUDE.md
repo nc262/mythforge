@@ -119,6 +119,24 @@ had a confident explanation attached first. See
   `dump.pm2` restores it), and a logon script in the Startup folder pointing at a
   different checkout entirely. Check both before believing a kill worked.
 
+## READ THIS BEFORE YOU FIX ANYTHING
+[godot/docs/Invariants.md](godot/docs/Invariants.md) — the rules that hold across
+the whole repo, each with the check that enforces it.
+
+It exists because this codebase carries **147** references to past incidents and,
+before it, **21** checks. The knowledge was written down every time and enforced
+almost never, so the same root cause kept surfacing somewhere new — five times in
+one day: an art key that did not carry its world (four prefixes), a package-vs-cache
+fallback hand-spelled at five sites in three ways, a progress report the forge never
+got although the character screen had it, a style anchor nobody trimmed.
+
+**Every one was already documented at the site of the fix.** A comment is only
+discoverable if you are already reading that file, which is exactly when you no
+longer need it. So:
+
+> **An RCA comment without a check is unfinished work.** When you write "this cost
+> us X", write the assertion in the same commit and add the row to Invariants.md.
+
 ## Workflow before changing anything
 DISCOVER → PLAN → CHALLENGE → EXECUTE → VERIFY → REVIEW → IMPROVE.
 
@@ -185,6 +203,7 @@ The game itself listens on nothing.
 | [godot/docs/Testing.md](godot/docs/Testing.md) | The five harnesses, and what each can and cannot prove |
 | [godot/docs/DesignSystem.md](godot/docs/DesignSystem.md) | The visual contract. Law for anything that renders |
 | [godot/docs/Features.md](godot/docs/Features.md) | The coarse map of what the game has |
+| [godot/docs/Invariants.md](godot/docs/Invariants.md) | **Repo-wide rules and the check enforcing each.** Read before fixing anything |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | RCAs, symptom → root cause → fix |
 | [docs/code-style.md](docs/code-style.md) | Conventions for the game and the tooling |
 
