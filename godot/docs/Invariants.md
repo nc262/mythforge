@@ -41,18 +41,34 @@ visibly a gap rather than invisibly a comment.
 | Guard on IN FLIGHT, not on FINISHED, before announcing work | `self_check` — *"_auto_portrait must skip a portrait already in flight"* | "Painting Cael Mercer…" printed twice; `has_art` is only true ~20 s later |
 | A long operation must say it is working AND restore itself on failure | `self_check` — *"the re-strike must say it is working"*, *"func _on_quench_progress"* | 25 s of silence reads as failure. A failed paint emits no `art_ready`, so the naive fix hangs the button for the session |
 | The narrator warms before the image engine is started | `self_check` — *"the image engine is started BEFORE the narrator warms"* | The engine's first image takes 6.6 GB it never returns |
+| Cast art keys (`npc-`, `foe-`) carry the world too — `Art.npc_key()` / `foe_key()`, never by hand | `self_check` — *"builds a cast art key by hand"* | PY-28. Filed as nine sites; it was **fourteen**, and following the rule turned up a SIXTH leaking prefix (`foe-`, whose prompt carries `subject_style("char")`) |
+| `--vae-tiling` on every path that LAUNCHES sd-server | `verify.ps1` — *"launches sd-server without --vae-tiling"* | 36.2 s of a 50.4 s image, for a pixel-identical result at the same seed |
+| Never paint while the narrator talks — `Art.hold` set around the stream and released on every exit | `self_check` — *"nothing holds the art queue while the narrator streams"* | 3.5 s to 6.1 s per turn. VRAM peaked at 15310/16384, so nothing was evicted: they contend for shaders |
+| Godot's RegEx is PCRE2 — a backslash-u escape does not exist there | `self_check` — *"uses a backslash-u escape in a RegEx"* | A pattern compiles clean and then silently matches nothing |
 | Models are matched by NAME, not position | `self_check` + `verify.ps1` | Picking the wrong one fails silently rather than loudly |
 
 ## Not yet enforced — these are gaps, not decisions
 
 | Invariant | What it cost | Why there is no check yet |
 |---|---|---|
-| **`--vae-tiling` in EVERY launch path** | 36.2 s of a 50.4 s image; pixel-identical output with it | The launchers are `.ps1` outside `res://`, so `self_check` cannot read them. Belongs in `verify.ps1` |
-| **Never paint while the narrator talks** (`Art.hold` around the stream) | 3.5 s → 6.1 s per turn, measured; VRAM never ran out, the two processes contend for shaders | Needs a structural assertion that `_stream` sets it and every exit path clears it |
 | **Never one model call that both invents and serialises** | Three wrong diagnoses; 95.8 s and a failure vs 1.5 s split in two | A grammar and a sampler chain REPLACE each other in NobodyWho. Hard to assert mechanically; needs a rule about which call sites may pass a schema |
-| **Godot's RegEx is PCRE2 — `\uXXXX` is not an escape** | A pattern using it compiles and then silently matches nothing | Mechanical: scan every `.compile(` for a `\u` escape |
 | **Never return silently from a function that was asked to do work** | `request()` returned with no signal when it had no prompt, so half the worlds could never have key art and it looked like it worked | Not mechanically checkable in general; the specific case now pushes a warning |
-| **`npc-` keys are not world-scoped** (PY-28) | Open. Same class as the four fixed above; the prefix is spelled by hand in nine places | Deliberately open — it carries a design question about whether a name is an identity across worlds |
+
+## This file is CHECKED against reality
+
+Rows go stale. Three of these did, within an hour of the file being written — they
+sat in "Not yet enforced" while their checks were being committed the same
+session. That is exactly the "looks like information" failure that got a 107-row
+feature matrix deleted from this repo.
+
+So `self_check` parses this file: **every check name quoted in the Enforced table
+must actually exist** in `tests/self_check.gd` or `scripts/verify.ps1`. A row that
+claims a check it does not have turns the gate red, so adding a row is not free —
+the check comes first.
+
+*It cannot verify the reverse:* that a rule under "Not yet enforced" really has no
+check. Moving a row up when you write its check is still a human step, and it is
+the step that failed within the hour.
 
 ## PL-5 — what NOT to conclude
 

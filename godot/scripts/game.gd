@@ -206,7 +206,7 @@ func _open_companion_table() -> void:
 		_scene_art.texture = fire
 		_scene_art.modulate.a = 0.5
 		_ken_burns()
-	var slug := "npc-" + comp_name.to_lower().replace(" ", "-")
+	var slug := Art.npc_key(comp_name)
 	if not Art.has_art(slug):
 		Art.ensure(slug, "character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [comp_name, Art.subject_style("char")], "1024x1024", true)
 	var face := MythPortrait.new(132, "gold", true)
@@ -1261,7 +1261,7 @@ func _decorate_speaker(rt: RichTextLabel, clean: String) -> void:
 		if not (window.contains("\"") or window.contains("“") or window.contains("”")):
 			continue
 		var chip := MythPortrait.new(38, "amethyst")
-		chip.set_portrait(Art.round_tex("npc-" + nm.to_lower().replace(" ", "-")), nm.left(1).to_upper())
+		chip.set_portrait(Art.round_tex(Art.npc_key(nm)), nm.left(1).to_upper())
 		chip.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		chip.tooltip_text = "%s — %s" % [nm, str(n.get("role", ""))] if str(n.get("role", "")) != "" else nm
 		row.add_child(chip)
@@ -2644,7 +2644,7 @@ func _render_codex() -> void:
 			if not (n is Dictionary) or str(n.get("name", "")) == "":
 				continue
 			any = true
-			var tex := Art.texture_for("npc-" + str(n["name"]).to_lower().replace(" ", "-"))
+			var tex := Art.texture_for(Art.npc_key(str(n["name"])))
 			if tex != null:
 				var img: Image = tex.get_image()
 				img.resize(48, 48 * img.get_height() / maxi(1, img.get_width()))
@@ -2684,7 +2684,7 @@ func _auto_portrait() -> void:
 		return
 	for n in codex:
 		if n is Dictionary and str(n.get("name", "")) != "":
-			var key := "npc-" + str(n["name"]).to_lower().replace(" ", "-")
+			var key := Art.npc_key(str(n["name"]))
 			# PY-16. `has_art` is only true once the paint FINISHES, ~20 s later,
 			# so every codex update inside that window called this again and said
 			# "Painting Cael Mercer…" a second time. `request` refused the
@@ -2704,7 +2704,7 @@ func _conjure_portrait(nm: String) -> void:
 			break
 	var look := str(entry.get("appearance", entry.get("note", "")))
 	_say_system("Painting %s…" % nm, "easel")
-	await Art.ensure("npc-" + nm.to_lower().replace(" ", "-"),
+	await Art.ensure(Art.npc_key(nm),
 		"portrait of %s, %s. %s character portrait, painterly, head and shoulders" % [nm, look,
 		{"neonspire": "cyberpunk", "everyday": "contemporary"}.get(GameState.world_id(), "fantasy")])
 	if _panel_mode == "codex":

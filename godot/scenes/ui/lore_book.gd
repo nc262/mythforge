@@ -204,7 +204,7 @@ func _cast() -> void:
 		if c is Dictionary and str(c.get("name", "")) != "":
 			var nm := str(c["name"])
 			seen[nm.to_lower()] = true
-			var key := "npc-" + nm.to_lower().replace(" ", "-")
+			var key := Art.npc_key(nm)
 			_host.add_child(_entry(nm, str(c.get("role", "")) + ("\n" + str(c.get("persona", "")) if str(c.get("persona", "")) != "" else "") + _npc_extra(nm),
 				key, "character portrait of %s, %s, %s, dramatic rim light, dark background, no text" % [nm, str(c.get("role", "a figure of this world")), Art.world_flavor()]))
 	# The cast you've actually met (codex), beyond the world's authored roster.
@@ -212,14 +212,14 @@ func _cast() -> void:
 		if n is Dictionary and str(n.get("name", "")) != "" and not seen.has(str(n["name"]).to_lower()):
 			seen[str(n["name"]).to_lower()] = true
 			var nm2 := str(n["name"])
-			var key2 := "npc-" + nm2.to_lower().replace(" ", "-")
+			var key2 := Art.npc_key(nm2)
 			_host.add_child(_entry(nm2, str(n.get("role", "")) + ("\n" + str(n.get("note", "")) if str(n.get("note", "")) != "" else "") + _npc_extra(nm2), key2, ""))
 	# Characters the GM has inscribed as structured resources ([[npc]]) but who
 	# aren't in the authored roster or codex yet.
 	for nm3 in GameState.cast():
 		if not seen.has(str(nm3).to_lower()):
 			var e: Dictionary = GameState.cast()[nm3]
-			_host.add_child(_entry(str(nm3), str(e.get("role", "")) + _npc_extra(str(nm3)), "npc-" + str(nm3).to_lower().replace(" ", "-"), ""))
+			_host.add_child(_entry(str(nm3), str(e.get("role", "")) + _npc_extra(str(nm3)), Art.npc_key(str(nm3)), ""))
 
 
 ## The player-facing structured facts about an NPC (secrets stay GM-only).

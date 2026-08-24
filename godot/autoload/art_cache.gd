@@ -646,6 +646,19 @@ func bg_key(nm: String) -> String:
 	return fam_key("bg-" + nm.to_lower().replace(" ", "-").validate_filename())
 
 
+## PY-28. A cast portrait's prompt is world-flavored too — `lore_book` appends
+## `world_flavor()`, `game.gd` picks its style word by world id, and a foe's
+## prompt carries `subject_style("char")`, which reads the world's family. So
+## these leak exactly like `race-` did: the first world to paint a name owns that
+## face everywhere. The prefix was spelled by hand at fourteen sites.
+func npc_key(nm: String) -> String:
+	return fam_key("npc-" + nm.to_lower().strip_edges().replace(" ", "-").validate_filename())
+
+
+func foe_key(nm: String) -> String:
+	return fam_key("foe-" + nm.to_lower().strip_edges().replace(" ", "-").validate_filename())
+
+
 func beast_key(slug: String) -> String:
 	return fam_key("beast-" + slug)
 
@@ -1140,7 +1153,7 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 			return fig
 		return round_tex(hero_key())
 	if id.begins_with("cmp"):
-		return round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))
+		return round_tex(npc_key(str(m.get("name", ""))))
 	var entry := Combat.bestiary_for(str(m.get("name", "")))
 	if not entry.is_empty():
 		var key := beast_key(str(entry.get("slug", "")))
@@ -1161,16 +1174,17 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 	var nm := str(m.get("name", ""))
 	if nm == "":
 		return null
-	var slug := nm.to_lower().replace(" ", "-").validate_filename()
+	var nkey := npc_key(nm)
+	var fkey := foe_key(nm)
 	# Someone the world already knows, who has turned hostile, keeps their face.
-	var known: Texture2D = Compiler.roster_art(GameState.world_id(), "npc-" + slug)
+	var known: Texture2D = Compiler.roster_art(GameState.world_id(), nkey)
 	if known != null:
 		return known
-	if has_art("npc-" + slug):
-		return round_tex("npc-" + slug)
-	if has_art("foe-" + slug):
-		return round_tex("foe-" + slug)
-	ensure("foe-" + slug,
+	if has_art(nkey):
+		return round_tex(nkey)
+	if has_art(fkey):
+		return round_tex(fkey)
+	ensure(fkey,
 		"character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [nm, subject_style("char")],
 		"1024x1024", true)
 	return null

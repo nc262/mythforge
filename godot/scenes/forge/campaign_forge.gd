@@ -513,7 +513,7 @@ func _run_sequence() -> void:
 		var nm := str(c.get("name", "")).strip_edges()
 		if nm == "":
 			continue
-		var key := "npc-" + nm.to_lower().replace(" ", "-")
+		var key := Art.npc_key(nm)
 		Art.ensure(key, "character portrait of %s, %s, painted head-and-shoulders portrait, dramatic rim light, dark background, no text" % [nm, str(c.get("role", "a figure of this world"))])
 		var chip := MythPortrait.new(34, "amethyst")
 		chip.set_portrait(Art.round_tex(key), nm.left(1).to_upper())

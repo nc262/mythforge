@@ -1719,7 +1719,7 @@ func roster_art(world_id: String, key: String) -> Texture2D:
 		slug = key.trim_prefix("creature-")
 	elif key.begins_with("npc-"):
 		sub = "npc"
-		slug = key.trim_prefix("npc-")
+		slug = Art.fam_base(key.trim_prefix("npc-"))
 	if sub == "" or slug == "":
 		return null
 	var t := _load_tex("%s/art/%s/%s.png" % [world_dir(world_id), sub, slug], 320)

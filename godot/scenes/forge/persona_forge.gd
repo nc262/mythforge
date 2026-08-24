@@ -37,7 +37,7 @@ func _build_stage(i: int) -> void:
 
 
 func _slug() -> String:
-	return "npc-" + str(draft["name"]).to_lower().strip_edges().replace(" ", "-")
+	return Art.npc_key(str(draft["name"]))
 
 
 # ── Stage 0: name and role ───────────────────────────────────────────────────

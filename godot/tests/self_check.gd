@@ -504,7 +504,9 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	for probe in [["embervale", "fantasy"], ["neonspire", "cyber"], ["brasshaven", "steam"]]:
 		GameState.character = {"id": "dm-key-probe", "world_id": str(probe[0])}
 		for k in [Art.race_key("Tiefling"), Art.item_key("Healing Potion"),
-				Art.beast_key("ogre"), Art.map_key("The Ember & Oak")]:
+				Art.beast_key("ogre"), Art.map_key("The Ember & Oak"),
+				Art.npc_key("Cael Mercer"), Art.foe_key("Samuel Jenkins"),
+				Art.class_key("Wizard"), Art.bg_key("Acolyte")]:
 			assert(not fam_keys.has(k),
 				"art key '%s' is reused across worlds — its prompt is world-flavored, so the first world to paint it wins" % k)
 			fam_keys[k] = true
@@ -1052,6 +1054,57 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 		var approx := int(float(pw.split(" ").size()) * 1.3) + pw.count(",")
 		assert(approx <= 75,
 			"world '%s' prompt is ~%d tokens — past chunk 0, where SDXL's style vector stops looking" % [str(w.get("id", "")), approx])
+
+	# INVARIANTS.MD IS CHECKED AGAINST REALITY. Three of its rows went stale within
+	# an hour of it being written - listed as gaps while their checks were being
+	# committed in the same session. A tracker that drifts is worse than none,
+	# because it reads as information; that is why this repo deleted a 107-row
+	# feature matrix. So every check NAME quoted in the Enforced table must exist
+	# in this file or in verify.ps1. Claiming a check you did not write is red.
+	#
+	# The separators are BUILT from char(), not escaped. Writing them as escapes
+	# is how the first version of this block shipped a string literal containing a
+	# real newline and parsed zero rows while reporting success.
+	var NEWLINE := char(10)
+	var OPENQ := "*" + char(34)
+	var CLOSEQ := char(34) + "*"
+	var inv := FileAccess.get_file_as_string("res://docs/Invariants.md")
+	assert(inv != "", "Invariants.md is missing - CLAUDE.md points every change at it")
+	var vps := FileAccess.get_file_as_string("res://../scripts/verify.ps1")
+	var me := FileAccess.get_file_as_string("res://tests/self_check.gd")
+	var in_enforced := false
+	var claims := 0
+	for line in inv.split(NEWLINE):
+		if line.begins_with("## "):
+			in_enforced = line.begins_with("## Enforced")
+			continue
+		if not in_enforced or not line.begins_with("| "):
+			continue
+		var q := line.split(OPENQ)
+		if q.size() < 2:
+			continue
+		var needle := str(q[1]).split(CLOSEQ)[0]
+		if needle.strip_edges() == "":
+			continue
+		claims += 1
+		assert(me.contains(needle) or vps.contains(needle),
+			"Invariants.md claims a check that does not exist: '%s' - write the check, or move the row to Not yet enforced" % needle)
+	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
+	print("  invariants: %d enforced rows, every claimed check found" % claims)
+
+	# PY-28, structural. The npc-/foe- prefixes were spelled by hand at FOURTEEN
+	# sites, which is how they stayed unscoped while race-/item-/beast-/map- were
+	# fixed. A cast portrait's prompt is world-flavored (lore_book appends
+	# world_flavor(); a foe's carries subject_style("char")), so the first world
+	# to paint a name owned that face everywhere. Art.npc_key/foe_key are the
+	# only spellings now — a prefix TEST (begins_with) is still fine.
+	for kf in ["res://scripts/game.gd", "res://scenes/ui/lore_book.gd",
+			"res://scenes/forge/campaign_forge.gd", "res://scenes/forge/persona_forge.gd"]:
+		var ksrc := FileAccess.get_file_as_string(kf)
+		assert(ksrc != "", "self_check: %s could not be read" % kf)
+		for pre in ["\"npc-\" +", "\"foe-\" +"]:
+			assert(not ksrc.contains(pre),
+				"%s builds a cast art key by hand — use Art.npc_key()/foe_key(), which carry the world (Invariants.md)" % kf)
 
 	# PY-15, structural. A world's key art lives in TWO places — the compiled
 	# package (`art/key.png`) and the art cache — and the fallback between them
