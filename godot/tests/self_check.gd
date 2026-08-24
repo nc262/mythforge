@@ -1092,6 +1092,24 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-12. EVERY dialog is dressed, and a dressed dialog carries the THEME. In
+	# Godot 4 a Window starts a new theme context, so a PanelContainer inside an
+	# undressed dialog renders in the engine default — hard-edged, borderless,
+	# unrounded, "a grey debug-looking box over a fully skinned neon screen".
+	# Three of five dialogs never called dress_dialog at all, and dress_dialog
+	# itself never set `theme`, which is why even the dressed ones had unstyled
+	# innards.
+	var skn := FileAccess.get_file_as_string("res://autoload/skin.gd")
+	assert(skn.contains("dlg.theme = theme"),
+		"PY-12: dress_dialog does not give the dialog the theme — every panel inside it falls back to engine grey (Invariants.md)")
+	for dlgf in ["res://scenes/ui/gm_tuner.gd", "res://scenes/ui/levelup_window.gd",
+			"res://scenes/ui/reaction_prompt.gd", "res://scenes/ui/character_screen.gd",
+			"res://scenes/ui/merchant_window.gd"]:
+		var dsrc := FileAccess.get_file_as_string(dlgf)
+		assert(dsrc != "", "self_check: %s could not be read" % dlgf)
+		assert(dsrc.contains("Ui.dress_dialog("),
+			"%s is a dialog that never gets dressed — it renders in the engine default theme (Invariants.md)" % dlgf)
+
 	# PY-11. Card prose was cut with `.left(N)`, which severs mid-word and gives no
 	# sign it happened: "quiet adventu", "stolen blueprt", "answer them i", on four
 	# separate screens. Ui.trim cuts at a word and says so.

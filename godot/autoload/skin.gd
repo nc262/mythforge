@@ -271,6 +271,13 @@ const PANEL_RESERVE := 76   # px kept free at the bottom for the exit control
 
 
 func dress_dialog(dlg: AcceptDialog, content: Control = null) -> void:
+	# PY-12 — A WINDOW DOES NOT INHERIT A THEME. In Godot 4 a Window starts a new
+	# theme context, so every PanelContainer INSIDE a dialog fell back to the
+	# engine default: hard-edged, borderless, unrounded — the "grey debug-looking
+	# box over a fully skinned neon screen" the report describes. The dialog's own
+	# panel was dressed below and its contents never were, which is why the
+	# merchant is on that list despite calling this function.
+	dlg.theme = theme
 	dlg.borderless = true          # no OS-style title bar, no stock ✕
 	dlg.transparent_bg = false
 	var sb := _flat(c("night"), Color(c("gold_soft"), 0.34), RADIUS["m"], 2, 0)

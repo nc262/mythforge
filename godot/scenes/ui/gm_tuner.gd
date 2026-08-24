@@ -28,6 +28,9 @@ var _sliders := {}
 
 
 func _ready() -> void:
+	# PY-12 — dressed like every other dialog. Three of five never were, and
+	# Session Zero was the worst of them: an unstyled grey box over a skinned screen.
+	Ui.dress_dialog(self)
 	title = "Session Zero — set the tone" if session_zero else "Tune the GM"
 	ok_button_text = "Begin the adventure ›" if session_zero else "So be it"
 	if session_zero:

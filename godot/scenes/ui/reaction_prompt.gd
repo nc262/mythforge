@@ -12,6 +12,9 @@ var reactions: Array = []     # subset of ["shield", "dodge", "parry"]
 
 
 func _ready() -> void:
+	# PY-12 — dressed like every other dialog. Three of five never were, and
+	# Session Zero was the worst of them: an unstyled grey box over a skinned screen.
+	Ui.dress_dialog(self)
 	title = "Reaction!"
 	ok_button_text = "Take the hit"
 	var box := VBoxContainer.new()
