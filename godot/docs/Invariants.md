@@ -52,6 +52,7 @@ visibly a gap rather than invisibly a comment.
 | A control that paints itself in `_draw()` calls `Ui.repaint_on_skin(self)` — a theme change does not invalidate it | `self_check` — *"paints itself but never repaints on a skin change"* | PY-14. 13 of 14 self-drawn controls never asked: themed widgets went magenta in Neon Spire while the toolbar, sliders and HP bar stayed gold |
 | A trailing GM instruction that does NOT move the player carries `GameState.here_pin()`; one that does must not | `self_check` — *"is a stay-put instruction with no location pin"* | PY-7. The GM answered a merchant exchange and an Insight roll by inventing a new place. The pin existed for rest paths only |
 | A world family may REPLACE era-locked item forms; universal shapes are shared | `self_check` — *"a cyber world is still offered"* | PY-23. Neon Spire shipped halberds, mail coifs and kite shields and offered no pistol, rifle or deck at all |
+| An image prompt DESCRIBES what should be there; it never forbids. And the chart's ground is per family | `self_check` — *"the chart prompt still says"*, *"a megacity and a green valley get the same chart ground"* | PY-26. Every world got "open country", so a vertical megacity was a river valley — and the forbidding prompt produced "a painted city and two misspelled cartouches" |
 | Models are matched by NAME, not position | `self_check` + `verify.ps1` | Picking the wrong one fails silently rather than loudly |
 
 ## Not yet enforced — these are gaps, not decisions
@@ -60,6 +61,17 @@ visibly a gap rather than invisibly a comment.
 |---|---|---|
 | **Never one model call that both invents and serialises** | Three wrong diagnoses; 95.8 s and a failure vs 1.5 s split in two | A grammar and a sampler chain REPLACE each other in NobodyWho. Hard to assert mechanically; needs a rule about which call sites may pass a schema |
 | **Never return silently from a function that was asked to do work** | `request()` returned with no signal when it had no prompt, so half the worlds could never have key art and it looked like it worked | Not mechanically checkable in general; the specific case now pushes a warning |
+
+## Known limits, measured
+
+**Positive description beats forbidding, but does not suppress text.** The chart
+prompt used to end "no buildings, no settlements, no text labels"; describing the
+ground instead fixed the picture (a megacity renders as a city, verified by
+eye) — and the repainted Neon Spire chart STILL carries glowing pseudo-lettering
+along a canal. The real route is an endpoint change, not more wording:
+`/v1/images/generations` accepts no `negative_prompt` field at all; only
+`/sdapi/v1/txt2img` does, and the game already speaks that dialect for img2img
+(`art_cache.gd:I2I_PATH`). Read from the sdcpp routes at our pinned commit.
 
 ## This file is CHECKED against reality
 

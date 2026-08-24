@@ -20,7 +20,13 @@ func _ready() -> void:
 	var wid := _world()
 	Ui.apply(wid)
 	GameState.character = {"id": "dm-godot-demo", "name": "The Hollow Bell", "world_id": wid}
-	GameState.state = {"world": {"here": "Embervale village square"}}
+	# THE DEMO SCENE FOLLOWS THE WORLD TOO. "Embervale village square" was
+	# hardcoded here alongside a --world flag, so warming neonspire charted
+	# EMBERVALE and painted an Embervale battle map — the harness quietly
+	# ignoring the only argument it takes. Same shape as the backdrop it never
+	# waited for.
+	var wname := str(WorldSkin.world_name(wid))
+	GameState.state = {"world": {"here": "%s, the near ground" % wname}}
 	print("warming '%s' (family %s)" % [wid, WorldSkin.family_for_id(wid)])
 	var sheet := {"name": "Wren Ashvale", "race": "Half-Elf", "cls": "Wizard"}
 	# …and WAIT for it. This asked for the world backdrop and never added it to
@@ -41,8 +47,8 @@ func _ready() -> void:
 	for nm in ["Silvered Dagger", "Traveler's Leathers", "Healing Potion"]:
 		Art.ensure_item_icon(nm)
 		_want.append(Art.item_key(nm))
-	_want.append(Art.ensure_battle_map("Embervale village square"))
-	_want.append(Art.ensure_world_chart("embervale", "Embervale"))
+	_want.append(Art.ensure_battle_map("%s, the near ground" % wname))
+	_want.append(Art.ensure_world_chart(wid, wname))
 	# THE FORGE CATALOGS. Nine heritages, twelve classes, eight backgrounds — the
 	# racks a player meets before they ever reach a scene, and until now the only
 	# one of the three that was ever painted was the single heritage they clicked.

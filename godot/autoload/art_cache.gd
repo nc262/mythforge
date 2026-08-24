@@ -1222,6 +1222,35 @@ func ensure_battle_map(place: String) -> String:
 ## What it CAN take from the world honestly is its regions, because a region is
 ## an area and an area can be painted. A place is a point, and the points are
 ## ours.
+## PY-26 — WHAT THE GROUND IS MADE OF, per family. The chart asked for "terrain,
+## water, forest, hills and coast … empty wilderness" for EVERY world, which is
+## right for Embervale and painted Neon Spire — a vertical megacity — as a
+## neon-tinted river valley. The Atlas note "paints terrain, water and coast and
+## nothing that claims a position" is about POSITION, not about biome: a city
+## chart can show districts and arterials without claiming where anything is.
+##
+## Said POSITIVELY. The old prompt ended "no buildings, no settlements, no
+## landmarks, no roads, no icons, no text labels, no border" — and this exact
+## prompt is the one `ensure_item_icon`'s RCA is about: "the chart bake proved
+## that at scale, producing a painted city and two misspelled cartouches from a
+## prompt that forbade both". Forbidding does not work; describing does.
+const CHART_GROUND := {
+	"cyber": "dense city blocks and arterial roads, elevated rail, rooftops and light-filled canals, seen from far above",
+	"steam": "packed brick districts, canals and rail yards, chimney rows and viaducts, seen from far above",
+	"everyday": "suburbs and town blocks, parks, roads and river crossings, seen from far above",
+	"space": "station rings and habitat modules, docking spars and service corridors, seen from far above",
+	"pirate": "drowned coastline and shoals, tidal channels, sandbars and reef water",
+	"norse": "fjords and snowfield, black rock coast, pine slopes and frozen inlets",
+	"horror": "black woodland and marsh, dead water, low fog over broken ground",
+	"fantasy": "open country of terrain, water, forest, hills and coast",
+}
+
+
+func chart_ground(world_id2: String) -> String:
+	var fam := WorldSkin.family_for_id(world_id2)
+	return str(CHART_GROUND.get(fam, CHART_GROUND["fantasy"]))
+
+
 func ensure_world_chart(world_id2: String, world_name: String, locations: Array = []) -> String:
 	var key := "chart-" + world_id2.validate_filename()
 	var lands: Array[String] = []
@@ -1240,6 +1269,7 @@ func ensure_world_chart(world_id2: String, world_name: String, locations: Array 
 		lands.assign(kinds.keys())
 	var country := (", country of " + ", ".join(lands)) if not lands.is_empty() else ""
 	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
-	ensure(key, "illustrated %s of the lands around %s%s, %s style, overhead view of open country — terrain, water, forest, hills and coast. empty wilderness, no buildings, no settlements, no landmarks, no roads or routes, no icons, no text labels, no border or frame" % [
-		str(flavor.get("map", "chart")), world_name, country, str(flavor.get("world", "high fantasy"))])
+	ensure(key, "illustrated %s of the lands around %s%s, %s style, %s. a plain unlabelled surface, bare of markings and lettering, edge to edge" % [
+		str(flavor.get("map", "chart")), world_name, country,
+		str(flavor.get("world", "high fantasy")), chart_ground(world_id2)])
 	return key

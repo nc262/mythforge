@@ -1092,6 +1092,34 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-26. A CITY IS NOT A RIVER VALLEY. The chart asked every world for "open
+	# country — terrain, water, forest, hills and coast", so Neon Spire's minimap
+	# during a scene in The Undercity was a neon-tinted wilderness. The Atlas rule
+	# it cites ("nothing that claims a position") is about POSITION, not biome.
+	var keep26 := GameState.character
+	GameState.character = {"id": "dm-chart-probe", "world_id": "neonspire"}
+	var cyber_ground := Art.chart_ground("neonspire")
+	GameState.character = {"id": "dm-chart-probe", "world_id": "embervale"}
+	var fant_ground := Art.chart_ground("embervale")
+	GameState.character = keep26
+	assert(cyber_ground != fant_ground, "PY-26: a megacity and a green valley get the same chart ground")
+	assert(cyber_ground.contains("blocks") or cyber_ground.contains("districts"),
+		"PY-26: the cyber chart does not describe a city")
+	assert(fant_ground.contains("forest") or fant_ground.contains("hills"),
+		"PY-26: the fantasy chart lost its open country")
+	assert(Art.chart_ground("no-such-world") == fant_ground,
+		"PY-26: an unknown world must fall back to open country, not to nothing")
+	# …and the prompt must DESCRIBE, not forbid. This exact prompt is the one
+	# `ensure_item_icon`'s RCA is about: it forbade buildings and text and the
+	# bake produced "a painted city and two misspelled cartouches".
+	var chart_src := FileAccess.get_file_as_string("res://autoload/art_cache.gd")
+	var chart_at := chart_src.find("illustrated %s of the lands around")
+	assert(chart_at >= 0, "PY-26: the chart prompt is gone — this check has gone blind")
+	var chart_txt := chart_src.substr(chart_at, 320)
+	for forbid in ["no buildings", "no settlements", "no text labels", "no border"]:
+		assert(not chart_txt.contains(forbid),
+			"PY-26: the chart prompt still says \"%s\" — a negative inside a positive prompt does not work, and this prompt is the RCA (Invariants.md)" % forbid)
+
 	# PY-23. A world may be plain; it may not be MEDIEVAL by accident. Forms carry
 	# "a shape prompt only" on the theory that the world's anchor makes them
 	# world-true — which holds for a circlet and fails for a halberd. Neon Spire
