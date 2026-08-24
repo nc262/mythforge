@@ -155,6 +155,18 @@ Invoke-Harness -Scene 'ui_playthrough' -Token 'PLAYTHROUGH OK'
 # ── The ones that can say an answer is GOOD, not merely well-shaped ──────────
 if ($Full) {
 	Invoke-Harness -Scene 'local_stack' -Token 'LOCAL STACK OK'
+	# ART HAS NO REAL-STACK COVERAGE WITHOUT THIS. `local_stack` drives the real
+	# model and never touches a painting, which is how PY-8 ("Envision this hero
+	# is inert") survived to be found by hand: the whole image pipeline was
+	# exercised by nothing but a player. art_probe commissions ONE picture from
+	# the real engine and reports where it stops — queued, painting, ready, or
+	# nowhere. Skipped, loudly, when no engine is listening, because a missing
+	# optional engine is not a red gate.
+	if (Get-NetTCPConnection -LocalPort 8189 -State Listen -EA SilentlyContinue) {
+		Invoke-Harness -Scene 'art_probe' -Token 'ART-PROBE OK'
+	} else {
+		Write-Host "`n── art_probe SKIPPED — nothing listening on :8189" -ForegroundColor DarkYellow
+	}
 	# bench_gm IS NOT GATED, because it does not assert — it measures turn
 	# latency and repetition and prints them. There is no pass token to match,
 	# and inventing a threshold here would make the gate red on a slow morning.
