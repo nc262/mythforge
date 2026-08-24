@@ -21,6 +21,36 @@ time, on a stream nothing read.
 
 **PL-5 IS NOT CLOSED — reopened the same day by playing the game.** The fix below is real and the harness number was real, but the harness was the wrong instrument. `click_driver` went 1 -> 0, and a forty-minute played session on the exported build (exe stamped 18:39, fix committed 16:11, so the fix IS in it) produced **eleven** freed-capture errors: six at index **1** and five at index **0**, from two distinct call sites (`gdscript_lambda_callable.cpp:242` and `:110`). So there is at least one more index-0 lambda the harness never reaches, and a whole separate index-1 capture nobody has looked at. The play log holds nothing else at all — those eleven lines are the entire error output of a real session. **The lesson is the one this repo keeps paying for:** a green harness means the paths it walks are clean, not that the game is. The next attempt should drive the FORGE and the merchant from `click_driver` (both were walked by hand here) rather than trusting the existing stations.
 
+**2026-08-24 — a THIRD theory, also disproven, and the ownership rule is not
+sufficient.** All fourteen lambdas on `Art.art_ready`/`art_progress` were
+classified by whether they reach a member of `self` (bound, auto-disconnected)
+or capture only locals (owned by nothing, outlives the scene). Four were
+genuinely unowned: `main_menu`'s banner, `world_forge`'s sky, and `game.gd`'s
+companion face and hero ring. Their capture layouts predicted the error pattern
+exactly — banner captures a single Object, so index **0**; the other three have
+a String or Dictionary first and the Object second, so index **1** — which is
+the backlog's own "six at index 1 and five at index 0, from two distinct call
+sites", and the 2-per-run the gate prints.
+
+**It is still wrong.** Restoring the banner lambda ALONE and running
+`ui_playthrough` three times produced **zero** errors. So being unowned is not
+sufficient to fire this; something about WHEN the captured node is freed matters
+more, and that mechanism is still unknown. The four were converted anyway
+(correct on Godot's rules, costs nothing) but that is hygiene.
+
+**Two failed conversions in one day, both looking like evidence.** The morning's
+set (`character_forge`) turned out to be self-bound already — `_status.text`
+reaches a member — so three things that were never broken were "fixed", and six
+green runs were taken as confirmation. Do not accept green runs here: the bug is
+intermittent and the harness has produced 5+ clean runs either side of every
+theory so far. **Only a mutation that reproduces it counts**, and no theory has
+managed one yet.
+
+What is still unmeasured, and is probably the way in: an instrument rather than
+a fourth theory. Hook `NOTIFICATION_PREDELETE` on the captured nodes, or dump
+`get_connections()` on every autoload signal at each scene transition, and catch
+the leak FORMING instead of waiting for it to fire.
+
 **2026-08-21, later — the SECOND call site was not it, and here is the negative
 result so nobody spends the afternoon on it again.** `character_forge.gd` held
 three `Art.art_ready.connect(func(k): …)` lambdas reaching no member of `self`.
