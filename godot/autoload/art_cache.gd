@@ -39,10 +39,34 @@ var _tex_cache := {}     # key -> ImageTexture (avoid re-reading disk every fram
 var _queue: Array = []   # [{key, prompt, size}] — one generation at a time
 var _pumping := false
 
-## A2 — the generative-art pipeline: a manifest (key → {size, used}) drives LRU
-## eviction so the cache stops growing forever; a per-asset .json sidecar records
-## how it was made (prompt/size/seed/model/…) so anything can be regenerated.
-const CACHE_BUDGET := 700 * 1024 * 1024   # ~700 MB of paintings before eviction
+## A2 — the generative-art pipeline. A manifest (key → {size, used}) records what
+## exists; a per-asset .json sidecar records how it was made.
+##
+## THE PAINTINGS ARE PERMANENT. There used to be a 700 MB LRU that deleted the
+## least-recently-used art to stay under budget, justified by "evicted art
+## self-heals: the next ensure(key, prompt) simply repaints it". That is not
+## true, and the same function said so four paragraphs further down —
+## "destroys art the player already waited for".
+##
+## Three things settle it:
+##   · NOTHING REGENERATES FROM A SIDECAR. Every reference to `_meta_path` in
+##     this repo either writes one or deletes one. There is no restore path, so
+##     eviction was never caching — it was deletion with a note attached.
+##   · SOME ART CANNOT BE REMADE EVEN IN PRINCIPLE. A hero's portrait is copied
+##     from `heroprev`, a shared scratch key the next forging overwrites. Once
+##     evicted, that face is gone for good; `heroes.json` on this machine has a
+##     hero pointing at a file the LRU took.
+##   · 700 MB IS ~520 PAINTINGS. Warming six worlds makes 273. The ceiling was
+##     two warm runs away, and this is a game whose whole premise is its art.
+##
+## The repo had already reasoned its way here for tiles and never generalised it:
+## "it is a one-way door — the detail cannot come back without another GPU pour.
+## Keep the pixels." Disk is the cheapest thing in the stack. Keep all of them.
+##
+## A runaway generator is still real (R10 queued 1.3 GB of tiles), so the total
+## is still watched — but the answer to runaway growth is to SHOUT, never to
+## delete work the player waited minutes for.
+const ART_WARN_BYTES := 10 * 1024 * 1024 * 1024   # ~10 GB — a loop, not a player
 var _manifest := {}
 var _manifest_loaded := false
 
@@ -146,73 +170,35 @@ func _write_sidecar(key: String, job: Dictionary, r: Dictionary) -> void:
 		f.close()
 
 
-## What eviction has cost this session. Public because it is the only evidence
-## that the cache is CHURNING rather than caching, and because a number nothing
-## can read is a number nobody will ever see.
-var evicted_bytes := 0
-var evicted_count := 0
-var thrash_warned := false
+var size_warned := false
 
 
-## Evict least-recently-used paintings until back under budget. Evicted art
-## self-heals: the next ensure(key, prompt) simply repaints it.
-##
-## AND IT SAYS SO NOW. Eviction used to be perfectly silent: files deleted, no
-## line anywhere. That is what let R10 run for HOURS — every finished tile threw
-## away an older painting, the total never moved, and the only symptom a player
-## could see was that their hero's portrait had quietly stopped existing.
-func _enforce_budget() -> void:
+## What the paintings weigh. Public because a number nothing can read is a number
+## nobody will ever see.
+func art_bytes() -> int:
+	_load_manifest()
 	var total := 0
 	for k in _manifest:
 		total += int(_manifest[k].get("size", 0))
-	if total <= CACHE_BUDGET:
+	return total
+
+
+## Watch the total; DELETE NOTHING. The old version of this evicted the
+## least-recently-used paintings to stay under 700 MB, and the only symptom a
+## player could see was that their hero's portrait had quietly stopped existing.
+## A runaway generator is still worth catching — R10 queued 753 tiles, ~1.3 GB —
+## so say so once, loudly, and leave every file where it is.
+func _enforce_budget() -> void:
+	if size_warned:
 		return
-	var keys := _manifest.keys()
-	keys.sort_custom(func(a, b): return float(_manifest[a].get("used", 0)) < float(_manifest[b].get("used", 0)))
-	var freed := 0
-	var gone := 0
-	for k in keys:
-		if total <= CACHE_BUDGET:
-			break
-		var sz := int(_manifest[k].get("size", 0))
-		total -= sz
-		freed += sz
-		gone += 1
-		_evict(str(k))
-	_save_manifest()
-	if gone == 0:
+	var total := art_bytes()
+	if total <= ART_WARN_BYTES:
 		return
-	evicted_bytes += freed
-	evicted_count += gone
-	print("art: evicted %d painting(s), %.1f MB, to stay under the %d MB budget"
-		% [gone, freed / 1048576.0, CACHE_BUDGET / 1048576])
-
-	# THRASH, NAMED. Not "a big queue is coming" — nothing declares a batch size,
-	# and inventing one would mean guessing an average painting's weight and
-	# refusing real work on the guess. This is the thing itself, measured: once a
-	# session has thrown away MORE THAN THE WHOLE BUDGET, the cache is no longer
-	# caching. It is a treadmill, and every lap costs GPU minutes and destroys art
-	# the player already waited for.
-	#
-	# Once per session. A warning that repeats every eviction is the same as no
-	# warning by the fiftieth line.
-	if not thrash_warned and evicted_bytes > CACHE_BUDGET:
-		thrash_warned = true
-		push_warning(("art cache is THRASHING: %d paintings and %.1f MB evicted this session, " +
-			"more than the entire %d MB budget. Generation is now destroying older art as fast " +
-			"as it makes new art, so the total never grows and nothing finishes. Something is " +
-			"asking for more art at once than the cache can hold.")
-			% [evicted_count, evicted_bytes / 1048576.0, CACHE_BUDGET / 1048576])
-
-
-func _evict(key: String) -> void:
-	if has_art(key):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(path_for(key)))
-	if FileAccess.file_exists(_meta_path(key)):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(_meta_path(key)))
-	_tex_cache.erase(key)
-	_round_cache.erase(key)
-	_manifest.erase(key)
+	size_warned = true
+	push_warning(("art is %.1f GB across %d paintings, past the %d GB mark. Nothing has been " +
+		"deleted and nothing will be — but this is far more than play produces, so something " +
+		"is probably generating in a loop.")
+		% [total / 1073741824.0, _manifest.size(), ART_WARN_BYTES / 1073741824])
 
 
 func has_art(key: String) -> bool:
