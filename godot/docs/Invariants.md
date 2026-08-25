@@ -82,6 +82,7 @@ visibly a gap rather than invisibly a comment.
 | A world family may REPLACE era-locked item forms; universal shapes are shared | `self_check` — *"a cyber world is still offered"* | PY-23. Neon Spire shipped halberds, mail coifs and kite shields and offered no pistol, rifle or deck at all |
 | An image prompt DESCRIBES what should be there; it never forbids. And the chart's ground is per family | `self_check` — *"the chart prompt still says"*, *"a megacity and a green valley get the same chart ground"* | PY-26. Every world got "open country", so a vertical megacity was a river valley — and the forbidding prompt produced "a painted city and two misspelled cartouches" |
 | A compiled world overlays its accent PAIR, not just the primary | `self_check` — *"the secondary accent is not derived from the world's own"* | PY-14. Neon Spire ran an orange primary from its pack beside a magenta secondary from the palette — two unrelated hues, neither the authored cyan. Found by screenshot, not source |
+| A SHIPPED world keeps its hand-authored accent; only a forged world takes its pack's | `self_check` — *"authored accent was overruled by its generated pack"* | Brasshaven, "brass, soot and secrets", rendered pale blue; Neon Spire rendered orange over an authored cyan. Two of four shipped worlds, found by screenshot |
 | Models are matched by NAME, not position | `self_check` + `verify.ps1` | Picking the wrong one fails silently rather than loudly |
 
 ## Not yet enforced — these are gaps, not decisions

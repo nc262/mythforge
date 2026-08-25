@@ -1092,6 +1092,24 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# A SHIPPED WORLD KEEPS ITS AUTHORED ACCENT. Every builtin is compiled, and
+	# the pack accent was replacing all four hand-tuned palettes. Two came out
+	# visibly wrong: brasshaven — "brass, soot and secrets" — rendered PALE BLUE
+	# (#c9d3f5 over an authored #d69a52), and Neon Spire rendered ORANGE (#ff8400
+	# over an authored #2de2e6 cyan). A forged world has no authored palette and
+	# still needs its pack's accent, so the split is exactly BUILTIN.
+	var pal_keep2 := Ui.pal.duplicate(true)
+	var wid_keep2 := Ui.world_id
+	for probe2 in ["neonspire", "brasshaven", "embervale"]:
+		Ui.apply(probe2)
+		var authored: Dictionary = Ui.PALETTES.get(str(WorldSkin.skin_for_id(probe2).get("palette", "arcane")), {})
+		if authored.has("gold"):
+			assert(Ui.c("gold").is_equal_approx(authored["gold"]),
+				"a shipped world's authored accent was overruled by its generated pack — %s wanted %s, got %s (Invariants.md)" % [
+					probe2, Color(authored["gold"]).to_html(false), Ui.c("gold").to_html(false)])
+	Ui.apply(str(wid_keep2))
+	Ui.pal = pal_keep2
+
 	# PY-14, THE REAL ONE. Measured from a windowed screenshot, not from source:
 	# `Ui.c("gold")` came back #ff8706 on Neon Spire while its palette says
 	# #2de2e6. The world is COMPILED, so `_overlay_world_palette` replaces the

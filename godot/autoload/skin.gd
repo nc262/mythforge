@@ -1075,7 +1075,16 @@ func _overlay_world_palette(wid: String) -> void:
 	var cols = Compiler.style_for(wid).get("colors")
 	if not (cols is Dictionary):
 		return
-	var acc = _hex(str(cols.get("accent", "")))
+	# A SHIPPED WORLD'S PALETTE WAS AUTHORED BY HAND; A GENERATED PACK MUST NOT
+	# OVERRULE IT. Measured across four compiled worlds — the pack accent replaced
+	# every one of them, and two came out wrong in a way a screenshot makes
+	# obvious: brasshaven, "brass, soot and secrets", rendered PALE BLUE
+	# (#c9d3f5 over an authored #d69a52 brass), and Neon Spire rendered ORANGE
+	# (#ff8400 over an authored #2de2e6 cyan). A forged world has no authored
+	# palette and still needs its pack's accent, so the split is exactly BUILTIN.
+	# Grounds still overlay either way: dominant and shadow only re-hue surfaces,
+	# and that is what lets a compiled world feel like itself.
+	var acc = _hex(str(cols.get("accent", ""))) if not WorldSkin.BUILTIN.has(wid) else null
 	if acc != null:
 		# PY-14, MEASURED — this is the "two accents on one screen". The overlay
 		# replaced the PRIMARY accent from the compiled pack and left the
