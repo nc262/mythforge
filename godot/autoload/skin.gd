@@ -288,6 +288,15 @@ func dress_dialog(dlg: AcceptDialog, content: Control = null) -> void:
 	var ok := dlg.get_ok_button()
 	ok.theme_type_variation = "AccentButton"
 	ok.custom_minimum_size = Vector2(240, 44)   # R6 STR-27: a real 44px target
+	# …AND THE OTHER ONE. A ConfirmationDialog adds a cancel button this never
+	# touched, so Session Zero showed a dressed panel with a teal confirm and a
+	# stock grey "Cancel" beside it. Found in a screenshot, not in the source —
+	# `get_cancel_button()` exists only on ConfirmationDialog, hence the guard.
+	if dlg.has_method("get_cancel_button"):
+		var no: Button = dlg.get_cancel_button()
+		if no != null:
+			no.theme_type_variation = "GhostButton"
+			no.custom_minimum_size = Vector2(160, 44)
 	if content != null:
 		_cap_panel_content(dlg, content)
 

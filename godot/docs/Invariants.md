@@ -74,6 +74,14 @@ along a canal. The real route is an endpoint change, not more wording:
 `/sdapi/v1/txt2img` does, and the game already speaks that dialect for img2img
 (`art_cache.gd:I2I_PATH`). Read from the sdcpp routes at our pinned commit.
 
+**A prompt fix does not reach a world that ships a BAKED image.** `world_map`
+draws `Compiler.chart_art()` — the pack's own `art/chart.png` — and only falls
+back to the cache when there is none. That is correct (package before cache, the
+rule above) and it means changing a PROMPT changes nothing for a compiled world
+until its pack is re-baked. PY-26's city chart was verified in the cache and the
+game still drew the baked valley. Check which path a screen actually reads before
+believing a prompt fix landed.
+
 ## This file is CHECKED against reality
 
 Rows go stale. Three of these did, within an hour of the file being written — they

@@ -114,6 +114,13 @@ func _shot_scene(path: String, stem: String) -> void:
 	var vp: Viewport = node if node is Window else get_viewport()
 	if node is Window:
 		node.popup_centered()
+	elif node is Control:
+		# GIVE A CONTROL THE WHOLE WINDOW, or the shot lies about layout. Mounted
+		# bare, a Control sizes to its own minimum and leaves the rest of the frame
+		# empty — which reads exactly like the dead space PY-19 reports, while
+		# being an artefact of this harness. The game gives these screens a full
+		# rect; so must this.
+		(node as Control).set_anchors_preset(Control.PRESET_FULL_RECT)
 	for i in 4:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
