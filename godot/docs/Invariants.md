@@ -21,6 +21,34 @@ root cause kept reappearing somewhere new, five times in one day:
 Every one of those was **already documented at the site of the fix**, and a comment
 is only discoverable if you are already reading that file.
 
+## THE RULE THIS FILE IMPOSES — READ THIS ONE FIRST
+
+**A check on your MECHANISM is not a check on the BUG.** This is the failure that
+produced two wrong "fixed" commits in one day, both of them mutation-tested.
+
+PY-14 was diagnosed from source as "self-drawn controls never repaint on a skin
+change". A fix was written, a check asserted the fix was called, the check went
+red under mutation — every step rigorous, all of it applied to the wrong cause.
+The real one (a compiled world overlays its primary accent and leaves the
+secondary behind) was found only when someone finally took a SCREENSHOT. PY-26
+went the same way: the check proved the prompt describes rather than forbids,
+which is true and irrelevant, because the screen draws the BAKED pack chart and
+never reads the prompt at all.
+
+So, before a commit says a row is fixed:
+
+1. **Measure the SYMPTOM, not the mechanism.** "Turns went 6.1 s to 3.5 s" and
+   "the button border is teal, not magenta" are symptoms. "`repaint_on_skin` is
+   called" is a mechanism, and a green mechanism check next to a live bug is
+   worse than no check, because it reads as proof.
+2. **Confirm which PATH the screen actually reads.** Package or cache? Baked or
+   generated? A prompt fix changes nothing for a world that ships a baked image.
+3. **If it renders, look at it.** `tests/screen_shots.tscn` exists for this and
+   has already overturned two conclusions that source-reading called certain.
+4. **If the symptom was not measured, do not title the commit "fixed".** Say what
+   was verified and what was not. "Not verified visually" in a commit BODY under
+   a title saying FIXED is still overstating it.
+
 ## THE RULE THIS FILE IMPOSES
 
 **An RCA comment without a check is unfinished work.** When you write "this cost us
