@@ -1068,8 +1068,25 @@ func _overlay_world_palette(wid: String) -> void:
 		return
 	var acc = _hex(str(cols.get("accent", "")))
 	if acc != null:
+		# PY-14, MEASURED — this is the "two accents on one screen". The overlay
+		# replaced the PRIMARY accent from the compiled pack and left the
+		# SECONDARY one at whatever the hand-tuned palette said, so Neon Spire ran
+		# an orange primary (#ff8400, from its pack) beside a magenta secondary
+		# (#ff5fd2, from PALETTES) — two unrelated hues, neither of them the cyan
+		# the palette was authored around. A screenshot is what settled it; the
+		# earlier `repaint_on_skin` fix was for a real but DIFFERENT bug (self-drawn
+		# controls not repainting on a skin CHANGE) and never touched this.
+		#
+		# So the pair moves together. The secondary keeps its ROLE — a contrasting
+		# partner, roughly a third of the wheel away — but is now derived from the
+		# world's own accent instead of a palette the overlay has already left
+		# behind. One world, one accent family.
 		pal["gold"] = acc
 		pal["gold_soft"] = acc.lightened(0.28)
+		var partner := Color.from_hsv(fposmod(acc.h + 0.38, 1.0),
+			clampf(acc.s * 0.92, 0.0, 1.0), clampf(acc.v * 1.02, 0.0, 1.0))
+		pal["amethyst"] = partner
+		pal["amethyst_deep"] = partner.darkened(0.34)
 	var dom = _hex(str(cols.get("dominant", "")))
 	if dom != null:
 		for k in ["surface", "surface2", "sheet"]:

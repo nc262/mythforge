@@ -1092,6 +1092,31 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
 	print("  invariants: %d enforced rows, every claimed check found" % claims)
 
+	# PY-14, THE REAL ONE. Measured from a windowed screenshot, not from source:
+	# `Ui.c("gold")` came back #ff8706 on Neon Spire while its palette says
+	# #2de2e6. The world is COMPILED, so `_overlay_world_palette` replaces the
+	# primary accent with the pack's (#ff8400) — and left the SECONDARY at the
+	# palette's magenta. Orange beside magenta, neither of them the authored cyan:
+	# "two accents on one screen". The earlier repaint_on_skin fix was for a real
+	# but different bug and never touched this.
+	var pal_keep := Ui.pal.duplicate(true)
+	var wid_keep := Ui.world_id
+	if Compiler.is_compiled("neonspire"):
+		Ui.apply("neonspire")
+		# TEST THE DERIVATION, not a distance. The first version of this asserted
+		# the two hues sat 0.18-0.5 apart on the wheel — and orange-to-magenta,
+		# which IS the bug, measures 0.196. It passed the mutation. A band that
+		# admits the failure it was written for is not a check.
+		var acc_h := Ui.c("gold").h
+		var want_h := fposmod(acc_h + 0.38, 1.0)
+		var got_h := Ui.c("amethyst").h
+		var off := absf(want_h - got_h)
+		off = minf(off, 1.0 - off)   # around the wheel, not across it
+		assert(off < 0.04,
+			"PY-14: the secondary accent is not derived from the world's own — expected hue %.3f, got %.3f. A compiled world that overlays only its primary leaves two unrelated accents on one screen (Invariants.md)" % [want_h, got_h])
+	Ui.apply(str(wid_keep))
+	Ui.pal = pal_keep
+
 	# PY-26. A CITY IS NOT A RIVER VALLEY. The chart asked every world for "open
 	# country — terrain, water, forest, hills and coast", so Neon Spire's minimap
 	# during a scene in The Undercity was a neon-tinted wilderness. The Atlas rule
