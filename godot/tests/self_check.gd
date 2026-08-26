@@ -2567,6 +2567,81 @@ The term for spell slots is "Echoes."
 	var msrc := FileAccess.get_file_as_string("res://scripts/main_menu.gd")
 	assert(msrc.contains("coach_reset()"), "Settings can replay the hints")
 
+	# ── THE GROUND IS DATA, AND THE PINS STAND ON IT ─────────────────────────
+	#
+	# The chart used to be an SDXL painting and the road router read terrain back
+	# out of its PIXELS. Measured 2026-08-26: that gave Neon Spire a cost field
+	# 73.2 % "expensive" (night shadow read as mountain) while finding 0.2 % water
+	# in a world whose prompt asks for canals, and three of the twenty authored
+	# pins stood in open water — `Your Apartment` at wet=1.00.
+	#
+	# Nothing ever compared a pin against the ground beneath it, so nothing could
+	# fail. These are the comparisons.
+	for fam in WorldSkin.FAMILIES.keys():
+		assert(WorldTerrain.GROUND.has(fam),
+			"WorldTerrain.GROUND has no ground for the '%s' family - it would silently fall back to fantasy, which is how a megacity got a river valley (PY-26)" % fam)
+	var _seen_terrain := 0
+	for w in Rules.builtin_worlds():
+		var twid := str(w.get("id", ""))
+		if twid == "":
+			continue
+		WorldTerrain.forget(twid)
+		var ter := WorldTerrain.for_world(twid)
+		_seen_terrain += 1
+		var wf := ter.water_fraction()
+		assert(wf > 0.001 and wf < 0.999,
+			"%s terrain is degenerate (%.1f%% water) - all-land or all-sea passes every other check for the wrong reason" % [twid, wf * 100.0])
+		# THE BUG ITSELF: a place standing somewhere its kind cannot stand.
+		for l in Rules.world_locations(twid):
+			if not (l is Dictionary) or not (l.has("x") and l.has("y")):
+				continue
+			var lc := ter.cell_of(Vector2(float(l["x"]), float(l["y"])))
+			var lk := str(l.get("kind", ""))
+			var lclass: String = ["deep", "shoal", "coast", "plain", "hill", "peak"][ter.klass(lc)]
+			assert(ter.suits(lk, lc),
+				"%s: '%s' (%s) stands on %s - the seed search failed to find ground that suits the authored pins" % [
+					twid, str(l.get("name", "")), lk, lclass])
+			# SCORE, NOT JUST `suits`. Asserting only `suits` is asserting "not
+			# drowned", which the very first candidate seed satisfies for every
+			# pin - so the check passed while Hearthwood Market, a shop, sat on a
+			# glacier at score 0.00. The bug was never that pins were underwater;
+			# it was that nothing compared a pin to the ground at all.
+			assert(ter.score(lk, lc) > 0.15,
+				"%s: '%s' (%s) scores %.2f on %s - possible ground, but not ground of its kind; the seed search is not searching" % [
+					twid, str(l.get("name", "")), lk, ter.score(lk, lc), lclass])
+		# DETERMINISM. The Atlas, the minimap and the compiler each ask for this
+		# world's ground separately; if two calls disagree, the pins and the paper
+		# disagree, which is the whole defect being fixed here.
+		WorldTerrain.forget(twid)
+		var ter_again := WorldTerrain.for_world(twid)
+		assert(ter_again.seed_used == ter.seed_used and is_equal_approx(ter_again.sea, ter.sea),
+			"%s terrain is not deterministic - two calls gave seeds %d and %d" % [twid, ter.seed_used, ter_again.seed_used])
+	assert(_seen_terrain >= 6, "only %d worlds had terrain built - the loop went blind" % _seen_terrain)
+	# ROUGH GROUND COSTS WHAT ITS WORLD'S RELIEF SAYS IT COSTS.
+	#
+	# This first compared MEAN cost across two whole worlds - and that check was
+	# worthless, proven by mutation: hardcoding the HILL and PEAK constants so
+	# `relief` no longer entered `cost()` at all left SELF-CHECK OK. The mean is
+	# dominated by how much water and high country each world has, which
+	# `_classify` decides, so the assertion was re-testing `_classify` (already
+	# covered above) and saying nothing about `cost`.
+	#
+	# The claim `cost()` actually makes is per-class: the SAME kind of ground is
+	# dearer in a world with more relief. So compare like with like.
+	var _class_cost := func(wid2: String, want: int) -> float:
+		var t2 := WorldTerrain.for_world(wid2)
+		for yy in WorldTerrain.H:
+			for xx in WorldTerrain.W:
+				if t2.klass(Vector2i(xx, yy)) == want:
+					return t2.cost(Vector2i(xx, yy))
+		return -1.0
+	var city_hill: float = _class_cost.call("neonspire", WorldTerrain.HILL)
+	var fjord_hill: float = _class_cost.call("fimbulreach", WorldTerrain.HILL)
+	assert(city_hill > 0.0 and fjord_hill > 0.0,
+		"no hill found in neonspire (%.2f) or fimbulreach (%.2f) - the class search went blind" % [city_hill, fjord_hill])
+	assert(city_hill < fjord_hill * 0.8,
+		"a rise in a megacity costs %.2f and one in a fjord world %.2f - relief has stopped driving cost()" % [city_hill, fjord_hill])
+
 	print("SELF-CHECK OK")
 	get_tree().quit(0)
 
