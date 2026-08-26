@@ -433,9 +433,12 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 	# absent scale bar — a chart that draws a position it cannot honour is a
 	# drawn lie. See Art.ensure_world_chart for the runtime twin of this prompt.
 	stage_started.emit("chart", "Drawing the paper…")
+	# THE PROMPT LIVES IN ONE PLACE NOW. This was a hand-copy labelled "the runtime
+	# twin", and PY-26 fixed the twin and not this — so the BAKE, which is what a
+	# compiled world actually draws, kept painting open wilderness for a megacity.
+	# Re-baking would have reproduced the bug faithfully.
 	await _await_art("chart-" + world_id.validate_filename(),
-		"illustrated map of the lands around %s, %s. overhead view of open country — terrain, water, forest, hills and coast. empty wilderness, no buildings, no settlements, no landmarks, no roads or routes, no icons, no text labels, no border or frame" % [
-			name, anchor],
+		Art.chart_prompt(world_id, name, "", anchor),
 		{"profile": "scene", "lane": Art.Lane.IDLE},
 		"art/chart.png")
 	stage_done.emit("chart", true)

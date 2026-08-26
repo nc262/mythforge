@@ -1159,6 +1159,15 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	var chart_at := chart_src.find("illustrated %s of the lands around")
 	assert(chart_at >= 0, "PY-26: the chart prompt is gone — this check has gone blind")
 	var chart_txt := chart_src.substr(chart_at, 320)
+	# AND THE BAKE MUST NOT KEEP ITS OWN COPY. world_compiler carried a hand-copy
+	# labelled "the runtime twin of this prompt", so PY-26 fixed the twin and the
+	# bake — which is what a COMPILED world actually draws — kept painting
+	# wilderness. Re-baking would have reproduced the bug faithfully.
+	var wc_src := FileAccess.get_file_as_string("res://autoload/world_compiler.gd")
+	assert(wc_src.contains("Art.chart_prompt("),
+		"PY-26: the bake does not use Art.chart_prompt — a second copy of that prompt is how the runtime fix missed every compiled world (Invariants.md)")
+	assert(not wc_src.contains("overhead view of open country"),
+		"PY-26: world_compiler still spells the chart prompt by hand")
 	for forbid in ["no buildings", "no settlements", "no text labels", "no border"]:
 		assert(not chart_txt.contains(forbid),
 			"PY-26: the chart prompt still says \"%s\" — a negative inside a positive prompt does not work, and this prompt is the RCA (Invariants.md)" % forbid)

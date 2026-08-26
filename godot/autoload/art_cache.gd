@@ -1251,6 +1251,17 @@ func chart_ground(world_id2: String) -> String:
 	return str(CHART_GROUND.get(fam, CHART_GROUND["fantasy"]))
 
 
+## ONE CHART PROMPT, NOT TWO. `world_compiler` carried its own copy for the BAKE
+## and labelled it "the runtime twin of this prompt" — so PY-26 fixed the runtime
+## one and the bake kept painting wilderness for a megacity. A re-bake would have
+## faithfully reproduced the bug. Both callers come here now.
+func chart_prompt(world_id2: String, world_name: String, country := "", style := "") -> String:
+	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
+	var st := style if style != "" else str(flavor.get("world", "high fantasy"))
+	return "illustrated %s of the lands around %s%s, %s style, %s. a plain unlabelled surface, bare of markings and lettering, edge to edge" % [
+		str(flavor.get("map", "chart")), world_name, country, st, chart_ground(world_id2)]
+
+
 func ensure_world_chart(world_id2: String, world_name: String, locations: Array = []) -> String:
 	var key := "chart-" + world_id2.validate_filename()
 	var lands: Array[String] = []
@@ -1268,8 +1279,5 @@ func ensure_world_chart(world_id2: String, world_name: String, locations: Array 
 					kinds[k] = true
 		lands.assign(kinds.keys())
 	var country := (", country of " + ", ".join(lands)) if not lands.is_empty() else ""
-	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
-	ensure(key, "illustrated %s of the lands around %s%s, %s style, %s. a plain unlabelled surface, bare of markings and lettering, edge to edge" % [
-		str(flavor.get("map", "chart")), world_name, country,
-		str(flavor.get("world", "high fantasy")), chart_ground(world_id2)])
+	ensure(key, chart_prompt(world_id2, world_name, country))
 	return key
