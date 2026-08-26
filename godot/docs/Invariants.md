@@ -95,6 +95,24 @@ visibly a gap rather than invisibly a comment.
 
 ## Known limits, measured
 
+**A negative prompt is the only thing that removes chrome, and it is not total.**
+MEASURED on the chart re-bake, 1024x1024, same checkpoint:
+
+| | frame | legend | text |
+|---|---|---|---|
+| neonspire (`holo-map`) | — | — | **gone entirely** |
+| brasshaven (`chart`) | **gone** | **gone** | title caption remains |
+
+`/v1/images/generations` has no `negative_prompt` field; `/sdapi/v1/txt2img`
+does, and `_paint` switches dialect when one is supplied. That removed the
+decorative frame and the legend blocks outright — the two things that actually
+fight the pins the map draws on top — and left brasshaven a "BRASSHAVEN"
+caption. Both `title` and `caption` were already in the negative, so more
+synonyms is not the answer: "chart" plus steampunk evidently pulls hard toward an
+antique map SHEET. If that caption ever has to go, change the flavour word or
+crop, do not write a longer negative.
+
+Superseded, kept because the reasoning still holds for the POSITIVE half:
 **Positive description beats forbidding, but does not suppress text.** The chart
 prompt used to end "no buildings, no settlements, no text labels"; describing the
 ground instead fixed the picture (a megacity renders as a city, verified by

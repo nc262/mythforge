@@ -322,7 +322,8 @@ func request(key: String, prompt := "", opts := {}) -> void:
 	var prof: Dictionary = PROFILES.get(str(opts.get("profile", DEFAULT_PROFILE)), PROFILES[DEFAULT_PROFILE])
 	_generating[key] = true
 	_queue.append({"key": key, "prompt": prompt, "lane": lane,
-		"size": str(opts.get("size", prof["size"]))})
+		"size": str(opts.get("size", prof["size"])),
+		"negative": str(opts.get("negative", ""))})
 	_sort_queue()
 	art_progress.emit(key, "queued")
 	if not _pumping:
@@ -401,6 +402,20 @@ const HOLD_MAX := 180.0   # ponytail: safety valve — a stuck flag must never f
 const IMAGE_SERVER := "http://127.0.0.1:8189"
 const IMAGE_PATH := "/v1/images/generations"
 const IMAGE_MODEL := "sd-cpp-local"
+## THE ONLY ROUTE TO A NEGATIVE PROMPT. `/v1/images/generations` accepts no
+## `negative_prompt` field at all — read from sdcpp's `routes_openai.cpp` at our
+## pinned commit — while `/sdapi/v1/txt2img` does, and this file already speaks
+## that dialect for img2img. Proven necessary by picture: the chart prompt was
+## rewritten to DESCRIBE ("a plain unlabelled surface, bare of markings and
+## lettering") instead of forbid, which fixed the ground and did nothing about
+## lettering — brasshaven came back with a BRASSHAVEN cartouche, legend blocks
+## down both sides and a decorative frame, all baked into the package the map
+## draws pins on top of.
+const T2I_PATH := "/sdapi/v1/txt2img"
+## A chart is drawn ON. Anything that claims a position or an edge fights the
+## pins and roads the engine puts over it — see the Atlas note about a chart that
+## "draws a position it cannot honour".
+const CHART_NEG := "text, letters, words, title, caption, cartouche, legend, key, label, signature, watermark, border, frame, ornate margin, torn paper edge, rolled scroll"
 
 
 ## One picture, one request. Measured: 8.7 s for 512x512 cold, base64 PNG in the
@@ -411,15 +426,26 @@ const IMAGE_MODEL := "sd-cpp-local"
 ## .safetensors so it cannot switch checkpoints per style. Matting, regions and
 ## character-consistency adapters do not exist here. When any of them become
 ## possible they belong in this payload, as fields.
-func _paint(prompt: String, size: String) -> Dictionary:
+func _paint(prompt: String, size: String, negative := "") -> Dictionary:
 	# The harnesses drive the real game headless and must not reach a GPU.
 	if Api.test_mode:
 		return {}
 	var req := HTTPRequest.new()
 	add_child(req)
-	var err := req.request(IMAGE_SERVER + IMAGE_PATH,
+	# A negative prompt means the A1111-shaped endpoint, because the OpenAI one
+	# has no field for it. Same engine, same checkpoint, different dialect.
+	var wh := size.split("x")
+	var use_neg := negative != "" and wh.size() == 2
+	var path := T2I_PATH if use_neg else IMAGE_PATH
+	var body := {}
+	if use_neg:
+		body = {"prompt": prompt, "negative_prompt": negative,
+			"width": int(wh[0]), "height": int(wh[1])}
+	else:
+		body = {"model": IMAGE_MODEL, "prompt": prompt, "n": 1, "size": size}
+	var err := req.request(IMAGE_SERVER + path,
 		PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST,
-		JSON.stringify({"model": IMAGE_MODEL, "prompt": prompt, "n": 1, "size": size}))
+		JSON.stringify(body))
 	if err != OK:
 		req.queue_free()
 		return {}
@@ -428,9 +454,14 @@ func _paint(prompt: String, size: String) -> Dictionary:
 	if res[1] != 200:
 		return {}
 	var out = JSON.parse_string(res[3].get_string_from_utf8())
-	if not (out is Dictionary) or not (out.get("data") is Array) or out["data"].is_empty():
+	if not (out is Dictionary):
 		return {}
-	var b64 := str(out["data"][0].get("b64_json", ""))
+	# The two dialects answer differently: {"images":[b64]} vs {"data":[{b64_json}]}
+	var b64 := ""
+	if out.get("images") is Array and not out["images"].is_empty():
+		b64 = str(out["images"][0])
+	elif out.get("data") is Array and not out["data"].is_empty():
+		b64 = str(out["data"][0].get("b64_json", ""))
 	if b64 == "":
 		return {}
 	return {"bytes": Marshalls.base64_to_raw(b64), "prompt": prompt, "size": size,
@@ -451,7 +482,7 @@ func _pump() -> void:
 			continue
 		_painting = key
 		art_progress.emit(key, "painting")
-		var r := await _paint(str(job["prompt"]), str(job["size"]))
+		var r := await _paint(str(job["prompt"]), str(job["size"]), str(job.get("negative", "")))
 		_painting = ""
 		_generating[key] = false
 		var bytes: PackedByteArray = r.get("bytes", PackedByteArray())
@@ -1279,5 +1310,8 @@ func ensure_world_chart(world_id2: String, world_name: String, locations: Array 
 					kinds[k] = true
 		lands.assign(kinds.keys())
 	var country := (", country of " + ", ".join(lands)) if not lands.is_empty() else ""
-	ensure(key, chart_prompt(world_id2, world_name, country))
+	# WITH A NEGATIVE. A chart is drawn ON, so a title cartouche or a frame is a
+	# claim the pins have to fight. Positive wording alone did not stop either.
+	request(key, chart_prompt(world_id2, world_name, country),
+		{"size": "1024x1024", "negative": CHART_NEG, "lane": Lane.IDLE})
 	return key
