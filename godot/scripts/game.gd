@@ -1271,6 +1271,10 @@ func _decorate_speaker(rt: RichTextLabel, clean: String) -> void:
 
 # ── World tags → state ───────────────────────────────────────────────────────
 func _apply_world_tags(tags: Array) -> void:
+	# Rumour first: a place the prose merely NAMES is charted before any tag runs,
+	# so a [[scene]] that then moves the player finds it already known rather than
+	# creating it twice.
+	_hear_named_places()
 	for t in tags:
 		var a: Dictionary = t["attrs"]
 		match str(t["name"]):
@@ -2880,6 +2884,36 @@ func _gm_makes_region(a: Dictionary) -> void:
 		_say_system(why, "compass")
 
 
+## AT-6 — THE TALE NAMING A PLACE PUTS IT ON THE CHART, unvisited.
+##
+## Baldur's Gate II prints "Your world map has been updated" when an NPC mentions
+## somewhere you have never been; this is that, and it is the whole reason the
+## three-state fog exists. Without it the GM can say "word reaches you of the
+## Sunken Fort", the player opens the Atlas, and the Atlas says there is no such
+## place — the map calling the narrator a liar, in a game that is nothing but a
+## narrator.
+##
+## Reads the accumulated reply rather than the [[scene]] tag, because being TOLD
+## about somewhere is exactly the case where no tag fires. `_track_here` handles
+## the other half: prose that moves you.
+##
+## FOUR CHARACTERS MINIMUM, and full-name matching only. A gazetteer holds names
+## like "The Office" and "Home"; a looser match would have the GM mention a home
+## and silently chart someone's apartment across the map.
+func _hear_named_places() -> void:
+	var prose := _acc.to_lower()
+	if prose.strip_edges() == "":
+		return
+	for l in GameState.places():
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		if nm.length() < 4 or GameState.heard_of(nm):
+			continue
+		if prose.contains(nm.to_lower()):
+			GameState.hear_of(nm)
+
+
 ## Auto here-tracking: the GM's [[scene]] prose moves the pin when the place
 ## matches a charted location — the map follows the story without a click.
 func _track_here(place: String) -> void:
@@ -2915,6 +2949,8 @@ func _travel_to(place: String) -> void:
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	world["here"] = place
 	# The map remembers: fog burned away stays away.
+	GameState.hear_of(place)
+	world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	var seen: Array = world.get("seen") if world.get("seen") is Array else []
 	if not seen.has(place):
 		seen.append(place)

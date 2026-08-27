@@ -218,8 +218,35 @@ func _region_uvs() -> PackedVector2Array:
 	return out
 
 
+## ── AT-6: THREE STATES, NOT TWO ──────────────────────────────────────────────
+##
+## `_known` was `not fog or nm == here or seen.has(nm)` — a place was either fully
+## known or a question mark under a cloud. That collapses two different kinds of
+## knowing: you can know OF the Sunken Fort without having stood in it.
+##
+## The precedent is exact. Baldur's Gate II updates the world map from dialogue
+## alone; Pillars of Eternity greys the icon of a location learned by being told
+## about it; Skyrim draws known-unvisited black against visited white. All three
+## ship the middle state this file did not have.
+##
+## HEARD is clickable, following BG2 rather than Pillars: you know the place is
+## out there, and setting off for it is the entire point of a chart.
+enum { UNKNOWN, HEARD, VISITED }
+
+
+func _state_of(nm: String) -> int:
+	if not fog:
+		return VISITED                  # the table turned fog off; all is known
+	if nm == here or seen.has(nm) or GameState.visited(nm):
+		return VISITED
+	return HEARD if GameState.heard_of(nm) else UNKNOWN
+
+
+## Kept as the "is this drawn at all" test, which is what every caller wanted it
+## for. A place merely heard of IS drawn — that is the point — so this is now
+## true one state earlier than it used to be.
 func _known(nm: String) -> bool:
-	return not fog or nm == here or seen.has(nm)
+	return _state_of(nm) != UNKNOWN
 
 
 func _questward(nm: String) -> bool:
@@ -460,14 +487,19 @@ func _draw() -> void:
 		var p := _pos_of(l)
 		var nm := str(l.get("name", ""))
 		var is_here := nm == here
-		var known := _known(nm)
-		if not known:
-			# Fog: the unknown sleeps under a cloud — a rumor, not a name.
-			draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(34, 34), Vector2(68, 68)), false, Color(0.02, 0.02, 0.05, 0.55))
-			draw_circle(p, 4.0 if i == _hover else 3.0, Color(Ui.c("ink_dim"), 0.75))
-			var q := "?"
-			var qs := font.get_string_size(q, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
-			draw_string(font, p + Vector2(-qs.x / 2.0, -10), q, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(Ui.c("ink_dim"), 0.9))
+		var state := _state_of(nm)
+		if state == UNKNOWN:
+			# NOTHING. This drew a glow and a question mark, and a "?" is a
+			# promise — it says "there is a thing here, go and get it", which
+			# turns a chart into a checklist.
+			#
+			# The reason to drop it is stronger than taste. A point-crawl has no
+			# surface to sweep: a place either has a pin or it does not, so the
+			# reveal-the-whole-map busywork that fog is criticised for CANNOT
+			# occur here. Drawing "?" clouds would import a failure mode this
+			# design is immune to by construction. An empty edge of paper is a
+			# better invitation than a row of question marks — and never add a
+			# "map revealed" percentage for the same reason.
 			continue
 		var kind_s := str(l.get("kind", ""))
 		var col: Color = Ui.c(kind_color(kind_s))
@@ -478,7 +510,25 @@ func _draw() -> void:
 			var star := "✦"
 			var ss := font.get_string_size(star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
 			draw_string(font, p + Vector2(-ss.x / 2.0, -16), star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(Ui.c("gold"), 0.8 + 0.2 * pulse))
-		# The lamp of a known place.
+		# HEARD OF: THE SHAPE, NOT THE SUBSTANCE.
+		#
+		# Hollow, unlit, and no trade badge — you know the place is out there and
+		# roughly where, which is what a rumour gives you. Whether anyone keeps a
+		# counter is something you learn by arriving.
+		#
+		# Hollow-vs-filled and NOT a hue difference, deliberately: the state has
+		# to survive colour-blindness and a dimmed screen, which is the same rule
+		# KIND_MARK already follows for the seven kinds.
+		if state == HEARD:
+			_draw_mark(p, kind_shape(kind_s), Color(col, 0.30), 4.0 if i == _hover else 3.0)
+			draw_arc(p, 8.0, 0, TAU, 24, Color(col, 0.55 if i == _hover else 0.38), 1.2)
+			var hsz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
+			var htp := p + Vector2(-hsz.x / 2.0, -13)
+			draw_string(font, htp + Vector2(1, 1), nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(0, 0, 0, 0.7))
+			draw_string(font, htp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12,
+				Color(Ui.c("ink_dim"), 0.95 if i == _hover else 0.75))
+			continue
+		# The lamp of a visited place.
 		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(20, 20), Vector2(40, 40)), false, Color(col, 0.22))
 		_draw_mark(p, kind_shape(kind_s), Color(col, 0.95), 7.0 if i == _hover else 5.0)
 		# AT-7 — WHO TRADES. A place carries a `shop` string and the Atlas never
@@ -491,7 +541,7 @@ func _draw() -> void:
 		# and trade is orthogonal to kind — overloading either would have broken
 		# the seven-kinds rule that KIND_MARK exists to keep.
 		if str(l.get("shop", "")) != "":
-			_draw_trade(p)
+			_draw_trade(p)   # visited only — the HEARD branch returned above
 		draw_arc(p, 9.0, 0, TAU, 24, Color(col, 0.5), 1.5)
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
@@ -504,7 +554,16 @@ func _draw() -> void:
 	if _hover >= 0:
 		var l2: Dictionary = locations[_hover]
 		var nm2 := str(l2.get("name", ""))
-		var lore := (str(l2.get("lore", "")).left(80)) if _known(nm2) else "somewhere unknown — the road will teach you"
+		# Three states, three answers. A place merely heard of has no lore to
+		# tell: the tale named it, and that is all the player has earned.
+		var lore := ""
+		match _state_of(nm2):
+			VISITED:
+				lore = str(l2.get("lore", "")).left(80)
+			HEARD:
+				lore = "you have heard of this place — the road will teach you the rest"
+			_:
+				lore = ""
 		var p2 := _pos_of(l2)
 		draw_string(font, Vector2(clampf(p2.x - 120, 8, size.x - 260), minf(p2.y + 26, size.y - 10)),
 			lore, HORIZONTAL_ALIGNMENT_LEFT, 250, 12, Ui.c("gold_soft"))
@@ -729,7 +788,10 @@ func _legend_entries() -> Dictionary:
 	for l in locations:
 		if not (l is Dictionary):
 			continue
-		if fog and not _known(str(l.get("name", ""))):
+		# VISITED, not merely heard of — the badge cannot appear for a rumour, so
+		# the legend must not offer to explain one. The pins and the key have to
+		# agree about which places show a coin or the key is furniture.
+		if fog and _state_of(str(l.get("name", ""))) != VISITED:
 			continue
 		if str(l.get("shop", "")) != "":
 			trades = true

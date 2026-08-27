@@ -1560,8 +1560,66 @@ func add_place(spec: Dictionary) -> String:
 		"origin": "gm",   # authored places never carry this; the chart can tell them apart
 	})
 	world["places"] = made
+	# A place the GM has just CHARTERED is one the tale has named out loud, so it
+	# is heard of by construction. Without this the [[place]] tag would put a pin
+	# on the map that the fog then hid, which is the contradiction AT-6 exists to
+	# end — and the loudest possible version of it.
+	var hrd: Array = world.get("heard") if world.get("heard") is Array else []
+	if not hrd.has(nm):
+		hrd.append(nm)
+	world["heard"] = hrd
 	save_kind("world", world)
 	return ""
+
+
+## ── AT-6: KNOWING OF A PLACE IS NOT HAVING BEEN THERE ────────────────────────
+##
+## Fog was two-state — `seen` or hidden — and the table rule said so in as many
+## words: "the map hides what you haven't walked". That collapses two different
+## kinds of knowledge, and in THIS game the collapse has a specific and severe
+## failure: the GM names a place in prose, the player opens the Atlas, and the
+## place is not there. The map contradicts the narrator. In a game whose whole
+## premise is an LLM Game Master, prose is the primary channel and the chart's
+## job is to corroborate it, never to argue with it.
+##
+## So a place is UNKNOWN, HEARD OF, or VISITED. The precedent is exact: Baldur's
+## Gate II prints "Your world map has been updated" when an NPC mentions an area
+## you have never travelled to, Pillars of Eternity greys the icon of a location
+## learned through dialogue, and Skyrim draws a known-unvisited marker black
+## against a visited marker's white.
+##
+## `heard` is a plain list beside `seen`, and permanent for the same reason
+## `seen` is: re-shrouding exists to hide LIVE MOVING UNITS from an opponent, and
+## there is no adversary here and nothing that moves. Even RTS games keep terrain
+## revealed once seen.
+func hear_of(place_name: String) -> void:
+	var nm := place_name.strip_edges()
+	if nm == "":
+		return
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var h: Array = world.get("heard") if world.get("heard") is Array else []
+	if h.has(nm):
+		return
+	h.append(nm)
+	world["heard"] = h
+	save_kind("world", world)
+
+
+## Has the tale mentioned this place, by any route — prose, a tag, or a road?
+## Visiting implies hearing of: a save written before `heard` existed carries a
+## `seen` list and no `heard` at all, and a place the player has STOOD IN must
+## never come back as a rumour because the format changed under them.
+func heard_of(place_name: String) -> bool:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var h: Array = world.get("heard") if world.get("heard") is Array else []
+	var sn: Array = world.get("seen") if world.get("seen") is Array else []
+	return h.has(place_name) or sn.has(place_name) or str(world.get("here", "")) == place_name
+
+
+func visited(place_name: String) -> bool:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var sn: Array = world.get("seen") if world.get("seen") is Array else []
+	return sn.has(place_name) or str(world.get("here", "")) == place_name
 
 
 ## THE GM CREATES A REGION. Rare on purpose — see Rules.SCOPE_LEVEL.

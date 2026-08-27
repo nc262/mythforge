@@ -2668,6 +2668,43 @@ The term for spell slots is "Echoes."
 		assert(occupied.size() > 0, "%s placed no pins at all - places() went blind" % ter_wid)
 	GameState.character = _char_was
 
+	# ── AT-6: KNOWING OF A PLACE IS NOT HAVING BEEN THERE ────────────────────
+	#
+	# Fog was two-state and the table rule said so: "the map hides what you
+	# haven't walked". In a game narrated by an LLM that produces one specific,
+	# severe failure — the GM says "word reaches you of the Sunken Fort", the
+	# player opens the Atlas, and there is no such place. The map calls the
+	# narrator a liar.
+	#
+	# Unlike the two rows below this, these are BEHAVIOURAL: hear_of/heard_of/
+	# visited are pure data, so the states can be driven and read directly.
+	var _fog_char = GameState.character
+	var _fog_state = GameState.state
+	GameState.character = {"id": "dm-fog", "world_id": "embervale"}
+	GameState.state = {"world": {"here": "", "seen": [], "heard": []}}
+	assert(not GameState.heard_of("Nowhere At All"), "an unmentioned place is not heard of")
+	assert(not GameState.visited("Nowhere At All"), "an unmentioned place is not visited")
+	GameState.hear_of("The Sunken Fort")
+	assert(GameState.heard_of("The Sunken Fort"),
+		"a place the tale NAMED is not on the chart - this is the exact contradiction AT-6 exists to end")
+	assert(not GameState.visited("The Sunken Fort"),
+		"hearing of a place must not count as having stood in it, or there are two states again")
+	# VISITING IMPLIES HEARING OF, and this is the row that matters most.
+	# Every save written before `heard` existed carries a `seen` list and no
+	# `heard` at all. A place the player has STOOD IN must never come back as a
+	# rumour because the format changed underneath them.
+	GameState.state = {"world": {"here": "", "seen": ["Gallows Quay"]}}
+	assert(GameState.visited("Gallows Quay"), "a seen place is visited")
+	assert(GameState.heard_of("Gallows Quay"),
+		"an OLD SAVE with `seen` and no `heard` demoted a visited place back to a rumour")
+	# `here` counts on its own: a tale can open somewhere before anything is
+	# written to either list.
+	GameState.state = {"world": {"here": "The Ember & Oak", "seen": []}}
+	assert(GameState.visited("The Ember & Oak") and GameState.heard_of("The Ember & Oak"),
+		"where the player is STANDING must be the most known place on the chart")
+	GameState.character = _fog_char
+	GameState.state = _fog_state
+
 	var wm_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
 
 	# AT-7 / AT-8 — THE ATLAS READS WHAT THE PLACES ACTUALLY CARRY.
@@ -2690,6 +2727,13 @@ The term for spell slots is "Echoes."
 	assert(shader_src != "", "chart_paper.gdshader is missing - the Atlas has no paper")
 	assert(shader_src.contains("uniform vec2 region_at"),
 		"the chart shader no longer takes region hearts (AT-8)")
+	# AT-6, the drawing half: no question-mark cloud. A "?" is a promise, and a
+	# point-crawl has no surface to sweep — a place either has a pin or it does
+	# not — so clouds would import a busywork failure this design cannot produce.
+	assert(not wm_src.contains("var q := \"?\""),
+		"the Atlas is drawing question marks for unknown places again (AT-6)")
+	assert(wm_src.contains("_state_of") and wm_src.contains("HEARD"),
+		"world_map.gd has lost the heard-of state - fog is back to two states")
 	# ...and the feature must have something to show, or it is dead code that
 	# passes every grep. At least one shipped world has to carry a trader.
 	var traders := 0

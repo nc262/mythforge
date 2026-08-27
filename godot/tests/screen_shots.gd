@@ -41,7 +41,18 @@ func _ready() -> void:
 		if _l is Dictionary and str(_l.get("name", "")) != "":
 			_first = str(_l["name"])
 			break
-	GameState.state = {"world": {"here": _first, "seen": []}}
+	# A PARTIAL STATE, so the shot shows all three fog tiers at once. `here` plus
+	# one visited neighbour, one merely heard of, and the rest unknown — a shot
+	# with fog off (as this had) can only ever prove the VISITED drawing works.
+	var _rest: Array = []
+	for _l2 in GameState.places():
+		if _l2 is Dictionary and str(_l2.get("name", "")) != _first:
+			_rest.append(str(_l2["name"]))
+	GameState.state = {"world": {
+		"here": _first,
+		"seen": [_first] + (_rest.slice(0, 1) if _rest.size() > 0 else []),
+		"heard": _rest.slice(0, 3),
+	}}
 	await get_tree().process_frame
 
 	# WHAT THE PALETTE ACTUALLY IS, before judging any picture by eye.
@@ -121,7 +132,7 @@ func _shot_scene(path: String, stem: String) -> void:
 		var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 		node.here = str(wd.get("here", ""))
 		node.seen = wd.get("seen") if wd.get("seen") is Array else []
-		node.fog = false     # a shot is for judging the drawing, not the fog rule
+		node.fog = true      # AT-6 — fog ON, or the shot cannot show HEARD at all
 	get_tree().root.add_child(node)
 	# A DIALOG IS ITS OWN WINDOW, AND ITS OWN VIEWPORT. The first version of this
 	# grabbed `get_viewport()` — the MAIN window — for every screen, so the three

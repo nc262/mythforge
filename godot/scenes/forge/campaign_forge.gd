@@ -332,7 +332,7 @@ func _stage_rules() -> void:
 	toggles.add_theme_constant_override("separation", Ui.SPACE["xs"])
 	var toggle_defs := [["permadeath", "Permadeath — death archives the save; the tale truly ends", false],
 		["companions", "Companions — allies may join the party", true],
-		["fog", "Fog of War — the map hides what you haven't walked", true]]
+		["fog", "Fog of War — the map hides what you haven't heard of", true]]
 	var checks := {}
 	for td in toggle_defs:
 		var cb := CheckButton.new()
@@ -654,6 +654,20 @@ func _begin_campaign() -> void:
 	if _settlement != "":
 		world_kind["here"] = _settlement
 		world_kind["seen"] = [_settlement]
+		# THE PLACES OF HOME ARE NOT RUMOURS. A character begins somewhere they
+		# live; the rest of that region is the ground they grew up on, so it is
+		# charted-but-unvisited from the first turn rather than blank. Without
+		# this a new tale opens on a chart holding exactly one pin, which reads
+		# as a broken map rather than an unexplored one.
+		var start_region := ""
+		var kin: Array = []
+		for l in (world.get("locations") if world.get("locations") is Array else []):
+			if l is Dictionary and str(l.get("name", "")) == _settlement:
+				start_region = str(l.get("region", ""))
+		for l in (world.get("locations") if world.get("locations") is Array else []):
+			if l is Dictionary and str(l.get("region", "")) == start_region and start_region != "":
+				kin.append(str(l.get("name", "")))
+		world_kind["heard"] = kin
 	GameState.set_kind_for(adv_id, "world", world_kind)
 	_busy = false
 	_status.text = ""
