@@ -2668,6 +2668,38 @@ The term for spell slots is "Echoes."
 		assert(occupied.size() > 0, "%s placed no pins at all - places() went blind" % ter_wid)
 	GameState.character = _char_was
 
+	var wm_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+
+	# AT-7 / AT-8 — THE ATLAS READS WHAT THE PLACES ACTUALLY CARRY.
+	#
+	# `shop` sat on every place for the life of the project and `world_map.gd`
+	# never once read it: "shop" appeared there only as a KIND, so a settlement
+	# with a keeper behind a counter drew the same mark as one without. Regions
+	# had the same shape of bug — real in the data, drawn as floating text.
+	#
+	# THESE ARE MECHANISM CHECKS AND THAT IS WORTH SAYING. They prove the Atlas
+	# still ASKS for the field, not that what it draws is right; judging a badge
+	# or a border is `screen_shots` work. They would not have caught the original
+	# defect either, because the original defect was that nobody looked. What they
+	# do catch is the field being quietly dropped again in a refactor.
+	assert(wm_src.contains("l.get(\"shop\"") or wm_src.contains("get(\"shop\", \"\")"),
+		"world_map.gd no longer reads a place's `shop` field - trade is invisible on the chart again (AT-7)")
+	assert(wm_src.contains("region_at") and wm_src.contains("region_n"),
+		"world_map.gd stopped handing region hearts to the chart shader - regions are back to floating text (AT-8)")
+	var shader_src := FileAccess.get_file_as_string("res://ui/chart_paper.gdshader")
+	assert(shader_src != "", "chart_paper.gdshader is missing - the Atlas has no paper")
+	assert(shader_src.contains("uniform vec2 region_at"),
+		"the chart shader no longer takes region hearts (AT-8)")
+	# ...and the feature must have something to show, or it is dead code that
+	# passes every grep. At least one shipped world has to carry a trader.
+	var traders := 0
+	for tw in Rules.builtin_worlds():
+		for tl in Rules.world_locations(str(tw.get("id", ""))):
+			if tl is Dictionary and str(tl.get("shop", "")) != "":
+				traders += 1
+	assert(traders > 0,
+		"no shipped world has a place with a `shop` - the trade badge can never appear, so nothing would notice it breaking")
+
 	# NOTHING READS TERRAIN OUT OF A PAINTING.
 	#
 	# `world_map._ensure_land` used to open chart.png and call blue "water" and
@@ -2679,7 +2711,6 @@ The term for spell slots is "Echoes."
 	#
 	# This is a grep, and a grep is the honest shape here — the invariant is
 	# literally a statement about what this file may touch, not a proxy for one.
-	var wm_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
 	assert(wm_src != "", "world_map.gd is missing")
 	for forbidden in ["get_pixel(", "get_image("]:
 		assert(not wm_src.contains(forbidden),

@@ -36,6 +36,24 @@ uniform vec4 c_high : source_color = vec4(0.46, 0.53, 0.30, 1.0);
 uniform vec4 c_hill : source_color = vec4(0.47, 0.45, 0.30, 1.0);
 uniform vec4 c_peak : source_color = vec4(0.96, 0.96, 0.97, 1.0);
 
+// ── AT-8: REGIONS HAVE EXTENT ────────────────────────────────────────────────
+// Regions were real in the data — name, lore, biome, position, GM-chartered via
+// [[region]] — and drawn as floating letterspaced text and nothing else. No
+// boundary, no tint, no area, so "different regions" read as words lying on
+// grass. The only spatial expression was dimming everything outside a focused
+// one, which says where a region ISN'T.
+//
+// The extent is a Voronoi over the region hearts, computed HERE rather than
+// baked into an index texture. A 96x64 index map would step in 7-pixel blocks at
+// the Atlas's own size and worse as you zoom in; solved analytically the
+// boundary is exact at every magnification, for less work. Same reason the
+// coastline is a stroke rather than a colour change.
+//
+// Only regions the player has reached are passed — world_map gates the list, so
+// fog is honoured without this shader knowing what fog is.
+uniform int region_n = 0;
+uniform vec2 region_at[8];
+
 // ── value noise, the cheap kind ──────────────────────────────────────────────
 float hash21(vec2 p) {
 	p = fract(p * vec2(233.34, 851.73));
@@ -117,6 +135,44 @@ void fragment() {
 		float line = abs(fract(bands) - 0.5) * 2.0;
 		float w = fwidth(bands) * 1.6;
 		col *= 1.0 - 0.13 * (1.0 - smoothstep(0.0, max(w, 0.001), 1.0 - line));
+	}
+
+	// Region tint and edge. Land only: a border drawn across open sea claims the
+	// water is owned, and no region in this game claims water.
+	if (region_n > 0 && h > sea_level) {
+		float d1 = 1e9;
+		float d2 = 1e9;
+		int best = 0;
+		for (int i = 0; i < 8; i++) {
+			if (i >= region_n) { break; }
+			// EACH HEART'S FIELD WOBBLES ON ITS OWN. A plain Voronoi over three
+			// sites draws dead-straight radial lines, which read as debug
+			// wireframe rather than as a border — and no real march is a laser
+			// line, because borders follow ridges and rivers. The offset is
+			// per-site (i shifts the sample), so the fields disagree and the
+			// boundary between them wanders. Same noise as the terrain, so it
+			// wanders WITH the ground rather than across it.
+			float d = distance(UV, region_at[i])
+				+ (fbm(UV * 6.5 + vec2(float(i) * 37.1, float(i) * 11.3)) - 0.5) * 0.055;
+			if (d < d1) { d2 = d1; d1 = d; best = i; }
+			else if (d < d2) { d2 = d; }
+		}
+		// Hues walk the wheel from the world's own accent, so the regions of one
+		// world are relatives rather than a random assortment.
+		float hue = fract(float(best) * 0.19 + 0.5);
+		vec3 rc = clamp(abs(fract(hue + vec3(0.0, 0.333, 0.667)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
+		col = mix(col, mix(rc, accent.rgb, 0.4), 0.13);
+		// The march between two hearts: where the nearest two are equidistant.
+		//
+		// INK, NOT THE REGION HUE. Taking the edge colour from `rc` gave a fully
+		// saturated green or cyan hairline that shouted over a muted map — the
+		// tint said "this area is Mournwood" quietly while the border screamed.
+		// A border on a chart is drawn in the same ink as everything else; the
+		// COLOUR belongs to the area, the LINE belongs to the map.
+		float gap = d2 - d1;
+		float ew = fwidth(gap) * 2.0;
+		col = mix(mix(col, vec3(0.13, 0.11, 0.10), 0.62), col,
+			smoothstep(0.0, max(ew, 0.00001), gap));
 	}
 
 	// The coastline itself, drawn as a stroke rather than left as a colour

@@ -22,6 +22,7 @@ var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog 
 var _phase := 0.0
 var _paper: ColorRect = null
 var _paper_world := ""
+var _paper_regions := PackedVector2Array()
 
 ## AT-3 — TWO TIERS: the realm, and one region within it.
 ##
@@ -180,6 +181,41 @@ func _sync_paper() -> void:
 	_paper.position = _camera.cam
 	_paper.size = size
 	_paper.scale = Vector2(_camera.zoom, _camera.zoom)
+	# AT-8 — the regions the player has actually reached, in the shader's own UV
+	# space. Rebuilt only when the set changes: this runs every frame.
+	var uvs := _region_uvs()
+	if uvs != _paper_regions:
+		_paper_regions = uvs
+		var mat := _paper.material as ShaderMaterial
+		if mat != null:
+			mat.set_shader_parameter("region_n", uvs.size())
+			# The uniform is a fixed-size array; a short one leaves stale hearts
+			# behind it, and `region_n` would be the only thing hiding them.
+			var padded := PackedVector2Array(uvs)
+			while padded.size() < 8:
+				padded.append(Vector2.ZERO)
+			mat.set_shader_parameter("region_at", padded)
+
+
+## Region hearts as UV, fog-gated. `_region_anchor` returns INF for a region with
+## nothing known inside it, which is exactly the gate the labels already use — so
+## the tint appears the moment the name does, and never before it.
+##
+## The HEART, not the anchor: `_region_anchor` is where the LABEL sits, dropped
+## below the cluster so it does not print through a pin. Dividing the land by
+## label positions would put every march a little south of where it belongs.
+func _region_uvs() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for r in regions:
+		if not (r is Dictionary):
+			continue
+		var nm := str(r.get("name", ""))
+		if nm == "" or _region_anchor(nm) == Vector2.INF:
+			continue
+		out.append(Vector2(float(r.get("x", 50)) / 100.0, float(r.get("y", 50)) / 100.0))
+		if out.size() >= 8:
+			break     # the shader's array is eight; REGION_PLACE_CAP keeps worlds small
+	return out
 
 
 func _known(nm: String) -> bool:
@@ -445,6 +481,17 @@ func _draw() -> void:
 		# The lamp of a known place.
 		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(20, 20), Vector2(40, 40)), false, Color(col, 0.22))
 		_draw_mark(p, kind_shape(kind_s), Color(col, 0.95), 7.0 if i == _hover else 5.0)
+		# AT-7 — WHO TRADES. A place carries a `shop` string and the Atlas never
+		# once read it: "shop" appeared here only as a KIND, so a settlement or a
+		# tavern with a keeper behind a counter looked exactly like one without,
+		# and the only way to find out was to walk there. `merchant_window` has
+		# matched this field against `here` all along; the map simply never asked.
+		#
+		# A BADGE, not a colour or a shape. Both of those already carry `kind`,
+		# and trade is orthogonal to kind — overloading either would have broken
+		# the seven-kinds rule that KIND_MARK exists to keep.
+		if str(l.get("shop", "")) != "":
+			_draw_trade(p)
 		draw_arc(p, 9.0, 0, TAU, 24, Color(col, 0.5), 1.5)
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
@@ -473,6 +520,15 @@ func _draw() -> void:
 	var ns := font.get_string_size("N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11)
 	draw_string(font, cpos + Vector2(-ns.x / 2.0, -18), "N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(Ui.c("gold"), 0.85))
 	_draw_legend(font)
+
+
+## The coin beside a pin: someone here sells things. Fog-gated with everything
+## else by its caller — an undiscovered shop is not advertised.
+func _draw_trade(at: Vector2) -> void:
+	var c := at + Vector2(8.0, -8.0)
+	draw_circle(c, 4.0, Color(Ui.c("night"), 0.92))
+	draw_circle(c, 2.8, Ui.c("ember"))
+	draw_arc(c, 2.8, 0, TAU, 14, Color(Ui.c("night"), 0.85), 0.9, true)
 
 
 ## AT-1 — THE ROADS A TRAVELLER KNOWS.
@@ -666,14 +722,25 @@ func _legend_entries() -> Dictionary:
 		var st := str(r.get("state", Rules.ROAD_DEFAULT))
 		if st != "open" and not road_states.has(st):
 			road_states.append(st)
+	# Does anything the player KNOWS about actually trade? The legend lists only
+	# marks that are on this chart — a key explaining something never seen is
+	# furniture — so the badge earns its row the same way a kind does.
+	var trades := false
+	for l in locations:
+		if not (l is Dictionary):
+			continue
+		if fog and not _known(str(l.get("name", ""))):
+			continue
+		if str(l.get("shop", "")) != "":
+			trades = true
 	kinds.sort()
 	road_states.sort()
-	return {"kinds": kinds, "roads": road_states}
+	return {"kinds": kinds, "roads": road_states, "trade": trades}
 
 
 func _legend_rect(_font: Font) -> Rect2:
 	var e := _legend_entries()
-	var rows: int = e["kinds"].size() + e["roads"].size()
+	var rows: int = e["kinds"].size() + e["roads"].size() + (1 if e["trade"] else 0)
 	if rows == 0:
 		return Rect2()
 	var h := LEGEND_PAD * 2.0 + LEGEND_ROW * float(rows)
@@ -684,7 +751,7 @@ func _draw_legend(font: Font) -> void:
 	var e := _legend_entries()
 	var kinds: Array = e["kinds"]
 	var road_states: Array = e["roads"]
-	if kinds.is_empty() and road_states.is_empty():
+	if kinds.is_empty() and road_states.is_empty() and not e["trade"]:
 		return
 	var pad := LEGEND_PAD
 	var row := LEGEND_ROW
@@ -711,5 +778,13 @@ func _draw_legend(font: Font) -> void:
 		else:
 			draw_line(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.2, true)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy2 + 4.0), str(Rules.road_rule(st2)["why"]),
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+	if e["trade"]:
+		# LAST ROW, and drawn with `_draw_trade` — the key is literally a picture
+		# of the mark it explains, which is the rule the kind marks already
+		# follow. Two drawings of one badge is how a legend starts lying.
+		var cyt := at.y + pad + row * float(kinds.size() + road_states.size()) + row * 0.5
+		_draw_trade(Vector2(at.x + pad - 4.0, cyt + 8.0))
+		draw_string(font, Vector2(at.x + pad + 14.0, cyt + 4.0), "trades here",
 			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 2.0)
