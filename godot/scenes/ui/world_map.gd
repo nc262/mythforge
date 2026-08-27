@@ -42,33 +42,31 @@ var _region_hover := -1
 ##
 ## Roads were straight lines between pins, which is a spider-web rather than a
 ## road network: no road in any world runs dead straight across a bay and over a
-## mountain because those were the two ends. Baking the chart plate made it
-## worse — now there is visible country for a straight line to ignore.
+## mountain because those were the two ends. So the road is ROUTED — an A* over a
+## cost field, cheap on open ground and dear through water and high country. It
+## bends around the bay because the bay costs more, not because a wobble was
+## added to make it look bent.
 ##
-## So the road is ROUTED across the paper: an A* over a coarse cost grid sampled
-## from the chart, cheap around open ground and expensive through water and dark
-## high land. It bends around the bay because the bay costs more, not because a
-## wobble was added to make it look bent.
+## THE FIELD IS `WorldTerrain`, NOT THE PAINTING. This used to sample `chart.png`
+## and call blue "water" and dark "steep", which is a colour heuristic over
+## generated art — the thing [Terrain.md] deleted for the battle map. The comment
+## here argued that two of its three objections did not apply. Measured
+## 2026-08-26, they did:
 ##
-## THIS IS A COLOUR HEURISTIC OVER GENERATED ART, which [Terrain.md] deleted for
-## the battle map. Two of its three objections do not apply here and the third is
-## avoided on purpose:
+##   · Neon Spire: 73.2 % of a flat city classified "expensive" (night shadow
+##     read as mountain) and 0.2 % water found, in a world whose chart prompt
+##     asks for light-filled canals. Roads detoured up to 1.80x around glow.
+##   · Brasshaven: 0.0 % water. Its prompt also asks for canals.
+##   · Worse, the plates are not maps at all — they are oblique landscape
+##     illustrations WITH A HORIZON, so part of every cost grid was sky.
 ##
-##  · AMBIGUITY was fatal there because the read drove MECHANICS — open snow
-##    classified impassable. Here it drives nothing but the shape of a drawn
-##    line. Travel cost and peril come from Rules.ROAD and GameState.roads(); a
-##    misread bends a road and can never change what a journey costs.
-##  · COORDINATE MISMATCH was the real bug: the board drew cover-fit and sampled
-##    stretched, so the overlay described part of a painting that was off screen.
-##    The chart is drawn `draw_texture_rect(art, Rect2(ZERO, size))` — the whole
-##    image stretched — and is sampled the same way, so the grid and the picture
-##    cannot disagree. Keep those two together if either ever changes.
-##  · WALLS ARE NOT CELLS is a battle-map problem; a chart has no walls.
+## AT-4 had already forbidden exactly this ("the paper stops claiming positions
+## it cannot honour", 8a56197). This function landed two hours later and quietly
+## undid it. The ground is data now, generated before anything is drawn, and
+## nothing here opens an image.
 ##
-## Sampled ONCE per (world, size) and every route cached — `_draw` runs every
-## frame for the cloud shadows, and re-routing there would be a per-frame A*.
-const LAND_W := 56
-const LAND_H := 36
+## Built ONCE per (world, size) and every route cached — `_draw` runs every frame
+## for the cloud shadows, and re-routing there would be a per-frame A*.
 var _land: AStarGrid2D = null
 var _land_key := ""
 var _routes := {}             # "ax,ay|bx,by" → PackedVector2Array
@@ -171,35 +169,27 @@ func _ensure_land() -> void:
 		return
 	_land_key = key
 	_routes.clear()
+	var ground := WorldTerrain.for_world(GameState.world_id())
 	_land = AStarGrid2D.new()
-	_land.region = Rect2i(0, 0, LAND_W, LAND_H)
-	_land.cell_size = Vector2(size.x / float(LAND_W), size.y / float(LAND_H))
+	_land.region = Rect2i(0, 0, WorldTerrain.W, WorldTerrain.H)
+	# The grid is the TERRAIN's resolution, not one of its own. A second grid size
+	# meant a resample between the two, and a resample is where a coordinate
+	# mismatch hides — which is the bug this whole change exists to end.
+	_land.cell_size = Vector2(size.x / float(WorldTerrain.W), size.y / float(WorldTerrain.H))
 	_land.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
 	_land.update()
-	var art: Texture2D = Compiler.chart_art(GameState.world_id())
-	if art == null:
-		return                       # no paper to read: routes fall back to straight
-	var img := art.get_image()
-	if img == null:
-		return
-	if img.is_compressed():
-		img.decompress()
-	# Stretched exactly as _draw stretches it — see the note on LAND_W.
-	img.resize(LAND_W, LAND_H, Image.INTERPOLATE_LANCZOS)
-	for y in LAND_H:
-		for x in LAND_W:
-			var c := img.get_pixel(x, y)
-			# Blue running ahead of both other channels is water on every one of
-			# these plates, fantasy or neon. Darkness is ridge and deep forest.
-			var wet := clampf((c.b - maxf(c.r, c.g)) * 5.0, 0.0, 1.0)
-			var steep := clampf((0.26 - c.get_luminance()) * 4.0, 0.0, 1.0)
-			_land.set_point_weight_scale(Vector2i(x, y), 1.0 + wet * 14.0 + steep * 5.0)
+	for y in WorldTerrain.H:
+		for x in WorldTerrain.W:
+			_land.set_point_weight_scale(Vector2i(x, y), ground.cost(Vector2i(x, y)))
 
 
+## Screen pixels to a terrain cell, THROUGH PERCENT — the coordinate space every
+## place already uses. Going straight from pixels to cells would work today and
+## break the moment the chart is drawn at anything but the full rect; percent is
+## the one space the pins, the terrain and the paper all agree on.
 func _cell_of(p: Vector2) -> Vector2i:
-	return Vector2i(
-		clampi(int(p.x / maxf(size.x, 1.0) * LAND_W), 0, LAND_W - 1),
-		clampi(int(p.y / maxf(size.y, 1.0) * LAND_H), 0, LAND_H - 1))
+	return WorldTerrain.for_world(GameState.world_id()).cell_of(Vector2(
+		p.x / maxf(size.x, 1.0) * 100.0, p.y / maxf(size.y, 1.0) * 100.0))
 
 
 ## Chaikin: two passes turn an A* staircase into something drawn by a hand that

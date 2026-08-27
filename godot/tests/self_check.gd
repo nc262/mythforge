@@ -2617,6 +2617,27 @@ The term for spell slots is "Echoes."
 		assert(ter_again.seed_used == ter.seed_used and is_equal_approx(ter_again.sea, ter.sea),
 			"%s terrain is not deterministic - two calls gave seeds %d and %d" % [twid, ter.seed_used, ter_again.seed_used])
 	assert(_seen_terrain >= 6, "only %d worlds had terrain built - the loop went blind" % _seen_terrain)
+	# NOTHING READS TERRAIN OUT OF A PAINTING.
+	#
+	# `world_map._ensure_land` used to open chart.png and call blue "water" and
+	# dark "steep". That is a colour heuristic over generated art, and it was
+	# wrong in the way generated art is always wrong to read: Neon Spire's neon
+	# strips became rivers, its night became mountains, and the top of every plate
+	# was sky, because the plates are oblique illustrations with a horizon rather
+	# than maps.
+	#
+	# This is a grep, and a grep is the honest shape here — the invariant is
+	# literally a statement about what this file may touch, not a proxy for one.
+	var wm_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+	assert(wm_src != "", "world_map.gd is missing")
+	for forbidden in ["get_pixel(", "get_image("]:
+		assert(not wm_src.contains(forbidden),
+			"world_map.gd calls %s - the road router is reading terrain out of the painting again (AT-4, and Invariants.md)" % forbidden)
+	# ...and it must still be routing over SOMETHING, or the grep above passes on
+	# a file that simply draws straight lines.
+	assert(wm_src.contains("WorldTerrain.for_world"),
+		"world_map.gd no longer asks WorldTerrain for its ground - roads have quietly gone back to straight lines")
+
 	# ROUGH GROUND COSTS WHAT ITS WORLD'S RELIEF SAYS IT COSTS.
 	#
 	# This first compared MEAN cost across two whole worlds - and that check was
