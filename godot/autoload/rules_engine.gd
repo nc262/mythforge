@@ -390,35 +390,124 @@ func scope_for_level(level: int) -> String:
 	return best
 
 
-## WHERE A NEW PLACE LANDS, deterministically.
+## Positions are pure functions of their inputs, so they are memoised rather than
+## recomputed. `mini_map._draw` calls `GameState.places()` EVERY FRAME, and
+## places() positions every place that has no coordinates — a terrain search per
+## place per frame would be roughly 170k score() calls a second.
+var _pos_memo := {}
+
+
+## WHERE A NEW PLACE LANDS.
 ##
-## Seeded from the place's own name, so the same place forged twice sits in the
-## same spot and a save reloaded does not shuffle the map. Positioned on its
-## region's ring by scope, then clamped inside the chart with a margin so a pin
-## never rides the edge where its label would be cut off.
+## THE RING SAYS HOW FAR OUT; THE GROUND SAYS WHERE ON IT.
+##
+## This used to be `hash(name)` alone: an angle and a radius, with a little
+## jitter. Deterministic, which was the point, and completely blind to the world
+## — so a fishing village could land on a mountaintop and a keep in the sea, and
+## nothing could notice, because nothing compared a pin to the ground beneath it.
+## Measured 2026-08-26: three of the twenty hand-authored pins stood in open
+## water and Saltmarsh, which is 46 % sea, placed all three of its places by hash.
+##
+## Now the scope ring still decides the BAND a place sits in — that is a fact
+## about the story's reach, not about geography — and `WorldTerrain.score` picks
+## the cell within that band. A tavern takes the coast, a landmark the high
+## ground, a ruin the drowned shoal.
+##
+## The tie-break is hashed per (name, cell) rather than a spacing pass over
+## already-placed pins. Two places of the same kind in the same region would
+## otherwise both take the single best-scoring cell and stack on top of each
+## other; a spacing term would fix that too, but it would make the answer depend
+## on WHAT ELSE has been placed, which is exactly what stops this being a pure
+## function and therefore memoisable. `self_check` asserts no two places share a
+## cell, which is the property the spacing term would have been bought for.
 ##
 ## The model is never asked for coordinates. It is bad at them, they carry no
 ## meaning it can reason about, and a wrong number here is invisible until the
 ## chart looks wrong.
-func place_position(place_name: String, scope: String, region_at: Vector2) -> Vector2:
+func place_position(place_name: String, scope: String, region_at: Vector2,
+		kind := "", wid := "") -> Vector2:
+	var key := "p|%s|%s|%s|%s|%.1f,%.1f" % [wid, place_name, scope, kind, region_at.x, region_at.y]
+	if _pos_memo.has(key):
+		return _pos_memo[key]
+	var ring := float(SCOPE_RING.get(scope, 9.0))
+	var out := _ring_position(place_name, ring, region_at)
+	if wid != "":
+		var ter := WorldTerrain.for_world(wid)
+		var h: int = absi(hash(place_name))
+		var best := -INF
+		# Pass one: inside the scope band. Pass two, only if nothing there scored
+		# — a region whose heart sits offshore has no suitable band, and falling
+		# back to the blind ring would put the place in the sea, which is the
+		# whole defect.
+		for pass_n in 2:
+			var near: float = ring * 0.35 if pass_n == 0 else 0.0
+			var far: float = ring * 1.5 if pass_n == 0 else 200.0
+			for cy in WorldTerrain.H:
+				for cx in WorldTerrain.W:
+					var c := Vector2i(cx, cy)
+					var pct := ter.pct_of(c)
+					var d := pct.distance_to(region_at)
+					if d < near or d > far:
+						continue
+					var sc := ter.score(kind, c)
+					if sc <= 0.0:
+						continue
+					sc += float((h ^ (cx * 73856093) ^ (cy * 19349663)) % 1000) / 1000.0 * 0.35
+					if sc > best:
+						best = sc
+						out = pct
+			if best > -INF:
+				break
+	out = Vector2(clampf(out.x, 6.0, 94.0), clampf(out.y, 8.0, 92.0))
+	_pos_memo[key] = out
+	return out
+
+
+## The old blind ring — kept as the answer when there is no world to ask, which
+## is every caller that has not been given one and the tests that predate terrain.
+func _ring_position(place_name: String, ring: float, region_at: Vector2) -> Vector2:
 	var h: int = absi(hash(place_name))
 	var ang := float(h % 3600) / 3600.0 * TAU
-	# A little ring jitter so a region's places do not sit on a perfect circle.
-	var ring := float(SCOPE_RING.get(scope, 9.0)) * (0.72 + 0.56 * float((h >> 12) % 100) / 100.0)
-	var p := region_at + Vector2(cos(ang), sin(ang)) * ring
-	return Vector2(clampf(p.x, 6.0, 94.0), clampf(p.y, 8.0, 92.0))
+	var r := ring * (0.72 + 0.56 * float((h >> 12) % 100) / 100.0)
+	return region_at + Vector2(cos(ang), sin(ang)) * r
 
 
 ## Where a REGION sits. Regions spread around the chart's heart rather than
-## clustering, because they are the coarse structure everything else hangs on.
-func region_position(region_name: String, index: int, total: int) -> Vector2:
+## clustering, because they are the coarse structure everything else hangs on —
+## so the SPOKE still decides the direction, and the ground decides how far along
+## it the region's heart lands. A region centred in open water would drag every
+## place it holds out to sea with it.
+func region_position(region_name: String, index: int, total: int, wid := "") -> Vector2:
+	var key := "r|%s|%s|%d|%d" % [wid, region_name, index, total]
+	if _pos_memo.has(key):
+		return _pos_memo[key]
 	var h: int = absi(hash(region_name))
 	var span := maxi(total, 1)
 	var ang := (float(index) / float(span)) * TAU + float(h % 100) / 100.0 * 0.6
-	# The heart of the chart, with regions pushed out toward the frontier.
-	var r := 20.0 + float(h % 14)
-	var p := Vector2(50.0, 50.0) + Vector2(cos(ang), sin(ang)) * r
-	return Vector2(clampf(p.x, 12.0, 88.0), clampf(p.y, 14.0, 86.0))
+	var dir := Vector2(cos(ang), sin(ang))
+	var out := Vector2(50.0, 50.0) + dir * (20.0 + float(h % 14))
+	if wid != "":
+		var ter := WorldTerrain.for_world(wid)
+		var best := -INF
+		# Along the spoke, and a little either side of it, at the radii regions
+		# have always used. A region wants habitable ground at its heart, which is
+		# what the settlement score already means.
+		for step in 26:
+			var r := 12.0 + float(step) * 1.4
+			for off in [-0.30, -0.15, 0.0, 0.15, 0.30]:
+				var a2 := ang + float(off)
+				var pct := Vector2(50.0, 50.0) + Vector2(cos(a2), sin(a2)) * r
+				var c := ter.cell_of(pct)
+				var sc := ter.score("settlement", c)
+				if sc <= 0.0:
+					continue
+				sc += float((h ^ (step * 83492791)) % 1000) / 1000.0 * 0.20
+				if sc > best:
+					best = sc
+					out = pct
+	out = Vector2(clampf(out.x, 12.0, 88.0), clampf(out.y, 14.0, 86.0))
+	_pos_memo[key] = out
+	return out
 
 
 ## UI-7 — NAME THE SILHOUETTE, using only the item's own words.

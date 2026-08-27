@@ -56,15 +56,21 @@ func _probe(wid: String) -> void:
 	var t0 := Time.get_ticks_msec()
 	WorldTerrain.forget(wid)
 	var t := WorldTerrain.for_world(wid)
+	# THE REAL PATH. Reading `Rules.world_locations` and skipping anything without
+	# x/y meant this probe never saw saltmarsh, fimbulreach or brasshaven place a
+	# single pin — and those are the three worlds that place ALL of theirs by
+	# search. GameState.places() is what the Atlas actually draws.
+	GameState.character = {"id": "dm-probe", "world_id": wid}
 	var want: float = float(WorldTerrain.GROUND.get(t.family, WorldTerrain.GROUND["fantasy"])["water"])
 	print("\n--- %s (%s)  seed=%d  water asked %.0f%% got %.0f%%  %d ms" % [
 		wid, t.family, t.seed_used, want * 100.0, t.water_fraction() * 100.0,
 		Time.get_ticks_msec() - t0])
 
-	# Every authored pin, against the ground now under it.
-	var places := Rules.world_locations(wid)
+	# Every pin the Atlas would draw, against the ground now under it.
+	var places := GameState.places()
 	var bad := 0
 	var pinned := 0
+	var cells := {}
 	for l in places:
 		if not (l is Dictionary) or not (l.has("x") and l.has("y")):
 			continue
@@ -74,9 +80,15 @@ func _probe(wid: String) -> void:
 		var ok := t.suits(kind, c)
 		if not ok:
 			bad += 1
-		print("    %s %-26s %-11s %-6s score %.2f" % [
+		# TWO PINS ON ONE CELL is what the hashed tie-break exists to prevent; a
+		# spacing pass was the alternative and it would have cost memoisation.
+		var ck := "%d,%d" % [c.x, c.y]
+		if cells.has(ck):
+			_failed.append("%s (%s and %s share cell %s)" % [wid, cells[ck], str(l.get("name", "")), ck])
+		cells[ck] = str(l.get("name", ""))
+		print("    %s %-26s %-11s %-6s score %.2f  (%d,%d)" % [
 			"  " if ok else "!!", str(l.get("name", "")), kind, _kname(t.klass(c)),
-			t.score(kind, c)])
+			t.score(kind, c), c.x, c.y])
 	if bad > 0:
 		_failed.append("%s (%d/%d pins on impossible ground)" % [wid, bad, pinned])
 

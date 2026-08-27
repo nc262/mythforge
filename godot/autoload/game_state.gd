@@ -1276,7 +1276,12 @@ func _with_position(l: Dictionary, world: Dictionary) -> Dictionary:
 	var out := l.duplicate(true)
 	var reg := str(l.get("region", ""))
 	var at := region_at(reg, world)
-	var pos := Rules.place_position(str(l.get("name", "")), str(l.get("scope", "local")), at)
+	# KIND AND WORLD, or the search has nothing to score with: `kind` is what
+	# decides a tavern wants a coast and a ruin a drowned shoal, and `wid` is how
+	# it reaches the ground at all. Omitting either silently falls back to the old
+	# blind ring, which is the bug rather than a safe default.
+	var pos := Rules.place_position(str(l.get("name", "")), str(l.get("scope", "local")),
+		at, str(l.get("kind", "")), world_id())
 	out["x"] = pos.x
 	out["y"] = pos.y
 	return out
@@ -1309,7 +1314,7 @@ func regions() -> Array:
 			continue
 		var e: Dictionary = r.duplicate(true)
 		if not (e.has("x") and e.has("y")):
-			var p := Rules.region_position(str(e["name"]), i, rs.size())
+			var p := Rules.region_position(str(e["name"]), i, rs.size(), world_id())
 			e["x"] = p.x
 			e["y"] = p.y
 		out.append(e)
@@ -1343,7 +1348,7 @@ func region_at(region_name: String, _world := {}) -> Vector2:
 		if r is Dictionary and str(r.get("name", "")).nocasecmp_to(region_name) == 0:
 			if r.has("x") and r.has("y"):
 				return Vector2(float(r["x"]), float(r["y"]))
-			return Rules.region_position(region_name, i, rs.size())
+			return Rules.region_position(region_name, i, rs.size(), world_id())
 	return Vector2(50, 50)
 
 
@@ -1543,7 +1548,7 @@ func add_place(spec: Dictionary) -> String:
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
 	var made: Array = world.get("places") if world.get("places") is Array else []
 	var at := region_at(reg, world)
-	var pos := Rules.place_position(nm, scope, at)
+	var pos := Rules.place_position(nm, scope, at, str(spec.get("kind", "landmark")), world_id())
 	made.append({
 		"name": nm,
 		"kind": str(spec.get("kind", "landmark")),
@@ -1576,7 +1581,7 @@ func add_region(spec: Dictionary) -> String:
 		return "the frontier is out of reach for now (a new region needs level %d)" % int(Rules.SCOPE_LEVEL["far"])
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
 	var rs: Array = world.get("regions") if world.get("regions") is Array else []
-	var p := Rules.region_position(nm, rs.size(), rs.size() + 1)
+	var p := Rules.region_position(nm, rs.size(), rs.size() + 1, world_id())
 	rs.append({"name": nm, "lore": str(spec.get("lore", "")),
 		"biome": str(spec.get("biome", "")), "x": p.x, "y": p.y, "origin": "gm"})
 	world["regions"] = rs

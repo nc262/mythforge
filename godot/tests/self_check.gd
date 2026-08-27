@@ -2617,6 +2617,57 @@ The term for spell slots is "Echoes."
 		assert(ter_again.seed_used == ter.seed_used and is_equal_approx(ter_again.sea, ter.sea),
 			"%s terrain is not deterministic - two calls gave seeds %d and %d" % [twid, ter.seed_used, ter_again.seed_used])
 	assert(_seen_terrain >= 6, "only %d worlds had terrain built - the loop went blind" % _seen_terrain)
+	# A PLACE WITH NO AUTHORED COORDINATES IS PLACED BY THE GROUND, NOT BY A HASH.
+	#
+	# `Rules.place_position` was `hash(name)` on a ring: deterministic, which was
+	# the point, and blind to the world. Saltmarsh is 46 % sea and positioned all
+	# three of its places that way, so each had roughly a 2-in-5 chance of
+	# standing in open water - the same way every playthrough, since the hash
+	# never changes.
+	var _char_was = GameState.character
+	for w2 in Rules.builtin_worlds():
+		var ter_wid := str(w2.get("id", ""))
+		if ter_wid == "":
+			continue
+		GameState.character = {"id": "dm-selfcheck", "world_id": ter_wid}
+		var ter_g := WorldTerrain.for_world(ter_wid)
+		var occupied := {}
+		var searched := 0
+		for l in GameState.places():
+			if not (l is Dictionary) or not (l.has("x") and l.has("y")):
+				continue
+			var ter_cell := ter_g.cell_of(Vector2(float(l["x"]), float(l["y"])))
+			var ter_kind := str(l.get("kind", ""))
+			var ter_name := str(l.get("name", ""))
+			# TWO PINS ON ONE CELL. The tie-break is hashed per (name, cell)
+			# instead of a spacing pass over already-placed pins, because a
+			# spacing term makes the answer depend on what else has been placed
+			# and that is what stops it being memoisable - and it must be
+			# memoisable, since mini_map._draw calls places() every frame. This
+			# assertion is the property that spacing pass would have bought.
+			var ter_ck := "%d,%d" % [ter_cell.x, ter_cell.y]
+			assert(not occupied.has(ter_ck),
+				"%s: '%s' and '%s' stand on the same cell %s - the placement tie-break has stopped spreading them" % [
+					ter_wid, str(occupied.get(ter_ck, "")), ter_name, ter_ck])
+			occupied[ter_ck] = ter_name
+			assert(ter_g.suits(ter_kind, ter_cell),
+				"%s: '%s' (%s) was placed on %s" % [ter_wid, ter_name, ter_kind,
+					["deep", "shoal", "coast", "plain", "hill", "peak"][ter_g.klass(ter_cell)]])
+			# A SEARCHED place must land WELL, not merely legally. An authored pin
+			# is what it is and the terrain fits around it; a place the engine
+			# positions itself has no excuse for poor ground.
+			var authored := false
+			for al in Rules.world_locations(ter_wid):
+				if al is Dictionary and al.has("x") and str(al.get("name", "")) == ter_name:
+					authored = true
+			if not authored:
+				searched += 1
+				assert(ter_g.score(ter_kind, ter_cell) > 0.5,
+					"%s: '%s' (%s) was SEARCHED for and still only scores %.2f on %s - the search is not reading the ground" % [
+						ter_wid, ter_name, ter_kind, ter_g.score(ter_kind, ter_cell), ["deep", "shoal", "coast", "plain", "hill", "peak"][ter_g.klass(ter_cell)]])
+		assert(occupied.size() > 0, "%s placed no pins at all - places() went blind" % ter_wid)
+	GameState.character = _char_was
+
 	# NOTHING READS TERRAIN OUT OF A PAINTING.
 	#
 	# `world_map._ensure_land` used to open chart.png and call blue "water" and
