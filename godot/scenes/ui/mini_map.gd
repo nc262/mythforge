@@ -7,6 +7,8 @@ extends Control
 signal open_atlas
 
 var _phase := 0.0
+var _paper: ColorRect = null
+var _paper_world := ""
 
 
 func _ready() -> void:
@@ -22,6 +24,25 @@ func _ready() -> void:
 	tooltip_text = "The chart — click to open the Atlas (Ctrl+M)"
 	set_process(not Ui.reduce_motion)
 	Art.art_ready.connect(func(_k): queue_redraw())
+	# THE SAME SHADER THE ATLAS DRAWS. The corner map used to cover-fit a chart
+	# PAINTING while the Atlas stretched it, so the two were pictures of different
+	# things and neither agreed with the pins on top. Full rect, one source.
+	_paper = ColorRect.new()
+	_paper.show_behind_parent = true
+	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_paper)
+	_sync_paper()
+
+
+func _sync_paper() -> void:
+	if _paper == null:
+		return
+	var wid := GameState.world_id()
+	if _paper_world != wid:
+		_paper_world = wid
+		_paper.material = WorldTerrain.for_world(wid).paper_material()
+	_paper.size = size
+	_paper.visible = visible
 
 
 ## Round-5 blocker: this floats above the transcript, and with no chart painted
@@ -44,6 +65,7 @@ func _has_chart() -> bool:
 ## assignment is: the chart hides itself during combat.
 func _process(delta: float) -> void:
 	visible = _has_chart() and not Combat.active()
+	_sync_paper()
 	if not visible:
 		return
 	_phase += delta
@@ -56,15 +78,8 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	# THE SAME PLATE THE ATLAS DRAWS. This used to cover-fit a generated chart
-	# painting, which meant the corner map and the full map were pictures of two
-	# different things — and neither agreed with the pins on top of it. One plate,
-	# one source, drawn to the full rect so the coordinates match the pins exactly
-	# (cover-fit is what spilled a slab of map outside this box in the first
-	# place; see clip_contents above).
-	draw_texture_rect(WorldTerrain.for_world(GameState.world_id()).plate(),
-		Rect2(Vector2.ZERO, size), false, Color(0.86, 0.84, 0.90))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.30))
+	# The paper is `_paper`, the same shader the Atlas uses — see _sync_paper.
+	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.34))
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	var here := str(world.get("here", ""))
 	var seen: Array = world.get("seen") if world.get("seen") is Array else []

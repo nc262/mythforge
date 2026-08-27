@@ -20,6 +20,8 @@ var quest_text := ""          # active quest prose — matched against names
 var _hover := -1
 var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog §3)
 var _phase := 0.0
+var _paper: ColorRect = null
+var _paper_world := ""
 
 ## AT-3 — TWO TIERS: the realm, and one region within it.
 ##
@@ -136,14 +138,48 @@ func _ready() -> void:
 	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
 	Ui.repaint_on_skin(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	clip_contents = true  # cover-fit paper must never flood the neighbors
+	clip_contents = true  # the paper must never flood the neighbours
 	custom_minimum_size = Vector2(680, 430)
-	set_process(not Ui.reduce_motion)
+	_paper = ColorRect.new()
+	_paper.show_behind_parent = true
+	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_paper)
+	_sync_paper()
+	# ALWAYS PROCESS. `set_process(not Ui.reduce_motion)` was right when _process
+	# only drove cloud drift and a pulse; it now also keeps the paper aligned to
+	# the camera, and a player with reduce_motion on would have panned the pins
+	# away from the ground under them.
+	set_process(true)
 
 
 func _process(delta: float) -> void:
 	_phase += delta
+	_sync_paper()
 	queue_redraw()
+
+
+## THE PAPER IS A CHILD, DRAWN BEHIND THIS NODE.
+##
+## A ShaderMaterial set on this Control would apply to everything it draws — the
+## pins, the roads, the names, the legend — so the chart lives on its own
+## ColorRect with `show_behind_parent`, which is exactly what that flag is for.
+## Godot draws behind-parent children, then the parent, then normal children, so
+## the scrim and every pin still land on top.
+##
+## It carries the camera itself rather than riding `draw_set_transform`, which
+## only moves the parent's OWN draws. Keep these two in step: if the paper and
+## the pins ever disagree about pan or zoom, the map is lying about position
+## again, which is the whole defect this work exists to end.
+func _sync_paper() -> void:
+	if _paper == null:
+		return
+	var wid := GameState.world_id()
+	if _paper_world != wid:
+		_paper_world = wid
+		_paper.material = WorldTerrain.for_world(wid).paper_material()
+	_paper.position = _camera.cam
+	_paper.size = size
+	_paper.scale = Vector2(_camera.zoom, _camera.zoom)
 
 
 func _known(nm: String) -> bool:
@@ -180,7 +216,7 @@ func _ensure_land() -> void:
 	_land.update()
 	for y in WorldTerrain.H:
 		for x in WorldTerrain.W:
-			_land.set_point_weight_scale(Vector2i(x, y), ground.cost(Vector2i(x, y)))
+			_land.set_point_weight_scale(Vector2i(x, y), ground.route_cost(Vector2i(x, y)))
 
 
 ## Screen pixels to a terrain cell, THROUGH PERCENT — the coordinate space every
@@ -342,19 +378,8 @@ func _draw() -> void:
 	# last environment plate painted, so the Atlas drew its location pins over a
 	# photograph of a tavern fireplace. The compiler knows where the real
 	# overhead plates live.
-	# P4 — THE PAPER IS RENDERED FROM THE GROUND, not painted beside it.
-	#
-	# This drew `Compiler.chart_art()`, an SDXL plate generated with no knowledge
-	# of where anything is. The pins and roads were laid over it and the two
-	# simply did not correspond: three authored pins stood in open water, and the
-	# plates are oblique illustrations WITH A HORIZON, so pinning y=19 put a place
-	# above the ground plane among tower tops.
-	#
-	# Now the picture, the pins and the roads are three views of ONE field, which
-	# is what AT-4 asked for and could not have while the picture was independent.
-	draw_texture_rect(WorldTerrain.for_world(GameState.world_id()).plate(),
-		Rect2(Vector2.ZERO, size), false)
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.22))
+	# The paper itself is `_paper`, a shader behind this node — see _sync_paper.
+	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.18))
 	# Cloud shadows drift across the land.
 	if not Ui.reduce_motion:
 		for spec in [[0.13, 90.0, 0.31, 260.0], [0.61, -60.0, 0.72, 340.0]]:

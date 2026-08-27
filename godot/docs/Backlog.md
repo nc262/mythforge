@@ -320,6 +320,11 @@ against the wrong ability, and a currency the envelope never told it about.
 
 | id | what | pri | size |
 |---|---|---|---|
+| AT-5 | **The local tier: click a place, get its own map.** THE LOCAL MAP IS THE WORLD MAP RECURSED — `world_map.gd` is already nodes + edges + fog + click-to-travel + pan/zoom, and a dungeon is rooms and corridors while a town is buildings and streets. Same component, a different generator and scale. <br><br>**A room is a NODE you click, not a token you walk.** This game travels between discrete points and the GM narrates arrival; continuous movement would mean inventing input, collision and encounter triggers, and would contradict every other screen. Point-crawl reuses ~700 lines instead. <br><br>Two generators by kind: SETTLED (settlement/tavern/shop/home) gets a town plan — streets, blocks, a square, walls above a size, the shore if its world cell is COAST; UNSETTLED (ruin/wilds) gets rooms and corridors. Both seeded from `world_id + name`, deterministic, and both take their site from `WorldTerrain.klass()` at the place's cell so the local map cannot contradict the world map. Watabou's Medieval Fantasy City Generator is the reference for the settled case (recursive ward/block subdivision, street polylines, after Parish &amp; Müller) | P2 | XL |
+| AT-6 | **Fog models IGNORANCE, not distance.** A settlement, tavern, shop or home is **never fogged** — people live there, there is signage, you can ask, so the plan is whole on arrival. A ruin, wilds or dungeon **is** fogged, because nobody is there to tell you; reveal as you go. The rule derives entirely from `kind`, which every place already carries, so it needs no authored data and explains itself in a sentence. <br><br>Revealed stays revealed. RTS-style re-shrouding punishes exploration; single-player RPGs use the permanent form because permanence rewards it. The world map's existing `fog`/`seen` machinery is node-granularity already, which is what point-crawl fog wants — see the minimap research | P2 | M |
+| AT-7 | **The Atlas never reads a place's `shop` field.** Grepped 2026-08-27: `world_map.gd` mentions "shop" only as a KIND (`KIND_MARK`, `KIND_LABEL`), never `l.get("shop")`. So a settlement or tavern that carries a vendor shows no trade mark and the player must travel there to find out. `merchant_window` matches `shop` against `here` and works fine; the map simply never asks | P2 | S |
+| AT-8 | **Regions have no extent.** They are real in data — name, lore, biome, position, GM-chartered via `[[region]]` — but `_draw_regions` draws only floating letterspaced text. No boundary, no tint, no area; the sole spatial expression is dimming everything outside a focused one. "Different regions" currently reads as words lying on grass. Now that terrain is data, a region can own the cells nearest its heart (a Voronoi assignment over the terrain grid) and be drawn as a tint and an edge | P2 | M |
+| AT-9 | **Hovering a place gives 80 characters of raw lore and nothing else.** `world_map._draw` prints `lore.left(80)` as bare text — no title, no kind, no vendor, no quest state, no visited/unvisited. There is no click-for-detail and no player notes. The pins already know all of it | P3 | M |
 | PY-29 | **The cyber armoury is written but not painted, and the naming wants a redline first.** `FAMILY_FORMS["cyber"]` in `world_compiler.gd` replaces the era-locked forms for a cyber world — 7 weapon families and 7 slots, ~30 ids: `monoblade`, `arc_sabre`, `shock_baton`, `shock_lance`, `service_pistol`, `smart_rifle`, `scatter_gun`, `frag_disc`, `emp_charge`, `deck`, `drone_rig`, `mono_whip`, `visor`, `rebreather`, `crash_helm`, `collar_rig`, `grip_gloves`, `cyber_digits`, `cargo_pants`, `shock_leggings`, `shin_plates`, `street_boots`, `mag_boots`, `blade_runners`, `riot_shield`, `field_emitter`, `holdout_blade`, `stim_kit`. **Those are Claude's words, not the game's.** <br><br>**Do the read BEFORE the bake, not after.** `_stage_parts` paints one icon per form × material (embervale owed 267, so ~1.2 h of GPU per world) and every icon is keyed by its FORM ID — renaming `monoblade` after the bake orphans its icons and costs the hour twice. <br><br>Then: `rebake_charts.tscn` is the pattern for a targeted re-bake — `bake_worlds` skips a POPULATED world outright, so it will not repaint anything on its own. The other five families (steam, norse, pirate, everyday, space) are unwritten and want the same read | P2 | L |
 
 ### The fifth leaking prefix, found while fixing PY-16
@@ -355,6 +360,19 @@ street tier means inventing the data and then painting it, which is a content
 project rather than a map feature. What was genuinely missing was the tier the
 data already had — regions were invisible, so the GM could charter one with
 `[[region]]` and the player would never see it appear.
+
+**CORRECTION 2026-08-27 — that objection died with the painting.** It was right
+while the chart was generated art: a street tier would have meant *authoring*
+the data and then *painting* it, twice per place, forever. Neither is true now.
+A town plan is generated data seeded from `world_id + place name`, exactly as
+`WorldTerrain` is — and it inherits its SITE from the world terrain cell the
+place stands on, so a town on a coast cell gets a shore that agrees with the
+world map for free. That agreement is the whole dividend of inverting the
+pipeline, and it is unavailable to any authored or painted approach.
+
+See AT-5 below. Nothing in the repo has to be reused-or-invented first: there is
+no dungeon or interior system today (`interior` is art-prompt strings and a
+battle-map biome label; `dungeon` is one icon name in `world_skin`).
 
 **No scale bar, deliberately.** Locations are percentages of a painted chart,
 not positions on ground. A scale would be a drawn lie.

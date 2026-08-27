@@ -112,7 +112,6 @@ var hill_at := INF
 var peak_at := INF
 var land_band := 0.0001
 var _class := PackedByteArray()
-var _plate: ImageTexture = null
 
 static var _cache := {}
 
@@ -270,7 +269,6 @@ func _classify() -> void:
 	hill_at = _quantile(land, 1.0 - peak_share - hill_share) if hill_share > 0.001 else INF
 	var band := maxf((land[land.size() - 1] if land.size() > 0 else sea) - sea, 0.0001)
 	land_band = band
-	_plate = null
 	_class = PackedByteArray()
 	_class.resize(W * H)
 	for y in H:
@@ -371,6 +369,28 @@ func cost(c: Vector2i) -> float:
 			return 1.0
 
 
+## What a road pays, with the ground's own unevenness in it.
+##
+## `cost()` is the honest terrain cost and stays pure — self_check compares it
+## across worlds, and a comparison against a jittered number is a comparison
+## against noise. This is what PATHFINDING uses.
+##
+## WHY THE JITTER. On near-uniform ground A* has no reason to bend, so it returns
+## the axis-aligned staircase that is genuinely cheapest — and Saltmarsh, a
+## drowned reach at relief 0.50 where every land cell costs within 28 % of every
+## other, drew a dead-straight ruler line clean across the marsh. It looked like
+## an artefact because it WAS one: a road drawn by a cost field with nothing to
+## say. Real ground is never uniform, so neither is this; the jitter is hashed
+## per cell, so a route is still identical every time it is drawn.
+##
+## It is deliberately small. At +/-12 % it breaks ties and nothing more — a road
+## will still cross a hill rather than detour around a continent, because a hill
+## costs far more than 12 % over a plain.
+func route_cost(c: Vector2i) -> float:
+	var h := (c.x * 73856093) ^ (c.y * 19349663) ^ absi(hash(world_id))
+	return cost(c) * (0.88 + 0.24 * float(absi(h) % 1000) / 1000.0)
+
+
 ## Does this kind of place belong on this cell?
 ##
 ## Deliberately permissive — this is the ASSERTION the probe checks and the floor
@@ -425,65 +445,63 @@ func water_fraction() -> float:
 ## ── THE PAPER ────────────────────────────────────────────────────────────────
 ##
 ## The chart, rendered FROM the ground rather than painted beside it. This is the
-## half that makes the rest honest: the pins, the roads and the picture are now
-## three views of one field, so the paper cannot disagree with them — which is
-## what AT-4 asked for in the first place and could not have while the picture
-## was generated independently.
+## half that makes the rest honest: the pins, the roads and the picture are three
+## views of one field, so the paper cannot disagree with them — which is what
+## AT-4 asked for and could not have while the picture was generated separately.
 ##
-## ONE PLATE, CACHED, shared by the Atlas and the minimap. Two renderers would be
-## two chances to drift, and this repo has paid for that six times (see the art
-## key prefixes in Invariants.md).
-const PLATE_SCALE := 4     # render at 4x cell resolution: 384x256
+## DRAWN BY A SHADER, not baked into an image. The first version interpolated
+## this 96x64 grid up to a 384x256 plate and drew it across ~680 px, zoomable to
+## 2.6x — roughly 1768 screen pixels from 96 samples of field. Interpolation
+## smooths; it cannot invent. The result was guaranteed blurry at any plate size,
+## and a bigger bake would have cost seconds of main thread for the same absence
+## of detail.
+##
+## `height_field()` hands the shader the grid as a texture and it stays the one
+## source of truth; the shader adds detail octaves that NOTHING gameplay-facing
+## reads. Re-deriving the terrain in GLSL would have been two versions of one
+## truth, which is the drift this repo has paid for six times over.
+const SHADER := preload("res://ui/chart_paper.gdshader")
 
-func plate() -> ImageTexture:
-	if _plate != null:
-		return _plate
-	var pw := W * PLATE_SCALE
-	var ph := H * PLATE_SCALE
-	# INTO A BYTE BUFFER, not set_pixel. This plate is 384x256 = 98k pixels and
-	# it is built on the main thread the moment the Atlas opens; per-pixel
-	# set_pixel() calls from GDScript are the difference between a hitch the
-	# player sees and one they do not.
+var _field: ImageTexture = null
+
+
+## The elevation grid as a single-channel texture. Cached — the Atlas and the
+## minimap share one, as they share one terrain.
+func height_field() -> ImageTexture:
+	if _field != null:
+		return _field
 	var buf := PackedByteArray()
-	buf.resize(pw * ph * 4)
-	# The world's own accent, so a chart wears its world's skin rather than every
-	# world sharing one green. Tinted, not replaced: land still has to read as
-	# land, and a map painted entirely in UI colours reads as a panel.
-	var accent := Ui.c("amethyst")
+	buf.resize(W * H * 4)
 	var i := 0
-	for y in ph:
-		for x in pw:
-			var e := height_at_pct(Vector2(
-				(float(x) + 0.5) / float(pw) * 100.0,
-				(float(y) + 0.5) / float(ph) * 100.0))
-			var col := _paper_shade(e).lerp(accent, 0.16)
-			buf[i] = int(col.r * 255.0)
-			buf[i + 1] = int(col.g * 255.0)
-			buf[i + 2] = int(col.b * 255.0)
-			buf[i + 3] = 255
-			i += 4
-	_plate = ImageTexture.create_from_image(
-		Image.create_from_data(pw, ph, false, Image.FORMAT_RGBA8, buf))
-	return _plate
+	for e in elev:
+		# FORMAT_RF wants raw floats; a byte channel would quantise the field to
+		# 256 steps, and the contour lines and coastline stroke both read
+		# gradients — banding would show as terracing across every slope.
+		buf.encode_float(i, e)
+		i += 4
+	_field = ImageTexture.create_from_image(
+		Image.create_from_data(W, H, false, Image.FORMAT_RF, buf))
+	return _field
 
 
-## Colour for a height. Shading reads the SMOOTH height so a coastline is a curve
-## rather than a staircase; `klass()` stays exact and cell-resolution for anything
-## that is not a picture.
-func _paper_shade(e: float) -> Color:
-	if e <= sea:
-		var deep := clampf((sea - e) / maxf(sea * 0.55, 0.0001), 0.0, 1.0)
-		return Color(0.30, 0.50, 0.62).lerp(Color(0.05, 0.12, 0.28), deep)
-	var up := (e - sea) / land_band
-	if e < sea + land_band * 0.05:
-		return Color(0.82, 0.76, 0.58)                       # the strand
-	if e >= peak_at:
-		var pk := clampf((e - peak_at) / maxf(1.0 - peak_at, 0.0001), 0.0, 1.0)
-		return Color(0.66, 0.64, 0.63).lerp(Color(0.96, 0.96, 0.97), pk)
-	if e >= hill_at:
-		var hl := clampf((e - hill_at) / maxf(peak_at - hill_at, 0.0001), 0.0, 1.0)
-		return Color(0.47, 0.45, 0.30).lerp(Color(0.58, 0.52, 0.40), hl)
-	return Color(0.30, 0.44, 0.26).lerp(Color(0.46, 0.53, 0.30), clampf(up * 2.2, 0.0, 1.0))
+## A material ready to draw the chart with. Built per world; the caller owns it.
+func paper_material() -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = SHADER
+	var g: Dictionary = GROUND.get(family, GROUND["fantasy"])
+	m.set_shader_parameter("height_tex", height_field())
+	m.set_shader_parameter("sea_level", sea)
+	m.set_shader_parameter("land_band", land_band)
+	# INF does not survive the trip to a shader uniform. A world with no peaks
+	# has `peak_at = INF`, and passing that gives a NaN comparison in GLSL that
+	# renders as a black plate — so a world with no high country is told its
+	# peaks begin above the highest ground there is.
+	m.set_shader_parameter("hill_at", hill_at if hill_at < INF else 2.0)
+	m.set_shader_parameter("peak_at", peak_at if peak_at < INF else 2.0)
+	m.set_shader_parameter("relief", float(g["relief"]))
+	m.set_shader_parameter("detail", 1.0)
+	m.set_shader_parameter("accent", Ui.c("amethyst"))
+	return m
 
 
 ## Height at a percentage position, interpolated between cells. `height()` steps
