@@ -56,18 +56,15 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	var art: Texture2D = Compiler.chart_art(GameState.world_id())
-	if art == null:
-		art = Art.texture_for("chart-" + GameState.world_id().validate_filename())
-	if art == null:
-		art = Art.texture_for(GameState.world_id())
-	if art != null:
-		var tsize := Vector2(art.get_width(), art.get_height())
-		var s := maxf(size.x / tsize.x, size.y / tsize.y)
-		draw_texture_rect(art, Rect2((size - tsize * s) / 2.0, tsize * s), false, Color(0.8, 0.78, 0.85))
-	else:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night2"), 0.85))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.35))
+	# THE SAME PLATE THE ATLAS DRAWS. This used to cover-fit a generated chart
+	# painting, which meant the corner map and the full map were pictures of two
+	# different things — and neither agreed with the pins on top of it. One plate,
+	# one source, drawn to the full rect so the coordinates match the pins exactly
+	# (cover-fit is what spilled a slab of map outside this box in the first
+	# place; see clip_contents above).
+	draw_texture_rect(WorldTerrain.for_world(GameState.world_id()).plate(),
+		Rect2(Vector2.ZERO, size), false, Color(0.86, 0.84, 0.90))
+	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.30))
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	var here := str(world.get("here", ""))
 	var seen: Array = world.get("seen") if world.get("seen") is Array else []

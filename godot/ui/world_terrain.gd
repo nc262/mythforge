@@ -105,7 +105,14 @@ var family := "fantasy"
 var seed_used := 0
 var elev := PackedFloat32Array()   # 0..1, W*H
 var sea := 0.5
+## The height thresholds `_classify` used, kept so the RENDERER can shade from a
+## smoothly-interpolated height instead of stepping cell to cell. Gameplay still
+## asks `klass()`, which is exact and cell-resolution; these only smooth a picture.
+var hill_at := INF
+var peak_at := INF
+var land_band := 0.0001
 var _class := PackedByteArray()
+var _plate: ImageTexture = null
 
 static var _cache := {}
 
@@ -259,9 +266,11 @@ func _classify() -> void:
 	land.sort()
 	var peak_share := clampf(0.30 * pow(maxf(relief - 0.45, 0.0), 1.4), 0.0, 0.30)
 	var hill_share := clampf(0.40 * relief, 0.0, 0.45)
-	var peak_at := _quantile(land, 1.0 - peak_share) if peak_share > 0.001 else INF
-	var hill_at := _quantile(land, 1.0 - peak_share - hill_share) if hill_share > 0.001 else INF
+	peak_at = _quantile(land, 1.0 - peak_share) if peak_share > 0.001 else INF
+	hill_at = _quantile(land, 1.0 - peak_share - hill_share) if hill_share > 0.001 else INF
 	var band := maxf((land[land.size() - 1] if land.size() > 0 else sea) - sea, 0.0001)
+	land_band = band
+	_plate = null
 	_class = PackedByteArray()
 	_class.resize(W * H)
 	for y in H:
@@ -411,3 +420,83 @@ func water_fraction() -> float:
 		if _class[i] == DEEP or _class[i] == SHOAL:
 			n += 1
 	return float(n) / float(_class.size())
+
+
+## ── THE PAPER ────────────────────────────────────────────────────────────────
+##
+## The chart, rendered FROM the ground rather than painted beside it. This is the
+## half that makes the rest honest: the pins, the roads and the picture are now
+## three views of one field, so the paper cannot disagree with them — which is
+## what AT-4 asked for in the first place and could not have while the picture
+## was generated independently.
+##
+## ONE PLATE, CACHED, shared by the Atlas and the minimap. Two renderers would be
+## two chances to drift, and this repo has paid for that six times (see the art
+## key prefixes in Invariants.md).
+const PLATE_SCALE := 4     # render at 4x cell resolution: 384x256
+
+func plate() -> ImageTexture:
+	if _plate != null:
+		return _plate
+	var pw := W * PLATE_SCALE
+	var ph := H * PLATE_SCALE
+	# INTO A BYTE BUFFER, not set_pixel. This plate is 384x256 = 98k pixels and
+	# it is built on the main thread the moment the Atlas opens; per-pixel
+	# set_pixel() calls from GDScript are the difference between a hitch the
+	# player sees and one they do not.
+	var buf := PackedByteArray()
+	buf.resize(pw * ph * 4)
+	# The world's own accent, so a chart wears its world's skin rather than every
+	# world sharing one green. Tinted, not replaced: land still has to read as
+	# land, and a map painted entirely in UI colours reads as a panel.
+	var accent := Ui.c("amethyst")
+	var i := 0
+	for y in ph:
+		for x in pw:
+			var e := height_at_pct(Vector2(
+				(float(x) + 0.5) / float(pw) * 100.0,
+				(float(y) + 0.5) / float(ph) * 100.0))
+			var col := _paper_shade(e).lerp(accent, 0.16)
+			buf[i] = int(col.r * 255.0)
+			buf[i + 1] = int(col.g * 255.0)
+			buf[i + 2] = int(col.b * 255.0)
+			buf[i + 3] = 255
+			i += 4
+	_plate = ImageTexture.create_from_image(
+		Image.create_from_data(pw, ph, false, Image.FORMAT_RGBA8, buf))
+	return _plate
+
+
+## Colour for a height. Shading reads the SMOOTH height so a coastline is a curve
+## rather than a staircase; `klass()` stays exact and cell-resolution for anything
+## that is not a picture.
+func _paper_shade(e: float) -> Color:
+	if e <= sea:
+		var deep := clampf((sea - e) / maxf(sea * 0.55, 0.0001), 0.0, 1.0)
+		return Color(0.30, 0.50, 0.62).lerp(Color(0.05, 0.12, 0.28), deep)
+	var up := (e - sea) / land_band
+	if e < sea + land_band * 0.05:
+		return Color(0.82, 0.76, 0.58)                       # the strand
+	if e >= peak_at:
+		var pk := clampf((e - peak_at) / maxf(1.0 - peak_at, 0.0001), 0.0, 1.0)
+		return Color(0.66, 0.64, 0.63).lerp(Color(0.96, 0.96, 0.97), pk)
+	if e >= hill_at:
+		var hl := clampf((e - hill_at) / maxf(peak_at - hill_at, 0.0001), 0.0, 1.0)
+		return Color(0.47, 0.45, 0.30).lerp(Color(0.58, 0.52, 0.40), hl)
+	return Color(0.30, 0.44, 0.26).lerp(Color(0.46, 0.53, 0.30), clampf(up * 2.2, 0.0, 1.0))
+
+
+## Height at a percentage position, interpolated between cells. `height()` steps
+## cell to cell, which is right for gameplay and looks like a staircase.
+func height_at_pct(pct: Vector2) -> float:
+	var fx := clampf(pct.x / 100.0 * float(W) - 0.5, 0.0, float(W - 1))
+	var fy := clampf(pct.y / 100.0 * float(H) - 0.5, 0.0, float(H - 1))
+	var x0 := int(fx)
+	var y0 := int(fy)
+	var x1 := mini(x0 + 1, W - 1)
+	var y1 := mini(y0 + 1, H - 1)
+	var tx := fx - float(x0)
+	var ty := fy - float(y0)
+	var top: float = lerpf(elev[y0 * W + x0], elev[y0 * W + x1], tx)
+	var bot: float = lerpf(elev[y1 * W + x0], elev[y1 * W + x1], tx)
+	return lerpf(top, bot, ty)

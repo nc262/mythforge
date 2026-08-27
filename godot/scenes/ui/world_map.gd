@@ -342,14 +342,19 @@ func _draw() -> void:
 	# last environment plate painted, so the Atlas drew its location pins over a
 	# photograph of a tavern fireplace. The compiler knows where the real
 	# overhead plates live.
-	var art: Texture2D = Compiler.chart_art(GameState.world_id())
-	if art == null:
-		art = Art.texture_for("chart-" + GameState.world_id().validate_filename())
-	if art == null:
-		art = Art.texture_for(GameState.world_id())
-	if art != null:
-		draw_texture_rect(art, Rect2(Vector2.ZERO, size), false, Color(0.78, 0.75, 0.82, 1.0))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.4))
+	# P4 — THE PAPER IS RENDERED FROM THE GROUND, not painted beside it.
+	#
+	# This drew `Compiler.chart_art()`, an SDXL plate generated with no knowledge
+	# of where anything is. The pins and roads were laid over it and the two
+	# simply did not correspond: three authored pins stood in open water, and the
+	# plates are oblique illustrations WITH A HORIZON, so pinning y=19 put a place
+	# above the ground plane among tower tops.
+	#
+	# Now the picture, the pins and the roads are three views of ONE field, which
+	# is what AT-4 asked for and could not have while the picture was independent.
+	draw_texture_rect(WorldTerrain.for_world(GameState.world_id()).plate(),
+		Rect2(Vector2.ZERO, size), false)
+	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.22))
 	# Cloud shadows drift across the land.
 	if not Ui.reduce_motion:
 		for spec in [[0.13, 90.0, 0.31, 260.0], [0.61, -60.0, 0.72, 340.0]]:

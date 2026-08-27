@@ -35,7 +35,13 @@ func _ready() -> void:
 	DirAccess.make_dir_recursive_absolute(_dir)
 	Ui.apply(_world)
 	GameState.character = {"id": "dm-shots", "name": "Shot Subject", "world_id": _world}
-	GameState.state = {"world": {"here": "%s, the near ground" % WorldSkin.world_name(_world)}}
+	# `here` must be a REAL place or the you-are-here ring has nothing to sit on.
+	var _first := ""
+	for _l in GameState.places():
+		if _l is Dictionary and str(_l.get("name", "")) != "":
+			_first = str(_l["name"])
+			break
+	GameState.state = {"world": {"here": _first, "seen": []}}
 	await get_tree().process_frame
 
 	# WHAT THE PALETTE ACTUALLY IS, before judging any picture by eye.
@@ -104,6 +110,18 @@ func _shot_scene(path: String, stem: String) -> void:
 		print("SHOTS skip %s — did not compile" % path)
 		return
 	var node = scr.new()
+	# FEED THE ATLAS WHAT THE GAME FEEDS IT. `world_map` keeps its pins, roads,
+	# regions and fog in member vars that `_open_world_map` fills in; mounted bare
+	# it drew nothing but the paper, so every shot of it was a picture of terrain
+	# with no map on it — and the screens PY-19 and P4 need judged are exactly the
+	# ones made of those pins. Mirrors game.gd:2780.
+	if stem == "world_map":
+		node.locations = GameState.places()
+		node.regions = GameState.regions()
+		var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+		node.here = str(wd.get("here", ""))
+		node.seen = wd.get("seen") if wd.get("seen") is Array else []
+		node.fog = false     # a shot is for judging the drawing, not the fog rule
 	get_tree().root.add_child(node)
 	# A DIALOG IS ITS OWN WINDOW, AND ITS OWN VIEWPORT. The first version of this
 	# grabbed `get_viewport()` — the MAIN window — for every screen, so the three
