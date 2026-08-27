@@ -2705,6 +2705,82 @@ The term for spell slots is "Echoes."
 	GameState.character = _fog_char
 	GameState.state = _fog_state
 
+	# ── AT-5 / AT-6: THE LOCAL TIER, AND FOG THAT LEAVES A CHOICE ────────────
+	#
+	# AT-3 cut this and was right to at the time: "a street tier would mean
+	# inventing the data and then painting it". Both halves died with the painted
+	# chart — the data is generated and there is nothing to paint.
+	var _loc_char = GameState.character
+	var _loc_state = GameState.state
+	GameState.character = {"id": "dm-local", "world_id": "saltmarsh"}
+	GameState.state = {"world": {"here": "", "seen": [], "heard": []}}
+	LocalMap.forget()
+	var town := LocalMap.for_place("saltmarsh", "Gallows Quay", "settlement")
+	var barrow := LocalMap.for_place("fimbulreach", "The Barrow-Field", "ruin")
+	assert(town.settled and not barrow.settled,
+		"a settlement is settled and a ruin is not - the whole fog rule hangs off this")
+	for lm in [town, barrow]:
+		assert(lm.nodes.size() >= 4, "%s generated only %d rooms" % [lm.place, lm.nodes.size()])
+		assert(not lm.edges.is_empty(), "%s generated no ways between its rooms" % lm.place)
+		# EVERY ROOM REACHABLE FROM THE WAY IN. A node with no edge is a room the
+		# player can see and never enter, which reads as a broken map.
+		var seen_idx := {0: true}
+		var queue := [0]
+		while not queue.is_empty():
+			var cur: int = queue.pop_front()
+			for nb in lm.exits_of(cur):
+				if not seen_idx.has(nb):
+					seen_idx[nb] = true
+					queue.append(nb)
+		assert(seen_idx.size() == lm.nodes.size(),
+			"%s: %d of %d rooms are cut off from the entrance" % [
+				lm.place, lm.nodes.size() - seen_idx.size(), lm.nodes.size()])
+		# Unique names: the fog lists are lists of NAMES, so a duplicate would
+		# reveal two rooms at once.
+		var names := {}
+		for nd in lm.nodes:
+			var nn := str(nd.get("name", ""))
+			assert(not names.has(nn), "%s has two rooms called '%s'" % [lm.place, nn])
+			names[nn] = true
+	# A FRIENDLY TOWN IS NEVER FOGGED. People live there, there is signage, and
+	# you can ask; fogging one means walking it to reveal streets, which is
+	# busywork wearing exploration's clothes.
+	for i in town.nodes.size():
+		assert(town.state_of(i, 0, []) > 0,
+			"'%s' in a SETTLED place is hidden - a town you have just walked into is not a dungeon" % str(town.nodes[i]["name"]))
+	# ...and the DRAWING has to honour that. The screen treats state 1 as "a
+	# doorway, not a room" — right for a barrow, wrong for a town, where the
+	# footer promises "every street in sight". The first version drew five
+	# unnamed rings under that promise.
+	var pm_src := FileAccess.get_file_as_string("res://scenes/ui/place_map.gd")
+	assert(pm_src.contains("if lm.settled:"),
+		"place_map draws every un-walked room the same way - a settled place must still show its names, or the map contradicts its own footer")
+	# A BARROW IS. And the fog must leave a CHOICE: standing in a room scouts the
+	# rooms it opens onto. Reveal only where you are and exploring is a random
+	# walk; reveal the neighbours and the player picks between visible options.
+	var hidden := 0
+	for i in barrow.nodes.size():
+		if barrow.state_of(i, 0, []) == 0:
+			hidden += 1
+	assert(hidden > 0, "an UNSETTLED site hides nothing - fog is not applying where it should")
+	for nb in barrow.exits_of(0):
+		assert(barrow.state_of(nb, 0, []) == 1,
+			"standing at the way in does not scout what it opens onto - exploring is a coin flip")
+	assert(barrow.state_of(0, 0, []) == 2, "the room the player is standing in is not known")
+	# PERMANENCE: a room walked stays known after moving on.
+	var far := barrow.nodes.size() - 1
+	assert(barrow.state_of(far, 0, [str(barrow.nodes[far]["name"])]) == 2,
+		"a room already walked came back as unknown - fog is re-shrouding, which is an RTS convention")
+	# DETERMINISM, the same rule the terrain follows: the Atlas, the screen and
+	# any bake must each get the same town.
+	LocalMap.forget()
+	var town2 := LocalMap.for_place("saltmarsh", "Gallows Quay", "settlement")
+	assert(town2.nodes.size() == town.nodes.size()
+		and str(town2.nodes[0]["name"]) == str(town.nodes[0]["name"]),
+		"the same place generated two different towns")
+	GameState.character = _loc_char
+	GameState.state = _loc_state
+
 	var wm_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
 
 	# AT-7 / AT-8 — THE ATLAS READS WHAT THE PLACES ACTUALLY CARRY.

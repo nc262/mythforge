@@ -82,6 +82,12 @@ func _ready() -> void:
 	await _shot_scene("res://scenes/ui/skill_tree.gd", "skill_tree")
 	await _shot_scene("res://scenes/ui/world_map.gd", "world_map")
 
+	# AT-5 — both local tiers, because the fog rule DIFFERS between them and a
+	# shot of one proves nothing about the other. A settled place shows every
+	# street; an unsettled one shows the room you stand in and its exits.
+	await _shot_scene("res://scenes/ui/place_map.gd", "place_town")
+	await _shot_scene("res://scenes/ui/place_map.gd", "place_ruin")
+
 	# PY-20 — no code cause was found for the maximize button, so record what the
 	# window actually reports before and after asking for it.
 	var before := DisplayServer.window_get_mode()
@@ -126,6 +132,23 @@ func _shot_scene(path: String, stem: String) -> void:
 	# it drew nothing but the paper, so every shot of it was a picture of terrain
 	# with no map on it — and the screens PY-19 and P4 need judged are exactly the
 	# ones made of those pins. Mirrors game.gd:2780.
+	if stem.begins_with("place_"):
+		var want := "settlement" if stem == "place_town" else "ruin"
+		var nm := ""
+		var knd := ""
+		for _p in GameState.places():
+			if _p is Dictionary and str(_p.get("kind", "")) == want:
+				nm = str(_p["name"])
+				knd = want
+		if nm == "":
+			# Not every world ships both kinds — say so rather than write a shot
+			# of an empty screen and let it read as a success.
+			print("SHOTS %s — this world has no '%s' place to look inside" % [stem, want])
+			node.queue_free()
+			return
+		node.lm = LocalMap.for_place(GameState.world_id(), nm, knd)
+		node.here_room = str(node.lm.nodes[0]["name"])
+		node.walked = [str(node.lm.nodes[0]["name"])]
 	if stem == "world_map":
 		node.locations = GameState.places()
 		node.regions = GameState.regions()

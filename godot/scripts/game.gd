@@ -2792,6 +2792,9 @@ func _open_world_map() -> void:
 	map.travel_requested.connect(func(place):
 		dlg.queue_free()
 		_travel_to(place))
+	map.enter_requested.connect(func(place):
+		dlg.queue_free()
+		_open_place_map(place))
 	dlg.add_child(map)
 	add_child(dlg)
 	dlg.popup_centered()
@@ -2912,6 +2915,59 @@ func _hear_named_places() -> void:
 			continue
 		if prose.contains(nm.to_lower()):
 			GameState.hear_of(nm)
+
+
+## AT-5 — THE INSIDE OF A PLACE.
+##
+## A settled place is never fogged and an unsettled one is; `LocalMap` decides
+## which from `kind`, so this does not have to know the rule and cannot disagree
+## with the generator about it.
+##
+## Walking a room is recorded per place, keyed by the place's own name — the
+## world's `seen` list is a list of PLACES and would collide with a room called
+## "The Way In" the moment two ruins had one.
+func _open_place_map(place: String) -> void:
+	var kind := ""
+	for l in GameState.places():
+		if l is Dictionary and str(l.get("name", "")) == place:
+			kind = str(l.get("kind", ""))
+	var lm := LocalMap.for_place(GameState.world_id(), place, kind)
+	if lm.nodes.is_empty():
+		_say_system("There is nothing charted inside %s." % place, "compass")
+		return
+	var world: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	var inside: Dictionary = world.get("inside") if world.get("inside") is Dictionary else {}
+	var rec: Dictionary = inside.get(place) if inside.get(place) is Dictionary else {}
+	var dlg := AcceptDialog.new()
+	dlg.title = place
+	dlg.ok_button_text = "Step back out"
+	var view := preload("res://scenes/ui/place_map.gd").new()
+	view.lm = lm
+	view.here_room = str(rec.get("here", str(lm.nodes[0]["name"])))
+	view.walked = rec.get("walked") if rec.get("walked") is Array else [str(lm.nodes[0]["name"])]
+	view.enter_room.connect(func(room):
+		var w2: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+		var ins: Dictionary = w2.get("inside") if w2.get("inside") is Dictionary else {}
+		var r2: Dictionary = ins.get(place) if ins.get(place) is Dictionary else {}
+		var walked: Array = r2.get("walked") if r2.get("walked") is Array else []
+		if not walked.has(room):
+			walked.append(room)
+		r2["walked"] = walked
+		r2["here"] = room
+		ins[place] = r2
+		w2["inside"] = ins
+		GameState.save_kind("world", w2)
+		view.here_room = room
+		view.walked = walked
+		Sfx.ui("travel")
+		# The GM narrates arrival, which is what makes a room a place rather than
+		# a dot. The map moved the pin; the story says what is there.
+		_say_system("You move to %s, within %s." % [room, place], "compass"))
+	Ui.dress_dialog(dlg, view)
+	add_child(dlg)
+	dlg.popup_centered()
+	dlg.confirmed.connect(dlg.queue_free)
+	dlg.canceled.connect(dlg.queue_free)
 
 
 ## Auto here-tracking: the GM's [[scene]] prose moves the pin when the place

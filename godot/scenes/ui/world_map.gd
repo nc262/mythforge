@@ -11,6 +11,9 @@ extends Control
 ## quiet about it.
 
 signal travel_requested(place: String)
+## AT-5 — clicking the place you are ALREADY STANDING IN did nothing at all, so
+## the gesture was free. It is the natural way in: travel there, then step inside.
+signal enter_requested(place: String)
 
 var locations: Array = []
 var here := ""
@@ -405,6 +408,8 @@ func _gui_input(event: InputEvent) -> void:
 			var nm := str(locations[_hover].get("name", ""))
 			if nm != here:
 				travel_requested.emit(nm)
+			else:
+				enter_requested.emit(nm)   # AT-5: step inside where you stand
 			return
 		var vis := _visible_regions()
 		if _region_hover >= 0 and _region_hover < vis.size():
