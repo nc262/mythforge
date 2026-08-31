@@ -20,6 +20,8 @@ const OUT := "user://shots"
 var _world := "neonspire"
 var _dir := ""
 var _taken: Array = []
+var _asked := 0        # shots requested
+var _skipped := 0      # shots this world legitimately has no subject for
 
 
 func _ready() -> void:
@@ -100,6 +102,18 @@ func _ready() -> void:
 		not DisplayServer.window_get_flag(DisplayServer.WINDOW_FLAG_RESIZE_DISABLED)])
 	DisplayServer.window_set_mode(before)
 
+	# REFUSE TO REPORT SUCCESS FOR A SHORTFALL. This printed "SHOTS OK 5" when
+	# `local_map.gd` failed to compile and both place-map shots came back flat —
+	# the count was honest and the WORD was not, and a green line is what gets
+	# read. A skipped shot must be said out loud (`_skipped`); anything else
+	# missing is a failure.
+	if _taken.size() + _skipped < _asked:
+		print("SHOTS FAILED — asked for %d, wrote %d, deliberately skipped %d" % [
+			_asked, _taken.size(), _skipped])
+		for t in _taken:
+			print("   ", t)
+		get_tree().quit(1)
+		return
 	print("SHOTS OK %d written to %s" % [_taken.size(), _dir])
 	for t in _taken:
 		print("   ", t)
@@ -122,6 +136,7 @@ func _is_flat(img: Image) -> bool:
 
 ## Build one screen the way the game builds it, let it settle, save the frame.
 func _shot_scene(path: String, stem: String) -> void:
+	_asked += 1
 	var scr = load(path)
 	if not (scr is GDScript and scr.can_instantiate()):
 		print("SHOTS skip %s — did not compile" % path)
@@ -144,6 +159,7 @@ func _shot_scene(path: String, stem: String) -> void:
 			# Not every world ships both kinds — say so rather than write a shot
 			# of an empty screen and let it read as a success.
 			print("SHOTS %s — this world has no '%s' place to look inside" % [stem, want])
+			_skipped += 1
 			node.queue_free()
 			return
 		node.lm = LocalMap.for_place(GameState.world_id(), nm, knd)
