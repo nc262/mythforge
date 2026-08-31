@@ -550,7 +550,11 @@ func paper_material() -> ShaderMaterial:
 	m.set_shader_parameter("hill_at", hill_at if hill_at < INF else 2.0)
 	m.set_shader_parameter("peak_at", peak_at if peak_at < INF else 2.0)
 	m.set_shader_parameter("relief", float(g["relief"]))
-	m.set_shader_parameter("detail", 1.0)
+	# LESS INVENTED RELIEF WHERE THE GROUND IS BUILT ON. The detail octaves give a
+	# wilderness its ridges and crinkled coast; under city blocks they read as a
+	# wave texture competing with the streets, and two line systems at similar
+	# weight make hatching rather than either one.
+	m.set_shader_parameter("detail", 1.0 - 0.65 * float(URBAN.get(family, 0.0)))
 	m.set_shader_parameter("urban", float(URBAN.get(family, 0.0)))
 	m.set_shader_parameter("accent", Ui.c("amethyst"))
 	var pap: Dictionary = PAPER.get(family, PAPER["fantasy"])

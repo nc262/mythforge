@@ -98,8 +98,32 @@ float fbm(vec2 p) {
 // Height at a point: the AUTHORITATIVE field, plus invented detail that fades to
 // nothing at the coast so the coastline the player sees still matches the
 // coastline the roads were routed over.
+// SMOOTH TEXEL FETCH, and this one is load-bearing rather than tidy.
+//
+// The hillshade takes a gradient from `height_tex`, and plain bilinear filtering
+// is only C0: its derivative is piecewise constant and JUMPS at every texel
+// edge. Lighting a normal built from that derivative draws the seams — a mesh of
+// fine wavy lines across the whole map, on a 96x64 grid, which is exactly the
+// hatching that made Neon Spire look like a texture instead of a city.
+//
+// I blamed the contour lines first and suppressed them on urban worlds. That was
+// a reasonable-sounding guess and it moved nothing, because the lines were never
+// contours. Re-weighting the fraction by smoothstep makes the reconstruction C1,
+// so the derivative is continuous and the seams have nothing to draw.
+//
+// (Keeping the contour change: a street map genuinely has no topographic
+// contours. It was the right edit for the wrong reason.)
+float h_smooth(vec2 uv) {
+	vec2 ts = vec2(textureSize(height_tex, 0));
+	vec2 t = uv * ts - 0.5;
+	vec2 i = floor(t);
+	vec2 f = fract(t);
+	f = f * f * (3.0 - 2.0 * f);
+	return texture(height_tex, (i + 0.5 + f) / ts).r;
+}
+
 float h_at(vec2 uv) {
-	float base = texture(height_tex, uv).r;
+	float base = h_smooth(uv);
 	float near_sea = smoothstep(0.0, land_band * 0.5, abs(base - sea_level));
 	float d = (fbm(uv * 34.0) - 0.5) * 0.055 * detail * relief * near_sea;
 	return base + d;
@@ -141,29 +165,73 @@ void fragment() {
 		float lambert = clamp(dot(n, normalize(vec3(-0.6, -0.6, 0.55))), 0.0, 1.0);
 		col *= 0.62 + 0.62 * lambert;
 
-		// City blocks. Each cell takes its own tone, and the gaps between them are
-		// streets — which is the difference between a picture of ground and a
-		// picture of a place people built.
+		// ── CITY BLOCKS, IN DISTRICTS ────────────────────────────────────────
+		//
+		// The first version was ONE grid, axis-aligned, at one cell size across
+		// the whole world — and it read as graph paper, because that is what it
+		// was. Making the cells smaller only makes finer graph paper; the fault
+		// is the regularity, not the scale.
+		//
+		// What actually separates a city from a sheet of squares is three
+		// things, and none of them is cell size:
+		//   · DISTRICTS AT DIFFERENT ANGLES. Two grids meeting at 20 degrees
+		//     reads as two neighbourhoods that grew separately, which is what
+		//     every real city is. One angle everywhere reads as paper.
+		//   · GRAIN THAT VARIES. A dense core and looser edges. Here the grain
+		//     also thins with height, so the hills are estates and the flats are
+		//     downtown, which comes free from the terrain already under it.
+		//   · A ROAD HIERARCHY. The seams BETWEEN districts are arterials —
+		//     wider, darker, and continuous across the map — while lanes stay
+		//     inside a block. A grid of identical streets has no hierarchy and
+		//     the eye finds nothing to follow.
+		//
+		// Same Voronoi trick the regions use, one scale down. It stays cosmetic:
+		// nothing here touches the height field, so a street can never disagree
+		// with a routed road.
 		if (urban > 0.001) {
-			vec2 gv = UV * vec2(52.0, 35.0);
+			float dd1 = 1e9;
+			float dd2 = 1e9;
+			float di = 0.0;
+			for (int i = 0; i < 7; i++) {
+				vec2 c = vec2(hash21(vec2(float(i) * 1.7, 3.7)),
+					hash21(vec2(float(i) * 2.3, 9.1)));
+				float d = distance(UV * vec2(1.5, 1.0), c * vec2(1.5, 1.0));
+				if (d < dd1) { dd2 = dd1; dd1 = d; di = float(i); }
+				else if (d < dd2) { dd2 = d; }
+			}
+			float ang = (hash21(vec2(di, 17.0)) - 0.5) * 0.8;
+			// Grain: each district picks its own, then thins as the ground
+			// rises. Downtown is flat and packed; the slopes are not.
+			float grain = mix(44.0, 86.0, hash21(vec2(di, 23.0))) * mix(1.0, 0.62, clamp(up, 0.0, 1.0));
+			float ca = cos(ang);
+			float sa = sin(ang);
+			vec2 ruv = vec2(UV.x * ca - UV.y * sa, UV.x * sa + UV.y * ca);
+			vec2 gv = ruv * vec2(grain * 1.5, grain);
 			vec2 gi = floor(gv);
 			vec2 gf = fract(gv);
-			float blk = hash21(gi);
-			vec3 blocky = col * (0.82 + 0.34 * blk);
-			float street = min(min(gf.x, 1.0 - gf.x), min(gf.y, 1.0 - gf.y));
-			// Two widths: most gaps are lanes, a few are arterials. A grid of
-			// identical streets reads as graph paper.
+			vec3 blocky = col * (0.82 + 0.34 * hash21(gi + di * 13.0));
+			float lane = min(min(gf.x, 1.0 - gf.x), min(gf.y, 1.0 - gf.y));
 			float wide = step(0.86, hash21(gi * 0.5)) * 0.05;
-			blocky = mix(blocky * 0.55, blocky, smoothstep(0.0, 0.055 + wide, street));
+			blocky = mix(blocky * 0.55, blocky, smoothstep(0.0, 0.055 + wide, lane));
+			// The arterial along a district seam, in screen-constant width so it
+			// stays a road at every zoom rather than thickening into a band.
+			float seam = dd2 - dd1;
+			blocky = mix(blocky * 0.42, blocky,
+				smoothstep(0.0, max(fwidth(seam) * 3.5, 0.00001), seam));
 			col = mix(col, blocky, urban);
 		}
 
 		// Contours, faint — every eighth of the land band. They cost nothing and
 		// they are what makes a picture of ground read as a MAP of it.
+		//
+		// NOT ON A CITY. A street map has no topographic contours, and drawn
+		// under blocks they turned Neon Spire into hatching: two competing line
+		// systems at similar weight, so the eye read texture rather than either
+		// one. Contours describe a slope; a city chart describes a street.
 		float bands = up * 8.0;
 		float line = abs(fract(bands) - 0.5) * 2.0;
 		float w = fwidth(bands) * 1.6;
-		col *= 1.0 - 0.13 * (1.0 - smoothstep(0.0, max(w, 0.001), 1.0 - line));
+		col *= 1.0 - 0.13 * (1.0 - urban) * (1.0 - smoothstep(0.0, max(w, 0.001), 1.0 - line));
 	}
 
 	// Region tint and edge. Land only: a border drawn across open sea claims the

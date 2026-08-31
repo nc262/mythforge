@@ -2797,6 +2797,16 @@ func _open_world_map() -> void:
 		_open_place_map(place))
 	dlg.add_child(map)
 	add_child(dlg)
+	# THE ATLAS DESERVES THE SCREEN. This opened at the map's own 680x430 minimum
+	# — a postage stamp of world with a frame round it — which is also why the
+	# city grid read as graph paper: at that size there is no room for a district
+	# to be a district. Same clamp `character_screen` uses, and for the same
+	# reason it needed one: a fixed size never fits every window, and the ceiling
+	# has to be the screen or the OK button walks off the bottom.
+	var avail := Vector2(get_tree().root.get_visible_rect().size)
+	dlg.min_size = Vector2i(mini(1500, int(avail.x) - 8), mini(940, int(avail.y) - 8))
+	dlg.max_size = Vector2i(int(avail.x) - 8, int(avail.y) - 8)
+	dlg.size = dlg.min_size
 	dlg.popup_centered()
 	Ui.ritual_open(dlg)
 
@@ -2965,6 +2975,10 @@ func _open_place_map(place: String) -> void:
 		_say_system("You move to %s, within %s." % [room, place], "compass"))
 	Ui.dress_dialog(dlg, view)
 	add_child(dlg)
+	var lavail := Vector2(get_tree().root.get_visible_rect().size)
+	dlg.min_size = Vector2i(mini(1300, int(lavail.x) - 8), mini(860, int(lavail.y) - 8))
+	dlg.max_size = Vector2i(int(lavail.x) - 8, int(lavail.y) - 8)
+	dlg.size = dlg.min_size
 	dlg.popup_centered()
 	dlg.confirmed.connect(dlg.queue_free)
 	dlg.canceled.connect(dlg.queue_free)

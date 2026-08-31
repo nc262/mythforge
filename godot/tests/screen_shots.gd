@@ -173,6 +173,14 @@ func _shot_scene(path: String, stem: String) -> void:
 		# being an artefact of this harness. The game gives these screens a full
 		# rect; so must this.
 		(node as Control).set_anchors_preset(Control.PRESET_FULL_RECT)
+		# AND THE REAL SIZE. `custom_minimum_size` (680x430 on both maps) wins
+		# over an anchor preset on a bare Control, so every map shot ever taken
+		# was at that minimum — a third of the window — while the game now opens
+		# the Atlas at up to 1500x940. Judging a city grid at the wrong scale is
+		# judging a different picture, and the graph-paper complaint was partly
+		# an artefact of this line missing.
+		(node as Control).custom_minimum_size = Vector2.ZERO
+		(node as Control).size = get_viewport().get_visible_rect().size
 	for i in 4:
 		await get_tree().process_frame
 	await RenderingServer.frame_post_draw
