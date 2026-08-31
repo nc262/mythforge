@@ -555,6 +555,16 @@ func paper_material() -> ShaderMaterial:
 	return m
 
 
+## The sheet this world is drawn on — one place to ask, so the Atlas, the local
+## maps, the lettering and the key are all the same hide.
+func paper_colour() -> Color:
+	return Color(str(PAPER.get(family, PAPER["fantasy"])["paper"]))
+
+
+func paper_dark_colour() -> Color:
+	return Color(str(PAPER.get(family, PAPER["fantasy"])["dark"]))
+
+
 ## The ink this world is drawn in — the one place anything outside the shader
 ## needs to ask, so the glyphs, the roads and the paper cannot disagree about it.
 func ink_colour() -> Color:

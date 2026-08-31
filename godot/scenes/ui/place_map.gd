@@ -17,22 +17,29 @@ var walked: Array = []
 var _hover := -1
 var _camera := MythCamera.new()
 var _phase := 0.0
+var _paper: ColorRect = null
+const PAPER_SHADER := preload("res://ui/local_paper.gdshader")
 
 ## Role -> the mark it wears. Colour AND shape, the rule KIND_MARK follows on the
 ## world map for the same reason: a shape survives being dimmed, printed, or seen
 ## by someone who will not agree with us about the orange one.
+## A room role said in the ATLAS OWN vocabulary: every `shape` here is a kind
+## that `MapInk` already draws, so a hall inside a town wears the silhouette a
+## landmark wears on the world chart and the player learns one alphabet rather
+## than two. The `col` entries are vestigial on a one-ink map and kept only
+## because the hover and here states still read them.
 const ROLE_MARK := {
-	"square":  {"col": "gold",          "shape": "square"},
-	"inn":     {"col": "gold",          "shape": "dot"},
-	"shop":    {"col": "ember",         "shape": "ring"},
-	"hall":    {"col": "ink",           "shape": "square"},
-	"homes":   {"col": "ink_dim",       "shape": "square"},
-	"quay":    {"col": "amethyst",      "shape": "diamond"},
-	"gate":    {"col": "amethyst_deep", "shape": "diamond"},
-	"entry":   {"col": "gold",          "shape": "ring"},
-	"chamber": {"col": "ink_soft",      "shape": "dot"},
-	"vault":   {"col": "danger",        "shape": "diamond"},
-	"side":    {"col": "ink_dim",       "shape": "dot"},
+	"square":  {"col": "gold",          "shape": "settlement"},
+	"inn":     {"col": "gold",          "shape": "tavern"},
+	"shop":    {"col": "ember",         "shape": "shop"},
+	"hall":    {"col": "ink",           "shape": "landmark"},
+	"homes":   {"col": "ink_dim",       "shape": "home"},
+	"quay":    {"col": "amethyst",      "shape": "shop"},
+	"gate":    {"col": "amethyst_deep", "shape": "landmark"},
+	"entry":   {"col": "gold",          "shape": "landmark"},
+	"chamber": {"col": "ink_soft",      "shape": "home"},
+	"vault":   {"col": "danger",        "shape": "ruin"},
+	"side":    {"col": "ink_dim",       "shape": "ruin"},
 }
 
 
@@ -41,11 +48,27 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	clip_contents = true
 	custom_minimum_size = Vector2(680, 430)
+	# AT-11 — THE SAME HIDE AS THE ATLAS. Behind this node, exactly as the Atlas
+	# does it, so clicking into a town does not look like leaving the book.
+	var g := WorldTerrain.for_world(GameState.world_id())
+	_paper = ColorRect.new()
+	_paper.show_behind_parent = true
+	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var mat := ShaderMaterial.new()
+	mat.shader = PAPER_SHADER
+	mat.set_shader_parameter("c_paper", g.paper_colour())
+	mat.set_shader_parameter("c_paper_dark", g.paper_dark_colour())
+	_paper.material = mat
+	add_child(_paper)
 	set_process(true)
 
 
 func _process(delta: float) -> void:
 	_phase += delta
+	if _paper != null:
+		_paper.position = _camera.cam
+		_paper.size = size
+		_paper.scale = Vector2(_camera.zoom, _camera.zoom)
 	queue_redraw()
 
 
@@ -130,36 +153,40 @@ func _draw() -> void:
 			# In an UNSETTLED one it means "you can see the doorway, not the
 			# room" — nobody is there to tell you what is through it, so it is
 			# a shape and nothing more.
-			draw_arc(p, 7.0, 0, TAU, 22, Color(col, 0.55 if i == _hover else 0.36), 1.2)
-			_draw_mark(p, str(m["shape"]), Color(col, 0.45 if lm.settled else 0.26), 3.4)
+			_draw_mark(p, str(m["shape"]), Color(col, 0.45 if lm.settled else 0.26),
+				3.4 if not lm.settled else 4.6)
 			if lm.settled:
-				var snm := str(n.get("name", ""))
-				var ssz := font.get_string_size(snm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
-				var stp := p + Vector2(-ssz.x / 2.0, -12)
-				draw_string(font, stp + Vector2(1, 1), snm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(0, 0, 0, 0.75))
-				draw_string(font, stp, snm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12,
-					Color(Ui.c("ink_soft"), 0.95 if i == _hover else 0.72))
+				_label(font, p, str(n.get("name", "")), 12, 0.85 if i == _hover else 0.6)
 			continue
-		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(18, 18), Vector2(36, 36)),
-			false, Color(col, 0.20))
 		_draw_mark(p, str(m["shape"]), Color(col, 0.95), 7.0 if i == _hover else 5.0)
 		if is_here:
+			# YOU ARE HERE, in ink. A gold glow was a UI cue for a dark panel; on
+			# paper the mark is a ring drawn round the symbol, which is what a
+			# reader circling their own position actually does.
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
-			draw_arc(p, 12.0 + breathe, 0, TAU, 26, Ui.c("gold_soft"), 2.2)
-		var nm := str(n.get("name", ""))
-		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
-		var tp := p + Vector2(-sz.x / 2.0, -13)
-		draw_string(font, tp + Vector2(1, 1), nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(0, 0, 0, 0.8))
-		draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12,
-			Ui.c("ink") if (i == _hover or is_here) else Ui.c("ink_soft"))
+			draw_arc(p, 15.0 + breathe, 0, TAU, 28, Color(_ink(), 0.85), 2.0, true)
+		_label(font, p, str(n.get("name", "")), 13, 1.0 if (i == _hover or is_here) else 0.85)
 
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	# What this place IS, said once in the corner — a town has no fog and a
 	# barrow does, and the player should not have to infer which from the pins.
 	var note := "every street in sight" if lm.settled else "only what you have walked, and what it opens onto"
-	draw_string(font, Vector2(12, size.y - 12), note, HORIZONTAL_ALIGNMENT_LEFT, size.x - 24, 11,
-		Color(Ui.c("ink_dim"), 0.8))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 1.5)
+	draw_string(font, Vector2(14, size.y - 14), note, HORIZONTAL_ALIGNMENT_LEFT, size.x - 28, 11,
+		Color(_ink(), 0.6))
+	draw_rect(Rect2(Vector2.ZERO, size), Color(_ink(), 0.55), false, 2.0)
+
+
+## Lettering set INTO the sheet: a halo in the paper own colour, the way an
+## engraver leaves a gap round a word so the hatching does not run through it.
+## A black drop shadow reads as a UI label pasted on top of a map.
+func _label(font: Font, p: Vector2, nm: String, sz: int, strength: float) -> void:
+	if nm == "":
+		return
+	var w := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz)
+	var tp := p + Vector2(-w.x / 2.0, -13.0)
+	for o in [Vector2(1.3, 0), Vector2(-1.3, 0), Vector2(0, 1.3), Vector2(0, -1.3)]:
+		draw_string(font, tp + o, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz, Color(_paper_tone(), 0.9))
+	draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz, Color(_ink(), strength))
 
 
 ## ── THE GROUND, from the SAME palette as the world chart ─────────────────────
@@ -168,36 +195,32 @@ func _draw() -> void:
 ## stone from `WorldTerrain.PAPER` for this world's family, so a cyber district
 ## is concrete where a fantasy village is earth — and a town's ground matches the
 ## country it stands in, which is the whole reason the tiers share a field.
-func _pal(role: String) -> Color:
-	var fam := WorldSkin.family_for_id(GameState.world_id())
-	var pap: Dictionary = WorldTerrain.PAPER.get(fam, WorldTerrain.PAPER["fantasy"])
-	return Color(str(pap.get(role, "444444")))
+## Ink and paper, asked of the same table the Atlas reads.
+func _ink() -> Color:
+	return WorldTerrain.for_world(GameState.world_id()).ink_colour()
+
+
+func _paper_tone() -> Color:
+	return WorldTerrain.for_world(GameState.world_id()).paper_colour()
+
+
+
 
 
 func _draw_ground() -> void:
-	# A SITE IS NOT A MEADOW. The unsettled ground took the world's land colour,
-	# so The Sunken Fort had a grass floor between its stone rooms. Inside a
-	# barrow the ground the player has not reached is DARK — that is what the fog
-	# is — and a lit room floor has to read against it.
+	# THE PAPER IS `_paper`, the shader behind this node. Nothing to fill here.
 	if not lm.settled:
-		draw_rect(Rect2(Vector2.ZERO, size), Ui.c("night").darkened(0.35))
+		# A site with no one in it is drawn on the same sheet, but the ground the
+		# player has not reached is left BLANK — on a chart the unknown is empty
+		# paper, not a dark wash, which is the one place this differs from the
+		# Atlas and it differs because a barrow is unlit rather than unmapped.
 		return
-	# THE FIELDS ARE GONE. They were meant to give the eye somewhere to land
-	# outside the walls and they read as grey debris scattered on grass — an
-	# object where a change of tone was wanted. Flat ground outside the town is
-	# quieter and therefore better than wrong detail, and the honest fix is
-	# texture from a shader, the way the world chart gets it, not more rectangles.
-	draw_rect(Rect2(Vector2.ZERO, size), _pal("low").darkened(0.42))
 	if lm.water_dir == Vector2.ZERO:
 		return
 	# THE SHORE FACES THE SEA. `water_dir` is the direction of the nearest water
 	# cell on the WORLD map, so a quay town's harbour is on the side the chart
-	# says the water is. A local map that put the sea wherever it liked would
-	# contradict the map you clicked through to get here.
-	#
-	# (Deleted by accident once, when the field-scatter above it was cut out with
-	# a careless slice: the town lost its harbour and the shot showed a landlocked
-	# Gallows Quay. Caught by looking, not by any check.)
+	# says the water is. (Deleted once by a careless slice, which left Gallows
+	# Quay — a QUAY — landlocked with nothing failing. There is a check now.)
 	var d := lm.water_dir
 	var n := d.orthogonal()
 	var c := Vector2(50, 50) + d * lm.water_at
@@ -207,10 +230,20 @@ func _draw_ground() -> void:
 		var t := (float(k) / 23.0 - 0.5) * 150.0
 		var wob := sin(float(k) * 0.62 + ph) * 5.5 + sin(float(k) * 1.53 + ph * 2.1) * 2.4
 		pts.append(_pct(c + n * t + d * wob))
+	var coast := PackedVector2Array(pts)
 	pts.append(_pct(c + n * 120.0 + d * 400.0))
 	pts.append(_pct(c - n * 120.0 + d * 400.0))
-	draw_colored_polygon(pts, _pal("shallow").darkened(0.15))
-	draw_polyline(pts.slice(0, 24), _pal("strand"), 2.5, true)
+	# ENGRAVED, NOT FILLED. The Atlas hatches its sea off the depth; a town has no
+	# depth field, so the hatch is drawn as lines PARALLEL TO THE SHORE, which is
+	# what the same engraver would do at this scale and reads as the same sea.
+	draw_colored_polygon(pts, Color(_paper_tone().darkened(0.06), 1.0))
+	for band in 5:
+		var off := float(band + 1) * 2.6
+		var hl := PackedVector2Array()
+		for q in coast:
+			hl.append(q + d * off * (size.x / 100.0))
+		draw_polyline(hl, Color(_ink(), 0.34 - float(band) * 0.055), 1.1, true)
+	draw_polyline(coast, Color(_ink(), 0.95), 2.2, true)
 
 
 func _pct(p: Vector2) -> Vector2:
@@ -226,43 +259,47 @@ func _draw_town(_hi: int) -> void:
 		var ring := PackedVector2Array()
 		for q in lm.bounds:
 			ring.append(_pct(q))
-		draw_colored_polygon(ring, _pal("low").lightened(0.06))
+		# The built-up ground, a shade off the open sheet — the way a drawn map
+		# separates a town footprint from the country round it.
+		draw_colored_polygon(ring, Color(_paper_tone().darkened(0.05), 1.0))
 		ring.append(ring[0])
 		if lm.walled:
-			draw_polyline(ring, Color(0.10, 0.09, 0.08, 0.75), 6.0, true)
-			draw_polyline(ring, _pal("strand").darkened(0.10), 3.6, true)
-			# Towers at the turns, which is what makes a ring read as a wall
-			# rather than a contour.
+			draw_polyline(ring, Color(_ink(), 0.92), 3.4, true)
+			# Towers at the turns, which is what makes a ring read as a WALL
+			# rather than as a contour line.
 			for k in range(0, lm.bounds.size(), 4):
-				draw_circle(_pct(lm.bounds[k]), 3.2, _pal("strand").darkened(0.25))
-				draw_circle(_pct(lm.bounds[k]), 2.0, _pal("strand"))
+				var tp2 := _pct(lm.bounds[k])
+				draw_circle(tp2, 3.4, _paper_tone())
+				draw_arc(tp2, 3.4, 0, TAU, 14, Color(_ink(), 0.92), 1.6, true)
 		else:
-			draw_polyline(ring, Color(_pal("hill"), 0.55), 1.6, true)
+			draw_polyline(ring, Color(_ink(), 0.45), 1.4, true)
 	for st in lm.streets:
 		var scr := PackedVector2Array()
 		for q in st:
 			scr.append(_pct(q))
 		# Narrower than they were: a 7 px road on a town map is a boulevard, and
 		# with lanes added the whole plan was more street than town.
-		draw_polyline(scr, _pal("strand").darkened(0.34), 4.6, true)
-		draw_polyline(scr, _pal("strand").lightened(0.08), 2.6, true)
+		# A street is the PAPER between the buildings, edged in ink — not a tan
+		# ribbon laid over the ground.
+		draw_polyline(scr, Color(_ink(), 0.55), 5.0, true)
+		draw_polyline(scr, _paper_tone(), 3.2, true)
 	for b in lm.buildings:
 		# Roofs vary. One flat fill for every building is what made the first
 		# version read as cardboard: a real town map has slate beside thatch
 		# beside tile, and the variation is most of what says "many hands built
 		# this over a long time".
+		# INK OUTLINES ON PAPER. A drawn town map does not shade its roofs: the
+		# footprint is left blank and the LINE does the work. A handful are
+		# filled solid, which is how an engraver marks the buildings that matter
+		# without labelling every one of them.
 		var seed_h := absi(hash(Vector2i(int(b["at"].x * 7.0), int(b["at"].y * 7.0))))
-		var tone := float(seed_h % 100) / 100.0
-		var body: Color = _pal("hill").lerp(_pal("high"), tone * 0.75).darkened(0.10 - tone * 0.16)
-		if bool(b["big"]):
-			body = _pal("strand").darkened(0.28)
 		var quad := _footprint(b, Vector2.ZERO)
-		# A shadow offset down-right, which is where the light is not — the same
-		# north-west lighting the world chart's hillshade uses, so the two tiers
-		# agree about where the sun is.
-		draw_colored_polygon(_footprint(b, Vector2(1.6, 1.6)), Color(0.05, 0.04, 0.04, 0.5))
-		draw_colored_polygon(quad, body)
-		draw_polyline(quad + PackedVector2Array([quad[0]]), body.lightened(0.20), 1.0, true)
+		var closed := quad + PackedVector2Array([quad[0]])
+		if bool(b["big"]) or seed_h % 7 == 0:
+			draw_colored_polygon(quad, Color(_ink(), 0.72))
+		else:
+			draw_colored_polygon(quad, _paper_tone())
+			draw_polyline(closed, Color(_ink(), 0.85), 1.15, true)
 
 
 ## A building's four corners, turned to face its street.
@@ -289,8 +326,8 @@ func _draw_rooms(hi: int) -> void:
 			continue
 		var pa := _pct(Vector2(float(lm.nodes[a]["x"]), float(lm.nodes[a]["y"])))
 		var pb := _pct(Vector2(float(lm.nodes[b]["x"]), float(lm.nodes[b]["y"])))
-		draw_line(pa, pb, _pal("strand").darkened(0.62), 9.0, true)
-		draw_line(pa, pb, _pal("hill").darkened(0.34), 6.0, true)
+		draw_line(pa, pb, Color(_ink(), 0.85), 8.0, true)
+		draw_line(pa, pb, _paper_tone(), 5.4, true)
 	for i in lm.rooms.size():
 		var st := lm.state_of(i, hi, walked)
 		if st == 0:
@@ -300,22 +337,32 @@ func _draw_rooms(hi: int) -> void:
 		# A scouted room is an OUTLINE — you have seen the doorway and know there
 		# is a space beyond it, not what fills it.
 		if st == 1:
-			draw_rect(scr_r, Color(_pal("strand"), 0.30), false, 1.5)
+			# Scouted: the doorway seen, the room not entered. A dashed wall is
+			# how a surveyor draws what was reported rather than measured.
+			_dashed_rect(scr_r, Color(_ink(), 0.42))
 			continue
-		draw_rect(scr_r, _pal("hill").darkened(0.28))
-		draw_rect(scr_r, _pal("strand").darkened(0.20), false, 2.0)
+		draw_rect(scr_r, _paper_tone())
+		draw_rect(scr_r, Color(_ink(), 0.9), false, 2.2)
 
 
-## The same five marks the Atlas draws, so a shape means one thing in this game.
-func _draw_mark(at: Vector2, shape: String, col: Color, r: float) -> void:
-	match shape:
-		"ring":
-			draw_arc(at, r, 0, TAU, 20, col, maxf(1.5, r * 0.42), true)
-		"square":
-			draw_rect(Rect2(at - Vector2(r, r) * 0.86, Vector2(r, r) * 1.72), col)
-		"diamond":
-			draw_colored_polygon(PackedVector2Array([
-				at + Vector2(0, -r * 1.2), at + Vector2(r * 1.1, 0),
-				at + Vector2(0, r * 1.2), at + Vector2(-r * 1.1, 0)]), col)
-		_:
-			draw_circle(at, r, col)
+## A dashed rectangle, for a room reported but not walked.
+func _dashed_rect(r: Rect2, col: Color) -> void:
+	var corners := [r.position, r.position + Vector2(r.size.x, 0),
+		r.position + r.size, r.position + Vector2(0, r.size.y)]
+	for i in 4:
+		var a: Vector2 = corners[i]
+		var b: Vector2 = corners[(i + 1) % 4]
+		var run := a.distance_to(b)
+		var dir := (b - a) / maxf(run, 0.001)
+		var t := 0.0
+		while t < run:
+			draw_line(a + dir * t, a + dir * minf(t + 4.0, run), col, 1.4, true)
+			t += 7.0
+
+
+## THE ATLAS OWN SYMBOLS. This file carried a copy of `_draw_mark` — the same
+## four shapes, written a second time — which is two answers to "what does a
+## ruin look like" and exactly the drift this repo has paid for over and over.
+## `MapInk` is the one home.
+func _draw_mark(at: Vector2, shape: String, _col: Color, r: float) -> void:
+	MapInk.draw_mark(self, at, shape, _ink(), _paper_tone(), r * 1.5)

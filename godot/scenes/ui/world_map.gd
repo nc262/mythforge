@@ -123,18 +123,15 @@ func kind_shape(kind: String) -> String:
 
 ## One marker, drawn the same on the chart and in the legend — so the key is
 ## literally a picture of the thing it explains.
-func _draw_mark(at: Vector2, shape: String, col: Color, r: float) -> void:
-	match shape:
-		"ring":
-			draw_arc(at, r, 0, TAU, 20, col, maxf(1.5, r * 0.42), true)
-		"square":
-			draw_rect(Rect2(at - Vector2(r, r) * 0.86, Vector2(r, r) * 1.72), col)
-		"diamond":
-			draw_colored_polygon(PackedVector2Array([
-				at + Vector2(0, -r * 1.2), at + Vector2(r * 1.1, 0),
-				at + Vector2(0, r * 1.2), at + Vector2(-r * 1.1, 0)]), col)
-		_:
-			draw_circle(at, r, col)
+##
+## AT-10 — THE SYMBOL NOW CARRIES THE KIND ON ITS OWN. This took a `shape` and a
+## `col` because the palette does not hold seven separable hues and the pair was
+## needed to tell seven kinds apart. On a one-ink chart there is no hue left at
+## all, so the silhouette has to do the whole job — which is a stronger version
+## of the same accessibility rule, not a relaxation of it. `MapInk` is the single
+## home; `place_map` had its own copy of this function before it existed.
+func _draw_mark(at: Vector2, kind: String, _col: Color, r: float) -> void:
+	MapInk.draw_mark(self, at, kind, _ink(), _paper_tone(), r * 1.5)
 
 ## AT-1 — WHAT THE COLOURS MEAN.
 ##
@@ -665,8 +662,8 @@ func _draw() -> void:
 		# to survive colour-blindness and a dimmed screen, which is the same rule
 		# KIND_MARK already follows for the seven kinds.
 		if state == HEARD:
-			_draw_mark(p, kind_shape(kind_s), Color(col, 0.30), 4.0 if i == _hover else 3.0)
-			draw_arc(p, 8.0, 0, TAU, 24, Color(col, 0.55 if i == _hover else 0.38), 1.2)
+			_draw_mark(p, kind_s, Color(col, 0.30), 4.0 if i == _hover else 3.0)
+			draw_arc(p, 11.0, 0, TAU, 24, Color(_ink(), 0.40 if i == _hover else 0.26), 1.1)
 			var hsz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
 			var htp := p + Vector2(-hsz.x / 2.0, -13)
 			var halo2 := _paper_tone()
@@ -676,8 +673,8 @@ func _draw() -> void:
 				Color(_ink(), 0.72 if i == _hover else 0.52))
 			continue
 		# The lamp of a visited place.
-		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(20, 20), Vector2(40, 40)), false, Color(col, 0.22))
-		_draw_mark(p, kind_shape(kind_s), Color(col, 0.95), 7.0 if i == _hover else 5.0)
+
+		_draw_mark(p, kind_s, Color(col, 0.95), 7.0 if i == _hover else 5.0)
 		# AT-7 — WHO TRADES. A place carries a `shop` string and the Atlas never
 		# once read it: "shop" appeared here only as a KIND, so a settlement or a
 		# tavern with a keeper behind a counter looked exactly like one without,
@@ -689,7 +686,7 @@ func _draw() -> void:
 		# the seven-kinds rule that KIND_MARK exists to keep.
 		if str(l.get("shop", "")) != "":
 			_draw_trade(p)   # visited only — the HEARD branch returned above
-		draw_arc(p, 9.0, 0, TAU, 24, Color(col, 0.5), 1.5)
+
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
 			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Ui.c("gold_soft"), 2.5)
@@ -921,8 +918,8 @@ func _draw_regions(font: Font) -> void:
 ## be BEFORE it is painted. One geometry, two readers — computing the rect twice
 ## is exactly how a legend and the thing dodging it drift apart.
 const LEGEND_PAD := 8.0
-const LEGEND_ROW := 14.0
-const LEGEND_W := 112.0
+const LEGEND_ROW := 17.0
+const LEGEND_W := 122.0
 
 func _legend_entries() -> Dictionary:
 	var kinds: Array[String] = []
@@ -987,7 +984,7 @@ func _draw_legend(font: Font) -> void:
 	for i in kinds.size():
 		var k: String = kinds[i]
 		var cy := at.y + pad + row * float(i) + row * 0.5
-		_draw_mark(Vector2(at.x + pad + 4.0, cy), kind_shape(k), Ui.c(kind_color(k)), 4.0)
+		_draw_mark(Vector2(at.x + pad + 4.0, cy), k, Ui.c(kind_color(k)), 3.4)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy + 4.0), str(KIND_LABEL[k]),
 			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
 	for j in road_states.size():
