@@ -2578,6 +2578,15 @@ The term for spell slots is "Echoes."
 	# Nothing ever compared a pin against the ground beneath it, so nothing could
 	# fail. These are the comparisons.
 	for fam in WorldSkin.FAMILIES.keys():
+		# THE RENDERER MUST NOT CONTRADICT THE WORLD'S STATED GROUND. One natural
+		# ramp for all eight families drew Neon Spire — "dense city blocks and
+		# arterial roads" in CHART_GROUND's own words — as grass and hills, which
+		# is PY-26 relocated from the prompt into the shader.
+		assert(WorldTerrain.PAPER.has(fam),
+			"WorldTerrain.PAPER has no colours for the '%s' family - its chart would render in fantasy green whatever Art.CHART_GROUND says it is" % fam)
+		for role in ["deep", "shallow", "strand", "low", "high", "hill", "peak"]:
+			assert(WorldTerrain.PAPER[fam].has(role),
+				"WorldTerrain.PAPER['%s'] is missing '%s' - the shader would take the previous world's colour for it" % [fam, role])
 		assert(WorldTerrain.GROUND.has(fam),
 			"WorldTerrain.GROUND has no ground for the '%s' family - it would silently fall back to fantasy, which is how a megacity got a river valley (PY-26)" % fam)
 	var _seen_terrain := 0
@@ -2858,6 +2867,16 @@ The term for spell slots is "Echoes."
 				if t2.klass(Vector2i(xx, yy)) == want:
 					return t2.cost(Vector2i(xx, yy))
 		return -1.0
+	# A MEGACITY IS NOT A FIELD. Green means the low ground's green channel leads
+	# both others; asphalt and concrete do not. This is the check that would have
+	# caught the grassland Neon Spire, and reading the ramp is the only way to see
+	# it without a screenshot.
+	var city_low := Color(str(WorldTerrain.PAPER["cyber"]["low"]))
+	assert(not (city_low.g > city_low.r and city_low.g > city_low.b),
+		"the cyber ground ramp is GREEN (%s) - a city whose prompt says 'dense city blocks and arterial roads' is rendering as grass (PY-26, again)" % city_low.to_html(false))
+	var wild_low := Color(str(WorldTerrain.PAPER["fantasy"]["low"]))
+	assert(wild_low.g > wild_low.r and wild_low.g > wild_low.b,
+		"the fantasy ground ramp stopped being green (%s) - open country is open country" % wild_low.to_html(false))
 	var city_hill: float = _class_cost.call("neonspire", WorldTerrain.HILL)
 	var fjord_hill: float = _class_cost.call("fimbulreach", WorldTerrain.HILL)
 	assert(city_hill > 0.0 and fjord_hill > 0.0,

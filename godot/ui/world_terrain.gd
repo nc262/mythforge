@@ -85,6 +85,57 @@ const GROUND := {
 	"horror":   {"water": 0.20, "relief": 0.65, "island": 0.55, "grain": 0.044, "warp": 0.36},
 }
 
+## ── WHAT EACH FAMILY'S GROUND LOOKS LIKE ─────────────────────────────────────
+##
+## THIS IS NOT ART DIRECTION, IT IS AGREEMENT. One natural-terrain ramp served
+## all eight families, so Neon Spire — "dense city blocks and arterial roads,
+## elevated rail, rooftops and light-filled canals", in `Art.CHART_GROUND`'s own
+## words — rendered as grass and hills. The renderer contradicted the world's
+## stated ground, which is exactly PY-26 ("the chart asked EVERY world for open
+## country, so a vertical megacity rendered as a neon river valley") moved out of
+## the prompt and into the shader. Same bug, new home.
+##
+## So each row is read off CHART_GROUND rather than invented. `low`/`high` is the
+## ordinary ground, `hill` the raised or denser stuff, `peak` its extreme, and
+## `strand` the edge where land meets water — SAND in a wilderness, CONCRETE on a
+## waterfront, because a megacity has a quay and not a beach.
+const PAPER := {
+	"fantasy":  {"deep": "0d1f47", "shallow": "4d7f9e", "strand": "d1c294",
+		"low": "4d7042", "high": "75874c", "hill": "78704c", "peak": "f5f5f7"},
+	"norse":    {"deep": "0a1730", "shallow": "3f6f8c", "strand": "8f9298",
+		"low": "3d5c4a", "high": "5e7358", "hill": "6b6b68", "peak": "fbfcfe"},
+	"pirate":   {"deep": "0e2b52", "shallow": "5698ad", "strand": "ded0a0",
+		"low": "5b7a45", "high": "86955a", "hill": "84775a", "peak": "e8e6dc"},
+	# Brick, soot and rail yards. The "peaks" of a steam city are chimney rows and
+	# viaducts, which are pale grey smoke rather than snow.
+	"steam":    {"deep": "18202b", "shallow": "3f5666", "strand": "8a8378",
+		"low": "6a5a4c", "high": "7d6a58", "hill": "8a7360", "peak": "cfc7bd"},
+	# Asphalt and concrete, canals that glow rather than reflect sky, and towers
+	# for high ground. Nothing here is green: the prompt does not describe a field.
+	"cyber":    {"deep": "071726", "shallow": "1d6f86", "strand": "5c6672",
+		"low": "3a4049", "high": "4a515c", "hill": "5b6370", "peak": "b9c6d6"},
+	"everyday": {"deep": "1c3a5c", "shallow": "5289b0", "strand": "c4bda6",
+		"low": "587a4c", "high": "7e9455", "hill": "7b7460", "peak": "d8d5cf"},
+	# A station is structure in vacuum: the "sea" is black, and its shallows are
+	# the running lights along a hull.
+	"space":    {"deep": "05060c", "shallow": "1b3550", "strand": "6b7280",
+		"low": "3c4250", "high": "4d5464", "hill": "606878", "peak": "cdd6e4"},
+	"horror":   {"deep": "0b1114", "shallow": "2c4340", "strand": "77705f",
+		"low": "3f4a35", "high": "555c3f", "hill": "5a5346", "peak": "b3b0a4"},
+}
+
+
+## How much of this world is BUILT rather than grown — see the `urban` uniform in
+## chart_paper.gdshader. Read straight off `Art.CHART_GROUND`: cyber and steam
+## describe blocks and districts, everyday describes suburbs and town blocks, a
+## station is nothing but structure. Fantasy, norse, pirate and horror describe
+## country, and get none.
+const URBAN := {
+	"cyber": 1.0, "space": 0.92, "steam": 0.85, "everyday": 0.55,
+	"fantasy": 0.0, "norse": 0.0, "pirate": 0.0, "horror": 0.0,
+}
+
+
 ## Terrain classes, coarse on purpose — these are the words the placement scorer
 ## and the renderer both speak, so adding one means teaching both.
 enum { DEEP, SHOAL, COAST, PLAIN, HILL, PEAK }
@@ -500,7 +551,11 @@ func paper_material() -> ShaderMaterial:
 	m.set_shader_parameter("peak_at", peak_at if peak_at < INF else 2.0)
 	m.set_shader_parameter("relief", float(g["relief"]))
 	m.set_shader_parameter("detail", 1.0)
+	m.set_shader_parameter("urban", float(URBAN.get(family, 0.0)))
 	m.set_shader_parameter("accent", Ui.c("amethyst"))
+	var pap: Dictionary = PAPER.get(family, PAPER["fantasy"])
+	for role in ["deep", "shallow", "strand", "low", "high", "hill", "peak"]:
+		m.set_shader_parameter("c_" + role, Color(str(pap[role])))
 	return m
 
 

@@ -327,9 +327,19 @@ func _route(a: Vector2, b: Vector2) -> PackedVector2Array:
 	return line
 
 
+## A ROAD IS DRAWN TWICE: a dark casing, then the road on it.
+##
+## Roads were a single thin line, which was legible over the old flat colour ramp
+## and became nearly invisible the moment the chart grew hillshading, contours and
+## texture — the terrain detail simply out-shouted them. This is the standard
+## cartographic answer and the reason printed maps have used it for a century: a
+## casing separates the line from whatever it crosses, so the road stays readable
+## over snow, over forest and over open water alike without having to be brighter
+## than everything around it.
 func _draw_path(pts: PackedVector2Array, col: Color, w: float) -> void:
 	if pts.size() < 2:
 		return
+	draw_polyline(pts, Color(0.08, 0.06, 0.05, col.a * 0.85), w + 2.0, true)
 	draw_polyline(pts, col, w, true)
 
 
@@ -704,7 +714,11 @@ func _draw_roads() -> void:
 			break
 		# Old ink: a road is quieter than the places it joins — and it goes the
 		# way the land allows, not the way a ruler would.
-		_draw_path(_route(pts[best_a], pts[best_b]), Color(Ui.c("ink_soft"), 0.28), 1.6)
+		# Brighter than the old 0.28 because the casing now carries the contrast:
+		# a cased line reads at a lower alpha than a bare one, and the inferred
+		# web should still be quieter than a NAMED road, which is the distinction
+		# AT-2 draws.
+		_draw_path(_route(pts[best_a], pts[best_b]), Color(Ui.c("ink_soft"), 0.45), 1.7)
 		linked.append(best_b)
 		loose.erase(best_b)
 	# Named roads last, so they sit ON the web rather than under it.

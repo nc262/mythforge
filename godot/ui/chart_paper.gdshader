@@ -27,6 +27,18 @@ uniform float hill_at = 1.0;
 uniform float peak_at = 1.0;
 uniform float detail = 1.0;        // how much high-frequency relief to invent
 uniform float relief = 1.0;        // the family's relief, so a city stays flat
+// ── HOW BUILT-UP THIS WORLD IS ───────────────────────────────────────────────
+// Changing the COLOURS of a city chart to concrete was only half the fix. The
+// SHAPES were still natural terrain — smooth fbm hills — so Neon Spire read as
+// grey moorland rather than a city. A settled world's ground is rectilinear:
+// blocks with streets between them, which is what CHART_GROUND has said all
+// along ("dense city blocks and arterial roads", "packed brick districts").
+//
+// Applied on top of the height field, never into it: the blocks change what a
+// pixel looks like and nothing else. The roads still route over the same
+// authoritative 96x64 field, so a street drawn here can never disagree with a
+// road drawn there — one is decoration, the other is the map.
+uniform float urban = 0.0;
 uniform vec4 accent : source_color = vec4(0.72, 0.61, 0.96, 1.0);
 uniform vec4 c_deep : source_color = vec4(0.05, 0.12, 0.28, 1.0);
 uniform vec4 c_shallow : source_color = vec4(0.30, 0.50, 0.62, 1.0);
@@ -129,6 +141,23 @@ void fragment() {
 		float lambert = clamp(dot(n, normalize(vec3(-0.6, -0.6, 0.55))), 0.0, 1.0);
 		col *= 0.62 + 0.62 * lambert;
 
+		// City blocks. Each cell takes its own tone, and the gaps between them are
+		// streets — which is the difference between a picture of ground and a
+		// picture of a place people built.
+		if (urban > 0.001) {
+			vec2 gv = UV * vec2(52.0, 35.0);
+			vec2 gi = floor(gv);
+			vec2 gf = fract(gv);
+			float blk = hash21(gi);
+			vec3 blocky = col * (0.82 + 0.34 * blk);
+			float street = min(min(gf.x, 1.0 - gf.x), min(gf.y, 1.0 - gf.y));
+			// Two widths: most gaps are lanes, a few are arterials. A grid of
+			// identical streets reads as graph paper.
+			float wide = step(0.86, hash21(gi * 0.5)) * 0.05;
+			blocky = mix(blocky * 0.55, blocky, smoothstep(0.0, 0.055 + wide, street));
+			col = mix(col, blocky, urban);
+		}
+
 		// Contours, faint — every eighth of the land band. They cost nothing and
 		// they are what makes a picture of ground read as a MAP of it.
 		float bands = up * 8.0;
@@ -186,6 +215,9 @@ void fragment() {
 	// Paper grain, and the world's accent over everything so a chart wears its
 	// own skin. Tinted, never replaced: land has to keep reading as land.
 	col *= 0.965 + 0.07 * vnoise(UV * 520.0);
-	col = mix(col, accent.rgb, 0.13);
+	// Lighter than it was: at 0.13 the tint washed the low-saturation city ramps
+	// into one hazy mauve, because concrete has no colour of its own to hold
+	// against it. Wilderness had enough to survive it and cities did not.
+	col = mix(col, accent.rgb, 0.09);
 	COLOR = vec4(col, 1.0);
 }
