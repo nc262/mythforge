@@ -2584,7 +2584,7 @@ The term for spell slots is "Echoes."
 		# is PY-26 relocated from the prompt into the shader.
 		assert(WorldTerrain.PAPER.has(fam),
 			"WorldTerrain.PAPER has no colours for the '%s' family - its chart would render in fantasy green whatever Art.CHART_GROUND says it is" % fam)
-		for role in ["deep", "shallow", "strand", "low", "high", "hill", "peak"]:
+		for role in ["paper", "dark", "ink", "land"]:
 			assert(WorldTerrain.PAPER[fam].has(role),
 				"WorldTerrain.PAPER['%s'] is missing '%s' - the shader would take the previous world's colour for it" % [fam, role])
 		assert(WorldTerrain.GROUND.has(fam),
@@ -2873,16 +2873,26 @@ The term for spell slots is "Echoes."
 				if t2.klass(Vector2i(xx, yy)) == want:
 					return t2.cost(Vector2i(xx, yy))
 		return -1.0
-	# A MEGACITY IS NOT A FIELD. Green means the low ground's green channel leads
-	# both others; asphalt and concrete do not. This is the check that would have
-	# caught the grassland Neon Spire, and reading the ramp is the only way to see
-	# it without a screenshot.
-	var city_low := Color(str(WorldTerrain.PAPER["cyber"]["low"]))
-	assert(not (city_low.g > city_low.r and city_low.g > city_low.b),
-		"the cyber ground ramp is GREEN (%s) - a city whose prompt says 'dense city blocks and arterial roads' is rendering as grass (PY-26, again)" % city_low.to_html(false))
-	var wild_low := Color(str(WorldTerrain.PAPER["fantasy"]["low"]))
-	assert(wild_low.g > wild_low.r and wild_low.g > wild_low.b,
-		"the fantasy ground ramp stopped being green (%s) - open country is open country" % wild_low.to_html(false))
+	# INK MUST READ ON ITS PAPER. The stock is per family and hand-picked, so the
+	# one thing that can silently go wrong is a pairing nobody can read — pale ink
+	# on pale vellum, or dark ink on a dark blueprint. Contrast is checkable where
+	# taste is not, and below it the map is unusable.
+	#
+	# THROUGH `Ui.contrast_ratio`, not a hand-rolled one. The first version of
+	# this computed luminance from `Color.get_luminance()`, which works on
+	# GAMMA-ENCODED channels and is not the WCAG formula — it failed the fantasy
+	# stock at "3.9:1" when the real ratio is 9.0:1. The repo already had the
+	# right function, used by the palette checks a few hundred lines up, and
+	# reaching past it to write a second one is how two answers to one question
+	# get into a codebase.
+	for fam2 in WorldTerrain.PAPER.keys():
+		var ink_paper := Color(str(WorldTerrain.PAPER[fam2]["paper"]))
+		var ink_ink := Color(str(WorldTerrain.PAPER[fam2]["ink"]))
+		var got_ratio := Ui.contrast_ratio(ink_ink, ink_paper)
+		assert(got_ratio >= Ui.TEXT_MIN,
+			"'%s' draws %s ink on %s paper - %.1f:1, under the %.1f:1 the rest of this game is held to" % [
+				fam2, ink_ink.to_html(false), ink_paper.to_html(false), got_ratio, Ui.TEXT_MIN])
+
 	var city_hill: float = _class_cost.call("neonspire", WorldTerrain.HILL)
 	var fjord_hill: float = _class_cost.call("fimbulreach", WorldTerrain.HILL)
 	assert(city_hill > 0.0 and fjord_hill > 0.0,

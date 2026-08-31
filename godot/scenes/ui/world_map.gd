@@ -26,6 +26,17 @@ var _phase := 0.0
 var _paper: ColorRect = null
 var _paper_world := ""
 var _paper_regions := PackedVector2Array()
+## ── AT-10: WHAT IS DRAWN ON THE LAND ─────────────────────────────────────────
+## On a book map the land is not a colour, it is a SURFACE WITH THINGS ON IT:
+## ranges of little peaks, clumps of trees, a scatter of hills. Without them the
+## parchment renders a correct coastline round an empty beige field — which is
+## what the first parchment pass looked like, and why it read as unfinished
+## rather than as a map.
+##
+## Built once per (world, size) and cached: this is a few hundred glyphs and
+## `_draw` runs every frame for the cloud shadows.
+var _glyphs: Array = []          # {"p": Vector2, "kind": String, "s": float}
+var _glyph_key := ""
 
 ## AT-3 — TWO TIERS: the realm, and one region within it.
 ##
@@ -289,6 +300,113 @@ func _ensure_land() -> void:
 ## place already uses. Going straight from pixels to cells would work today and
 ## break the moment the chart is drawn at anything but the full rect; percent is
 ## the one space the pins, the terrain and the paper all agree on.
+## Peaks on the high ground, trees on the low, hills between — sampled off the
+## SAME field the pins stand on, so a range drawn here is a range the roads
+## actually detour around.
+func _ensure_glyphs() -> void:
+	var key := "%s@%dx%d" % [GameState.world_id(), int(size.x), int(size.y)]
+	if _glyph_key == key:
+		return
+	_glyph_key = key
+	_glyphs.clear()
+	var g := WorldTerrain.for_world(GameState.world_id())
+	var urban: float = float(WorldTerrain.URBAN.get(g.family, 0.0))
+	# COVER COMES IN PATCHES. A per-cell dice roll scatters trees evenly across
+	# every plain on the map, which reads as speckle — no real map has woodland
+	# spread like static. A low-frequency field gates them instead, so forests
+	# are woods with edges and clearings between, and the same field thinned the
+	# hill arcs that were carpeting the whole interior.
+	var cover := FastNoiseLite.new()
+	cover.seed = g.seed_used + 5417
+	cover.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	cover.frequency = 0.055
+	# A stride, not every cell: 6144 glyphs is a texture, not a drawing. Peaks
+	# are sparser than trees because a mountain glyph is bigger and a range of
+	# six reads as a range where sixty reads as noise.
+	for cy in range(1, WorldTerrain.H - 1, 2):
+		for cx in range(1, WorldTerrain.W - 1, 2):
+			var c := Vector2i(cx, cy)
+			var k := g.klass(c)
+			if k == WorldTerrain.DEEP or k == WorldTerrain.SHOAL:
+				continue
+			var h := absi(hash(Vector2i(cx * 7, cy * 13)))
+			var roll := float(h % 1000) / 1000.0
+			var jit := Vector2(float((h >> 3) % 100) / 100.0 - 0.5,
+				float((h >> 9) % 100) / 100.0 - 0.5) * 1.6
+			var at := g.pct_of(c) + jit
+			var kind := ""
+			var scale := 1.0
+			var cv := cover.get_noise_2d(float(cx), float(cy)) * 0.5 + 0.5
+			if k == WorldTerrain.PEAK and roll < 0.72:
+				kind = "peak"
+				scale = 0.85 + float((h >> 5) % 60) / 100.0
+			elif k == WorldTerrain.HILL and cv > 0.60 and roll < 0.45:
+				kind = "hill"
+				scale = 0.8 + float((h >> 7) % 40) / 100.0
+			elif k == WorldTerrain.PLAIN and cv > 0.56 and roll < 0.72:
+				# A CITY HAS NO FORESTS. On an urban world the low ground carries
+				# built blocks instead — the same rule `Art.CHART_GROUND` states
+				# and the shader's `urban` term already follows.
+				kind = "block" if roll < 0.72 * urban else "tree"
+				scale = 0.75 + float((h >> 11) % 50) / 100.0
+			if kind != "":
+				_glyphs.append({"p": at, "kind": kind, "s": scale})
+
+
+## Ink glyphs, drawn the way a pen would: an outline and one shaded face. Every
+## one is built from lines rather than a texture, so they stay crisp at any zoom
+## — the same reason the coastline is a shader stroke.
+## THE CHART IS PAPER NOW, so everything drawn on it is ink. The pins, names and
+## legend were coloured for a dark panel — pale ink on a dark ground — and on
+## parchment that is a light-on-light map nobody can read. One place to ask, so
+## the glyphs, the lettering and the key cannot drift apart.
+func _ink() -> Color:
+	return WorldTerrain.for_world(GameState.world_id()).ink_colour()
+
+
+func _draw_glyphs() -> void:
+	var ink := _ink()
+	for gl in _glyphs:
+		var p: Vector2 = Vector2(gl["p"].x / 100.0 * size.x, gl["p"].y / 100.0 * size.y)
+		var sc: float = float(gl["s"])
+		match str(gl["kind"]):
+			"peak":
+				var w := 7.0 * sc
+				var hgt := 8.5 * sc
+				var a := p + Vector2(-w, 0)
+				var b := p + Vector2(0, -hgt)
+				var c2 := p + Vector2(w, 0)
+				# The shaded face first, then the outline over it — which is how
+				# an engraver builds a mountain and why it reads as solid.
+				draw_colored_polygon(PackedVector2Array([a, b, p + Vector2(0, 0)]),
+					Color(ink, 0.28))
+				draw_polyline(PackedVector2Array([a, b, c2]), Color(ink, 0.9), 1.6, true)
+			"hill":
+				var w2 := 5.0 * sc
+				draw_arc(p + Vector2(0, w2 * 0.4), w2, PI, TAU, 12, Color(ink, 0.7), 1.4, true)
+			"tree":
+				# A CROWN AND A TRUNK, not a bubble. At 3 px with a ring round it
+				# a tree reads as a dot, and a plain covered in dots reads as
+				# speckle rather than woodland — the shape has to say "tree" at
+				# the size it is actually drawn.
+				var r := 4.6 * sc
+				var crown := p + Vector2(0, -r * 0.55)
+				draw_line(p + Vector2(0, r * 0.75), crown, Color(ink, 0.72), 1.3, true)
+				var lobes := PackedVector2Array()
+				for li in 9:
+					var a2 := float(li) / 9.0 * TAU
+					var rr := r * (0.78 + 0.30 * float((li % 3)) / 2.0)
+					lobes.append(crown + Vector2(cos(a2), sin(a2) * 0.86) * rr)
+				draw_colored_polygon(lobes, Color(ink, 0.22))
+				lobes.append(lobes[0])
+				draw_polyline(lobes, Color(ink, 0.80), 1.25, true)
+			"block":
+				var bw := 4.4 * sc
+				var bh := 3.0 * sc
+				draw_rect(Rect2(p - Vector2(bw, bh) * 0.5, Vector2(bw, bh)), Color(ink, 0.22))
+				draw_rect(Rect2(p - Vector2(bw, bh) * 0.5, Vector2(bw, bh)), Color(ink, 0.75), false, 1.2)
+
+
 func _cell_of(p: Vector2) -> Vector2i:
 	return WorldTerrain.for_world(GameState.world_id()).cell_of(Vector2(
 		p.x / maxf(size.x, 1.0) * 100.0, p.y / maxf(size.y, 1.0) * 100.0))
@@ -336,10 +454,20 @@ func _route(a: Vector2, b: Vector2) -> PackedVector2Array:
 ## casing separates the line from whatever it crosses, so the road stays readable
 ## over snow, over forest and over open water alike without having to be brighter
 ## than everything around it.
+## The paper's own tone, for haloes and casings — asked of the terrain so it is
+## the same sheet the shader is painting.
+func _paper_tone() -> Color:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	var pap: Dictionary = WorldTerrain.PAPER.get(fam, WorldTerrain.PAPER["fantasy"])
+	return Color(str(pap["paper"]))
+
+
 func _draw_path(pts: PackedVector2Array, col: Color, w: float) -> void:
 	if pts.size() < 2:
 		return
-	draw_polyline(pts, Color(0.08, 0.06, 0.05, col.a * 0.85), w + 2.0, true)
+	# The casing is the PAPER on parchment, not a dark outline: a road is a line
+	# scratched through the hatching, and the gap round it is what separates it.
+	draw_polyline(pts, Color(_paper_tone(), col.a * 0.9), w + 2.4, true)
 	draw_polyline(pts, col, w, true)
 
 
@@ -457,7 +585,9 @@ func _draw() -> void:
 	# photograph of a tavern fireplace. The compiler knows where the real
 	# overhead plates live.
 	# The paper itself is `_paper`, a shader behind this node — see _sync_paper.
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.18))
+	# What is DRAWN on the land goes here, under the roads and pins.
+	_ensure_glyphs()
+	_draw_glyphs()
 	# Cloud shadows drift across the land.
 	if not Ui.reduce_motion:
 		for spec in [[0.13, 90.0, 0.31, 260.0], [0.61, -60.0, 0.72, 340.0]]:
@@ -537,11 +667,13 @@ func _draw() -> void:
 		if state == HEARD:
 			_draw_mark(p, kind_shape(kind_s), Color(col, 0.30), 4.0 if i == _hover else 3.0)
 			draw_arc(p, 8.0, 0, TAU, 24, Color(col, 0.55 if i == _hover else 0.38), 1.2)
-			var hsz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
+			var hsz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
 			var htp := p + Vector2(-hsz.x / 2.0, -13)
-			draw_string(font, htp + Vector2(1, 1), nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(0, 0, 0, 0.7))
-			draw_string(font, htp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 12,
-				Color(Ui.c("ink_dim"), 0.95 if i == _hover else 0.75))
+			var halo2 := _paper_tone()
+			for o2 in [Vector2(1.2, 0), Vector2(-1.2, 0), Vector2(0, 1.2), Vector2(0, -1.2)]:
+				draw_string(font, htp + o2, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(halo2, 0.85))
+			draw_string(font, htp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13,
+				Color(_ink(), 0.72 if i == _hover else 0.52))
 			continue
 		# The lamp of a visited place.
 		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(20, 20), Vector2(40, 40)), false, Color(col, 0.22))
@@ -561,10 +693,17 @@ func _draw() -> void:
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
 			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Ui.c("gold_soft"), 2.5)
-		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
+		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14)
 		var tp := p + Vector2(-sz.x / 2.0, -14)
-		draw_string(font, tp + Vector2(1, 1), nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(0, 0, 0, 0.8))
-		draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Ui.c("ink") if i == _hover or is_here else Ui.c("ink_soft"))
+		# A HALO IN THE PAPER'S COLOUR, not a black drop shadow. Lettering on a
+		# chart is set INTO the map — the engraver leaves a gap round the word so
+		# the hatching behind it does not run through the letters — and a black
+		# shadow on parchment reads as a UI label pasted on top.
+		var halo := _paper_tone()
+		for o in [Vector2(1.4, 0), Vector2(-1.4, 0), Vector2(0, 1.4), Vector2(0, -1.4)]:
+			draw_string(font, tp + o, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(halo, 0.9))
+		draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14,
+			Color(_ink(), 1.0 if (i == _hover or is_here) else 0.85))
 	# Hover lore (known places tell their story; the fog only whispers).
 	if _hover >= 0:
 		var l2: Dictionary = locations[_hover]
@@ -718,7 +857,9 @@ func _draw_roads() -> void:
 		# a cased line reads at a lower alpha than a bare one, and the inferred
 		# web should still be quieter than a NAMED road, which is the distinction
 		# AT-2 draws.
-		_draw_path(_route(pts[best_a], pts[best_b]), Color(Ui.c("ink_soft"), 0.45), 1.7)
+		# Heavier than the glyphs. A road has to be findable across a plain of
+		# drawn trees, and at 0.55 it was the palest line on a busy sheet.
+		_draw_path(_route(pts[best_a], pts[best_b]), Color(_ink(), 0.8), 2.0)
 		linked.append(best_b)
 		loose.erase(best_b)
 	# Named roads last, so they sit ON the web rather than under it.
@@ -756,7 +897,7 @@ func _draw_regions(font: Font) -> void:
 			continue
 		var focused := _focus != "" and str(vis[i]["name"]).nocasecmp_to(_focus) == 0
 		var lit: float = 0.95 if focused else (0.75 if i == _region_hover else 0.42)
-		var col := Color(Ui.c("gold_soft") if focused else Ui.c("ink_soft"), lit)
+		var col := Color(_ink(), lit * (1.0 if focused else 0.62))
 		var track := 3.4
 		var wide := 0.0
 		for ch in rn:
@@ -840,14 +981,15 @@ func _draw_legend(font: Font) -> void:
 	var rect := _legend_rect(font)
 	var h := rect.size.y
 	var at := rect.position
-	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("night"), 0.62))
-	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("gold"), 0.28), false, 1.0)
+	# A KEY IS PRINTED ON THE SHEET, not floated over it in a dark panel.
+	draw_rect(Rect2(at, Vector2(w, h)), Color(_paper_tone(), 0.90))
+	draw_rect(Rect2(at, Vector2(w, h)), Color(_ink(), 0.55), false, 1.2)
 	for i in kinds.size():
 		var k: String = kinds[i]
 		var cy := at.y + pad + row * float(i) + row * 0.5
 		_draw_mark(Vector2(at.x + pad + 4.0, cy), kind_shape(k), Ui.c(kind_color(k)), 4.0)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy + 4.0), str(KIND_LABEL[k]),
-			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
 	for j in road_states.size():
 		var st2: String = road_states[j]
 		var cy2 := at.y + pad + row * float(kinds.size() + j) + row * 0.5
@@ -859,7 +1001,7 @@ func _draw_legend(font: Font) -> void:
 		else:
 			draw_line(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.2, true)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy2 + 4.0), str(Rules.road_rule(st2)["why"]),
-			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
 	if e["trade"]:
 		# LAST ROW, and drawn with `_draw_trade` — the key is literally a picture
 		# of the mark it explains, which is the rule the kind marks already
@@ -867,5 +1009,5 @@ func _draw_legend(font: Font) -> void:
 		var cyt := at.y + pad + row * float(kinds.size() + road_states.size()) + row * 0.5
 		_draw_trade(Vector2(at.x + pad - 4.0, cyt + 8.0))
 		draw_string(font, Vector2(at.x + pad + 14.0, cyt + 4.0), "trades here",
-			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 2.0)

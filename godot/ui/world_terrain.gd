@@ -85,43 +85,33 @@ const GROUND := {
 	"horror":   {"water": 0.20, "relief": 0.65, "island": 0.55, "grain": 0.044, "warp": 0.36},
 }
 
-## ── WHAT EACH FAMILY'S GROUND LOOKS LIKE ─────────────────────────────────────
+## ── THE STOCK EACH WORLD IS DRAWN ON ─────────────────────────────────────────
 ##
-## THIS IS NOT ART DIRECTION, IT IS AGREEMENT. One natural-terrain ramp served
-## all eight families, so Neon Spire — "dense city blocks and arterial roads,
-## elevated rail, rooftops and light-filled canals", in `Art.CHART_GROUND`'s own
-## words — rendered as grass and hills. The renderer contradicted the world's
-## stated ground, which is exactly PY-26 ("the chart asked EVERY world for open
-## country, so a vertical megacity rendered as a neon river valley") moved out of
-## the prompt and into the shader. Same bug, new home.
+## The chart used to be shaded relief and this table held terrain colours: green
+## low ground, brown hills, white peaks. It was correct and it looked like a
+## strategy-game minimap. The chart is INK ON PAPER now, so what a world needs is
+## not a terrain ramp but a STOCK: the colour of its paper, of its ink, and of
+## the slightly cleaner sheet the land is drawn on.
 ##
-## So each row is read off CHART_GROUND rather than invented. `low`/`high` is the
-## ordinary ground, `hill` the raised or denser stuff, `peak` its extreme, and
-## `strand` the edge where land meets water — SAND in a wilderness, CONCRETE on a
-## waterfront, because a megacity has a quay and not a beach.
+## Same drawing on every world; different stock. That is how an atlas tells a sea
+## chart from a survey without redrawing anything, and it keeps the per-family
+## distinction PY-26 demands — a cyber world is a cold blueprint, a horror world
+## is foxed and grey, a fantasy world is warm vellum — without any of them
+## pretending to be a photograph of ground.
 const PAPER := {
-	"fantasy":  {"deep": "0d1f47", "shallow": "4d7f9e", "strand": "d1c294",
-		"low": "4d7042", "high": "75874c", "hill": "78704c", "peak": "f5f5f7"},
-	"norse":    {"deep": "0a1730", "shallow": "3f6f8c", "strand": "8f9298",
-		"low": "3d5c4a", "high": "5e7358", "hill": "6b6b68", "peak": "fbfcfe"},
-	"pirate":   {"deep": "0e2b52", "shallow": "5698ad", "strand": "ded0a0",
-		"low": "5b7a45", "high": "86955a", "hill": "84775a", "peak": "e8e6dc"},
-	# Brick, soot and rail yards. The "peaks" of a steam city are chimney rows and
-	# viaducts, which are pale grey smoke rather than snow.
-	"steam":    {"deep": "18202b", "shallow": "3f5666", "strand": "8a8378",
-		"low": "6a5a4c", "high": "7d6a58", "hill": "8a7360", "peak": "cfc7bd"},
-	# Asphalt and concrete, canals that glow rather than reflect sky, and towers
-	# for high ground. Nothing here is green: the prompt does not describe a field.
-	"cyber":    {"deep": "071726", "shallow": "1d6f86", "strand": "5c6672",
-		"low": "3a4049", "high": "4a515c", "hill": "5b6370", "peak": "b9c6d6"},
-	"everyday": {"deep": "1c3a5c", "shallow": "5289b0", "strand": "c4bda6",
-		"low": "587a4c", "high": "7e9455", "hill": "7b7460", "peak": "d8d5cf"},
-	# A station is structure in vacuum: the "sea" is black, and its shallows are
-	# the running lights along a hull.
-	"space":    {"deep": "05060c", "shallow": "1b3550", "strand": "6b7280",
-		"low": "3c4250", "high": "4d5464", "hill": "606878", "peak": "cdd6e4"},
-	"horror":   {"deep": "0b1114", "shallow": "2c4340", "strand": "77705f",
-		"low": "3f4a35", "high": "555c3f", "hill": "5a5346", "peak": "b3b0a4"},
+	"fantasy":  {"paper": "ded0a8", "dark": "bda87a", "ink": "3a2a18", "land": "e7dcb8"},
+	"norse":    {"paper": "d8d5c6", "dark": "b0ae9a", "ink": "2b3038", "land": "e4e2d6"},
+	"pirate":   {"paper": "e3d3a4", "dark": "c0a874", "ink": "40301c", "land": "ecdfba"},
+	"steam":    {"paper": "d6cbb4", "dark": "aa9d83", "ink": "2e2620", "land": "e0d8c4"},
+	# A HOLO-MAP, not vellum. Same drawing, different stock — deep navy plate,
+	# arterials and coastline struck in glowing cyan, districts washed magenta.
+	# This is the one family where the ink is BRIGHTER than the paper, and the
+	# whole engraved language inverts with it: shore hatching stops reading as
+	# pen strokes and starts reading as a scan.
+	"cyber":    {"paper": "0b1626", "dark": "060d18", "ink": "44e2ff", "land": "132339"},
+	"everyday": {"paper": "e6e2d6", "dark": "c6c0b0", "ink": "34322c", "land": "eeebe2"},
+	"space":    {"paper": "070b14", "dark": "04060d", "ink": "7fd4ff", "land": "0e1626"},
+	"horror":   {"paper": "cdc6b4", "dark": "9d9482", "ink": "241f1c", "land": "d6d0c0"},
 }
 
 
@@ -558,9 +548,17 @@ func paper_material() -> ShaderMaterial:
 	m.set_shader_parameter("urban", float(URBAN.get(family, 0.0)))
 	m.set_shader_parameter("accent", Ui.c("amethyst"))
 	var pap: Dictionary = PAPER.get(family, PAPER["fantasy"])
-	for role in ["deep", "shallow", "strand", "low", "high", "hill", "peak"]:
-		m.set_shader_parameter("c_" + role, Color(str(pap[role])))
+	m.set_shader_parameter("c_paper", Color(str(pap["paper"])))
+	m.set_shader_parameter("c_paper_dark", Color(str(pap["dark"])))
+	m.set_shader_parameter("c_ink", Color(str(pap["ink"])))
+	m.set_shader_parameter("c_land", Color(str(pap["land"])))
 	return m
+
+
+## The ink this world is drawn in — the one place anything outside the shader
+## needs to ask, so the glyphs, the roads and the paper cannot disagree about it.
+func ink_colour() -> Color:
+	return Color(str(PAPER.get(family, PAPER["fantasy"])["ink"]))
 
 
 ## Height at a percentage position, interpolated between cells. `height()` steps

@@ -1,72 +1,48 @@
 shader_type canvas_item;
-// THE CHART, DRAWN ON THE GPU.
+// THE CHART AS INK ON PARCHMENT.
 //
-// WHY A SHADER AND NOT A BIGGER IMAGE. The plate was built in GDScript by
-// interpolating the 96x64 terrain grid up to 384x256, then drawn across ~680 px
-// and zoomed to 2.6x — about 1768 px of screen from 96 samples of field.
-// Interpolation cannot invent detail, only smooth what is there, so the result
-// was guaranteed blurry no matter how large the intermediate image got. Baking a
-// larger one would have cost seconds of main thread and still had no detail
-// beyond the grid.
+// WHY THE STYLE CHANGED. This drew coloured relief: green land, blue sea,
+// hillshading, contours. It was CORRECT — the pins stood on ground that agreed
+// with them — and it looked like a strategy-game minimap, because that is what
+// shaded relief looks like.
 //
-// THE ONE RULE THIS FILE MUST NOT BREAK: the 96x64 field is the single source of
-// truth for everything the game reads — pins, roads, costs, placement. It
-// arrives here as `height_tex` and is never recomputed. What this shader adds on
-// top is DETAIL OCTAVES, and nothing gameplay-facing may ever read them. That
-// split is deliberate: re-implementing the terrain function in GLSL would mean
-// two versions of one truth, which is the drift this repo has paid for six times
-// over (see the art-key prefixes in Invariants.md).
+// The target is a hand-drawn book map: ink line-work on aged paper, a hatched
+// shoreline, drawn mountains and trees, lettering in the land. That style is
+// STYLISED, which is exactly why it is the right target — flat shapes and hard
+// lines are CORRECT there, where in shaded relief they read as unfinished.
+// Chasing realism made every simplification look like a failure; in ink the
+// simplifications ARE the style.
 //
-// So: base height is sampled, detail is invented, and the invented part only
-// ever changes what a pixel looks like.
+// WHAT DID NOT CHANGE: anything the game reasons about. `height_tex` is the same
+// 96x64 field the pins are placed on and the roads routed over, and this file
+// only decides what a pixel looks like. Replacing the whole visual language
+// without touching a line of placement or routing is the dividend of having
+// inverted the pipeline — when the picture was a generated painting, a restyle
+// meant re-baking six worlds and hoping the pins still landed.
+//
+// No hillshade and no contours any more. A pen-and-ink map has neither:
+// elevation is DRAWN, as little peaks, by the layer above this one.
 
 uniform sampler2D height_tex : filter_linear, repeat_disable;
 uniform float sea_level = 0.5;
 uniform float land_band = 0.25;
 uniform float hill_at = 1.0;
 uniform float peak_at = 1.0;
-uniform float detail = 1.0;        // how much high-frequency relief to invent
-uniform float relief = 1.0;        // the family's relief, so a city stays flat
-// ── HOW BUILT-UP THIS WORLD IS ───────────────────────────────────────────────
-// Changing the COLOURS of a city chart to concrete was only half the fix. The
-// SHAPES were still natural terrain — smooth fbm hills — so Neon Spire read as
-// grey moorland rather than a city. A settled world's ground is rectilinear:
-// blocks with streets between them, which is what CHART_GROUND has said all
-// along ("dense city blocks and arterial roads", "packed brick districts").
-//
-// Applied on top of the height field, never into it: the blocks change what a
-// pixel looks like and nothing else. The roads still route over the same
-// authoritative 96x64 field, so a street drawn here can never disagree with a
-// road drawn there — one is decoration, the other is the map.
+uniform float detail = 1.0;
+uniform float relief = 1.0;
 uniform float urban = 0.0;
 uniform vec4 accent : source_color = vec4(0.72, 0.61, 0.96, 1.0);
-uniform vec4 c_deep : source_color = vec4(0.05, 0.12, 0.28, 1.0);
-uniform vec4 c_shallow : source_color = vec4(0.30, 0.50, 0.62, 1.0);
-uniform vec4 c_strand : source_color = vec4(0.82, 0.76, 0.58, 1.0);
-uniform vec4 c_low : source_color = vec4(0.30, 0.44, 0.26, 1.0);
-uniform vec4 c_high : source_color = vec4(0.46, 0.53, 0.30, 1.0);
-uniform vec4 c_hill : source_color = vec4(0.47, 0.45, 0.30, 1.0);
-uniform vec4 c_peak : source_color = vec4(0.96, 0.96, 0.97, 1.0);
+// Paper and ink, per world. A fantasy chart is warm vellum; a cyber world's is a
+// cold blueprint. Same drawing, different stock — which is how an atlas tells a
+// sea chart from a survey without redrawing anything.
+uniform vec4 c_paper : source_color = vec4(0.87, 0.80, 0.63, 1.0);
+uniform vec4 c_paper_dark : source_color = vec4(0.74, 0.65, 0.47, 1.0);
+uniform vec4 c_ink : source_color = vec4(0.20, 0.14, 0.09, 1.0);
+uniform vec4 c_land : source_color = vec4(0.83, 0.75, 0.56, 1.0);
 
-// ── AT-8: REGIONS HAVE EXTENT ────────────────────────────────────────────────
-// Regions were real in the data — name, lore, biome, position, GM-chartered via
-// [[region]] — and drawn as floating letterspaced text and nothing else. No
-// boundary, no tint, no area, so "different regions" read as words lying on
-// grass. The only spatial expression was dimming everything outside a focused
-// one, which says where a region ISN'T.
-//
-// The extent is a Voronoi over the region hearts, computed HERE rather than
-// baked into an index texture. A 96x64 index map would step in 7-pixel blocks at
-// the Atlas's own size and worse as you zoom in; solved analytically the
-// boundary is exact at every magnification, for less work. Same reason the
-// coastline is a stroke rather than a colour change.
-//
-// Only regions the player has reached are passed — world_map gates the list, so
-// fog is honoured without this shader knowing what fog is.
 uniform int region_n = 0;
 uniform vec2 region_at[8];
 
-// ── value noise, the cheap kind ──────────────────────────────────────────────
 float hash21(vec2 p) {
 	p = fract(p * vec2(233.34, 851.73));
 	p += dot(p, p + 23.45);
@@ -76,7 +52,7 @@ float hash21(vec2 p) {
 float vnoise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
-	f = f * f * (3.0 - 2.0 * f);              // smoothstep, so the field is C1
+	f = f * f * (3.0 - 2.0 * f);
 	float a = hash21(i);
 	float b = hash21(i + vec2(1.0, 0.0));
 	float c = hash21(i + vec2(0.0, 1.0));
@@ -89,30 +65,16 @@ float fbm(vec2 p) {
 	float amp = 0.5;
 	for (int i = 0; i < 5; i++) {
 		v += vnoise(p) * amp;
-		p *= 2.03;                             // not exactly 2, or the octaves
-		amp *= 0.5;                            // line up and the field bands
+		p *= 2.03;
+		amp *= 0.5;
 	}
 	return v;
 }
 
-// Height at a point: the AUTHORITATIVE field, plus invented detail that fades to
-// nothing at the coast so the coastline the player sees still matches the
-// coastline the roads were routed over.
-// SMOOTH TEXEL FETCH, and this one is load-bearing rather than tidy.
-//
-// The hillshade takes a gradient from `height_tex`, and plain bilinear filtering
-// is only C0: its derivative is piecewise constant and JUMPS at every texel
-// edge. Lighting a normal built from that derivative draws the seams — a mesh of
-// fine wavy lines across the whole map, on a 96x64 grid, which is exactly the
-// hatching that made Neon Spire look like a texture instead of a city.
-//
-// I blamed the contour lines first and suppressed them on urban worlds. That was
-// a reasonable-sounding guess and it moved nothing, because the lines were never
-// contours. Re-weighting the fraction by smoothstep makes the reconstruction C1,
-// so the derivative is continuous and the seams have nothing to draw.
-//
-// (Keeping the contour change: a street map genuinely has no topographic
-// contours. It was the right edit for the wrong reason.)
+// C1 reconstruction. Plain bilinear is only C0 and its derivative jumps at every
+// texel edge, which drew the 96x64 grid across the map as a mesh of fine lines.
+// It mattered for hillshading and it matters here too: the shore hatch is spaced
+// off the same field.
 float h_smooth(vec2 uv) {
 	vec2 ts = vec2(textureSize(height_tex, 0));
 	vec2 t = uv * ts - 0.5;
@@ -125,167 +87,71 @@ float h_smooth(vec2 uv) {
 float h_at(vec2 uv) {
 	float base = h_smooth(uv);
 	float near_sea = smoothstep(0.0, land_band * 0.5, abs(base - sea_level));
-	float d = (fbm(uv * 34.0) - 0.5) * 0.055 * detail * relief * near_sea;
-	return base + d;
+	return base + (fbm(uv * 34.0) - 0.5) * 0.055 * detail * relief * near_sea;
 }
 
 void fragment() {
-	vec2 px = 1.0 / vec2(textureSize(height_tex, 0));
 	float h = h_at(UV);
-	vec3 col;
+	float d_sea = h - sea_level;
 
-	if (h <= sea_level) {
-		// Bathymetry in bands rather than a smooth fade — a chart says how deep
-		// the water is, and stepped shelves read as cartography where a gradient
-		// reads as fog.
-		float deep = clamp((sea_level - h) / max(sea_level * 0.5, 0.0001), 0.0, 1.0);
-		float banded = floor(deep * 4.0) / 4.0;
-		col = mix(c_shallow.rgb, c_deep.rgb, mix(deep, banded, 0.55));
+	// THE PAPER. Aged, not flat: a broad stain at one scale, fibre at another,
+	// and a darkening toward the edges as if the sheet has been handled. Paper
+	// that is one colour reads as a background; paper with age reads as a page.
+	float stain = fbm(UV * 3.1);
+	float fibre = vnoise(UV * 260.0) * 0.5 + vnoise(UV * 700.0) * 0.5;
+	vec3 col = mix(c_paper.rgb, c_paper_dark.rgb, stain * 0.55 + fibre * 0.14);
+	vec2 ev = abs(UV - 0.5) * 2.0;
+	col = mix(col, c_paper_dark.rgb * 0.86, pow(max(ev.x, ev.y), 3.4) * 0.55);
+
+	if (d_sea > 0.0) {
+		// Land is slightly different stock — enough to read the coast by,
+		// nowhere near enough to be "colour".
+		col = mix(col, c_land.rgb, 0.42);
+		float up = clamp(d_sea / max(land_band, 0.0001), 0.0, 1.0);
+		col = mix(col, c_paper_dark.rgb, up * 0.16);
 	} else {
-		float up = (h - sea_level) / max(land_band, 0.0001);
-		if (h < sea_level + land_band * 0.045) {
-			col = c_strand.rgb;
-		} else if (h >= peak_at) {
-			col = mix(c_hill.rgb, c_peak.rgb,
-				clamp((h - peak_at) / max(1.0 - peak_at, 0.0001), 0.0, 1.0));
-		} else if (h >= hill_at) {
-			col = mix(c_hill.rgb * 0.92, c_hill.rgb * 1.18,
-				clamp((h - hill_at) / max(peak_at - hill_at, 0.0001), 0.0, 1.0));
-		} else {
-			col = mix(c_low.rgb, c_high.rgb, clamp(up * 2.2, 0.0, 1.0));
-		}
-
-		// ── HILLSHADE ────────────────────────────────────────────────────────
-		// The single biggest reason the flat ramp read as a 90s handheld map.
-		// A surface normal from the height gradient, lit from the north-west,
-		// which is the convention every printed relief map uses.
-		float hx = h_at(UV + vec2(px.x, 0.0)) - h_at(UV - vec2(px.x, 0.0));
-		float hy = h_at(UV + vec2(0.0, px.y)) - h_at(UV - vec2(0.0, px.y));
-		vec3 n = normalize(vec3(-hx * 26.0 * relief, -hy * 26.0 * relief, 1.0));
-		float lambert = clamp(dot(n, normalize(vec3(-0.6, -0.6, 0.55))), 0.0, 1.0);
-		col *= 0.62 + 0.62 * lambert;
-
-		// ── CITY BLOCKS, IN DISTRICTS ────────────────────────────────────────
-		//
-		// The first version was ONE grid, axis-aligned, at one cell size across
-		// the whole world — and it read as graph paper, because that is what it
-		// was. Making the cells smaller only makes finer graph paper; the fault
-		// is the regularity, not the scale.
-		//
-		// What actually separates a city from a sheet of squares is three
-		// things, and none of them is cell size:
-		//   · DISTRICTS AT DIFFERENT ANGLES. Two grids meeting at 20 degrees
-		//     reads as two neighbourhoods that grew separately, which is what
-		//     every real city is. One angle everywhere reads as paper.
-		//   · GRAIN THAT VARIES. A dense core and looser edges. Here the grain
-		//     also thins with height, so the hills are estates and the flats are
-		//     downtown, which comes free from the terrain already under it.
-		//   · A ROAD HIERARCHY. The seams BETWEEN districts are arterials —
-		//     wider, darker, and continuous across the map — while lanes stay
-		//     inside a block. A grid of identical streets has no hierarchy and
-		//     the eye finds nothing to follow.
-		//
-		// Same Voronoi trick the regions use, one scale down. It stays cosmetic:
-		// nothing here touches the height field, so a street can never disagree
-		// with a routed road.
-		if (urban > 0.001) {
-			float dd1 = 1e9;
-			float dd2 = 1e9;
-			float di = 0.0;
-			for (int i = 0; i < 7; i++) {
-				vec2 c = vec2(hash21(vec2(float(i) * 1.7, 3.7)),
-					hash21(vec2(float(i) * 2.3, 9.1)));
-				float d = distance(UV * vec2(1.5, 1.0), c * vec2(1.5, 1.0));
-				if (d < dd1) { dd2 = dd1; dd1 = d; di = float(i); }
-				else if (d < dd2) { dd2 = d; }
-			}
-			float ang = (hash21(vec2(di, 17.0)) - 0.5) * 0.8;
-			// Grain: each district picks its own, then thins as the ground
-			// rises. Downtown is flat and packed; the slopes are not.
-			float grain = mix(44.0, 86.0, hash21(vec2(di, 23.0))) * mix(1.0, 0.62, clamp(up, 0.0, 1.0));
-			float ca = cos(ang);
-			float sa = sin(ang);
-			vec2 ruv = vec2(UV.x * ca - UV.y * sa, UV.x * sa + UV.y * ca);
-			vec2 gv = ruv * vec2(grain * 1.5, grain);
-			vec2 gi = floor(gv);
-			vec2 gf = fract(gv);
-			vec3 blocky = col * (0.82 + 0.34 * hash21(gi + di * 13.0));
-			float lane = min(min(gf.x, 1.0 - gf.x), min(gf.y, 1.0 - gf.y));
-			float wide = step(0.86, hash21(gi * 0.5)) * 0.05;
-			blocky = mix(blocky * 0.55, blocky, smoothstep(0.0, 0.055 + wide, lane));
-			// The arterial along a district seam, in screen-constant width so it
-			// stays a road at every zoom rather than thickening into a band.
-			float seam = dd2 - dd1;
-			blocky = mix(blocky * 0.42, blocky,
-				smoothstep(0.0, max(fwidth(seam) * 3.5, 0.00001), seam));
-			col = mix(col, blocky, urban);
-		}
-
-		// Contours, faint — every eighth of the land band. They cost nothing and
-		// they are what makes a picture of ground read as a MAP of it.
-		//
-		// NOT ON A CITY. A street map has no topographic contours, and drawn
-		// under blocks they turned Neon Spire into hatching: two competing line
-		// systems at similar weight, so the eye read texture rather than either
-		// one. Contours describe a slope; a city chart describes a street.
-		float bands = up * 8.0;
+		// SHORE HATCHING — the stacked lines following a coast on every engraved
+		// chart. Not a texture: spaced off the DEPTH, so they hug the shore,
+		// crowd where it drops steeply and fade to open paper, which is what a
+		// hand with a pen actually produces. Costs one fract().
+		float bands = (-d_sea) / max(land_band * 0.055, 0.0001);
 		float line = abs(fract(bands) - 0.5) * 2.0;
-		float w = fwidth(bands) * 1.6;
-		col *= 1.0 - 0.13 * (1.0 - urban) * (1.0 - smoothstep(0.0, max(w, 0.001), 1.0 - line));
+		float w = fwidth(bands) * 1.5;
+		float hatch = 1.0 - smoothstep(0.0, max(w, 0.001), 1.0 - line);
+		hatch *= smoothstep(6.0, 0.6, bands);
+		col = mix(col, c_ink.rgb, hatch * 0.34);
 	}
 
-	// Region tint and edge. Land only: a border drawn across open sea claims the
-	// water is owned, and no region in this game claims water.
-	if (region_n > 0 && h > sea_level) {
-		float d1 = 1e9;
-		float d2 = 1e9;
+	// Region wash, kept very light: on paper a province is a WASH, and a wash
+	// that competes with the ink is a printing error.
+	if (region_n > 0 && d_sea > 0.0) {
+		float dd1 = 1e9;
+		float dd2 = 1e9;
 		int best = 0;
 		for (int i = 0; i < 8; i++) {
 			if (i >= region_n) { break; }
-			// EACH HEART'S FIELD WOBBLES ON ITS OWN. A plain Voronoi over three
-			// sites draws dead-straight radial lines, which read as debug
-			// wireframe rather than as a border — and no real march is a laser
-			// line, because borders follow ridges and rivers. The offset is
-			// per-site (i shifts the sample), so the fields disagree and the
-			// boundary between them wanders. Same noise as the terrain, so it
-			// wanders WITH the ground rather than across it.
 			float d = distance(UV, region_at[i])
 				+ (fbm(UV * 6.5 + vec2(float(i) * 37.1, float(i) * 11.3)) - 0.5) * 0.055;
-			if (d < d1) { d2 = d1; d1 = d; best = i; }
-			else if (d < d2) { d2 = d; }
+			if (d < dd1) { dd2 = dd1; dd1 = d; best = i; }
+			else if (d < dd2) { dd2 = d; }
 		}
-		// Hues walk the wheel from the world's own accent, so the regions of one
-		// world are relatives rather than a random assortment.
 		float hue = fract(float(best) * 0.19 + 0.5);
 		vec3 rc = clamp(abs(fract(hue + vec3(0.0, 0.333, 0.667)) * 6.0 - 3.0) - 1.0, 0.0, 1.0);
-		col = mix(col, mix(rc, accent.rgb, 0.4), 0.13);
-		// The march between two hearts: where the nearest two are equidistant.
-		//
-		// INK, NOT THE REGION HUE. Taking the edge colour from `rc` gave a fully
-		// saturated green or cyan hairline that shouted over a muted map — the
-		// tint said "this area is Mournwood" quietly while the border screamed.
-		// A border on a chart is drawn in the same ink as everything else; the
-		// COLOUR belongs to the area, the LINE belongs to the map.
-		float gap = d2 - d1;
-		float ew = fwidth(gap) * 2.0;
-		col = mix(mix(col, vec3(0.13, 0.11, 0.10), 0.62), col,
-			smoothstep(0.0, max(ew, 0.00001), gap));
+		col = mix(col, mix(rc, accent.rgb, 0.55), 0.055);
+		float seam = dd2 - dd1;
+		// A DASHED march. A solid one competes with the coastline for the same
+		// kind of attention, and on a drawn map a border is always the lighter
+		// mark of the two.
+		float dash = step(0.42, fract(distance(UV, region_at[best]) * 150.0));
+		col = mix(mix(col, c_ink.rgb, 0.5 * dash), col,
+			smoothstep(0.0, max(fwidth(seam) * 2.6, 0.00001), seam));
 	}
 
-	// The coastline itself, drawn as a stroke rather than left as a colour
-	// change. `fwidth` keeps it one screen pixel wide at every zoom, which is
-	// the whole point of doing this on the GPU instead of in a baked image.
-	float d_sea = h - sea_level;
-	float edge = fwidth(d_sea) * 1.4;
-	col = mix(vec3(0.16, 0.13, 0.10), col,
-		smoothstep(0.0, max(edge, 0.0001), abs(d_sea)));
+	// THE COASTLINE, heaviest line on the map and drawn last so nothing sits on
+	// top of it. `fwidth` holds it at one screen pixel however far you zoom,
+	// which is the reason this is a shader and not a baked image.
+	float edge = fwidth(d_sea) * 1.7;
+	col = mix(c_ink.rgb, col, smoothstep(0.0, max(edge, 0.0001), abs(d_sea)));
 
-	// Paper grain, and the world's accent over everything so a chart wears its
-	// own skin. Tinted, never replaced: land has to keep reading as land.
-	col *= 0.965 + 0.07 * vnoise(UV * 520.0);
-	// Lighter than it was: at 0.13 the tint washed the low-saturation city ramps
-	// into one hazy mauve, because concrete has no colour of its own to hold
-	// against it. Wilderness had enough to survive it and cities did not.
-	col = mix(col, accent.rgb, 0.09);
 	COLOR = vec4(col, 1.0);
 }
