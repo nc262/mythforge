@@ -182,32 +182,35 @@ func _draw_ground() -> void:
 	if not lm.settled:
 		draw_rect(Rect2(Vector2.ZERO, size), Ui.c("night").darkened(0.35))
 		return
+	# THE FIELDS ARE GONE. They were meant to give the eye somewhere to land
+	# outside the walls and they read as grey debris scattered on grass — an
+	# object where a change of tone was wanted. Flat ground outside the town is
+	# quieter and therefore better than wrong detail, and the honest fix is
+	# texture from a shader, the way the world chart gets it, not more rectangles.
 	draw_rect(Rect2(Vector2.ZERO, size), _pal("low").darkened(0.42))
-	if lm.settled and lm.water_dir != Vector2.ZERO:
-		# THE SHORE FACES THE SEA. `water_dir` is the direction of the nearest
-		# water cell on the WORLD map, so a quay town's harbour is on the side the
-		# chart says the water is. A local map that put the sea wherever it liked
-		# would contradict the map you clicked through to get here.
-		var d := lm.water_dir
-		var n := d.orthogonal()
-		var c := Vector2(50, 50) + d * lm.water_at
-		var pts := PackedVector2Array()
-		# ACROSS THE PLATE, not far beyond it. Sampling +/-130 units put seven of
-		# the nine points off-map, so the visible shore was the flat middle of the
-		# curve and the wobble never showed. 24 samples over 150 units puts most
-		# of them where the player can see them.
-		for k in 24:
-			var t := (float(k) / 23.0 - 0.5) * 150.0
-			# A wobbled shoreline, not a ruled edge — the same reason the region
-			# marches wander rather than run straight.
-			# Two frequencies, or the "wobble" is a sine wave and reads as one.
-			var ph := float(absi(hash(lm.place)) % 1000) * 0.01
-			var wob := sin(float(k) * 0.62 + ph) * 5.5 + sin(float(k) * 1.53 + ph * 2.1) * 2.4
-			pts.append(_pct(c + n * t + d * wob))
-		pts.append(_pct(c + n * 120.0 + d * 400.0))
-		pts.append(_pct(c - n * 120.0 + d * 400.0))
-		draw_colored_polygon(pts, _pal("shallow").darkened(0.15))
-		draw_polyline(pts.slice(0, 24), _pal("strand"), 2.5, true)
+	if lm.water_dir == Vector2.ZERO:
+		return
+	# THE SHORE FACES THE SEA. `water_dir` is the direction of the nearest water
+	# cell on the WORLD map, so a quay town's harbour is on the side the chart
+	# says the water is. A local map that put the sea wherever it liked would
+	# contradict the map you clicked through to get here.
+	#
+	# (Deleted by accident once, when the field-scatter above it was cut out with
+	# a careless slice: the town lost its harbour and the shot showed a landlocked
+	# Gallows Quay. Caught by looking, not by any check.)
+	var d := lm.water_dir
+	var n := d.orthogonal()
+	var c := Vector2(50, 50) + d * lm.water_at
+	var ph := float(absi(hash(lm.place)) % 1000) * 0.01
+	var pts := PackedVector2Array()
+	for k in 24:
+		var t := (float(k) / 23.0 - 0.5) * 150.0
+		var wob := sin(float(k) * 0.62 + ph) * 5.5 + sin(float(k) * 1.53 + ph * 2.1) * 2.4
+		pts.append(_pct(c + n * t + d * wob))
+	pts.append(_pct(c + n * 120.0 + d * 400.0))
+	pts.append(_pct(c - n * 120.0 + d * 400.0))
+	draw_colored_polygon(pts, _pal("shallow").darkened(0.15))
+	draw_polyline(pts.slice(0, 24), _pal("strand"), 2.5, true)
 
 
 func _pct(p: Vector2) -> Vector2:
@@ -216,14 +219,43 @@ func _pct(p: Vector2) -> Vector2:
 
 ## Streets first, then what stands along them — the order they were built in.
 func _draw_town(_hi: int) -> void:
+	# THE WALL, or the hedge line. A town needs an EDGE: without one the
+	# buildings simply stop, and "stops" reads as unfinished where "ends" reads
+	# as a boundary. Drawn under the streets so a gate is a road crossing it.
+	if lm.bounds.size() > 2:
+		var ring := PackedVector2Array()
+		for q in lm.bounds:
+			ring.append(_pct(q))
+		draw_colored_polygon(ring, _pal("low").lightened(0.06))
+		ring.append(ring[0])
+		if lm.walled:
+			draw_polyline(ring, Color(0.10, 0.09, 0.08, 0.75), 6.0, true)
+			draw_polyline(ring, _pal("strand").darkened(0.10), 3.6, true)
+			# Towers at the turns, which is what makes a ring read as a wall
+			# rather than a contour.
+			for k in range(0, lm.bounds.size(), 4):
+				draw_circle(_pct(lm.bounds[k]), 3.2, _pal("strand").darkened(0.25))
+				draw_circle(_pct(lm.bounds[k]), 2.0, _pal("strand"))
+		else:
+			draw_polyline(ring, Color(_pal("hill"), 0.55), 1.6, true)
 	for st in lm.streets:
 		var scr := PackedVector2Array()
 		for q in st:
 			scr.append(_pct(q))
-		draw_polyline(scr, _pal("strand").darkened(0.30), 7.0, true)
-		draw_polyline(scr, _pal("strand").lightened(0.10), 4.0, true)
+		# Narrower than they were: a 7 px road on a town map is a boulevard, and
+		# with lanes added the whole plan was more street than town.
+		draw_polyline(scr, _pal("strand").darkened(0.34), 4.6, true)
+		draw_polyline(scr, _pal("strand").lightened(0.08), 2.6, true)
 	for b in lm.buildings:
-		var body: Color = _pal("high") if bool(b["big"]) else _pal("hill")
+		# Roofs vary. One flat fill for every building is what made the first
+		# version read as cardboard: a real town map has slate beside thatch
+		# beside tile, and the variation is most of what says "many hands built
+		# this over a long time".
+		var seed_h := absi(hash(Vector2i(int(b["at"].x * 7.0), int(b["at"].y * 7.0))))
+		var tone := float(seed_h % 100) / 100.0
+		var body: Color = _pal("hill").lerp(_pal("high"), tone * 0.75).darkened(0.10 - tone * 0.16)
+		if bool(b["big"]):
+			body = _pal("strand").darkened(0.28)
 		var quad := _footprint(b, Vector2.ZERO)
 		# A shadow offset down-right, which is where the light is not — the same
 		# north-west lighting the world chart's hillshade uses, so the two tiers

@@ -2762,6 +2762,12 @@ The term for spell slots is "Echoes."
 	# footer promises "every street in sight". The first version drew five
 	# unnamed rings under that promise.
 	var pm_src := FileAccess.get_file_as_string("res://scenes/ui/place_map.gd")
+	# A COASTAL TOWN MUST DRAW ITS WATER. The shore block was deleted by a
+	# careless slice while removing something next to it, and Gallows Quay — a
+	# QUAY — rendered landlocked. Nothing failed; the shot simply had no sea in
+	# it, and only looking caught it.
+	assert(pm_src.contains("lm.water_dir") and pm_src.contains("draw_colored_polygon(pts"),
+		"place_map no longer draws the shore - a coastal town renders landlocked and nothing else notices")
 	assert(pm_src.contains("if lm.settled:"),
 		"place_map draws every un-walked room the same way - a settled place must still show its names, or the map contradicts its own footer")
 	# A BARROW IS. And the fog must leave a CHOICE: standing in a room scouts the

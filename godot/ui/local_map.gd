@@ -71,6 +71,8 @@ var buildings: Array = []          # {"r": Rect2, "big": bool}
 var rooms: Array = []              # unsettled: one Rect2 per node, same index
 var water_dir := Vector2.ZERO      # toward the sea, or ZERO if landlocked
 var water_at := 0.0                # how far across the plate the shore sits
+var bounds := PackedVector2Array() # the built-up edge, wall or field boundary
+var walled := false                # a settlement has a wall; a hamlet has hedges
 
 static var _cache := {}
 
@@ -159,54 +161,158 @@ func _cell_of_place(ground: WorldTerrain) -> Vector2i:
 	return Vector2i(WorldTerrain.W / 2, WorldTerrain.H / 2)
 
 
-## ── STREETS AND WHAT STANDS ALONG THEM ───────────────────────────────────────
-## Every edge becomes a street with a kink in it, and buildings line both sides
-## of every street. A dead-straight street with nothing on it is a line; a bent
-## one with frontage is a road through somewhere.
+## ── THE TOWN PLAN: BLOCKS AND LOTS, NOT BOXES ON A LINE ──────────────────────
+##
+## The first version scattered ~35 buildings along street centrelines and it
+## looked like a village diagram, because that is what it was. A town map reads
+## as a town because the space BETWEEN the streets is full: blocks subdivided
+## into lots, and a building on nearly every lot. That is how Watabou's city
+## generator and every hand-drawn town map are built, after Parish & Muller —
+## streets partition, lots fill, and density is what sells it.
+##
+## So: recursive rectangle subdivision over the built-up area, in a frame rotated
+## per town so the grain is not always north-south, minus anything that falls on
+## a street, in the water, or outside the walls.
+## Percent of the plate. A house on a town map is SMALL — one to two percent of
+## the width. The first version used 3.4 with a depth of 6, and since each pass
+## splits only the long axis that is barely three splits per axis: "lots" came
+## out 15 units across and the town rendered as a dozen beige slabs. The depth
+## has to be about 2*log2(span/LOT_MIN) or the recursion runs out before the
+## rectangles are anywhere near house-sized.
+const LOT_MIN := 1.7
+const LOT_DEPTH := 12
+
+
 func _plan_town(rng: RandomNumberGenerator) -> void:
 	for e in edges:
 		var a := Vector2(float(nodes[int(e[0])]["x"]), float(nodes[int(e[0])]["y"]))
 		var b := Vector2(float(nodes[int(e[1])]["x"]), float(nodes[int(e[1])]["y"]))
 		var mid := a.lerp(b, rng.randf_range(0.4, 0.6)) 			+ (b - a).normalized().orthogonal() * rng.randf_range(-4.0, 4.0)
 		streets.append(PackedVector2Array([a, mid, b]))
-	for st in streets:
-		_line_with_houses(st, rng)
 
-
-func _line_with_houses(st: PackedVector2Array, rng: RandomNumberGenerator) -> void:
-	for i in range(st.size() - 1):
-		var a: Vector2 = st[i]
-		var b: Vector2 = st[i + 1]
-		var run := a.distance_to(b)
-		if run < 1.0:
+	# The built-up edge: an irregular ring round the square, cut where the water
+	# is. Drawn as the wall for a settlement and as the field boundary otherwise.
+	var lobes := rng.randf_range(0.0, TAU)
+	for k in 34:
+		var ang := float(k) / 34.0 * TAU
+		# COMPACT. At 34 the built-up area was two thirds of the plate and the
+		# houses inside it read as a scattering in a meadow. A town is DENSE — a
+		# small footprint packed full — and density is what makes it a town
+		# rather than a hamlet spread thin.
+		var r := 25.0 + sin(ang * 3.0 + lobes) * 4.6 + sin(ang * 5.0 + lobes * 2.0) * 2.8 			+ sin(ang * 8.0 + lobes * 0.7) * 1.5
+		var at := Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * r
+		if _in_water(at):
+			at = Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * _shore_reach(ang)
+		bounds.append(at)
+	walled = kind == "settlement"
+	# LANES OFF THE MAIN ROADS. Six streets do not make blocks — they make a star,
+	# and a star with houses beside it is a village. The lanes are what turn the
+	# space between roads into BLOCKS, which is the unit a town is actually built
+	# out of, and they cost one loop.
+	var spokes := streets.size()
+	for si in spokes:
+		var st: PackedVector2Array = streets[si]
+		var a0: Vector2 = st[0]
+		var b0: Vector2 = st[st.size() - 1]
+		var run := a0.distance_to(b0)
+		if run < 12.0:
 			continue
-		var dir := (b - a) / run
+		var dir := (b0 - a0) / run
 		var nrm := dir.orthogonal()
-		var t := 3.0
-		while t < run - 3.0:
-			for sgn in SIDES:
-				if rng.randf() < 0.28:
-					continue                      # a gap: a yard, a lane, a ruin
-				var w := rng.randf_range(2.4, 4.6)
-				var h := rng.randf_range(2.2, 3.8)
-				var at := a + dir * t + nrm * sgn * rng.randf_range(2.4, 3.4)
-				if at.x < 4.0 or at.x > 96.0 or at.y < 4.0 or at.y > 96.0:
-					continue
-				# NOBODY BUILDS IN THE HARBOUR, and nobody builds ON the waterline
-				# either. Testing the centre alone let houses straddle the strand
-				# wherever the shore wobbled inward; the margin is a building's
-				# own width, so the whole footprint stays dry.
-				if _in_water(at) or _in_water(at + water_dir * 4.0):
-					continue
-				# FACING THE STREET. Every building was axis-aligned, so a town on
-				# a diagonal road looked like rectangles scattered near a line
-				# rather than a row of frontages. A building's long side follows
-				# the street it opens onto — which is the single strongest cue
-				# that a cluster of boxes is a settlement.
-				buildings.append({"at": at, "size": Vector2(w, h),
-					"ang": dir.angle() + rng.randf_range(-0.09, 0.09),
-					"big": rng.randf() < 0.16})
-			t += rng.randf_range(4.0, 6.5)
+		for _k in rng.randi_range(1, 3):
+			var t := rng.randf_range(0.25, 0.8)
+			var root := a0 + dir * run * t
+			var reach := rng.randf_range(7.0, 15.0) * (1.0 if rng.randf() < 0.5 else -1.0)
+			var tip := root + nrm * reach
+			# CLIPPED TO THE TOWN. Lanes ran straight out through the wall and
+			# off into open country, which reads as a bug rather than a road —
+			# a lane is a way between blocks, and outside the built-up edge
+			# there are no blocks for it to be between.
+			if _in_water(tip) or not _inside_bounds(tip) or not _inside_bounds(root):
+				continue
+			streets.append(PackedVector2Array([root, root.lerp(tip, 0.55)
+				+ dir * rng.randf_range(-2.0, 2.0), tip]))
+
+
+	# LOTS. Subdivide, then keep what is genuinely buildable.
+	var grain := rng.randf_range(0.0, PI)
+	var lots: Array = []
+	_subdivide(Rect2(Vector2(6, 6), Vector2(88, 88)), LOT_DEPTH, rng, lots)
+	for lot in lots:
+		var r: Rect2 = lot
+		var c := r.position + r.size * 0.5
+		var cw := _rot(c, grain)
+		if _in_water(cw) or not _inside_bounds(cw):
+			continue
+		if _near_street(cw, 1.9):
+			continue                       # the street itself, and its verges
+		# Density falls off from the square: a core of packed frontage, then
+		# looser plots toward the edge, which is what a town actually is.
+		var away := cw.distance_to(Vector2(50, 50)) / 25.0
+		if rng.randf() < away * 0.22:
+			continue
+		var inset := rng.randf_range(0.35, 0.8)
+		var size2 := (r.size - Vector2(inset, inset) * 2.0)
+		if size2.x < 1.0 or size2.y < 1.0:
+			continue
+		buildings.append({"at": cw, "size": size2, "ang": grain,
+			"big": r.size.x * r.size.y > 9.0})
+
+
+## Split a rectangle down the long axis until the pieces are lot-sized. The
+## split is off-centre, or every lot on the map is the same size and the result
+## is graph paper again — the same fault the city shader had.
+func _subdivide(r: Rect2, depth: int, rng: RandomNumberGenerator, out: Array) -> void:
+	var long_side: float = maxf(r.size.x, r.size.y)
+	if depth <= 0 or long_side < LOT_MIN * 2.0:
+		if r.size.x >= LOT_MIN * 0.6 and r.size.y >= LOT_MIN * 0.6:
+			out.append(r)
+		return
+	var t := rng.randf_range(0.36, 0.64)
+	if r.size.x >= r.size.y:
+		var w := r.size.x * t
+		_subdivide(Rect2(r.position, Vector2(w, r.size.y)), depth - 1, rng, out)
+		_subdivide(Rect2(r.position + Vector2(w, 0), Vector2(r.size.x - w, r.size.y)), depth - 1, rng, out)
+	else:
+		var h := r.size.y * t
+		_subdivide(Rect2(r.position, Vector2(r.size.x, h)), depth - 1, rng, out)
+		_subdivide(Rect2(r.position + Vector2(0, h), Vector2(r.size.x, r.size.y - h)), depth - 1, rng, out)
+
+
+func _rot(p: Vector2, a: float) -> Vector2:
+	var d := p - Vector2(50, 50)
+	return Vector2(50, 50) + Vector2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a))
+
+
+## How far the land reaches on this bearing before the water starts.
+func _shore_reach(ang: float) -> float:
+	var d := Vector2(cos(ang), sin(ang))
+	for step in 34:
+		var r := 34.0 - float(step)
+		if r < 6.0:
+			return 6.0
+		if not _in_water(Vector2(50, 50) + d * r):
+			return r - 1.2
+	return 6.0
+
+
+func _inside_bounds(p: Vector2) -> bool:
+	if bounds.is_empty():
+		return true
+	var d := (p - Vector2(50, 50))
+	var ang := fposmod(d.angle(), TAU)
+	var idx := int(ang / TAU * float(bounds.size())) % bounds.size()
+	return d.length() <= (bounds[idx] - Vector2(50, 50)).length()
+
+
+func _near_street(p: Vector2, how_near: float) -> bool:
+	for st in streets:
+		for i in range(st.size() - 1):
+			var a: Vector2 = st[i]
+			var b: Vector2 = st[i + 1]
+			if p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b)) < how_near:
+				return true
+	return false
 
 
 ## Is this point out past the shore? The water sits as a half-plane in the
