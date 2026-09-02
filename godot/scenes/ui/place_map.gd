@@ -109,8 +109,12 @@ func _draw() -> void:
 	if lm == null:
 		return
 	draw_set_transform(_camera.cam, 0.0, Vector2(_camera.zoom, _camera.zoom))
-	var font := get_theme_default_font()
+	# The Atlas's own face. `Ui.display` is a FontVariation over `Ui.serif` with
+	# glyph spacing set — the two tiers must letter identically or the second one
+	# reads as a different document.
+	var font: Font = Ui.display
 	var hi := _here_idx()
+	_solve_labels(font, hi)
 	_draw_ground()
 	if lm.settled:
 		_draw_town(hi)
@@ -167,13 +171,98 @@ func _draw() -> void:
 			draw_arc(p, 15.0 + breathe, 0, TAU, 28, Color(_ink(), 0.85), 2.0, true)
 		_label(font, p, str(n.get("name", "")), 13, 1.0 if (i == _hover or is_here) else 0.85)
 
+	# ON THE SHEET, NOT ON THE MAP — outside the camera, exactly as the Atlas
+	# does it, so the frame and the title stay put while the plan pans under them.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	# What this place IS, said once in the corner — a town has no fog and a
-	# barrow does, and the player should not have to infer which from the pins.
+	_draw_cartouche(font)
+	# What this place IS, said once — a town has no fog and a barrow does, and
+	# the player should not have to infer which from the marks.
 	var note := "every street in sight" if lm.settled else "only what you have walked, and what it opens onto"
-	draw_string(font, Vector2(14, size.y - 14), note, HORIZONTAL_ALIGNMENT_LEFT, size.x - 28, 11,
-		Color(_ink(), 0.6))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(_ink(), 0.55), false, 2.0)
+	draw_string(font, Vector2(26, size.y - 24), note, HORIZONTAL_ALIGNMENT_LEFT, size.x - 52, 12,
+		Color(_ink(), 0.62))
+	MapInk.draw_border(self, Rect2(Vector2.ZERO, size), _ink(), _paper_tone())
+
+
+## The plan names itself, in the Atlas's own box. A town map with no title is a
+## diagram; the dialog's title bar is chrome and vanishes in a screenshot.
+func _draw_cartouche(font: Font) -> void:
+	if lm == null or lm.place == "":
+		return
+	var title := lm.place.to_upper()
+	var ink := _ink()
+	var paper := _paper_tone()
+	var track := 3.6
+	var wide := 0.0
+	for ch in title:
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x + track
+	var pad := 12.0
+	var box := Rect2(Vector2(26, 22), Vector2(wide + pad * 2.0, 38))
+	draw_rect(box, Color(paper, 0.93))
+	draw_rect(box, Color(ink, 0.8), false, 2.0)
+	draw_rect(box.grow(-4.0), Color(ink, 0.4), false, 1.0)
+	var x := box.position.x + pad
+	for ch in title:
+		draw_string(font, Vector2(x, box.position.y + 26.0), ch,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 17, Color(ink, 0.95))
+		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 17).x + track
+
+
+## AT-13, one tier down. A town packs six or seven names into a smaller sheet
+## than the Atlas does, so collisions are MORE likely here, not less — the first
+## version printed "The Moot Hall" straight through its own symbol.
+##
+## Same greedy pass, same eight candidates, same reason it is solved once per
+## visible set rather than per frame: the outcome depends on placement order, and
+## re-solving as the hover moves would make the names twitch.
+const LABEL_TRIES: Array[Vector2] = [
+	Vector2(0, -1), Vector2(0, 1), Vector2(1, -0.35), Vector2(-1, -0.35),
+	Vector2(1, 0.7), Vector2(-1, 0.7), Vector2(1, -1), Vector2(-1, -1)]
+
+var _label_at := {}
+var _label_key := ""
+
+
+func _solve_labels(font: Font, hi: int) -> void:
+	var key := "%s|%d|%d|%dx%d" % [lm.place if lm != null else "", hi, walked.size(),
+		int(size.x), int(size.y)]
+	if _label_key == key:
+		return
+	_label_key = key
+	_label_at.clear()
+	if lm == null:
+		return
+	var taken: Array[Rect2] = []
+	for i in lm.nodes.size():
+		var st := lm.state_of(i, hi, walked)
+		if st == 0 or (st == 1 and not lm.settled):
+			continue           # a scouted room in a barrow shows no name to place
+		var n: Dictionary = lm.nodes[i]
+		var nm := str(n.get("name", ""))
+		if nm == "":
+			continue
+		var p := _pos_of(n)
+		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
+		var best := p + Vector2(-sz.x / 2.0, -13.0)
+		var placed := false
+		for dist in [15.0, 25.0]:
+			for dir in LABEL_TRIES:
+				var c := p + Vector2(dir.x * (sz.x * 0.5 + 8.0), dir.y * dist)
+				var r := Rect2(c - Vector2(sz.x / 2.0, sz.y * 0.8), sz + Vector2(6, 4))
+				var clash := false
+				for t in taken:
+					if r.intersects(t):
+						clash = true
+						break
+				if not clash:
+					best = c + Vector2(-sz.x / 2.0, 0)
+					taken.append(r)
+					placed = true
+					break
+			if placed:
+				break
+		if not placed:
+			taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz))
+		_label_at[nm] = best
 
 
 ## Lettering set INTO the sheet: a halo in the paper own colour, the way an
@@ -183,10 +272,10 @@ func _label(font: Font, p: Vector2, nm: String, sz: int, strength: float) -> voi
 	if nm == "":
 		return
 	var w := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz)
-	var tp := p + Vector2(-w.x / 2.0, -13.0)
+	var at: Vector2 = _label_at.get(nm, p + Vector2(-w.x / 2.0, -13.0))
 	for o in [Vector2(1.3, 0), Vector2(-1.3, 0), Vector2(0, 1.3), Vector2(0, -1.3)]:
-		draw_string(font, tp + o, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz, Color(_paper_tone(), 0.9))
-	draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz, Color(_ink(), strength))
+		draw_string(font, at + o, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(_paper_tone(), 0.92))
+	draw_string(font, at, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(_ink(), strength))
 
 
 ## ── THE GROUND, from the SAME palette as the world chart ─────────────────────

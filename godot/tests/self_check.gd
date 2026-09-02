@@ -2818,6 +2818,20 @@ The term for spell slots is "Echoes."
 	assert(shader_src != "", "chart_paper.gdshader is missing - the Atlas has no paper")
 	assert(shader_src.contains("uniform vec2 region_at"),
 		"the chart shader no longer takes region hearts (AT-8)")
+	# ONE FACE AND ONE SYMBOL SET ACROSS BOTH TIERS. `place_map` carried its own
+	# `_draw_mark` with four shapes of its own before `MapInk` existed, and the
+	# Atlas lettered in the theme default while the reference is a book map. Two
+	# tiers of one atlas that letter differently read as two documents.
+	var pm2_src := FileAccess.get_file_as_string("res://scenes/ui/place_map.gd")
+	for pair in [[wm_src, "world_map"], [pm2_src, "place_map"]]:
+		var src2: String = pair[0]
+		assert(src2.contains("Ui.display"),
+			"%s letters in its own font instead of Ui.display - the two map tiers must read as one document" % str(pair[1]))
+		assert(src2.contains("MapInk."),
+			"%s draws its own marks instead of MapInk - two answers to what a ruin looks like is how a legend stops describing the map" % str(pair[1]))
+		assert(not src2.contains("get_theme_default_font()"),
+			"%s fell back to the theme default font" % str(pair[1]))
+
 	# AT-6, the drawing half: no question-mark cloud. A "?" is a promise, and a
 	# point-crawl has no surface to sweep — a place either has a pin or it does
 	# not — so clouds would import a busywork failure this design cannot produce.
