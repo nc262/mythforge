@@ -37,6 +37,15 @@ var _paper_regions := PackedVector2Array()
 ## `_draw` runs every frame for the cloud shadows.
 var _glyphs: Array = []          # {"p": Vector2, "kind": String, "s": float}
 var _glyph_key := ""
+## Ornament: the rose, the ships, the thing in the deep. Placed in open water,
+## cached with the glyphs, and never allowed near a pin — see _ensure_ornament.
+var _ornament: Array = []        # {"p": Vector2, "kind": String, "s": float}
+## Where each name was actually placed last frame. A label is laid out ONCE per
+## visible set and reused, because the solver is order-dependent: solving it
+## fresh every frame with a different iteration order would make the names
+## twitch between two equally-good positions.
+var _label_at := {}              # name -> Vector2 (screen, pre-camera)
+var _label_key := ""
 
 ## AT-3 — TWO TIERS: the realm, and one region within it.
 ##
@@ -350,6 +359,85 @@ func _ensure_glyphs() -> void:
 				_glyphs.append({"p": at, "kind": kind, "s": scale})
 
 
+## ── AT-13: NAMES THAT DO NOT SIT ON TOP OF EACH OTHER ────────────────────────
+##
+## Every label was drawn at a fixed offset above its pin, so two places close
+## together printed through one another and a name over a mountain range became
+## unreadable. A chart engraver moves the word — above, below, out to one side —
+## until it is clear, and that is a solvable problem rather than a matter of
+## taste.
+##
+## Greedy, in draw order, over eight candidate positions at two distances. Not
+## optimal, and it does not need to be: with a dozen names the first fit is
+## almost always the one a person would pick, and the failure mode of a greedy
+## pass (one name pushed further out than strictly necessary) is invisible where
+## the failure mode of no pass at all is two words on top of each other.
+##
+## SOLVED ONCE PER VISIBLE SET, not per frame. The result depends on the order
+## labels are placed, so re-solving every frame with the hover changing would let
+## a name flick between two equally good spots.
+const LABEL_TRIES: Array[Vector2] = [
+	Vector2(0, -1), Vector2(0, 1), Vector2(1, -0.35), Vector2(-1, -0.35),
+	Vector2(1, 0.7), Vector2(-1, 0.7), Vector2(1, -1), Vector2(-1, -1)]
+
+
+func _solve_labels(font: Font) -> void:
+	var key := "%s@%dx%d|%d|%s" % [GameState.world_id(), int(size.x), int(size.y),
+		locations.size(), ",".join(PackedStringArray(seen))]
+	if _label_key == key:
+		return
+	_label_key = key
+	_label_at.clear()
+	var taken: Array[Rect2] = []
+	for furniture in [_legend_rect(font), _cartouche_rect(font)]:
+		if furniture.size.x > 0.0:
+			taken.append(furniture.grow(4.0))
+	for l in locations:
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		if nm == "" or _state_of(nm) == UNKNOWN or not _in_focus(l):
+			continue
+		var p := _pos_of(l)
+		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14)
+		var best := p + Vector2(-sz.x / 2.0, -14.0)
+		var placed := false
+		for dist in [16.0, 26.0]:
+			for dir in LABEL_TRIES:
+				var c := p + Vector2(dir.x * (sz.x * 0.5 + 8.0), dir.y * dist)
+				var r := Rect2(c - Vector2(sz.x / 2.0, sz.y * 0.8), sz + Vector2(6, 4))
+				var clash := false
+				for t in taken:
+					if r.intersects(t):
+						clash = true
+						break
+				if not clash:
+					best = c + Vector2(-sz.x / 2.0, 0)
+					taken.append(r)
+					placed = true
+					break
+			if placed:
+				break
+		if not placed:
+			# NOWHERE CLEAR. Keep the default rather than stack it on a taken
+			# spot — a name slightly overlapping is legible, and a name shoved to
+			# an arbitrary far corner is a lie about which pin it belongs to.
+			taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz))
+		_label_at[nm] = best
+
+
+## Lettering set INTO the sheet — a halo in the paper's own colour, the way an
+## engraver leaves a gap round a word so the hatching does not run through it.
+func _label(font: Font, nm: String, fallback: Vector2, sz: int, strength: float) -> void:
+	if nm == "":
+		return
+	var at: Vector2 = _label_at.get(nm, fallback)
+	var halo := _paper_tone()
+	for o in [Vector2(1.4, 0), Vector2(-1.4, 0), Vector2(0, 1.4), Vector2(0, -1.4)]:
+		draw_string(font, at + o, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(halo, 0.92))
+	draw_string(font, at, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(_ink(), strength))
+
+
 ## Ink glyphs, drawn the way a pen would: an outline and one shaded face. Every
 ## one is built from lines rather than a texture, so they stay crisp at any zoom
 ## — the same reason the coastline is a shader stroke.
@@ -402,6 +490,74 @@ func _draw_glyphs() -> void:
 				var bh := 3.0 * sc
 				draw_rect(Rect2(p - Vector2(bw, bh) * 0.5, Vector2(bw, bh)), Color(ink, 0.22))
 				draw_rect(Rect2(p - Vector2(bw, bh) * 0.5, Vector2(bw, bh)), Color(ink, 0.75), false, 1.2)
+
+
+## Furniture goes in the OPEN WATER, and only where the water is genuinely open:
+## a ship drawn in a bay two cells from shore reads as a wreck, and a rose over a
+## coastline is a mistake. Scored by how far each candidate is from any land, so
+## the deep gets the ornament and the shallows are left alone.
+func _ensure_ornament() -> void:
+	if not _ornament.is_empty() and _glyph_key == "%s@%dx%d" % [
+			GameState.world_id(), int(size.x), int(size.y)]:
+		return
+	_ornament.clear()
+	var g := WorldTerrain.for_world(GameState.world_id())
+	var open: Array = []
+	for cy in range(3, WorldTerrain.H - 3, 3):
+		for cx in range(3, WorldTerrain.W - 3, 3):
+			var c := Vector2i(cx, cy)
+			if not g.is_water(c):
+				continue
+			var clear := 99
+			for rr in range(1, 9):
+				var hit := false
+				for a in 8:
+					var ang := float(a) / 8.0 * TAU
+					var n := c + Vector2i(int(round(cos(ang) * float(rr))), int(round(sin(ang) * float(rr))))
+					if not g.in_bounds(n) or not g.is_water(n):
+						hit = true
+						break
+				if hit:
+					clear = rr
+					break
+			if clear >= 3:
+				open.append({"c": c, "room": clear})
+	if open.is_empty():
+		return
+	open.sort_custom(func(a, b): return int(a["room"]) > int(b["room"]))
+	# Spread them: the three best cells are usually neighbours in one basin, and
+	# a rose with two ships stacked on it is worse than no ornament at all.
+	var want := ["rose", "ship", "beast", "ship"]
+	var placed: Array[Vector2] = []
+	for cand in open:
+		if _ornament.size() >= want.size():
+			break
+		var at: Vector2 = g.pct_of(cand["c"])
+		var far := true
+		for q in placed:
+			if q.distance_to(at) < 26.0:
+				far = false
+				break
+		if not far:
+			continue
+		placed.append(at)
+		_ornament.append({"p": at, "kind": want[_ornament.size()],
+			"s": 1.0 + float(int(cand["room"])) * 0.06})
+
+
+func _draw_ornament() -> void:
+	var ink := _ink()
+	var paper := _paper_tone()
+	for o in _ornament:
+		var p: Vector2 = Vector2(o["p"].x / 100.0 * size.x, o["p"].y / 100.0 * size.y)
+		var sc: float = float(o["s"])
+		match str(o["kind"]):
+			"rose":
+				MapInk.draw_rose(self, p, 30.0 * sc, ink, paper)
+			"ship":
+				MapInk.draw_ship(self, p, 12.0 * sc, ink, paper)
+			"beast":
+				MapInk.draw_beast(self, p, 14.0 * sc, ink)
 
 
 func _cell_of(p: Vector2) -> Vector2i:
@@ -584,7 +740,9 @@ func _draw() -> void:
 	# The paper itself is `_paper`, a shader behind this node — see _sync_paper.
 	# What is DRAWN on the land goes here, under the roads and pins.
 	_ensure_glyphs()
+	_ensure_ornament()
 	_draw_glyphs()
+	_draw_ornament()
 	# Cloud shadows drift across the land.
 	if not Ui.reduce_motion:
 		for spec in [[0.13, 90.0, 0.31, 260.0], [0.61, -60.0, 0.72, 340.0]]:
@@ -592,7 +750,16 @@ func _draw() -> void:
 			var cs := float(spec[3])
 			draw_texture_rect(Ui.glow_tex(), Rect2(Vector2(cx, size.y * float(spec[2]) - cs / 2.0), Vector2(cs, cs)),
 				false, Color(0, 0, 0.02, 0.10))
-	var font := get_theme_default_font()
+	# THE SERIF THAT WAS HERE ALL ALONG. `Ui.display` is a FontVariation over
+	# `Ui.serif` (Palatino Linotype / Book Antiqua / Georgia) with glyph spacing
+	# already set — built for titles, and exactly what a chart wants. I filed a
+	# backlog row claiming this project had no serif face; it was wrong, because
+	# I grepped for font FILES and the theme uses a SystemFont, which ships
+	# nothing and falls back gracefully.
+	var font: Font = Ui.display
+	# Laid out before anything is lettered: the solver has to see every name that
+	# will be drawn before it can place the first one.
+	_solve_labels(font)
 	var here_p := Vector2.ZERO
 	for l in locations:
 		if l is Dictionary and str(l.get("name", "")) == here:
@@ -664,13 +831,8 @@ func _draw() -> void:
 		if state == HEARD:
 			_draw_mark(p, kind_s, Color(col, 0.30), 4.0 if i == _hover else 3.0)
 			draw_arc(p, 11.0, 0, TAU, 24, Color(_ink(), 0.40 if i == _hover else 0.26), 1.1)
-			var hsz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
-			var htp := p + Vector2(-hsz.x / 2.0, -13)
-			var halo2 := _paper_tone()
-			for o2 in [Vector2(1.2, 0), Vector2(-1.2, 0), Vector2(0, 1.2), Vector2(0, -1.2)]:
-				draw_string(font, htp + o2, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(halo2, 0.85))
-			draw_string(font, htp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13,
-				Color(_ink(), 0.72 if i == _hover else 0.52))
+			_label(font, nm, p + Vector2(-font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13).x / 2.0, -13),
+				13, 0.72 if i == _hover else 0.52)
 			continue
 		# The lamp of a visited place.
 
@@ -690,17 +852,8 @@ func _draw() -> void:
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
 			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Ui.c("gold_soft"), 2.5)
-		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14)
-		var tp := p + Vector2(-sz.x / 2.0, -14)
-		# A HALO IN THE PAPER'S COLOUR, not a black drop shadow. Lettering on a
-		# chart is set INTO the map — the engraver leaves a gap round the word so
-		# the hatching behind it does not run through the letters — and a black
-		# shadow on parchment reads as a UI label pasted on top.
-		var halo := _paper_tone()
-		for o in [Vector2(1.4, 0), Vector2(-1.4, 0), Vector2(0, 1.4), Vector2(0, -1.4)]:
-			draw_string(font, tp + o, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14, Color(halo, 0.9))
-		draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14,
-			Color(_ink(), 1.0 if (i == _hover or is_here) else 0.85))
+		_label(font, nm, p + Vector2(-font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14).x / 2.0, -14),
+			14, 1.0 if (i == _hover or is_here) else 0.85)
 	# Hover lore (known places tell their story; the fog only whispers).
 	if _hover >= 0:
 		var l2: Dictionary = locations[_hover]
@@ -718,17 +871,16 @@ func _draw() -> void:
 		var p2 := _pos_of(l2)
 		draw_string(font, Vector2(clampf(p2.x - 120, 8, size.x - 260), minf(p2.y + 26, size.y - 10)),
 			lore, HORIZONTAL_ALIGNMENT_LEFT, 250, 12, Ui.c("gold_soft"))
-	# The compass rose, steady in the corner regardless of the camera.
+	# THE FRAME AND THE KEY SIT ON THE SHEET, NOT ON THE MAP. Outside the camera
+	# transform, so they stay put while the country pans underneath them — a
+	# border that scrolls away with the land is a rectangle, not a frame.
+	#
+	# The compass went the other way: it used to be a hand-rolled four-point star
+	# pinned to this corner, and a rose belongs IN the open water with the ships.
+	# `MapInk.draw_rose` draws it there now, inside the transform, as furniture.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var cpos := Vector2(size.x - 40, size.y - 40)
-	draw_arc(cpos, 16, 0, TAU, 32, Color(Ui.c("gold"), 0.55), 1.5)
-	draw_arc(cpos, 12, 0, TAU, 32, Color(Ui.c("gold"), 0.25), 1.0)
-	for d in 4:
-		var ang := d * PI / 2.0
-		var tip := cpos + Vector2(sin(ang), -cos(ang)) * (14.0 if d == 0 else 10.0)
-		draw_line(cpos, tip, Color(Ui.c("gold"), 0.8 if d == 0 else 0.4), 1.5 if d == 0 else 1.0)
-	var ns := font.get_string_size("N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11)
-	draw_string(font, cpos + Vector2(-ns.x / 2.0, -18), "N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(Ui.c("gold"), 0.85))
+	_draw_cartouche(font)
+	MapInk.draw_border(self, Rect2(Vector2.ZERO, size), _ink(), _paper_tone())
 	_draw_legend(font)
 
 
@@ -910,6 +1062,37 @@ func _draw_regions(font: Font) -> void:
 				Color(Ui.c("gold"), 0.5), 1.0, true)
 
 
+## The title panel. A chart names itself, and it does it in a box drawn ON the
+## sheet — which is also the honest place to put the world's name, since the
+## dialog title bar above this is chrome and disappears in a screenshot.
+##
+## Top-left, because that is where the eye starts and where the reference puts
+## it, and because the legend already owns bottom-left and the two must not
+## fight for the same corner.
+func _draw_cartouche(font: Font) -> void:
+	var title := WorldSkin.world_name(GameState.world_id()).to_upper()
+	if title == "":
+		return
+	var ink := _ink()
+	var paper := _paper_tone()
+	# Letterspaced by hand: `draw_string` has no tracking, and a title set solid
+	# reads as a label where a chart's name is always opened out.
+	var track := 4.2
+	var wide := 0.0
+	for ch in title:
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + track
+	var pad := 14.0
+	var box := Rect2(Vector2(26, 22), Vector2(wide + pad * 2.0, 44))
+	draw_rect(box, Color(paper, 0.93))
+	draw_rect(box, Color(ink, 0.8), false, 2.2)
+	draw_rect(box.grow(-4.0), Color(ink, 0.4), false, 1.0)
+	var x := box.position.x + pad
+	for ch in title:
+		draw_string(font, Vector2(x, box.position.y + 30.0), ch,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(ink, 0.95))
+		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + track
+
+
 ## What the key will list: only the kinds and road states actually ON this
 ## chart, because a legend explaining a mark the player has never seen is
 ## furniture, not information.
@@ -955,6 +1138,19 @@ func _legend_entries() -> Dictionary:
 	kinds.sort()
 	road_states.sort()
 	return {"kinds": kinds, "roads": road_states, "trade": trades}
+
+
+## The cartouche's footprint, so the label solver and the region names dodge it
+## the same way they already dodge the key. Two things drawn on the sheet, one
+## rule for both.
+func _cartouche_rect(font: Font) -> Rect2:
+	var title := WorldSkin.world_name(GameState.world_id()).to_upper()
+	if title == "":
+		return Rect2()
+	var wide := 0.0
+	for ch in title:
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 4.2
+	return Rect2(Vector2(26, 22), Vector2(wide + 28.0, 44))
 
 
 func _legend_rect(_font: Font) -> Rect2:

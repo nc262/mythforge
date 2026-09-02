@@ -132,3 +132,87 @@ static func _thicket(ci: CanvasItem, at: Vector2, ink: Color, paper: Color, r: f
 		ci.draw_circle(c, rad, paper)
 		ci.draw_arc(c, rad, 0, TAU, 14, ink, lw, true)
 		ci.draw_line(c + Vector2(0, rad * 0.4), c + Vector2(0, rad * 1.9), ink, lw, true)
+
+
+## ── ORNAMENT ─────────────────────────────────────────────────────────────────
+##
+## The reference is a book map, and half of what makes one look like a book map
+## is the furniture: a rose, a ship or two in the open water, something with
+## teeth in the deep, and a ruled border round the whole sheet. None of it is
+## information — which is exactly why it belongs in the empty parts, and why it
+## must never sit where a pin or a name goes.
+
+
+## A sixteen-point rose. Four long points on the cardinals, four short on the
+## ordinals, eight shorter still between — the standard construction, and the
+## reason it reads as a rose rather than a star is that the alternation is
+## regular and the fills alternate light and dark.
+static func draw_rose(ci: CanvasItem, at: Vector2, r: float, ink: Color, paper: Color) -> void:
+	ci.draw_circle(at, r * 1.06, paper)
+	ci.draw_arc(at, r * 1.06, 0, TAU, 40, Color(ink, 0.55), 1.2, true)
+	ci.draw_arc(at, r * 0.9, 0, TAU, 36, Color(ink, 0.35), 1.0, true)
+	for i in 16:
+		var ang := float(i) / 16.0 * TAU - PI * 0.5
+		var long: float = r
+		if i % 4 != 0:
+			long = r * (0.58 if i % 2 == 1 else 0.76)
+		var tip := at + Vector2(cos(ang), sin(ang)) * long
+		var wide := r * 0.10
+		var l := at + Vector2(cos(ang - PI * 0.5), sin(ang - PI * 0.5)) * wide
+		var rr := at + Vector2(cos(ang + PI * 0.5), sin(ang + PI * 0.5)) * wide
+		# Two halves per point, one inked and one left as paper — the alternation
+		# is what gives a rose its cut-gem look at any size.
+		ci.draw_colored_polygon(PackedVector2Array([at, l, tip]), Color(ink, 0.85))
+		ci.draw_colored_polygon(PackedVector2Array([at, rr, tip]), paper)
+		ci.draw_polyline(PackedVector2Array([at, rr, tip, l, at]), Color(ink, 0.8), 1.0, true)
+
+
+## A ship, side on, three sails. Small enough to be furniture and specific
+## enough not to read as a smudge.
+static func draw_ship(ci: CanvasItem, at: Vector2, r: float, ink: Color, paper: Color) -> void:
+	var lw: float = maxf(1.0, r * 0.09)
+	var hull := PackedVector2Array([
+		at + Vector2(-r, 0), at + Vector2(r, 0),
+		at + Vector2(r * 0.66, r * 0.42), at + Vector2(-r * 0.72, r * 0.42)])
+	ci.draw_colored_polygon(hull, paper)
+	ci.draw_polyline(hull + PackedVector2Array([hull[0]]), Color(ink, 0.9), lw, true)
+	ci.draw_line(at + Vector2(0, 0), at + Vector2(0, -r * 1.5), Color(ink, 0.9), lw, true)
+	for spec in [[-0.55, 0.85], [0.5, 1.15]]:
+		var sx := float(spec[0]) * r
+		var sh := float(spec[1]) * r
+		var sail := PackedVector2Array([
+			at + Vector2(sx, -sh), at + Vector2(sx + r * 0.5, -sh * 0.45),
+			at + Vector2(sx, -sh * 0.1)])
+		ci.draw_colored_polygon(sail, paper)
+		ci.draw_polyline(sail + PackedVector2Array([sail[0]]), Color(ink, 0.85), lw * 0.9, true)
+
+
+## Something in the deep: a serpent in three coils. Drawn as arcs rather than a
+## silhouette, because at this size a filled beast is a blob and the whole point
+## of the thing is that it is recognisable.
+static func draw_beast(ci: CanvasItem, at: Vector2, r: float, ink: Color) -> void:
+	var lw: float = maxf(1.1, r * 0.11)
+	for i in 3:
+		var c := at + Vector2(float(i - 1) * r * 0.82, sin(float(i) * 1.7) * r * 0.18)
+		ci.draw_arc(c, r * 0.42, PI, TAU, 14, Color(ink, 0.85), lw, true)
+	# The head, at the near end, with an eye and a jaw.
+	var head := at + Vector2(-r * 1.5, -r * 0.1)
+	ci.draw_arc(head, r * 0.3, -PI * 0.4, PI * 1.1, 14, Color(ink, 0.9), lw, true)
+	ci.draw_circle(head + Vector2(-r * 0.06, -r * 0.08), lw * 0.85, Color(ink, 0.95))
+	ci.draw_line(head + Vector2(-r * 0.28, r * 0.02), head + Vector2(-r * 0.62, -r * 0.12),
+		Color(ink, 0.85), lw, true)
+
+
+## The sheet's edge: a heavy rule, a hairline inside it, and a corner mark at
+## each turn. Drawn OUTSIDE the camera transform so it stays put while the map
+## pans under it — a border that scrolls away is a rectangle, not a frame.
+static func draw_border(ci: CanvasItem, rect: Rect2, ink: Color, paper: Color) -> void:
+	var outer := rect.grow(-6.0)
+	var inner := rect.grow(-13.0)
+	ci.draw_rect(outer, Color(ink, 0.8), false, 2.6)
+	ci.draw_rect(inner, Color(ink, 0.45), false, 1.1)
+	for corner in [inner.position, inner.position + Vector2(inner.size.x, 0),
+			inner.position + inner.size, inner.position + Vector2(0, inner.size.y)]:
+		ci.draw_circle(corner, 4.4, paper)
+		ci.draw_arc(corner, 4.4, 0, TAU, 18, Color(ink, 0.75), 1.4, true)
+		ci.draw_arc(corner, 2.0, 0, TAU, 12, Color(ink, 0.55), 1.0, true)
