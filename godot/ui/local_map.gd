@@ -97,6 +97,15 @@ var walled := false                # a settlement has a wall; a hamlet has hedge
 ## wards, which is the shape of that whole problem.
 var size_tier := 1
 var sites: Array = []              # GM-authored, per ward — see `GameState.town_sites`
+## ── WHAT IS OUTSIDE THE WALL ─────────────────────────────────────────────────
+## A town that stops dead at its boundary reads as a cut-out pasted on blank
+## paper, which is what every one of these sheets was. Gates, the roads that
+## leave through them, the ribbon of building that follows each road out, and
+## the ploughland beyond.
+var gates: Array = []              # {"at": Vector2, "to": String}
+var out_roads: Array = []          # PackedVector2Array per road, percent space
+var outskirts: Array = []          # {"poly": ...} buildings beyond the wall
+var furlongs: Array = []           # {"strips": Array[PackedVector2Array]}
 
 static var _cache := {}
 
@@ -174,6 +183,7 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 		_size_of(rng)
 		_plan_bounds(rng)
 		_plan_town(rng)
+		_plan_outside(rng)
 		_plan_sites()
 	else:
 		_build_site(rng)
@@ -559,6 +569,175 @@ func _plan_sites() -> void:
 		# Reachable from the square, like every other named place in the town.
 		if nodes.size() > 1:
 			edges.append([0, nodes.size() - 1])
+
+
+## ── OUTSIDE THE WALL ─────────────────────────────────────────────────────────
+##
+## GATES GO WHERE ROADS ARRIVE, which is the historical pattern and not the
+## modern-map one: "gates at the four cardinal points" is only true where a Roman
+## grid forces it. This map already knows where the roads come from — the other
+## places on the world chart — so a gate is put at the point of the wall nearest
+## each neighbour's bearing, and the local map agrees with the world map about
+## which way the world is. Organic towns run roughly 1.5-3 gates per km of wall;
+## two to five here, by size.
+func _plan_outside(rng: RandomNumberGenerator) -> void:
+	if bounds.size() < 3:
+		return
+	var me := Vector2(50, 50)
+	var mine := Vector2.INF
+	var others: Array = []
+	for l in GameState.places():
+		if not (l is Dictionary) or not (l.has("x") and l.has("y")):
+			continue
+		if str(l.get("name", "")) == place:
+			mine = Vector2(float(l["x"]), float(l["y"]))
+		else:
+			others.append({"at": Vector2(float(l["x"]), float(l["y"])), "nm": str(l.get("name", ""))})
+	var bearings: Array = []
+	if mine != Vector2.INF:
+		others.sort_custom(func(a, b): return a["at"].distance_to(mine) < b["at"].distance_to(mine))
+		for o in others:
+			bearings.append([(o["at"] - mine).angle(), str(o["nm"])])
+	# A town with no neighbours still has ways out of it.
+	while bearings.size() < 2:
+		bearings.append([rng.randf() * TAU, ""])
+	var want: int = mini(2 + size_tier, bearings.size())
+
+	var used: Array = []
+	for b in bearings:
+		if gates.size() >= want:
+			break
+		var ang: float = float(b[0])
+		# No two gates adjacent — the exclusion rule real generators use, and
+		# what stops a town having three doors in one wall.
+		var too_close := false
+		for u in used:
+			if absf(angle_difference(float(u), ang)) < deg_to_rad(50.0):
+				too_close = true
+				break
+		if too_close:
+			continue
+		# A GATE OPENS ONTO LAND. The bearing comes from a neighbour on the world
+		# chart, and a neighbour across a bay is a real bearing to a real place —
+		# but the road to it does not walk on water. Gallows Quay put two gates
+		# on its seaward wall and drew roads and a suburb out into the harbour.
+		var step0 := Vector2(cos(ang), sin(ang))
+		var at := me + step0 * _reach(ang)
+		if _in_water(at + step0 * 6.0):
+			continue
+		used.append(ang)
+		gates.append({"at": at, "to": str(b[1])})
+
+		# THE ROAD OUT. Straight-ish to the sheet edge, wandering a little, so it
+		# reads as drawn rather than ruled — the same distinction the world chart
+		# makes between the route and the line.
+		var road := PackedVector2Array([at])
+		var step := Vector2(cos(ang), sin(ang))
+		var wob := rng.randf() * TAU
+		for k in range(1, 9):
+			var t := float(k) / 8.0
+			var far := at + step * (t * 62.0)
+			# Enough wander to read as drawn rather than ruled. At 3.2 it was
+			# invisible over sixty units.
+			far += step.orthogonal() * sin(t * 3.4 + wob) * 7.0 * t
+			if _in_water(far):
+				break
+			road.append(far)
+		if road.size() > 1:
+			out_roads.append(road)
+
+		# THE FAUBOURG. Building ribbons along the road just outside the gate and
+		# thins with distance — the documented shape, and the reason it exists is
+		# that it holds what the walls will not: tanneries, forges, inns for
+		# travellers who arrived after the gates shut.
+		for k in range(1, 7):
+			var t2 := float(k) / 6.0
+			if rng.randf() > 1.0 - t2 * 0.8:
+				continue
+			for sgn in SIDES:
+				if rng.randf() < 0.35:
+					continue
+				var c := at + step * (t2 * 17.0) + step.orthogonal() * sgn * rng.randf_range(1.6, 3.4)
+				if _in_water(c):
+					continue
+				var w := rng.randf_range(1.1, 2.0)
+				var h := rng.randf_range(0.9, 1.6)
+				var quad := PackedVector2Array([
+					c + Vector2(-w, -h).rotated(ang), c + Vector2(w, -h).rotated(ang),
+					c + Vector2(w, h).rotated(ang), c + Vector2(-w, h).rotated(ang)])
+				outskirts.append({"poly": quad})
+	_plan_fields(rng)
+
+
+## ── THE PLOUGHLAND ───────────────────────────────────────────────────────────
+##
+## Open-field strips, not the neat hedged rectangles most people picture — those
+## are Enclosure-era, eighteenth century, and putting them round a medieval town
+## is a period mismatch. A strip (a selion) is about 200 m long by 5-20 m wide,
+## which on this plate is roughly 19 units by 0.5-2; they are bundled into
+## FURLONGS, and neighbouring furlongs run at DIFFERENT ANGLES because each
+## follows its own slope and drainage. That patchwork of angles is the whole
+## visual signature.
+func _plan_fields(rng: RandomNumberGenerator) -> void:
+	var me := Vector2(50, 50)
+	# MANY TRIES, MOST REJECTED. A furlong is refused for water, for the sheet
+	# edge and for sitting on a road, so the count here is attempts and not
+	# fields. At 14 attempts the ring round the town came out with six scattered
+	# blocks and a dead gap between the wall and the first of them.
+	for k in 48:
+		var ang := rng.randf() * TAU
+		# CLEAR OF THE WALL BY THE FIELD'S OWN HALF-DEPTH. Offsetting only the
+		# CENTRE put furlongs across the boundary — a ploughed field lying over
+		# the town wall, which is the kind of thing a render shows instantly and
+		# a number never would.
+		var r := _reach(ang) + rng.randf_range(9.0, 26.0)
+		var c := me + Vector2(cos(ang), sin(ang)) * r
+		if c.x < 2.0 or c.x > 98.0 or c.y < 2.0 or c.y > 98.0:
+			continue
+		if _in_water(c):
+			continue                       # nobody ploughs the harbour
+		# Keep off the roads — a field is what the road runs BETWEEN.
+		var clash := false
+		for road in out_roads:
+			for q in road:
+				if q.distance_to(c) < 5.5:
+					clash = true
+					break
+			if clash:
+				break
+		for f2 in furlongs:
+			if TownPlan.centroid(f2["hull"]).distance_to(c) < 9.0:
+				clash = true
+				break
+		if clash:
+			continue
+		var lay := rng.randf() * PI          # this furlong's own ploughing angle
+		var long := rng.randf_range(8.0, 14.0)
+		var wide := rng.randf_range(5.0, 10.0)
+		# THE HEDGE. A furlong needs a BOUNDARY or its strips read as loose
+		# hatching — which is exactly what they did: parallel arcs on open paper
+		# look like wind lines on a sea chart, not like ploughland. The outline is
+		# what says "this is a worked field" before a single strip is seen.
+		var hull := PackedVector2Array()
+		for corner in [Vector2(-wide, -long), Vector2(wide, -long),
+				Vector2(wide, long), Vector2(-wide, long)]:
+			hull.append(c + (corner * 0.5).rotated(lay))
+		var strips: Array = []
+		var n := int(wide / rng.randf_range(1.0, 1.7))
+		for i in maxi(n, 2):
+			var u := (float(i) / float(maxi(n - 1, 1)) - 0.5) * wide
+			var line := PackedVector2Array()
+			for j in 5:
+				var t3 := float(j) / 4.0
+				# THE REVERSED-S IS REAL, not decoration: a plough only turns soil
+				# one way, so the team began arcing before the headland to set up
+				# the next pass. It still shows in ridge-and-furrow earthworks.
+				# Shallow, though — at the amplitude drawn first it bowed the
+				# strips into something that read as hatching rather than furrows.
+				var bend := sin(t3 * TAU) * 0.35
+				line.append(c + Vector2(u + bend, (t3 - 0.5) * long).rotated(lay))
+			strips.append(line)
+		furlongs.append({"hull": hull, "strips": strips})
 
 
 ## Which way out of the middle a point lies — the qualifier an unnamed quarter

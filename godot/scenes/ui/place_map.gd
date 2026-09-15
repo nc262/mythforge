@@ -170,6 +170,7 @@ func _draw_plan(ci: CanvasItem) -> void:
 		return
 	_draw_ground(ci)
 	if lm.settled:
+		_draw_outside(ci)
 		_draw_town(ci)
 	else:
 		_draw_rooms(ci, _here_idx())
@@ -368,6 +369,26 @@ func _paper_tone() -> Color:
 	return WorldTerrain.for_world(GameState.world_id()).paper_colour()
 
 
+## ── THE SEA HAS TO READ AS SEA ON EVERY STOCK ────────────────────────────────
+##
+## This was `paper.darkened(0.06)` — a fixed six per cent step toward black. On
+## parchment that is a faint tonal shift and just about works; on the cyber and
+## space stocks the paper is already near-black, so six per cent of it is
+## nothing at all and the river vanished. Neonspire's water read as three stray
+## hairlines at the sheet edge.
+##
+## "Darker" is the wrong instruction on a dark ground. What the eye needs is a
+## STEP AWAY from the paper, whichever direction has room — so on a light stock
+## the water goes down and on a dark one it goes up, and the size of the step is
+## the same either way.
+func _water_tone() -> Color:
+	var paper := _paper_tone()
+	var step: float = 0.16
+	if paper.get_luminance() < 0.35:
+		return Color(paper.lightened(step), 1.0)
+	return Color(paper.darkened(step), 1.0)
+
+
 
 
 
@@ -403,7 +424,7 @@ func _draw_ground(ci: CanvasItem) -> void:
 	# ENGRAVED, NOT FILLED. The Atlas hatches its sea off the depth; a town has no
 	# depth field, so the hatch is drawn as lines PARALLEL TO THE SHORE, which is
 	# what the same engraver would do at this scale and reads as the same sea.
-	ci.draw_colored_polygon(pts, Color(_paper_tone().darkened(0.06), 1.0))
+	ci.draw_colored_polygon(pts, _water_tone())
 	for band in 5:
 		var off := float(band + 1) * 2.6
 		var hl := PackedVector2Array()
@@ -438,6 +459,53 @@ func _pct(p: Vector2) -> Vector2:
 ## why no building can stand in a road: there is no road to stand in, only
 ## ground nobody built on. Drawing streets as ribbons over a layout is what the
 ## first version did, and it is why buildings floated free of them.
+## ── THE COUNTRYSIDE, drawn BEFORE the town so the town sits on it ────────────
+##
+## Every one of these sheets was a town cut out and pasted on blank paper. What
+## fills that paper is not decoration: the roads say which way the world is, the
+## ribbon outside each gate says the town outgrew its wall, and the ploughland
+## says people eat.
+func _draw_outside(ci: CanvasItem) -> void:
+	var ink := _ink()
+	# PLOUGHLAND FIRST, fainter than anything else on the sheet — texture the eye
+	# should read as "worked ground" without ever stopping on it.
+	for f in lm.furlongs:
+		var hull: PackedVector2Array = f["hull"]
+		if hull.size() > 2:
+			var hs := PackedVector2Array()
+			for q in hull:
+				hs.append(_pct(q))
+			ci.draw_colored_polygon(hs, Color(ink, 0.05))
+			hs.append(hs[0])
+			ci.draw_polyline(hs, Color(ink, 0.45), 1.2, true)
+		for line in f["strips"]:
+			var scr := PackedVector2Array()
+			for q in line:
+				scr.append(_pct(q))
+			if scr.size() > 1:
+				ci.draw_polyline(scr, Color(ink, 0.22), 0.9, true)
+	# The roads out, cased like the world chart's so they read as the same thing
+	# one scale down.
+	for road in lm.out_roads:
+		var scr2 := PackedVector2Array()
+		for q in road:
+			scr2.append(_pct(q))
+		if scr2.size() > 1:
+			ci.draw_polyline(scr2, Color(_paper_tone(), 0.9), 5.4, true)
+			ci.draw_polyline(scr2, Color(ink, 0.7), 2.0, true)
+	# The faubourg: what would not fit, or was not wanted, inside the wall.
+	for b in lm.outskirts:
+		var poly: PackedVector2Array = b["poly"]
+		if poly.size() < 3:
+			continue
+		var scr3 := PackedVector2Array()
+		for q in poly:
+			scr3.append(_pct(q))
+		ci.draw_colored_polygon(scr3, _paper_tone())
+		scr3.append(scr3[0])
+		ci.draw_polyline(scr3, Color(ink, 0.6), 1.0, true)
+
+
 func _draw_town(ci: CanvasItem) -> void:
 	var ink := _ink()
 	var paper := _paper_tone()
@@ -467,6 +535,15 @@ func _draw_town(ci: CanvasItem) -> void:
 		ring2.append(ring2[0])
 		if lm.walled:
 			ci.draw_polyline(ring2, Color(ink, 0.92), 3.4, true)
+			# A GATE IS A GAP WITH TWO TOWERS. Drawn after the wall so it breaks
+			# it — and drawn LARGER than a mural tower, which is the one rule
+			# about walls safe to make absolute: the gate is always the biggest
+			# tower on its circuit, because it is the structural weak point.
+			for gt in lm.gates:
+				var gp := _pct(gt["at"])
+				ci.draw_circle(gp, 7.0, paper)
+				ci.draw_arc(gp, 6.4, 0, TAU, 20, Color(ink, 0.95), 2.4, true)
+				ci.draw_circle(gp, 2.2, Color(ink, 0.9))
 			for k in range(0, lm.bounds.size(), 4):
 				var tp2 := _pct(lm.bounds[k])
 				ci.draw_circle(tp2, 3.4, paper)
