@@ -11,6 +11,30 @@ extends Control
 
 signal enter_room(room: String)
 
+
+## ── THE PLAN IS ITS OWN LAYER, AND THAT IS A PERFORMANCE FIX ─────────────────
+##
+## Measured before this existed: `_draw()` cost 9.8-10.8 ms and `_draw_town`
+## was 9.1-10.0 ms of it — 93 %. The frame budget at 60 fps is 16.6 ms, so a
+## STATIC picture was eating 60 % of it, every frame, forever, because
+## `_process` called `queue_redraw()` unconditionally for a breathing ring and a
+## paper-position sync.
+##
+## Two things fix it and both need the plan to be a separate CanvasItem:
+##
+##   · it redraws only when the PLAN changes, not when the ring breathes
+##   · the camera becomes this node's TRANSFORM instead of `draw_set_transform`,
+##     so panning and zooming cost nothing at all — no redraw, just a matrix
+##
+## `show_behind_parent` puts it under the marks and lettering, which stay on the
+## Control because they answer to hover and must stay cheap to redraw.
+class PlanLayer extends Node2D:
+	var map: Control = null
+
+	func _draw() -> void:
+		if map != null:
+			map._draw_plan(self)
+
 var lm: LocalMap = null
 var here_room := ""
 var walked: Array = []
@@ -18,6 +42,8 @@ var _hover := -1
 var _camera := MythCamera.new()
 var _phase := 0.0
 var _paper: ColorRect = null
+var _plan: PlanLayer = null
+var _plan_key := ""            # what the layer was last drawn for
 const PAPER_SHADER := preload("res://ui/local_paper.gdshader")
 
 ## Role -> the mark it wears. Colour AND shape, the rule KIND_MARK follows on the
@@ -60,6 +86,12 @@ func _ready() -> void:
 	mat.set_shader_parameter("c_paper_dark", g.paper_dark_colour())
 	_paper.material = mat
 	add_child(_paper)
+	# AFTER the paper and also behind the parent, so the order is
+	# paper -> plan -> marks and lettering.
+	_plan = PlanLayer.new()
+	_plan.map = self
+	_plan.show_behind_parent = true
+	add_child(_plan)
 	set_process(true)
 
 
@@ -69,6 +101,22 @@ func _process(delta: float) -> void:
 		_paper.position = _camera.cam
 		_paper.size = size
 		_paper.scale = Vector2(_camera.zoom, _camera.zoom)
+	if _plan != null:
+		# THE CAMERA IS A TRANSFORM, NOT A REDRAW. This is the whole reason the
+		# plan is its own node: panning a 585-building town used to re-issue
+		# every draw call, and now it moves a matrix.
+		_plan.position = _camera.cam
+		_plan.scale = Vector2(_camera.zoom, _camera.zoom)
+		# WALKED IS IN THE KEY because a ruin's rooms are fogged and the fog
+		# lifts as you go — leave it out and a dungeon never reveals anything.
+		var key := "%s@%dx%d/%d" % [lm.place if lm != null else "",
+			int(size.x), int(size.y), walked.size()]
+		if key != _plan_key:
+			_plan_key = key
+			_plan.queue_redraw()
+	# The Control still carries the marks, the lettering and the breathing ring,
+	# which measured 0.7 ms together — cheap enough to redraw every frame, and
+	# the ring has to.
 	queue_redraw()
 
 
@@ -105,6 +153,19 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 
 
+## Everything that only changes when the PLAN changes. Drawn into the layer, in
+## the layer's own space — the camera is its transform, so nothing here applies
+## one.
+func _draw_plan(ci: CanvasItem) -> void:
+	if lm == null:
+		return
+	_draw_ground(ci)
+	if lm.settled:
+		_draw_town(ci)
+	else:
+		_draw_rooms(ci, _here_idx())
+
+
 func _draw() -> void:
 	if lm == null:
 		return
@@ -115,11 +176,6 @@ func _draw() -> void:
 	var font: Font = Ui.display
 	var hi := _here_idx()
 	_solve_labels(font, hi)
-	_draw_ground()
-	if lm.settled:
-		_draw_town(hi)
-	else:
-		_draw_rooms(hi)
 
 	# The ways between rooms, under everything. A way to a room still unknown is
 	# not drawn: it would say "there is something through here", which is exactly
@@ -189,6 +245,7 @@ func _draw() -> void:
 
 ## The plan names itself, in the Atlas's own box. A town map with no title is a
 ## diagram; the dialog's title bar is chrome and vanishes in a screenshot.
+
 func _draw_cartouche(font: Font) -> void:
 	if lm == null or lm.place == "":
 		return
@@ -298,7 +355,7 @@ func _paper_tone() -> Color:
 
 
 
-func _draw_ground() -> void:
+func _draw_ground(ci: CanvasItem) -> void:
 	# THE PAPER IS `_paper`, the shader behind this node. Nothing to fill here.
 	if not lm.settled:
 		# A site with no one in it is drawn on the same sheet, but the ground the
@@ -330,14 +387,14 @@ func _draw_ground() -> void:
 	# ENGRAVED, NOT FILLED. The Atlas hatches its sea off the depth; a town has no
 	# depth field, so the hatch is drawn as lines PARALLEL TO THE SHORE, which is
 	# what the same engraver would do at this scale and reads as the same sea.
-	draw_colored_polygon(pts, Color(_paper_tone().darkened(0.06), 1.0))
+	ci.draw_colored_polygon(pts, Color(_paper_tone().darkened(0.06), 1.0))
 	for band in 5:
 		var off := float(band + 1) * 2.6
 		var hl := PackedVector2Array()
 		for q in coast:
 			hl.append(q + d * off * _plate())
-		draw_polyline(hl, Color(_ink(), 0.34 - float(band) * 0.055), 1.1, true)
-	draw_polyline(coast, Color(_ink(), 0.95), 2.2, true)
+		ci.draw_polyline(hl, Color(_ink(), 0.34 - float(band) * 0.055), 1.1, true)
+	ci.draw_polyline(coast, Color(_ink(), 0.95), 2.2, true)
 
 
 ## ── PLATE TO SHEET, AT ONE SCALE ─────────────────────────────────────────────
@@ -365,7 +422,7 @@ func _pct(p: Vector2) -> Vector2:
 ## why no building can stand in a road: there is no road to stand in, only
 ## ground nobody built on. Drawing streets as ribbons over a layout is what the
 ## first version did, and it is why buildings floated free of them.
-func _draw_town(_hi: int) -> void:
+func _draw_town(ci: CanvasItem) -> void:
 	var ink := _ink()
 	var paper := _paper_tone()
 	# The built-up ground first, a shade off the open sheet: this is what makes
@@ -374,7 +431,7 @@ func _draw_town(_hi: int) -> void:
 		var ring := PackedVector2Array()
 		for q in lm.bounds:
 			ring.append(_pct(q))
-		draw_colored_polygon(ring, Color(paper.darkened(0.05), 1.0))
+		ci.draw_colored_polygon(ring, Color(paper.darkened(0.05), 1.0))
 
 	# Each ward as a faint field, so a quarter reads as a quarter.
 	for w in lm.wards:
@@ -383,7 +440,7 @@ func _draw_town(_hi: int) -> void:
 		var wp := PackedVector2Array()
 		for q in w:
 			wp.append(_pct(q))
-		draw_colored_polygon(wp, Color(paper.darkened(0.10), 0.55))
+		ci.draw_colored_polygon(wp, Color(paper.darkened(0.10), 0.55))
 
 	# The wall over the ward edges, so the boundary reads as built rather than as
 	# the outermost street.
@@ -393,13 +450,13 @@ func _draw_town(_hi: int) -> void:
 			ring2.append(_pct(q))
 		ring2.append(ring2[0])
 		if lm.walled:
-			draw_polyline(ring2, Color(ink, 0.92), 3.4, true)
+			ci.draw_polyline(ring2, Color(ink, 0.92), 3.4, true)
 			for k in range(0, lm.bounds.size(), 4):
 				var tp2 := _pct(lm.bounds[k])
-				draw_circle(tp2, 3.4, paper)
-				draw_arc(tp2, 3.4, 0, TAU, 14, Color(ink, 0.92), 1.6, true)
+				ci.draw_circle(tp2, 3.4, paper)
+				ci.draw_arc(tp2, 3.4, 0, TAU, 14, Color(ink, 0.92), 1.6, true)
 		else:
-			draw_polyline(ring2, Color(ink, 0.45), 1.4, true)
+			ci.draw_polyline(ring2, Color(ink, 0.45), 1.4, true)
 
 	# INK OUTLINES ON PAPER. A drawn town map does not shade its roofs: the
 	# footprint is left blank and the LINE does the work, with a handful filled
@@ -417,18 +474,18 @@ func _draw_town(_hi: int) -> void:
 			scr.append(_pct(q))
 		var seed_h := absi(hash(Vector2i(int(scr[0].x), int(scr[0].y))))
 		if bool(b["big"]) or seed_h % 7 == 0:
-			draw_colored_polygon(scr, Color(ink, 0.70))
+			ci.draw_colored_polygon(scr, Color(ink, 0.70))
 		else:
-			draw_colored_polygon(scr, paper)
+			ci.draw_colored_polygon(scr, paper)
 			scr.append(scr[0])
-			draw_polyline(scr, Color(ink, 0.85), 1.15, true)
+			ci.draw_polyline(scr, Color(ink, 0.85), 1.15, true)
 
 
 
 ## A ruin is ROOMS WITH WALLS, and the corridor between two of them is a passage
 ## rather than a line on a floor. Only what the fog allows: an unknown room has
 ## no rectangle, because it has no shape the player could know.
-func _draw_rooms(hi: int) -> void:
+func _draw_rooms(ci: CanvasItem, hi: int) -> void:
 	for e in lm.edges:
 		var a := int(e[0])
 		var b := int(e[1])
@@ -436,8 +493,8 @@ func _draw_rooms(hi: int) -> void:
 			continue
 		var pa := _pct(Vector2(float(lm.nodes[a]["x"]), float(lm.nodes[a]["y"])))
 		var pb := _pct(Vector2(float(lm.nodes[b]["x"]), float(lm.nodes[b]["y"])))
-		draw_line(pa, pb, Color(_ink(), 0.85), 8.0, true)
-		draw_line(pa, pb, _paper_tone(), 5.4, true)
+		ci.draw_line(pa, pb, Color(_ink(), 0.85), 8.0, true)
+		ci.draw_line(pa, pb, _paper_tone(), 5.4, true)
 	for i in lm.rooms.size():
 		var st := lm.state_of(i, hi, walked)
 		if st == 0:
@@ -449,14 +506,14 @@ func _draw_rooms(hi: int) -> void:
 		if st == 1:
 			# Scouted: the doorway seen, the room not entered. A dashed wall is
 			# how a surveyor draws what was reported rather than measured.
-			_dashed_rect(scr_r, Color(_ink(), 0.42))
+			_dashed_rect(ci, scr_r, Color(_ink(), 0.42))
 			continue
-		draw_rect(scr_r, _paper_tone())
-		draw_rect(scr_r, Color(_ink(), 0.9), false, 2.2)
+		ci.draw_rect(scr_r, _paper_tone())
+		ci.draw_rect(scr_r, Color(_ink(), 0.9), false, 2.2)
 
 
 ## A dashed rectangle, for a room reported but not walked.
-func _dashed_rect(r: Rect2, col: Color) -> void:
+func _dashed_rect(ci: CanvasItem, r: Rect2, col: Color) -> void:
 	var corners := [r.position, r.position + Vector2(r.size.x, 0),
 		r.position + r.size, r.position + Vector2(0, r.size.y)]
 	for i in 4:
@@ -466,7 +523,7 @@ func _dashed_rect(r: Rect2, col: Color) -> void:
 		var dir := (b - a) / maxf(run, 0.001)
 		var t := 0.0
 		while t < run:
-			draw_line(a + dir * t, a + dir * minf(t + 4.0, run), col, 1.4, true)
+			ci.draw_line(a + dir * t, a + dir * minf(t + 4.0, run), col, 1.4, true)
 			t += 7.0
 
 
