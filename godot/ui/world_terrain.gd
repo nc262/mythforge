@@ -410,26 +410,29 @@ func cost(c: Vector2i) -> float:
 			return 1.0
 
 
-## What a road pays, with the ground's own unevenness in it.
+## What a road pays. Which is exactly what the ground costs — this is a
+## PASS-THROUGH, and the comment is here so the jitter that used to live in it
+## does not get reinvented.
 ##
-## `cost()` is the honest terrain cost and stays pure — self_check compares it
-## across worlds, and a comparison against a jittered number is a comparison
-## against noise. This is what PATHFINDING uses.
+## IT USED TO MULTIPLY BY A HASHED +/-12 %, to stop A* returning the axis-aligned
+## staircase that is genuinely cheapest over near-uniform ground. It did not
+## work, and could not have: `AStarGrid2D` charges sqrt(2) for a diagonal, so
+## deviating one cell and rejoining costs about 0.83 of a cell — a cell has to be
+## some 83 % dearer before avoiding it pays for itself. Twelve per cent buys
+## nothing, and the measurement says so: with the jitter in, routes still ran
+## 61-80 % of their points dead straight, and Saltmarsh still drew a ruler line
+## across the marsh.
 ##
-## WHY THE JITTER. On near-uniform ground A* has no reason to bend, so it returns
-## the axis-aligned staircase that is genuinely cheapest — and Saltmarsh, a
-## drowned reach at relief 0.50 where every land cell costs within 28 % of every
-## other, drew a dead-straight ruler line clean across the marsh. It looked like
-## an artefact because it WAS one: a road drawn by a cost field with nothing to
-## say. Real ground is never uniform, so neither is this; the jitter is hashed
-## per cell, so a route is still identical every time it is drawn.
+## Nor could the number simply be raised. At 83 % the jitter would outweigh
+## TERRAIN — a hill at relief 0.5 costs 27 % over a plain — so roads would ignore
+## the ground entirely to chase noise. The lever was wrong, not its setting.
 ##
-## It is deliberately small. At +/-12 % it breaks ties and nothing more — a road
-## will still cross a hill rather than detour around a continent, because a hill
-## costs far more than 12 % over a plain.
+## A grid router returns a grid-aligned answer because that answer is correct:
+## across flat marsh the cheapest road IS straight. What is wrong is DRAWING it
+## with a ruler, and that belongs to the line, not to the cost field. See
+## `world_map._smooth`.
 func route_cost(c: Vector2i) -> float:
-	var h := (c.x * 73856093) ^ (c.y * 19349663) ^ absi(hash(world_id))
-	return cost(c) * (0.88 + 0.24 * float(absi(h) % 1000) / 1000.0)
+	return cost(c)
 
 
 ## Does this kind of place belong on this cell?

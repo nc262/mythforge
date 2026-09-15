@@ -102,6 +102,44 @@ func _probe(wid: String) -> void:
 			if t.cost(Vector2i(x, y)) > 1.5:
 				heavy += 1
 	print("    cost field: %.1f%% of cells over 1.5x" % [100.0 * float(heavy) / float(total)])
+	# HOW STRAIGHT IS THE ROUTE? Printed as the share of interior points that
+	# continue in exactly the direction of the one before. Saltmarsh reads 65 %.
+	#
+	# THAT NUMBER IS NOT A DEFECT AND MUST NOT BE "FIXED" HERE. Over flat marsh
+	# the cheapest road genuinely is straight, and a +/-12 % jitter in the cost
+	# field was tried against exactly this number, moved it nowhere, and has been
+	# deleted — `AStarGrid2D` charges sqrt(2) for a diagonal, so a cell must be
+	# ~83 % dearer before avoiding it pays, and a jitter that large would outweigh
+	# terrain itself. The hand belongs in the DRAWING, and lives in
+	# `world_map._wander`. This is here to keep the route honest, not pretty.
+	var a := AStarGrid2D.new()
+	a.region = Rect2i(0, 0, WorldTerrain.W, WorldTerrain.H)
+	a.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
+	a.update()
+	for yy in WorldTerrain.H:
+		for xx in WorldTerrain.W:
+			var cc := Vector2i(xx, yy)
+			a.set_point_solid(cc, t.is_water(cc))
+			a.set_point_weight_scale(cc, t.route_cost(cc))
+	var pins: Array = []
+	for l3 in places:
+		if l3 is Dictionary and l3.has("x") and l3.has("y"):
+			var cc2 := t.cell_of(Vector2(float(l3["x"]), float(l3["y"])))
+			if not t.is_water(cc2):
+				pins.append(cc2)
+	var flat := 0
+	var pts := 0
+	for i in range(1, pins.size()):
+		var path := a.get_id_path(pins[i - 1], pins[i])
+		for k in range(1, path.size() - 1):
+			pts += 1
+			var d0: Vector2i = path[k] - path[k - 1]
+			var d1: Vector2i = path[k + 1] - path[k]
+			if d0 == d1:
+				flat += 1
+	if pts > 0:
+		print("    roads: %.0f%% of %d points continue straight" % [
+			100.0 * float(flat) / float(pts), pts])
 	_render(wid, t, places)
 	# A DEGENERATE FIELD IS NOT A TERRAIN. All-land or all-water passes every pin
 	# check for the wrong reason, and a flat elevation makes every road straight

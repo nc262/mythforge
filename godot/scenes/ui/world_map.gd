@@ -581,7 +581,76 @@ func _smooth(pts: PackedVector2Array) -> PackedVector2Array:
 			out.append(pts[i].lerp(pts[i + 1], 0.75))
 		out.append(pts[pts.size() - 1])
 		pts = out
-	return pts
+	return _wander(pts)
+
+
+## THE HAND, not the ruler. Chaikin rounds a staircase, but it leaves a straight
+## run straight — and over flat ground A* returns long straight runs because they
+## are genuinely cheapest. Saltmarsh drew a dead horizontal line across half the
+## sheet: 65 % of its route points continued in exactly the same direction as the
+## one before.
+##
+## The cost field was the wrong place to fix that and a +/-12 % jitter there did
+## nothing measurable (see `WorldTerrain.route_cost`). The route is the
+## topological answer — which way the road goes — and this is the drawing of it,
+## the same distinction the coastline already makes. Displaced PERPENDICULAR to
+## travel by a low-frequency wave, so the line breathes instead of wobbling, and
+## pinned at both ends so it still meets its pins.
+##
+## Amplitude is 2.4 terrain cells. The first attempt used 0.6 and was invisible —
+## eight pixels of sway across eight hundred, which is a change that moves no
+## pixel and would have been worth deleting rather than keeping behind a comment.
+##
+## What makes that amplitude safe is an EASED PER-POINT LIMIT.
+##
+## Two wrong shapes came first and both are worth the four lines it takes to say
+## so. Reverting just the offending point left a visible kink — one point back on
+## the route between two neighbours that had moved. Halving the amplitude for the
+## whole route and retrying then made it worse: the Sunken Fort road runs along a
+## shoreline for one stretch of its length, so that stretch vetoed the sway of
+## the entire continent crossing and the road came back a ruler, printing
+## "WANDER GAVE UP n=264" while the short route swayed happily at amp 16.
+##
+## So: mark each point 1 where the full displacement stays on its own ground and
+## 0 where it does not, BLUR that mark along the route, and scale by it. The road
+## leans where it has room and eases back to the surveyed line as the coast comes
+## up — which is what a road does, and the blur is what makes it ease rather than
+## step.
+func _wet(ground: WorldTerrain, p: Vector2) -> bool:
+	return ground.is_water(ground.cell_of(Vector2(
+		p.x / maxf(size.x, 1.0) * 100.0, p.y / maxf(size.y, 1.0) * 100.0)))
+
+
+func _wander(pts: PackedVector2Array) -> PackedVector2Array:
+	var n := pts.size()
+	if n < 8:
+		return pts
+	var ground := WorldTerrain.for_world(GameState.world_id())
+	var amp: float = 2.4 * size.x / float(WorldTerrain.W)
+	var ph := float(absi(hash(Vector2i(int(pts[0].x), int(pts[0].y)))) % 1000) * 0.0063
+	var off := PackedVector2Array()
+	var room := PackedFloat32Array()
+	off.resize(n)
+	room.resize(n)
+	for i in n:
+		var t := float(i) / float(n - 1)
+		var d := (pts[mini(i + 1, n - 1)] - pts[maxi(i - 1, 0)]).normalized()
+		var w := sin(t * PI * 2.4 + ph) * 0.7 + sin(t * PI * 5.1 + ph * 1.7) * 0.3
+		# Zero at both ends, so the pins are untouched.
+		off[i] = d.orthogonal() * w * amp * sin(t * PI)
+		# AGAINST THE POINT'S OWN GROUND, not against water outright: a coastal
+		# route has points sitting ON the boundary and `cell_of` rounds them into
+		# the sea, so an absolute test is unsatisfiable and vetoes everything.
+		room[i] = 0.0 if (_wet(ground, pts[i] + off[i]) and not _wet(ground, pts[i])) else 1.0
+	for _pass in 4:
+		var blur := room.duplicate()
+		for i in range(1, n - 1):
+			blur[i] = (room[i - 1] + room[i] * 2.0 + room[i + 1]) * 0.25
+		room = blur
+	var out := PackedVector2Array()
+	for i in n:
+		out.append(pts[i] + off[i] * room[i])
+	return out
 
 
 ## The line a road actually takes. Cached, because _draw runs every frame.
