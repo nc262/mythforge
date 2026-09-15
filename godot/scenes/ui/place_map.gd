@@ -628,13 +628,32 @@ func _draw_town(ci: CanvasItem) -> void:
 		var scr := PackedVector2Array()
 		for q in poly:
 			scr.append(_pct(q))
-		var seed_h := absi(hash(Vector2i(int(scr[0].x), int(scr[0].y))))
-		if bool(b["big"]) or seed_h % 7 == 0:
+		# WEIGHT BY DEPTH INTO THE TOWN, not by a coin flip. This filled one
+		# building in seven solid on a hash, which I invented — the research found
+		# no source for "important buildings are filled" as a historical rule, and
+		# declined to treat it as one. What IS cross-source verified, from the OS
+		# plans through Braun & Hogenberg to Merian, is ink DENSITY: the core of a
+		# town is darker and heavier, the edge lighter and thinner. So the core
+		# gets a heavier line and the outskirts a hairline, which says the same
+		# thing the random fill was pretending to say and says it truthfully.
+		var d := TownPlan.centroid(poly).distance_to(Vector2(50, 50)) / 46.0
+		var weight: float = lerpf(1.35, 0.8, clampf(d, 0.0, 1.0))
+		if bool(b["big"]):
 			ci.draw_colored_polygon(scr, Color(ink, 0.70))
 		else:
 			ci.draw_colored_polygon(scr, paper)
-			scr.append(scr[0])
-			ci.draw_polyline(scr, Color(ink, 0.85), 1.15, true)
+			var ring3 := scr.duplicate()
+			ring3.append(ring3[0])
+			ci.draw_polyline(ring3, Color(ink, lerpf(0.9, 0.62, clampf(d, 0.0, 1.0))), weight, true)
+			# THE RIDGE. One line down the long axis is what makes a rectangle
+			# read as a building rather than a box — the single cheapest mark on
+			# this whole sheet, and the device every hand-drawn town map uses.
+			var rg := TownPlan.ridge(poly)
+			if rg.size() == 2:
+				var a := _pct(rg[0])
+				var b2 := _pct(rg[1])
+				if a.distance_squared_to(b2) > 9.0:
+					ci.draw_line(a, b2, Color(ink, 0.5), 0.9, true)
 
 
 

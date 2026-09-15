@@ -199,6 +199,57 @@ static func _signed_area(poly: PackedVector2Array) -> float:
 	return a * 0.5
 
 
+## ── THE RIDGE: THE ONE LINE THAT MAKES A RECTANGLE A BUILDING ────────────────
+##
+## A plan-view footprint with a ridge line down it reads as a BUILDING; the same
+## footprint without one reads as a box. Worth knowing where that convention
+## comes from, because it is not where I assumed: real large-scale plan
+## cartography does not draw roofs at all — Ordnance Survey 1:500 town plans show
+## footprint outlines, party walls between terraces, and a cross-hatch reserved
+## for GLASS roofs. The ridge-on-a-plan-view-rectangle is a hybrid invented by
+## illustrators, borrowing the oblique bird's-eye cue and grafting it onto a
+## footprint. It is still the right answer here — it is a well-established
+## illustration convention and the thing every hand-drawn town map does — but it
+## is an illustrator's device, not an inherited cartographic one.
+##
+## Returns the ridge as a segment down the footprint's LONG axis, inset from both
+## ends so it reads as a roof line rather than as a diagonal across the shape.
+static func ridge(poly: PackedVector2Array) -> PackedVector2Array:
+	if poly.size() < 3:
+		return PackedVector2Array()
+	var c := centroid(poly)
+	# THE PRINCIPAL AXIS, NOT THE WIDEST PAIR OF VERTICES. The widest pair of a
+	# rectangle is its DIAGONAL, so the first version drew every roof corner to
+	# corner and a town of narrow plots came out looking cross-hatched. The
+	# principal axis of the vertex cloud is the long side, which is what a ridge
+	# runs along.
+	var cxx := 0.0
+	var cyy := 0.0
+	var cxy := 0.0
+	for p in poly:
+		var d := p - c
+		cxx += d.x * d.x
+		cyy += d.y * d.y
+		cxy += d.x * d.y
+	if absf(cxx) + absf(cyy) < 0.000001:
+		return PackedVector2Array()
+	var theta := 0.5 * atan2(2.0 * cxy, cxx - cyy)
+	var best := Vector2(cos(theta), sin(theta))
+	var lo := INF
+	var hi := -INF
+	for p in poly:
+		var t := p.dot(best)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	var half := (hi - lo) * 0.5
+	if half < 0.18:
+		return PackedVector2Array()      # too small to carry a line at this zoom
+	var mid := c.dot(best)
+	return PackedVector2Array([
+		c + best * (lo - mid + half * 0.38),
+		c + best * (hi - mid - half * 0.38)])
+
+
 ## ── BURGAGE: STRIPS OFF A STREET, BACK TO BACK ───────────────────────────────
 ##
 ## The best-attested pattern in the medieval town record, and nothing like what
