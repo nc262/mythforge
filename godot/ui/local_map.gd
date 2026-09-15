@@ -66,8 +66,8 @@ var edges: Array = []              # [i, j] into `nodes`
 ## buildings along them, a plaza, a shore where the sea actually is — that is a
 ## map of one. Same split as the world chart: the field decides, the drawing
 ## shows, and nothing here is ever read back.
-var streets: Array = []            # PackedVector2Array, percent space
-var buildings: Array = []          # {"r": Rect2, "big": bool}
+var wards: Array = []              # PackedVector2Array per quarter, percent space
+var buildings: Array = []          # {"poly": PackedVector2Array, "big": bool}
 var rooms: Array = []              # unsettled: one Rect2 per node, same index
 var water_dir := Vector2.ZERO      # toward the sea, or ZERO if landlocked
 var water_at := 0.0                # how far across the plate the shore sits
@@ -136,7 +136,18 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 	# different worlds are different towns, and the same one is itself forever.
 	rng.seed = absi(hash("%s|%s" % [wid, place_name]))
 	if settled:
-		_build_town(rng)
+		# ORDER MATTERS AND IT DID NOT BEFORE. The wall was generated inside
+		# `_plan_town`, AFTER the named places were already sitting on a ring at
+		# radius 24-33 — while the wall itself ran 25 +/- 9, so 16 to 34. Places
+		# landed OUTSIDE their own wall and the streets from the square crossed
+		# it, which is the "roads going outside the city" defect exactly.
+		#
+		# Two numbers in two functions that had to agree and never did. The fix
+		# is not to make them match, because matched numbers drift apart again:
+		# it is to DERIVE one from the other so there is only one. The boundary
+		# is built first, and everything inside is placed at a fraction of the
+		# wall's own reach on its own bearing.
+		_plan_bounds(rng)
 		_plan_town(rng)
 	else:
 		_build_site(rng)
@@ -161,130 +172,17 @@ func _cell_of_place(ground: WorldTerrain) -> Vector2i:
 	return Vector2i(WorldTerrain.W / 2, WorldTerrain.H / 2)
 
 
-## ── THE TOWN PLAN: BLOCKS AND LOTS, NOT BOXES ON A LINE ──────────────────────
-##
-## The first version scattered ~35 buildings along street centrelines and it
-## looked like a village diagram, because that is what it was. A town map reads
-## as a town because the space BETWEEN the streets is full: blocks subdivided
-## into lots, and a building on nearly every lot. That is how Watabou's city
-## generator and every hand-drawn town map are built, after Parish & Muller —
-## streets partition, lots fill, and density is what sells it.
-##
-## So: recursive rectangle subdivision over the built-up area, in a frame rotated
-## per town so the grain is not always north-south, minus anything that falls on
-## a street, in the water, or outside the walls.
-## Percent of the plate. A house on a town map is SMALL — one to two percent of
-## the width. The first version used 3.4 with a depth of 6, and since each pass
-## splits only the long axis that is barely three splits per axis: "lots" came
-## out 15 units across and the town rendered as a dozen beige slabs. The depth
-## has to be about 2*log2(span/LOT_MIN) or the recursion runs out before the
-## rectangles are anywhere near house-sized.
-const LOT_MIN := 1.7
-const LOT_DEPTH := 12
+## Is this point out past the shore? The water sits as a half-plane in the
+## direction the world map says the sea is, so "seaward of the line" is the whole
+## test and it agrees with the chart by construction.
+func _in_water(p: Vector2) -> bool:
+	if water_dir == Vector2.ZERO:
+		return false
+	return (p - Vector2(50, 50)).dot(water_dir) > water_at
 
 
-func _plan_town(rng: RandomNumberGenerator) -> void:
-	for e in edges:
-		var a := Vector2(float(nodes[int(e[0])]["x"]), float(nodes[int(e[0])]["y"]))
-		var b := Vector2(float(nodes[int(e[1])]["x"]), float(nodes[int(e[1])]["y"]))
-		var mid := a.lerp(b, rng.randf_range(0.4, 0.6)) 			+ (b - a).normalized().orthogonal() * rng.randf_range(-4.0, 4.0)
-		streets.append(PackedVector2Array([a, mid, b]))
-
-	# The built-up edge: an irregular ring round the square, cut where the water
-	# is. Drawn as the wall for a settlement and as the field boundary otherwise.
-	var lobes := rng.randf_range(0.0, TAU)
-	for k in 34:
-		var ang := float(k) / 34.0 * TAU
-		# COMPACT. At 34 the built-up area was two thirds of the plate and the
-		# houses inside it read as a scattering in a meadow. A town is DENSE — a
-		# small footprint packed full — and density is what makes it a town
-		# rather than a hamlet spread thin.
-		var r := 25.0 + sin(ang * 3.0 + lobes) * 4.6 + sin(ang * 5.0 + lobes * 2.0) * 2.8 			+ sin(ang * 8.0 + lobes * 0.7) * 1.5
-		var at := Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * r
-		if _in_water(at):
-			at = Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * _shore_reach(ang)
-		bounds.append(at)
-	walled = kind == "settlement"
-	# LANES OFF THE MAIN ROADS. Six streets do not make blocks — they make a star,
-	# and a star with houses beside it is a village. The lanes are what turn the
-	# space between roads into BLOCKS, which is the unit a town is actually built
-	# out of, and they cost one loop.
-	var spokes := streets.size()
-	for si in spokes:
-		var st: PackedVector2Array = streets[si]
-		var a0: Vector2 = st[0]
-		var b0: Vector2 = st[st.size() - 1]
-		var run := a0.distance_to(b0)
-		if run < 12.0:
-			continue
-		var dir := (b0 - a0) / run
-		var nrm := dir.orthogonal()
-		for _k in rng.randi_range(1, 3):
-			var t := rng.randf_range(0.25, 0.8)
-			var root := a0 + dir * run * t
-			var reach := rng.randf_range(7.0, 15.0) * (1.0 if rng.randf() < 0.5 else -1.0)
-			var tip := root + nrm * reach
-			# CLIPPED TO THE TOWN. Lanes ran straight out through the wall and
-			# off into open country, which reads as a bug rather than a road —
-			# a lane is a way between blocks, and outside the built-up edge
-			# there are no blocks for it to be between.
-			if _in_water(tip) or not _inside_bounds(tip) or not _inside_bounds(root):
-				continue
-			streets.append(PackedVector2Array([root, root.lerp(tip, 0.55)
-				+ dir * rng.randf_range(-2.0, 2.0), tip]))
-
-
-	# LOTS. Subdivide, then keep what is genuinely buildable.
-	var grain := rng.randf_range(0.0, PI)
-	var lots: Array = []
-	_subdivide(Rect2(Vector2(6, 6), Vector2(88, 88)), LOT_DEPTH, rng, lots)
-	for lot in lots:
-		var r: Rect2 = lot
-		var c := r.position + r.size * 0.5
-		var cw := _rot(c, grain)
-		if _in_water(cw) or not _inside_bounds(cw):
-			continue
-		if _near_street(cw, 1.9):
-			continue                       # the street itself, and its verges
-		# Density falls off from the square: a core of packed frontage, then
-		# looser plots toward the edge, which is what a town actually is.
-		var away := cw.distance_to(Vector2(50, 50)) / 25.0
-		if rng.randf() < away * 0.22:
-			continue
-		var inset := rng.randf_range(0.35, 0.8)
-		var size2 := (r.size - Vector2(inset, inset) * 2.0)
-		if size2.x < 1.0 or size2.y < 1.0:
-			continue
-		buildings.append({"at": cw, "size": size2, "ang": grain,
-			"big": r.size.x * r.size.y > 9.0})
-
-
-## Split a rectangle down the long axis until the pieces are lot-sized. The
-## split is off-centre, or every lot on the map is the same size and the result
-## is graph paper again — the same fault the city shader had.
-func _subdivide(r: Rect2, depth: int, rng: RandomNumberGenerator, out: Array) -> void:
-	var long_side: float = maxf(r.size.x, r.size.y)
-	if depth <= 0 or long_side < LOT_MIN * 2.0:
-		if r.size.x >= LOT_MIN * 0.6 and r.size.y >= LOT_MIN * 0.6:
-			out.append(r)
-		return
-	var t := rng.randf_range(0.36, 0.64)
-	if r.size.x >= r.size.y:
-		var w := r.size.x * t
-		_subdivide(Rect2(r.position, Vector2(w, r.size.y)), depth - 1, rng, out)
-		_subdivide(Rect2(r.position + Vector2(w, 0), Vector2(r.size.x - w, r.size.y)), depth - 1, rng, out)
-	else:
-		var h := r.size.y * t
-		_subdivide(Rect2(r.position, Vector2(r.size.x, h)), depth - 1, rng, out)
-		_subdivide(Rect2(r.position + Vector2(0, h), Vector2(r.size.x, r.size.y - h)), depth - 1, rng, out)
-
-
-func _rot(p: Vector2, a: float) -> Vector2:
-	var d := p - Vector2(50, 50)
-	return Vector2(50, 50) + Vector2(d.x * cos(a) - d.y * sin(a), d.x * sin(a) + d.y * cos(a))
-
-
-## How far the land reaches on this bearing before the water starts.
+## How far the land reaches on this bearing before the water starts — used to
+## pull the built-up edge in where a town runs up against its own harbour.
 func _shore_reach(ang: float) -> float:
 	var d := Vector2(cos(ang), sin(ang))
 	for step in 34:
@@ -296,32 +194,113 @@ func _shore_reach(ang: float) -> float:
 	return 6.0
 
 
-func _inside_bounds(p: Vector2) -> bool:
+## THE BUILT-UP EDGE, built FIRST because everything else is placed relative to
+## it. An irregular ring round the square, pulled in wherever the water is.
+##
+## COMPACT: at radius 34 the built-up area was two thirds of the plate and the
+## houses inside it read as a scattering in a meadow. A town is a small footprint
+## packed full, and that density is what makes it a town rather than a hamlet
+## spread thin.
+func _plan_bounds(rng: RandomNumberGenerator) -> void:
+	var lobes := rng.randf_range(0.0, TAU)
+	for k in 34:
+		var ang := float(k) / 34.0 * TAU
+		var r := 25.0 + sin(ang * 3.0 + lobes) * 4.6 + sin(ang * 5.0 + lobes * 2.0) * 2.8 			+ sin(ang * 8.0 + lobes * 0.7) * 1.5
+		var at := Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * r
+		if _in_water(at):
+			at = Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * _shore_reach(ang)
+		bounds.append(at)
+	walled = kind == "settlement"
+
+
+## How far the built-up edge reaches on a bearing — the ONE number every
+## placement inside the town derives from, so nothing can sit outside its own
+## wall and no second radius exists to drift away from this one.
+func _reach(ang: float) -> float:
 	if bounds.is_empty():
-		return true
-	var d := (p - Vector2(50, 50))
-	var ang := fposmod(d.angle(), TAU)
-	var idx := int(ang / TAU * float(bounds.size())) % bounds.size()
-	return d.length() <= (bounds[idx] - Vector2(50, 50)).length()
+		return 25.0
+	var idx := int(fposmod(ang, TAU) / TAU * float(bounds.size())) % bounds.size()
+	return (bounds[idx] - Vector2(50, 50)).length()
 
 
-func _near_street(p: Vector2, how_near: float) -> bool:
-	for st in streets:
-		for i in range(st.size() - 1):
-			var a: Vector2 = st[i]
-			var b: Vector2 = st[i + 1]
-			if p.distance_to(Geometry2D.get_closest_point_to_segment(p, a, b)) < how_near:
-				return true
-	return false
+## ── THE TOWN PLAN ────────────────────────────────────────────────────────────
+##
+## Wards cut out of the boundary, each inset to leave its street, each then
+## subdivided into buildings. `TownPlan` holds the geometry; this holds the
+## decisions about what kind of town it is.
+##
+## THE NAMED PLACES ARE WARD CENTRES, which is also how the "roads going outside
+## the city" defect dies for good. They used to sit on a ring at radius 24-33
+## while the wall ran 16-34, so places landed outside their own wall and the
+## streets to them crossed it — two numbers in two functions that had to agree
+## and never did. A ward is a piece OF the boundary, so its centre cannot be
+## outside the boundary. There is no second number left to drift.
+func _plan_town(rng: RandomNumberGenerator) -> void:
+	if bounds.size() < 3:
+		return
+	var want := 7 if kind == "settlement" else 5
+	var quarters := TownPlan.wards(bounds, want, rng)
+	# Biggest first, so the named places land in the wards that can hold them and
+	# the market square is the heart rather than an off-centre scrap.
+	quarters.sort_custom(func(a, b): return TownPlan.area(a) > TownPlan.area(b))
+	wards = quarters
 
+	var flavor: Dictionary = WorldSkin.skin_for_id(world_id).get("flavor", {})
+	var urban := str(flavor.get("world", "")).contains("cyber") \
+		or str(flavor.get("world", "")).contains("steam")
+	# What each ward IS, richest and busiest first. The order matters: a ward's
+	# kind decides how big its buildings are and how chaotic its streets, which
+	# is what makes a town read as having quarters rather than one texture.
+	var roles: Array = [
+		["square", "The %s" % ("Plaza" if urban else "Market Square")],
+		["inn", "The %s" % ("Noodle Bar" if urban else "Common Room")],
+		["shop", "The %s" % ("Stall Row" if urban else "Trade Row")],
+		["hall", "The %s" % ("Admin Block" if urban else "Moot Hall")],
+		["homes", "The %s" % ("Stacks" if urban else "Cottages")],
+	]
+	match site:
+		WorldTerrain.COAST, WorldTerrain.SHOAL:
+			roles.append(["quay", "The %s" % ("Docks" if urban else "Quay")])
+		WorldTerrain.PEAK, WorldTerrain.HILL:
+			roles.append(["gate", "The %s" % ("Upper Terrace" if urban else "High Gate")])
+		_:
+			roles.append(["gate", "The %s" % ("Checkpoint" if urban else "Town Gate")])
 
-## Is this point out past the shore? The water sits as a half-plane in the
-## direction the world map says the sea is, so "seaward of the line" is the whole
-## test and it agrees with the chart by construction.
-func _in_water(p: Vector2) -> bool:
-	if water_dir == Vector2.ZERO:
-		return false
-	return (p - Vector2(50, 50)).dot(water_dir) > water_at
+	for i in quarters.size():
+		var poly: PackedVector2Array = quarters[i]
+		var at := TownPlan.centroid(poly)
+		if i < roles.size():
+			_add(str(roles[i][1]), str(roles[i][0]), at.x, at.y)
+			if i > 0:
+				edges.append([0, i])          # every ward reachable from the square
+		# THE STREET IS THE GAP. Each ward is inset before it is subdivided, so
+		# the space between wards is the road and no building can stand in it.
+		# Nothing here draws a street; the negative space is the street.
+		var block := TownPlan.inset(poly, TownPlan.REGULAR_STREET * 0.5)
+		if block.size() < 3:
+			continue
+		# Poorer and older quarters are more chaotic and more tightly packed;
+		# richer ones have bigger plots and bigger courtyards. One chaos value
+		# for a whole town makes every quarter read the same.
+		var rich: float = 1.0 - float(i) / maxf(float(quarters.size() - 1), 1.0)
+		var min_area: float = lerpf(2.0, 7.0, rich)
+		var chaos: float = lerpf(0.9, 0.5, rich)
+		var empty: float = lerpf(0.03, 0.16, rich)
+		var lots: Array = []
+		TownPlan.subdivide(block, min_area, chaos, 0.7, empty, rng, lots)
+		for lot in lots:
+			# THINNED AT THE EDGE. A town that stops dead at its boundary reads as
+			# a cut-out; real ones fray. Weighted by distance from the middle, so
+			# the core stays solid.
+			# Thinning starts only at the OUTER FIFTH and never removes more than a
+			# fifth of what is there. At (d - 0.55) * 0.9 it was stripping whole
+			# wards on the far side of the town, which reads as a district that
+			# was never built rather than as an edge that frays.
+			var d := TownPlan.centroid(lot).distance_to(Vector2(50, 50)) / maxf(_reach(0.0), 1.0)
+			if rng.randf() < clampf((d - 0.80) * 0.9, 0.0, 0.2):
+				continue
+			buildings.append({"poly": lot, "big": TownPlan.area(lot) > min_area * 2.2})
+
 
 
 ## ── ROOMS ────────────────────────────────────────────────────────────────────
@@ -350,57 +329,6 @@ func _plan_rooms(rng: RandomNumberGenerator) -> void:
 
 
 ## ── A TOWN ───────────────────────────────────────────────────────────────────
-## A square in the middle, a ring of buildings round it, and streets joining them
-## to the square rather than to each other — which is what a small settlement
-## actually is, and it guarantees the graph is connected without a spanning tree.
-func _build_town(rng: RandomNumberGenerator) -> void:
-	var flavor: Dictionary = WorldSkin.skin_for_id(world_id).get("flavor", {})
-	var urban := str(flavor.get("world", "")).contains("cyber") \
-		or str(flavor.get("world", "")).contains("steam")
-	_add("The %s" % ("Plaza" if urban else "Market Square"), "square", 50.0, 50.0)
-	var ring: Array = []
-	# The inn is the anchor of a Mythforge settlement — `tavern` is a KIND and
-	# every town has somewhere to sit down.
-	ring.append(["inn", "The %s" % ("Noodle Bar" if urban else "Common Room")])
-	ring.append(["shop", "The %s" % ("Stall Row" if urban else "Trade Row")])
-	ring.append(["hall", "The %s" % ("Admin Block" if urban else "Moot Hall")])
-	ring.append(["homes", "The %s" % ("Stacks" if urban else "Cottages")])
-	# THE SITE DECIDES THE FIFTH. This is the whole point of inheriting from the
-	# world terrain: a coastal town has a quay because the CHART says it stands
-	# on a coast, and the player can see that it does.
-	match site:
-		WorldTerrain.COAST:
-			ring.append(["quay", "The %s" % ("Docks" if urban else "Quay")])
-		WorldTerrain.PEAK, WorldTerrain.HILL:
-			ring.append(["gate", "The %s" % ("Upper Terrace" if urban else "High Gate")])
-		WorldTerrain.SHOAL:
-			ring.append(["quay", "The Stilts"])
-		_:
-			ring.append(["gate", "The %s" % ("Checkpoint" if urban else "Town Gate")])
-	for i in ring.size():
-		var ang := (float(i) / float(ring.size())) * TAU + rng.randf_range(-0.22, 0.22)
-		var r := rng.randf_range(24.0, 33.0)
-		var at := Vector2(50.0, 50.0) + Vector2(cos(ang), sin(ang)) * r
-		_add(str(ring[i][1]), str(ring[i][0]), at.x, at.y)
-		edges.append([0, nodes.size() - 1])
-	# One street round the rim, so the town is a place rather than a star. Real
-	# towns have a way from the inn to the quay that does not cross the square.
-	#
-	# NOT ACROSS THE HARBOUR. The rim joins consecutive ring buildings, and where
-	# the ring passes the shore that segment ran over open water — a road drawn
-	# across a bay, which is exactly the thing the world map's router was rebuilt
-	# to stop doing. The spokes to the square are untouched, so every building
-	# stays reachable however many rim links this drops.
-	for i in range(1, nodes.size() - 1):
-		if rng.randf() >= 0.55:
-			continue
-		var a := Vector2(float(nodes[i]["x"]), float(nodes[i]["y"]))
-		var b := Vector2(float(nodes[i + 1]["x"]), float(nodes[i + 1]["y"]))
-		if _in_water(a.lerp(b, 0.5)) or _in_water(a.lerp(b, 0.25)) or _in_water(a.lerp(b, 0.75)):
-			continue
-		edges.append([i, i + 1])
-
-
 ## ── A SITE NOBODY LIVES IN ───────────────────────────────────────────────────
 ## A spine inward from the way in, with branches — which is what a barrow, a
 ## flooded fort or a mine reads as, and it means every room has a route back.

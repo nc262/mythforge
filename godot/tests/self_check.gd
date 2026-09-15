@@ -1071,7 +1071,15 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	var inv := FileAccess.get_file_as_string("res://docs/Invariants.md")
 	assert(inv != "", "Invariants.md is missing - CLAUDE.md points every change at it")
 	var vps := FileAccess.get_file_as_string("res://../scripts/verify.ps1")
-	var me := FileAccess.get_file_as_string("res://tests/self_check.gd")
+	# EVERY HARNESS, not just this one. The parser read self_check.gd and the gate
+	# script alone, so an invariant enforced anywhere else could not be declared —
+	# which quietly pushed new checks INTO this file to satisfy the parser rather
+	# than into the harness they belong to. `town_probe` was the first row that hit
+	# it, and the row is not wrong; the reader was too narrow.
+	var me := ""
+	for f in DirAccess.get_files_at("res://tests"):
+		if str(f).ends_with(".gd"):
+			me += FileAccess.get_file_as_string("res://tests/" + str(f))
 	var in_enforced := false
 	var claims := 0
 	for line in inv.split(NEWLINE):

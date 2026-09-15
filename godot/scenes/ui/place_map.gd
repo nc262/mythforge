@@ -339,69 +339,71 @@ func _pct(p: Vector2) -> Vector2:
 	return Vector2(p.x / 100.0 * size.x, p.y / 100.0 * size.y)
 
 
-## Streets first, then what stands along them — the order they were built in.
+## ── THE TOWN, DRAWN ──────────────────────────────────────────────────────────
+##
+## NOTHING HERE DRAWS A STREET. The wards were inset before they were subdivided,
+## so the roads are the gaps that were left — negative space, not marks. That is
+## why no building can stand in a road: there is no road to stand in, only
+## ground nobody built on. Drawing streets as ribbons over a layout is what the
+## first version did, and it is why buildings floated free of them.
 func _draw_town(_hi: int) -> void:
-	# THE WALL, or the hedge line. A town needs an EDGE: without one the
-	# buildings simply stop, and "stops" reads as unfinished where "ends" reads
-	# as a boundary. Drawn under the streets so a gate is a road crossing it.
+	var ink := _ink()
+	var paper := _paper_tone()
+	# The built-up ground first, a shade off the open sheet: this is what makes
+	# the gaps between wards READ as streets rather than as holes.
 	if lm.bounds.size() > 2:
 		var ring := PackedVector2Array()
 		for q in lm.bounds:
 			ring.append(_pct(q))
-		# The built-up ground, a shade off the open sheet — the way a drawn map
-		# separates a town footprint from the country round it.
-		draw_colored_polygon(ring, Color(_paper_tone().darkened(0.05), 1.0))
-		ring.append(ring[0])
+		draw_colored_polygon(ring, Color(paper.darkened(0.05), 1.0))
+
+	# Each ward as a faint field, so a quarter reads as a quarter.
+	for w in lm.wards:
+		if w.size() < 3:
+			continue
+		var wp := PackedVector2Array()
+		for q in w:
+			wp.append(_pct(q))
+		draw_colored_polygon(wp, Color(paper.darkened(0.10), 0.55))
+
+	# The wall over the ward edges, so the boundary reads as built rather than as
+	# the outermost street.
+	if lm.bounds.size() > 2:
+		var ring2 := PackedVector2Array()
+		for q in lm.bounds:
+			ring2.append(_pct(q))
+		ring2.append(ring2[0])
 		if lm.walled:
-			draw_polyline(ring, Color(_ink(), 0.92), 3.4, true)
-			# Towers at the turns, which is what makes a ring read as a WALL
-			# rather than as a contour line.
+			draw_polyline(ring2, Color(ink, 0.92), 3.4, true)
 			for k in range(0, lm.bounds.size(), 4):
 				var tp2 := _pct(lm.bounds[k])
-				draw_circle(tp2, 3.4, _paper_tone())
-				draw_arc(tp2, 3.4, 0, TAU, 14, Color(_ink(), 0.92), 1.6, true)
+				draw_circle(tp2, 3.4, paper)
+				draw_arc(tp2, 3.4, 0, TAU, 14, Color(ink, 0.92), 1.6, true)
 		else:
-			draw_polyline(ring, Color(_ink(), 0.45), 1.4, true)
-	for st in lm.streets:
-		var scr := PackedVector2Array()
-		for q in st:
-			scr.append(_pct(q))
-		# Narrower than they were: a 7 px road on a town map is a boulevard, and
-		# with lanes added the whole plan was more street than town.
-		# A street is the PAPER between the buildings, edged in ink — not a tan
-		# ribbon laid over the ground.
-		draw_polyline(scr, Color(_ink(), 0.55), 5.0, true)
-		draw_polyline(scr, _paper_tone(), 3.2, true)
+			draw_polyline(ring2, Color(ink, 0.45), 1.4, true)
+
+	# INK OUTLINES ON PAPER. A drawn town map does not shade its roofs: the
+	# footprint is left blank and the LINE does the work, with a handful filled
+	# solid the way an engraver marks what matters without labelling it.
+	#
+	# Every footprint is a sub-polygon of its block, so a wall facing a street is
+	# parallel to that street automatically — there is no align-to-road pass,
+	# because the geometry cannot come out any other way.
 	for b in lm.buildings:
-		# Roofs vary. One flat fill for every building is what made the first
-		# version read as cardboard: a real town map has slate beside thatch
-		# beside tile, and the variation is most of what says "many hands built
-		# this over a long time".
-		# INK OUTLINES ON PAPER. A drawn town map does not shade its roofs: the
-		# footprint is left blank and the LINE does the work. A handful are
-		# filled solid, which is how an engraver marks the buildings that matter
-		# without labelling every one of them.
-		var seed_h := absi(hash(Vector2i(int(b["at"].x * 7.0), int(b["at"].y * 7.0))))
-		var quad := _footprint(b, Vector2.ZERO)
-		var closed := quad + PackedVector2Array([quad[0]])
+		var poly: PackedVector2Array = b["poly"]
+		if poly.size() < 3:
+			continue
+		var scr := PackedVector2Array()
+		for q in poly:
+			scr.append(_pct(q))
+		var seed_h := absi(hash(Vector2i(int(scr[0].x), int(scr[0].y))))
 		if bool(b["big"]) or seed_h % 7 == 0:
-			draw_colored_polygon(quad, Color(_ink(), 0.72))
+			draw_colored_polygon(scr, Color(ink, 0.70))
 		else:
-			draw_colored_polygon(quad, _paper_tone())
-			draw_polyline(closed, Color(_ink(), 0.85), 1.15, true)
+			draw_colored_polygon(scr, paper)
+			scr.append(scr[0])
+			draw_polyline(scr, Color(ink, 0.85), 1.15, true)
 
-
-## A building's four corners, turned to face its street.
-func _footprint(b: Dictionary, off: Vector2) -> PackedVector2Array:
-	var at: Vector2 = b["at"]
-	var hs: Vector2 = (b["size"] as Vector2) * 0.5
-	var a: float = float(b["ang"])
-	var ux := Vector2(cos(a), sin(a))
-	var uy := ux.orthogonal()
-	var out := PackedVector2Array()
-	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
-		out.append(_pct(at + ux * (hs.x * c.x) + uy * (hs.y * c.y)) + off)
-	return out
 
 
 ## A ruin is ROOMS WITH WALLS, and the corridor between two of them is a passage

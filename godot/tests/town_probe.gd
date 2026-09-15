@@ -1,0 +1,135 @@
+extends Node
+## THE INSTRUMENT FOR THE TOWN PLAN — counts what lands in every ward, in every
+## settled place, in every world.
+##
+##   godot --headless --path godot res://tests/town_probe.tscn
+##
+## ── WHY IT EXISTS ────────────────────────────────────────────────────────────
+## `TownPlan.subdivide` used to RETURN EMPTY at its recursion cap. Any ward that
+## needed more splits than the cap allows therefore lost every building under
+## that branch — silently — and the quarter rendered as bare ground. Nothing
+## failed. The only way to see it was to look at the picture and notice a hole,
+## which is exactly the class of defect a picture is worst at showing, because a
+## map with a park in it looks like a map with a park in it.
+##
+## So: an empty ward is a FAILURE, and coverage is a printed number rather than
+## an adjective. Headless is fine — this reads geometry, it does not draw.
+
+## A ward this small is a scrap left by a cut, not a quarter; it is allowed to
+## come out empty. Measured: real quarters in a 100-unit plate run 90-900.
+const SCRAP_AREA := 24.0
+
+## Built ground over ward ground. Watabou's towns sit near 0.45; below 0.15 a
+## quarter reads as a field with sheds in it whatever the building count says.
+const MIN_FILL := 0.15
+
+var _failed: Array = []
+var _towns := 0
+
+
+func _ready() -> void:
+	await get_tree().process_frame
+	print("TOWN-PROBE start")
+	for w in Rules.builtin_worlds():
+		var wid := str(w.get("id", ""))
+		if wid == "":
+			continue
+		# GameState.places(), not Rules.world_locations — same lesson terrain_probe
+		# carries: three worlds place ALL their pins by search, so the authored
+		# list is not what the map draws, and reading it means never seeing them.
+		GameState.character = {"id": "dm-probe", "world_id": wid}
+		for p in GameState.places():
+			if not p is Dictionary:
+				continue
+			var knd := str(p.get("kind", ""))
+			if not LocalMap.SETTLED_KINDS.has(knd):
+				continue
+			_probe(wid, str(p.get("name", "")), knd)
+	# Counting the work, not the ask — same lesson `terrain_probe` carries: a
+	# parse error in a class_name file is silent at the call site, so a summary
+	# built from the LIST reports a cheerful OK for zero measurements.
+	if _towns == 0:
+		print("TOWN-PROBE FAILED: measured no towns at all")
+		get_tree().quit(1)
+		return
+	if _failed.is_empty():
+		print("TOWN-PROBE OK %d town(s)" % _towns)
+		get_tree().quit(0)
+		return
+	for f in _failed:
+		print("  %s" % f)
+	print("TOWN-PROBE FAILED: %d problem(s) over %d town(s)" % [_failed.size(), _towns])
+	get_tree().quit(1)
+
+
+var line2 := ""
+
+
+## Signed cross of consecutive edges; a convex ring never changes sign.
+func _reflex(poly: PackedVector2Array) -> int:
+	var n := poly.size()
+	if n < 3:
+		return 0
+	var pos := 0
+	var neg := 0
+	for i in n:
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % n]
+		var c: Vector2 = poly[(i + 2) % n]
+		var cr := (b - a).cross(c - b)
+		if cr > 0.0001:
+			pos += 1
+		elif cr < -0.0001:
+			neg += 1
+	return mini(pos, neg)
+
+
+func _convex(poly: PackedVector2Array) -> bool:
+	return _reflex(poly) == 0
+
+
+func _probe(wid: String, nm: String, knd: String) -> void:
+	if nm == "":
+		return
+	LocalMap.forget("%s|%s" % [wid, nm])
+	var lm := LocalMap.for_place(wid, nm, knd)
+	if lm.wards.is_empty():
+		_failed.append("%s/%s: no wards" % [wid, nm])
+		return
+	_towns += 1
+	# Attribute each building to the ward its centroid falls in. Buildings are
+	# sub-polygons of an inset ward, so a centroid cannot land in a neighbour.
+	var fill := PackedFloat32Array()
+	var count := PackedInt32Array()
+	fill.resize(lm.wards.size())
+	count.resize(lm.wards.size())
+	for b in lm.buildings:
+		var poly: PackedVector2Array = b["poly"]
+		var c := TownPlan.centroid(poly)
+		for i in lm.wards.size():
+			if Geometry2D.is_point_in_polygon(c, lm.wards[i]):
+				fill[i] += TownPlan.area(poly)
+				count[i] += 1
+				break
+	line2 = "   bounds convex=%s reflex=%d |" % [_convex(lm.bounds), _reflex(lm.bounds)]
+	for i in lm.wards.size():
+		var w: PackedVector2Array = lm.wards[i]
+		var ins := TownPlan.inset(w, TownPlan.REGULAR_STREET * 0.5)
+		line2 += " [%d cvx=%s rfx=%d a=%.0f ins=%.0f]" % [
+			i, _convex(w), _reflex(w), TownPlan.area(w), TownPlan.area(ins)]
+	print(line2)
+	var line := "%s/%s  wards=%d  buildings=%d
+   " % [
+		wid, nm, lm.wards.size(), lm.buildings.size()]
+	for i in lm.wards.size():
+		var a := TownPlan.area(lm.wards[i])
+		var f := fill[i] / maxf(a, 0.001)
+		line += " [%d: a=%.0f n=%d fill=%.2f]" % [i, a, count[i], f]
+		if a < SCRAP_AREA:
+			continue
+		if count[i] == 0:
+			_failed.append("%s/%s ward %d: area %.0f, NOTHING BUILT" % [wid, nm, i, a])
+		elif f < MIN_FILL:
+			_failed.append("%s/%s ward %d: area %.0f, fill %.2f below %.2f" % [
+				wid, nm, i, f, MIN_FILL])
+	print(line)
