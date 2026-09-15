@@ -77,7 +77,7 @@ func _here_idx() -> int:
 
 
 func _pos_of(n: Dictionary) -> Vector2:
-	return Vector2(float(n.get("x", 50)) / 100.0 * size.x, float(n.get("y", 50)) / 100.0 * size.y)
+	return _pct(Vector2(float(n.get("x", 50)), float(n.get("y", 50))))
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -160,7 +160,7 @@ func _draw() -> void:
 			_draw_mark(p, str(m["shape"]), Color(col, 0.45 if lm.settled else 0.26),
 				3.4 if not lm.settled else 4.6)
 			if lm.settled:
-				_label(font, p, str(n.get("name", "")), 12, 0.85 if i == _hover else 0.6)
+				_label(font, p, str(n.get("name", "")), 14, 0.9 if i == _hover else 0.7)
 			continue
 		_draw_mark(p, str(m["shape"]), Color(col, 0.95), 7.0 if i == _hover else 5.0)
 		if is_here:
@@ -169,7 +169,11 @@ func _draw() -> void:
 			# reader circling their own position actually does.
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
 			draw_arc(p, 15.0 + breathe, 0, TAU, 28, Color(_ink(), 0.85), 2.0, true)
-		_label(font, p, str(n.get("name", "")), 13, 1.0 if (i == _hover or is_here) else 0.85)
+		# SIXTEEN, NOT THIRTEEN. The lettering measured 6.13:1 against its own halo
+		# — it passed contrast and still read as grey mush, because at 13 px this
+		# serif draws a one-pixel stem and antialiasing spends most of it. Weight
+		# was the defect, not darkness, and the fix for weight is size.
+		_label(font, p, str(n.get("name", "")), 16, 1.0 if (i == _hover or is_here) else 0.92)
 
 	# ON THE SHEET, NOT ON THE MAP — outside the camera, exactly as the Atlas
 	# does it, so the frame and the title stay put while the plan pans under them.
@@ -273,9 +277,7 @@ func _label(font: Font, p: Vector2, nm: String, sz: int, strength: float) -> voi
 		return
 	var w := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, sz)
 	var at: Vector2 = _label_at.get(nm, p + Vector2(-w.x / 2.0, -13.0))
-	for o in [Vector2(1.3, 0), Vector2(-1.3, 0), Vector2(0, 1.3), Vector2(0, -1.3)]:
-		draw_string(font, at + o, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(_paper_tone(), 0.92))
-	draw_string(font, at, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(_ink(), strength))
+	MapInk.draw_label(self, font, at, nm, sz, _ink(), _paper_tone(), strength)
 
 
 ## ── THE GROUND, from the SAME palette as the world chart ─────────────────────
@@ -316,7 +318,10 @@ func _draw_ground() -> void:
 	var ph := float(absi(hash(lm.place)) % 1000) * 0.01
 	var pts := PackedVector2Array()
 	for k in 24:
-		var t := (float(k) / 23.0 - 0.5) * 150.0
+		# WIDE ENOUGH TO LEAVE THE SHEET. The plate is square and centred now, so a
+		# coast that only spans the plate ends inside the margin and the sea shows
+		# a straight vertical seam where the polygon stops.
+		var t := (float(k) / 23.0 - 0.5) * 420.0
 		var wob := sin(float(k) * 0.62 + ph) * 5.5 + sin(float(k) * 1.53 + ph * 2.1) * 2.4
 		pts.append(_pct(c + n * t + d * wob))
 	var coast := PackedVector2Array(pts)
@@ -330,13 +335,27 @@ func _draw_ground() -> void:
 		var off := float(band + 1) * 2.6
 		var hl := PackedVector2Array()
 		for q in coast:
-			hl.append(q + d * off * (size.x / 100.0))
+			hl.append(q + d * off * _plate())
 		draw_polyline(hl, Color(_ink(), 0.34 - float(band) * 0.055), 1.1, true)
 	draw_polyline(coast, Color(_ink(), 0.95), 2.2, true)
 
 
+## ── PLATE TO SHEET, AT ONE SCALE ─────────────────────────────────────────────
+##
+## This used to map x by `size.x` and y by `size.y` independently, which on a
+## 1280x800 sheet stretched the plan 1.6x sideways: a square building came out an
+## oblong, a round wall came out an oval, and every roof leaned the same wrong
+## way. A plan drawn at two scales is not a plan.
+##
+## One scale, centred. The margin that leaves is the sheet's, and a book map
+## wants one — it is where the shore, the hatching and the border live.
+func _plate() -> float:
+	return minf(size.x, size.y) / 100.0
+
+
 func _pct(p: Vector2) -> Vector2:
-	return Vector2(p.x / 100.0 * size.x, p.y / 100.0 * size.y)
+	var s := _plate()
+	return (size - Vector2(100, 100) * s) * 0.5 + p * s
 
 
 ## ── THE TOWN, DRAWN ──────────────────────────────────────────────────────────

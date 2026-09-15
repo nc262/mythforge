@@ -216,3 +216,34 @@ static func draw_border(ci: CanvasItem, rect: Rect2, ink: Color, paper: Color) -
 		ci.draw_circle(corner, 4.4, paper)
 		ci.draw_arc(corner, 4.4, 0, TAU, 18, Color(ink, 0.75), 1.4, true)
 		ci.draw_arc(corner, 2.0, 0, TAU, 12, Color(ink, 0.55), 1.0, true)
+
+
+## ── LETTERING THAT CAN BE READ OFF A BUSY SHEET ──────────────────────────────
+##
+## A map label lies over the map, so its background is not the paper — it is
+## whatever the map drew there. On Gallows Quay "The Common Room" ran across
+## inked rooftops and the glyph cores came out LIGHTER than their own halo:
+## measured off the render, the word sat near 1.5:1 against the ground directly
+## behind it, against the 4.5:1 the rest of this game is held to.
+##
+## Two faults, and the halo was both of them. Four offsets at 1.3 px leave the
+## diagonals bare, and the paper went down at 0.92 alpha so the ink underneath it
+## still showed through and greyed the letter. Eight offsets, an inner ring to
+## close the gaps, opaque paper, and ink at full strength.
+##
+## THIS LIVES HERE BECAUSE IT LIVED IN TWO PLACES. `world_map` and `place_map`
+## each carried their own copy of the thin version — the same duplication that
+## cost this repo an art key spelled six ways and a fallback hand-written at five
+## sites. One drawing, one home, both tiers.
+static func draw_label(ci: CanvasItem, font: Font, at: Vector2, text: String,
+		size: int, ink: Color, paper: Color, strength := 1.0) -> void:
+	if text == "":
+		return
+	var r := maxf(float(size) * 0.16, 1.8)
+	for k in 8:
+		var o := Vector2(r, 0).rotated(float(k) / 8.0 * TAU)
+		ci.draw_string(font, at + o, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, paper)
+	for k in 4:
+		var o2 := Vector2(r * 0.55, 0).rotated(float(k) / 4.0 * TAU + PI * 0.25)
+		ci.draw_string(font, at + o2, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, paper)
+	ci.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(ink, strength))

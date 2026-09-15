@@ -205,7 +205,16 @@ func _plan_bounds(rng: RandomNumberGenerator) -> void:
 	var lobes := rng.randf_range(0.0, TAU)
 	for k in 34:
 		var ang := float(k) / 34.0 * TAU
-		var r := 25.0 + sin(ang * 3.0 + lobes) * 4.6 + sin(ang * 5.0 + lobes * 2.0) * 2.8 			+ sin(ang * 8.0 + lobes * 0.7) * 1.5
+		# FORTY, NOT TWENTY-FIVE. At radius 25 the town was a fifth of the plate
+		# and read as a hamlet dropped in a meadow; the plate is square and the
+		# sheet is 16:10, so the margin it leaves is the sheet's own, not the
+		# town's. Building sizes are ABSOLUTE (2-7 square units), so a town this
+		# much larger is not a scaled-up town — it is a finer-grained one with
+		# more of them, which is what "smaller blocks" asked for.
+		# The lobes swing +/-9.6, so the base must stay under 50 - 9.6 - a margin or
+		# the town walks off the bottom of the plate, which it did at 40: 52 units
+		# from a centre at 50 is 102 on a plate that ends at 100.
+		var r := 38.0 + sin(ang * 3.0 + lobes) * 5.0 + sin(ang * 5.0 + lobes * 2.0) * 3.0 			+ sin(ang * 8.0 + lobes * 0.7) * 1.6
 		var at := Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * r
 		if _in_water(at):
 			at = Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * _shore_reach(ang)
@@ -265,6 +274,27 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 			roles.append(["gate", "The %s" % ("Upper Terrace" if urban else "High Gate")])
 		_:
 			roles.append(["gate", "The %s" % ("Checkpoint" if urban else "Town Gate")])
+
+	# THE QUAY GOES WHERE THE WATER IS. Roles were handed out in area order alone,
+	# so Gallows Quay put its Quay on the eastern ward while its sea was to the
+	# north — a map that contradicts itself about the one fact the whole place is
+	# named for. The site already knows which way the water lies; the ward that
+	# leans furthest that way takes the role.
+	if water_dir != Vector2.ZERO and roles.size() > 1:
+		var far := -INF
+		var pick := -1
+		for i in quarters.size():
+			if i >= roles.size():
+				break
+			var lean := (TownPlan.centroid(quarters[i]) - Vector2(50, 50)).dot(water_dir)
+			if lean > far:
+				far = lean
+				pick = i
+		var water_role := roles.size() - 1     # the site-chosen role is appended last
+		if pick >= 0 and pick != water_role and str(roles[water_role][0]) == "quay":
+			var tmp: Array = roles[pick]
+			roles[pick] = roles[water_role]
+			roles[water_role] = tmp
 
 	for i in quarters.size():
 		var poly: PackedVector2Array = quarters[i]

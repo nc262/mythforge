@@ -432,10 +432,7 @@ func _label(font: Font, nm: String, fallback: Vector2, sz: int, strength: float)
 	if nm == "":
 		return
 	var at: Vector2 = _label_at.get(nm, fallback)
-	var halo := _paper_tone()
-	for o in [Vector2(1.4, 0), Vector2(-1.4, 0), Vector2(0, 1.4), Vector2(0, -1.4)]:
-		draw_string(font, at + o, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(halo, 0.92))
-	draw_string(font, at, nm, HORIZONTAL_ALIGNMENT_LEFT, -1, sz, Color(_ink(), strength))
+	MapInk.draw_label(self, font, at, nm, sz, _ink(), _paper_tone(), strength)
 
 
 ## Ink glyphs, drawn the way a pen would: an outline and one shaded face. Every
@@ -508,7 +505,14 @@ func _ensure_ornament() -> void:
 			var c := Vector2i(cx, cy)
 			if not g.is_water(c):
 				continue
-			var clear := 99
+			# NINE, NOT 99. This was a sentinel, and the sentinel leaked: when a
+			# cell is clear of land all the way out to the loop's limit the value
+			# survives untouched, and it is then used as a SCALE — 1.0 + 99*0.06
+			# gave a compass rose of radius 208 px instead of 44, a pale disc a
+			# third of the sheet wide sitting on top of the legend. A sentinel and
+			# a measurement must never share a variable; the loop bound is a real
+			# answer ("clear at least this far"), so there is nothing to leak.
+			var clear := 9
 			for rr in range(1, 9):
 				var hit := false
 				for a in 8:
