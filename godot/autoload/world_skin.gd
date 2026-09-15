@@ -13,36 +13,75 @@ const FAMILIES := {
 	"fantasy": {"palette": "arcane", "currency": "gold", "art": "high fantasy oil painting, candlelit",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "pack", "book": "tome", "world": "high fantasy"},
-		"wards": {"square": "Market Square", "inn": "Common Room", "shop": "Trade Row", "hall": "Moot Hall", "homes": "Cottages", "quay": "Quay", "heights": "High Gate", "gate": "Town Gate"}},
+		"wards": {"square": "Market Square", "inn": "Common Room", "shop": "Trade Row", "hall": "Moot Hall", "homes": "Cottages", "quay": "Quay", "heights": "High Gate", "gate": "Town Gate"},
+		"grain": {"lot": 3.0, "chaos": 0.80, "empty": 0.10, "front": 0.74}},
 	"cyber": {"palette": "neonspire", "currency": "credits", "art": "cyberpunk neon concept render, volumetric haze",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "neon", "oak": "carbon", "panel": "glass", "page": "glass"},
 		"flavor": {"map": "holo-map", "pack": "grid", "book": "datapad", "world": "cyberpunk sci-fi"},
-		"wards": {"square": "Plaza", "inn": "Noodle Bar", "shop": "Stall Row", "hall": "Admin Block", "homes": "Stacks", "quay": "Docks", "heights": "Upper Terrace", "gate": "Checkpoint"}},
+		"wards": {"square": "Plaza", "inn": "Noodle Bar", "shop": "Stall Row", "hall": "Admin Block", "homes": "Stacks", "quay": "Docks", "heights": "Upper Terrace", "gate": "Checkpoint"},
+		"grain": {"lot": 9.0, "chaos": 0.30, "empty": 0.05, "front": 0.95}},
 	"everyday": {"palette": "everyday", "currency": "cash", "art": "warm contemporary slice-of-life illustration",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "leather", "page": "parchment"},
 		"flavor": {"map": "map", "pack": "bag", "book": "notebook", "world": "warm contemporary slice-of-life"},
-		"wards": {"square": "Town Square", "inn": "Corner Cafe", "shop": "Shopping Row", "hall": "City Hall", "homes": "Suburbs", "quay": "Waterfront", "heights": "Hill Road", "gate": "Old Town"}},
+		"wards": {"square": "Town Square", "inn": "Corner Cafe", "shop": "Shopping Row", "hall": "City Hall", "homes": "Suburbs", "quay": "Waterfront", "heights": "Hill Road", "gate": "Old Town"},
+		"grain": {"lot": 5.5, "chaos": 0.40, "empty": 0.14, "front": 0.78}},
 	"space": {"palette": "space", "currency": "credits", "art": "sci-fi space-opera concept art, cold starlight, sleek hull panels",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "steel", "oak": "steel", "panel": "carbon", "page": "glass"},
 		"flavor": {"map": "starmap", "pack": "locker", "book": "log", "world": "sci-fi space opera"},
-		"wards": {"square": "Concourse", "inn": "Galley", "shop": "Exchange", "hall": "Command Deck", "homes": "Hab Block", "quay": "Docking Ring", "heights": "Upper Deck", "gate": "Airlock"}},
+		"wards": {"square": "Concourse", "inn": "Galley", "shop": "Exchange", "hall": "Command Deck", "homes": "Hab Block", "quay": "Docking Ring", "heights": "Upper Deck", "gate": "Airlock"},
+		"grain": {"lot": 8.0, "chaos": 0.18, "empty": 0.04, "front": 0.97}},
 	"steam": {"palette": "steam", "currency": "cogs", "art": "steampunk illustration, brass and soot, warm gaslight",
 		"materials": {"steel": "copper", "leather": "leather", "brass": "copper", "oak": "oak", "panel": "copper", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "case", "book": "ledger", "world": "steampunk"},
-		"wards": {"square": "Clockwork Square", "inn": "Public House", "shop": "Merchant Arcade", "hall": "Guildhall", "homes": "Tenements", "quay": "Wharf", "heights": "Upper Works", "gate": "Toll Gate"}},
+		"wards": {"square": "Clockwork Square", "inn": "Public House", "shop": "Merchant Arcade", "hall": "Guildhall", "homes": "Tenements", "quay": "Wharf", "heights": "Upper Works", "gate": "Toll Gate"},
+		"grain": {"lot": 3.4, "chaos": 0.62, "empty": 0.08, "front": 0.72}},
 	"pirate": {"palette": "pirate", "currency": "doubloons", "art": "age-of-sail painting, salt haze and lantern light",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "oak", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "sea chest", "book": "logbook", "world": "age-of-sail adventure"},
-		"wards": {"square": "Harbour Market", "inn": "Tavern", "shop": "Chandlery", "hall": "Harbourmaster", "homes": "Netmakers Row", "quay": "Quay", "heights": "Cliff Stair", "gate": "Landward Gate"}},
+		"wards": {"square": "Harbour Market", "inn": "Tavern", "shop": "Chandlery", "hall": "Harbourmaster", "homes": "Netmakers Row", "quay": "Quay", "heights": "Cliff Stair", "gate": "Landward Gate"},
+		"grain": {"lot": 2.6, "chaos": 0.92, "empty": 0.09, "front": 0.75}},
 	"horror": {"palette": "horror", "currency": "coin", "art": "gothic horror illustration, candlelit dread, desaturated",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "satchel", "book": "grimoire", "world": "gothic horror"},
-		"wards": {"square": "Old Square", "inn": "Lodging House", "shop": "Shuttered Row", "hall": "Parish Hall", "homes": "Almshouses", "quay": "Black Wharf", "heights": "Chapel Rise", "gate": "Iron Gate"}},
+		"wards": {"square": "Old Square", "inn": "Lodging House", "shop": "Shuttered Row", "hall": "Parish Hall", "homes": "Almshouses", "quay": "Black Wharf", "heights": "Chapel Rise", "gate": "Iron Gate"},
+		"grain": {"lot": 2.8, "chaos": 0.88, "empty": 0.16, "front": 0.70}},
 	"norse": {"palette": "norse", "currency": "silver", "art": "norse saga illustration, cold fjord light, rune-carved wood",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "pack", "book": "saga", "world": "norse saga fantasy"},
-		"wards": {"square": "Thing-Stead", "inn": "Mead-Hall", "shop": "Traders Row", "hall": "Jarls Hall", "homes": "Longhouses", "quay": "Boat Strand", "heights": "Beacon Rise", "gate": "Stockade Gate"}},
+		"wards": {"square": "Thing-Stead", "inn": "Mead-Hall", "shop": "Traders Row", "hall": "Jarls Hall", "homes": "Longhouses", "quay": "Boat Strand", "heights": "Beacon Rise", "gate": "Stockade Gate"},
+		"grain": {"lot": 5.0, "chaos": 0.70, "empty": 0.12, "front": 0.84}},
 }
+
+## ── THE GRAIN OF A WORLD'S BUILDING ──────────────────────────────────────────
+##
+## The ward NAMES differed per family and the FABRIC did not — every town was
+## built with one lot size and one street chaos, so at map zoom a cyberpunk
+## district and a fishing village were the same gravel texture under different
+## words. These are the four numbers that make them read differently before a
+## single label is drawn.
+##
+##   lot    base building area, in square plate units (the plate is 100 across,
+##          so one unit is about ten metres)
+##   chaos  how far a street may wander off square; 0 is a grid, 1 is organic
+##   empty  share of finished plots left unbuilt — yards, courts, gardens
+##   front  how much of a plot is BUILT ON, the rest left as yard behind it.
+##          Low is a medieval burgage strip (narrow frontage, long garden),
+##          high is a modern block built lot-line to lot-line.
+##
+## THESE ARE NOT THE HISTORICAL RATIOS and deliberately so. A real burgage plot
+## builds on maybe a fifth of its depth; at that value the measured built share
+## of a ward fell to 0.08-0.14 and the town read as a scattering in a field
+## rather than as a town. The clip also takes more than its depth fraction,
+## because cutting a tapering polygon at 45 % of its extent removes more than
+## 45 % of its area. What is kept is the SHAPE of the pattern — narrow fronts on
+## the street, open ground behind — at a density a map can be read at.
+const GRAIN_KEYS: Array[String] = ["lot", "chaos", "empty", "front"]
+
+
+func grain(family: String) -> Dictionary:
+	var fam: Dictionary = FAMILIES.get(family, FAMILIES["fantasy"])
+	return fam.get("grain", FAMILIES["fantasy"]["grain"])
+
 
 ## ── THE WARD VOCABULARY ──────────────────────────────────────────────────────
 ##

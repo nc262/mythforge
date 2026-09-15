@@ -19,9 +19,15 @@ extends Node
 ## come out empty. Measured: real quarters in a 100-unit plate run 90-900.
 const SCRAP_AREA := 24.0
 
-## Built ground over ward ground. Watabou's towns sit near 0.45; below 0.15 a
-## quarter reads as a field with sheds in it whatever the building count says.
-const MIN_FILL := 0.15
+## Built ground over ward ground.
+##
+## LOWERED FROM 0.15 WHEN THE GEOMETRY CHANGED, not to make a failure go away.
+## 0.15 was calibrated when a building WAS its whole lot; burgage plots build on
+## the street end and leave the depth behind as yard, so the same town reads as
+## dense at a lower share by design. The number this guards against is a district
+## that silently came out empty, and `NOTHING BUILT` above catches that exactly;
+## this is the softer floor for "built, but too thin to read as a quarter".
+const MIN_FILL := 0.12
 
 var _failed: Array = []
 var _towns := 0
@@ -158,5 +164,5 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 			_failed.append("%s/%s ward %d: area %.0f, NOTHING BUILT" % [wid, nm, i, a])
 		elif f < MIN_FILL:
 			_failed.append("%s/%s ward %d: area %.0f, fill %.2f below %.2f" % [
-				wid, nm, i, f, MIN_FILL])
+				wid, nm, i, a, f, MIN_FILL])
 	print(line)

@@ -199,6 +199,124 @@ static func _signed_area(poly: PackedVector2Array) -> float:
 	return a * 0.5
 
 
+## ── BURGAGE: STRIPS OFF A STREET, BACK TO BACK ───────────────────────────────
+##
+## The best-attested pattern in the medieval town record, and nothing like what
+## a plain subdivision produces. A plot is NARROW at the street and LONG behind
+## it — documented ratios run about 1:5 to 1:10 (Hungerford ~10 m by 100 m,
+## Cricklade ~10 by 60) — the building sits at the street end, and the depth
+## behind it is yard and garden. Two rows of them meet back to back down the
+## middle of a block.
+##
+## WHY RECURSIVE LONGEST-EDGE SPLITTING CANNOT PRODUCE THIS. Cutting the longest
+## edge halves the long dimension, so every piece tends toward SQUARE — that is
+## the whole point of the rule and it is why the first attempt at burgage here
+## failed. Taking a front slice off each squarish lot gave isolated specks
+## scattered through the block, not rows facing a street: the lots in a block's
+## interior have no street to face, so "the far side from the middle" pointed
+## nowhere useful for them.
+##
+## Strips need the OPPOSITE rule: cut repeatedly on ONE fixed axis, so the plots
+## stay full-depth and only get narrower. The street axis is the block's own
+## longest edge, which is the side a block presents to the world.
+static func burgage(block: PackedVector2Array, width: float, front: float,
+		rng: RandomNumberGenerator, out: Array) -> void:
+	if block.size() < 3 or width <= 0.01:
+		return
+	var i := _longest_edge(block)
+	var street := (block[(i + 1) % block.size()] - block[i]).normalized()
+	if street.length_squared() < 0.5:
+		return
+	# Back to back: halve the block across its depth so each row faces its own
+	# side, the way two rows of plots meet along the spine of a real block.
+	var depth := street.orthogonal()
+	var rows: Array = []
+	var halves := _slice(block, depth, 0.5)
+	if halves.size() == 2:
+		rows = halves
+	else:
+		rows = [block]
+	for row in rows:
+		var plots: Array = []
+		_strip(row, street, width, rng, plots)
+		for plot in plots:
+			# The building is the STREET END of the plot; the rest is yard.
+			var built := _front_of(plot, centroid(row), front)
+			if built.size() >= 3 and area(built) > 0.02:
+				out.append(built)
+
+
+## Cut a polygon in two on a fixed axis at a fraction of its extent. Unlike
+## `cut`, the direction is given rather than chosen, which is what makes strips
+## possible at all.
+static func _slice(poly: PackedVector2Array, nrm: Vector2, at: float) -> Array:
+	var lo := INF
+	var hi := -INF
+	for p in poly:
+		var t := p.dot(nrm)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	if hi - lo < 0.0001:
+		return []
+	var c := lo + (hi - lo) * at
+	var a := _half(poly, nrm * (c + ALLEY * 0.25), nrm)
+	var b := _half(poly, nrm * (c - ALLEY * 0.25), -nrm)
+	var out: Array = []
+	if a.size() >= 3 and area(a) > 0.001:
+		out.append(a)
+	if b.size() >= 3 and area(b) > 0.001:
+		out.append(b)
+	return out
+
+
+## Split a row into plots of roughly `width`, measured ALONG THE STREET, by
+## repeated bisection on that one axis. Full depth is preserved throughout,
+## which is the whole difference from `subdivide`.
+static func _strip(row: PackedVector2Array, street: Vector2, width: float,
+		rng: RandomNumberGenerator, out: Array, depth := 0) -> void:
+	if row.size() < 3:
+		return
+	var lo := INF
+	var hi := -INF
+	for p in row:
+		var t := p.dot(street)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	# Wide enough to be one plot, or too deep to keep splitting — either way it
+	# is a plot. The cap keeps a pathological sliver from recursing forever, and
+	# it KEEPS the piece rather than dropping it, which is the silent-loss shape
+	# this file has already been bitten by once.
+	if hi - lo <= width * rng.randf_range(1.0, 1.8) or depth > 9:
+		out.append(row)
+		return
+	var halves := _slice(row, street, 0.5 + (rng.randf() - 0.5) * 0.24)
+	if halves.size() < 2:
+		out.append(row)
+		return
+	for h in halves:
+		_strip(h, street, width, rng, out, depth + 1)
+
+
+## Keep the part of a plot AWAY from the block's spine — the street end.
+static func _front_of(plot: PackedVector2Array, spine: Vector2, keep: float) -> PackedVector2Array:
+	if plot.size() < 3 or keep >= 0.99:
+		return plot
+	var out := centroid(plot) - spine
+	if out.length_squared() < 0.000001:
+		return plot
+	out = out.normalized()
+	var lo := INF
+	var hi := -INF
+	for p in plot:
+		var t := p.dot(out)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	if hi - lo < 0.0001:
+		return plot
+	var got := _half(plot, out * (lo + (hi - lo) * (1.0 - keep)), out)
+	return got if got.size() >= 3 else plot
+
+
 ## ── SUBDIVIDE A BLOCK INTO BUILDINGS ─────────────────────────────────────────
 ##
 ## Recurse until the piece is under a TARGET AREA that is itself jittered

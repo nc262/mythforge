@@ -410,27 +410,54 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 		var block := TownPlan.inset(poly, TownPlan.REGULAR_STREET * 0.5)
 		if block.size() < 3:
 			continue
-		# Poorer and older quarters are more chaotic and more tightly packed;
-		# richer ones have bigger plots and bigger courtyards. One chaos value
-		# for a whole town makes every quarter read the same.
-		var rich: float = 1.0 - float(i) / maxf(float(quarters.size() - 1), 1.0)
-		var min_area: float = lerpf(2.0, 7.0, rich)
-		var chaos: float = lerpf(0.9, 0.5, rich)
-		var empty: float = lerpf(0.03, 0.16, rich)
-		var lots: Array = []
-		TownPlan.subdivide(block, min_area, chaos, 0.7, empty, rng, lots)
-		for lot in lots:
+		# THE WORLD SETS THE GRAIN, the ward varies it. `WorldSkin.grain` carries
+		# this family's lot size, street chaos, yard share and how much of a plot
+		# is built on — so a cyber district is big regular blocks built lot-line
+		# to lot-line and a fishing village is cramped strips with long gardens,
+		# from one generator. Before this every world used one set of numbers and
+		# every town was the same gravel at map zoom.
+		#
+		# Wealth then moves it WITHIN the town: a richer quarter has bigger plots,
+		# straighter streets and more courtyard. One chaos value for a whole town
+		# makes every quarter read the same.
+		var g := WorldSkin.grain(fam)
+		var rich := float(ward_wealth[i]) / 3.0
+		var min_area: float = float(g["lot"]) * lerpf(0.7, 1.9, rich)
+		var chaos: float = clampf(float(g["chaos"]) * lerpf(1.15, 0.7, rich), 0.05, 1.0)
+		var empty: float = float(g["empty"]) * lerpf(0.6, 1.8, rich)
+		# BACKWARDS AT FIRST, and the check caught it. A POOR quarter builds on MORE
+		# of its plot, not less: it is packed with infill, outbuildings and
+		# subdivided yards, while a wealthy one keeps a courtyard and a garden.
+		# Having it the other way round left the poorest wards of the pirate towns
+		# under the built-share floor, which is the probe reporting a modelling
+		# error rather than a tuning one. Wealth already buys more `empty` on top
+		# of this, so the two pull the same way.
+		var front: float = clampf(float(g["front"]) * lerpf(1.12, 0.92, rich), 0.25, 1.0)
+		# TWO STAGES, and they use OPPOSITE rules on purpose.
+		#
+		# `subdivide` cuts the longest edge, which drives every piece toward
+		# square — right for carving a ward into BLOCKS, and fatally wrong for
+		# plots, which have to stay long and narrow. So it stops at block size
+		# and `burgage` takes over on one fixed axis per block.
+		var block_area := min_area * 14.0
+		var plot_w := sqrt(min_area) * 0.6
+		var blocks: Array = []
+		TownPlan.subdivide(block, block_area, chaos, 0.5, 0.0, rng, blocks)
+		for blk in blocks:
 			# THINNED AT THE EDGE. A town that stops dead at its boundary reads as
-			# a cut-out; real ones fray. Weighted by distance from the middle, so
-			# the core stays solid.
-			# Thinning starts only at the OUTER FIFTH and never removes more than a
-			# fifth of what is there. At (d - 0.55) * 0.9 it was stripping whole
-			# wards on the far side of the town, which reads as a district that
-			# was never built rather than as an edge that frays.
-			var d := TownPlan.centroid(lot).distance_to(Vector2(50, 50)) / maxf(_reach(0.0), 1.0)
+			# a cut-out; real ones fray. Thinning starts only at the outer fifth
+			# and never removes more than a fifth of what is there.
+			var d := TownPlan.centroid(blk).distance_to(Vector2(50, 50)) / maxf(_reach(0.0), 1.0)
 			if rng.randf() < clampf((d - 0.80) * 0.9, 0.0, 0.2):
 				continue
-			buildings.append({"poly": lot, "big": TownPlan.area(lot) > min_area * 2.2})
+			var plots: Array = []
+			TownPlan.burgage(blk, plot_w, front, rng, plots)
+			for built in plots:
+				# A yard, a garden, a burnt-out plot. Wealthier quarters keep more
+				# of them, which is what a courtyard IS, structurally.
+				if rng.randf() < empty:
+					continue
+				buildings.append({"poly": built, "big": TownPlan.area(built) > min_area * 2.0})
 
 
 
