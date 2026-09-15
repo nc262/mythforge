@@ -96,6 +96,31 @@ func _ready() -> void:
 		print("SITE-PROBE FAILED: the site is not among the town's named places")
 		get_tree().quit(1)
 		return
+	# ── THE TOWN'S LIVE PROBLEM ──────────────────────────────────────────────
+	print("")
+	for bad2 in [["Nowhere-at-All", "x", 6], [town, "", 6], [town, "x", 99]]:
+		print("  trouble refused: %s" % GameState.set_trouble(str(bad2[0]), str(bad2[1]), int(bad2[2])))
+	var tw := GameState.set_trouble(town, "press-gangs are taking men off the quay", 6)
+	print("  set_trouble: %s" % ("ACCEPTED" if tw == "" else tw))
+	# A SECOND, DIFFERENT trouble must not silently replace the first.
+	print("  second trouble refused: %s" % GameState.set_trouble(town, "a different calamity", 6))
+	for k in 4:
+		GameState.tick_trouble(town, 2)
+		var t2 := GameState.trouble_at(town)
+		print("    tick -> %d/%d" % [int(t2.get("filled", 0)), int(t2.get("size", 0))])
+	var done := GameState.trouble_at(town)
+	if int(done.get("filled", 0)) != int(done.get("size", 0)):
+		print("SITE-PROBE FAILED: the clock did not fill and did not clamp")
+		get_tree().quit(1)
+		return
+	# And it survives a rebuild of the town, which is the whole point of a clock.
+	var kept := GameState.trouble_at(town)
+	if str(kept.get("what", "")) == "":
+		print("SITE-PROBE FAILED: the trouble did not persist")
+		get_tree().quit(1)
+		return
+	print("  clock persists: %s" % str(kept.get("what", "")))
+
 	print("SITE-PROBE OK")
 	get_tree().quit(0)
 

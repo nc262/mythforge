@@ -1651,6 +1651,83 @@ func add_site(spec: Dictionary) -> String:
 	return ""
 
 
+## ── A TOWN'S LIVE PROBLEM, ON A CLOCK ────────────────────────────────────────
+##
+## The one thing every acclaimed settlement has that a generated one did not.
+## The 2024 DMG's settlement entry is a population, an economy cap, one physical
+## trait, one reputation and one CURRENT CALAMITY — and the calamity is the only
+## one of those a generator cannot fake, because it has to be about this tale.
+##
+## THE CLOCK IS WHAT MAKES IT A LIFE RATHER THAN A SENTENCE. Blades in the Dark
+## and Apocalypse World's fronts arrived at the same mechanism independently:
+## segmented state that persists and ADVANCES WHETHER OR NOT THE PLAYER IS
+## THERE. A rumour table describes a town; a clock means the town moved while you
+## were away, and that is the difference the research is unanimous about.
+##
+## The engine owns the clock — how many segments, how they fill, when it runs
+## out. The GM owns what it IS. Same split as everything else here.
+const CLOCK_MIN := 4
+const CLOCK_MAX := 8
+
+
+func set_trouble(place_name: String, what: String, size: int) -> String:
+	var nm := place_name.strip_edges()
+	var txt := what.strip_edges()
+	if nm == "" or txt == "":
+		return "a trouble needs a place and a description"
+	var found := false
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(nm) == 0:
+			nm = str(p.get("name", ""))
+			found = true
+			break
+	if not found:
+		return "%s is not on the chart — name a place that is" % nm
+	if size < CLOCK_MIN or size > CLOCK_MAX:
+		return "a clock runs %d to %d segments, not %d" % [CLOCK_MIN, CLOCK_MAX, size]
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	# A NEW TROUBLE DOES NOT RESET AN OLD ONE'S PROGRESS silently. If the town
+	# already has one, say so — two live calamities in one village is the GM
+	# losing track, not the world getting worse.
+	if all.has(nm) and str(all[nm].get("what", "")) != txt:
+		return "%s already has a trouble running — see it through or resolve it first" % nm
+	all[nm] = {"what": txt, "size": size, "filled": int(all.get(nm, {}).get("filled", 0))}
+	world["trouble"] = all
+	save_kind("world", world)
+	return ""
+
+
+## Advance (or wind back) a town's clock. Returns "" or the reason it could not.
+func tick_trouble(place_name: String, by: int) -> String:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	var nm := ""
+	for k in all.keys():
+		if str(k).nocasecmp_to(place_name.strip_edges()) == 0:
+			nm = str(k)
+			break
+	if nm == "":
+		return "%s has no trouble running" % place_name
+	var t: Dictionary = all[nm]
+	var size := int(t.get("size", 6))
+	t["filled"] = clampi(int(t.get("filled", 0)) + by, 0, size)
+	all[nm] = t
+	world["trouble"] = all
+	save_kind("world", world)
+	return ""
+
+
+## What is going wrong here, and how far along it is. {} if nothing.
+func trouble_at(place_name: String) -> Dictionary:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	for k in all.keys():
+		if str(k).nocasecmp_to(place_name.strip_edges()) == 0:
+			return all[k]
+	return {}
+
+
 ## Everything the GM has put inside one town. Empty for a town it has not touched.
 func town_sites(town: String) -> Array:
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}

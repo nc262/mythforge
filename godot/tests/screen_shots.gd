@@ -174,6 +174,11 @@ func _shot_scene(path: String, stem: String) -> void:
 			_skipped += 1
 			node.queue_free()
 			return
+		# A LIVE PROBLEM, so the clock in the margin is actually exercised. A shot
+		# of a town with no trouble cannot show whether that drawing works.
+		if town:
+			GameState.set_trouble(nm, "press-gangs are taking men off the quay", 6)
+			GameState.tick_trouble(nm, 2)
 		node.lm = LocalMap.for_place(GameState.world_id(), nm, knd)
 		node.here_room = str(node.lm.nodes[0]["name"])
 		node.walked = [str(node.lm.nodes[0]["name"])]

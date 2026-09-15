@@ -56,6 +56,8 @@ Sent in every DM envelope. The GM proposes; the engine disposes.
 [[scene place="the chapel crypt"]]    [[companion name="Ser Aldric"]]
 [[place name="Saltwick" kind=settlement scope=local region="The Reach"]]
 [[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"]]
+[[trouble place="Gallows Quay" what="press-gangs are taking men" clock=6]]
+[[clock place="Gallows Quay" tick=1]]
 [[region name="The Ashen Marches"]]   [[lore cat=Places title="…" note="…"]]
 [[road from="Saltwick" to="The Weir" state=blocked name="the Weir Road"]]
 ```
@@ -72,6 +74,14 @@ range ("Gallows Quay has wards 0-6"). It does NOT carry a level gate: scope is
 how the tale's reach is earned, and a shop inside a town the party is standing
 in is not that. The GM never gives coordinates — it names a ward and the engine
 stands the site on a lot the plan already produced.
+
+`[[trouble]]` and `[[clock]]` are what make a town ALIVE rather than described:
+segmented state that persists across visits and advances whether or not the
+player is there. The engine owns the clock (4-8 segments, how it fills, when it
+runs out); the GM owns what the trouble IS, and narrates the consequence when it
+comes to a head. A second, different trouble in a town that already has one is
+refused — two live calamities in one village is the GM losing track, not the
+world getting worse.
 
 **The geography tags are the mini-god's real power, and the engine's veto is
 what keeps them a power rather than a mess.** `[[place]]` is refused beyond the

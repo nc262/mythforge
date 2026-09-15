@@ -254,6 +254,7 @@ func _draw() -> void:
 	_draw_cartouche(font)
 	# What this place IS, said once — a town has no fog and a barrow does, and
 	# the player should not have to infer which from the marks.
+	_draw_trouble(font)
 	var note := "every street in sight" if lm.settled else "only what you have walked, and what it opens onto"
 	draw_string(font, Vector2(26, size.y - 24), note, HORIZONTAL_ALIGNMENT_LEFT, size.x - 52, 12,
 		Color(_ink(), 0.62))
@@ -361,6 +362,52 @@ func _label(font: Font, p: Vector2, nm: String, sz: int, strength: float) -> voi
 ## is concrete where a fantasy village is earth — and a town's ground matches the
 ## country it stands in, which is the whole reason the tiers share a field.
 ## Ink and paper, asked of the same table the Atlas reads.
+## ── WHAT IS GOING WRONG HERE ─────────────────────────────────────────────────
+##
+## Drawn on the SHEET, not on the map — it is a note in the margin, the way a
+## surveyor writes what a place is dealing with beside the plan rather than on
+## it. The clock is segments rather than a number because a fraction reads at a
+## glance and "3/6" does not; filled from the top, clockwise, like every other
+## clock this idea came from.
+func _draw_trouble(font: Font) -> void:
+	if lm == null:
+		return
+	var t := GameState.trouble_at(lm.place)
+	if t.is_empty():
+		return
+	var what := str(t.get("what", ""))
+	if what == "":
+		return
+	var size: int = maxi(int(t.get("size", 6)), 1)
+	var filled: int = clampi(int(t.get("filled", 0)), 0, size)
+	var ink := _ink()
+	var paper := _paper_tone()
+	var c := Vector2(size_x_right() - 26.0, 34.0)
+	var r := 11.0
+	draw_circle(c, r + 1.0, paper)
+	for i in size:
+		var a0 := -PI * 0.5 + float(i) / float(size) * TAU
+		var a1 := -PI * 0.5 + float(i + 1) / float(size) * TAU
+		if i < filled:
+			var wedge := PackedVector2Array([c])
+			for k in 7:
+				wedge.append(c + Vector2(cos(lerpf(a0, a1, float(k) / 6.0)),
+					sin(lerpf(a0, a1, float(k) / 6.0))) * r)
+			draw_colored_polygon(wedge, Color(ink, 0.8))
+		draw_line(c, c + Vector2(cos(a0), sin(a0)) * r, Color(ink, 0.55), 1.0, true)
+	draw_arc(c, r, 0, TAU, 32, Color(ink, 0.9), 1.6, true)
+	# The words to the LEFT of the dial, right-aligned into it.
+	var w := font.get_string_size(what, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	MapInk.draw_label(self, font, Vector2(c.x - r - 10.0 - w, c.y + 5.0), what, 13,
+		ink, paper, 0.92)
+
+
+## The sheet's right edge. A helper because `size.x` is the CONTROL's width and
+## the border sits inside it — a note flush to `size.x` would sit on the frame.
+func size_x_right() -> float:
+	return size.x - 16.0
+
+
 func _ink() -> Color:
 	return WorldTerrain.for_world(GameState.world_id()).ink_colour()
 

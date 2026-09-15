@@ -1367,6 +1367,10 @@ func _apply_world_tags(tags: Array) -> void:
 				_gm_makes_place(a)
 			"site":
 				_gm_makes_site(a)
+			"trouble":
+				_gm_makes_trouble(a)
+			"clock":
+				_gm_ticks_clock(a)
 			"region":
 				_gm_makes_region(a)
 			"road":
@@ -2853,6 +2857,50 @@ func _gm_makes_place(a: Dictionary) -> void:
 	elif not why.begins_with(nm) or why.find("already") < 0:
 		# "already on the chart" is not worth a line — the world simply knew it.
 		_say_system(why, "compass")
+
+
+## [[trouble place="Gallows Quay" what="press-gangs are taking men off the quay"
+##   clock=6]]   and   [[clock place="Gallows Quay" tick=1]]
+##
+## What is going wrong here, and how far along it is. The engine owns the clock —
+## its size, its filling, when it runs out — and the GM owns what it IS.
+##
+## A clock rather than a sentence because that is the difference between a town
+## that is DESCRIBED and one that is ALIVE: segmented state that persists across
+## visits and advances whether or not the player is there. Blades in the Dark and
+## Apocalypse World's fronts arrived at it independently, and it is the one
+## mechanism the research on this was unanimous about.
+func _gm_makes_trouble(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	if where == "":
+		where = GameState.here()
+	var why := GameState.set_trouble(where, str(a.get("what", "")), int(a.get("clock", 6)))
+	if why == "":
+		_say_system("Trouble is brewing in %s." % where, "compass")
+	else:
+		_say_system(why, "compass")
+
+
+func _gm_ticks_clock(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	if where == "":
+		where = GameState.here()
+	var by := int(a.get("tick", 1))
+	var why := GameState.tick_trouble(where, by)
+	if why != "":
+		_say_system(why, "compass")
+		return
+	var t := GameState.trouble_at(where)
+	var filled := int(t.get("filled", 0))
+	var size := int(t.get("size", 6))
+	if filled >= size:
+		# THE ENGINE SAYS IT RAN OUT; the GM says what that means. Keeping the
+		# consequence out of here is the same rule the whole tag protocol runs
+		# on — the model narrates, the engine adjudicates.
+		_say_system("In %s, it has come to a head: %s" % [where, str(t.get("what", ""))], "compass")
+		Sfx.play("chime")
+	elif filled <= 0:
+		_say_system("%s breathes easier." % where, "compass")
 
 
 ## [[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"
