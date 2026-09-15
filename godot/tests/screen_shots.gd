@@ -148,13 +148,25 @@ func _shot_scene(path: String, stem: String) -> void:
 	# with no map on it — and the screens PY-19 and P4 need judged are exactly the
 	# ones made of those pins. Mirrors game.gd:2780.
 	if stem.begins_with("place_"):
-		var want := "settlement" if stem == "place_town" else "ruin"
+		# ANY SETTLED KIND, not "settlement" alone. `LocalMap.SETTLED_KINDS` is
+		# what decides whether the town generator runs, and only one of six
+		# shipped worlds carries a place of kind "settlement" — so five of them
+		# printed "no 'settlement' place to look inside" and the town tier went
+		# unlooked-at in every world but Saltmarsh. A tavern gets a town plan too.
+		var town := stem == "place_town"
+		var want := "settlement" if town else "ruin"
 		var nm := ""
 		var knd := ""
 		for _p in GameState.places():
-			if _p is Dictionary and str(_p.get("kind", "")) == want:
+			if not (_p is Dictionary):
+				continue
+			var k := str(_p.get("kind", ""))
+			var hit := LocalMap.SETTLED_KINDS.has(k) if town else k == want
+			if hit:
 				nm = str(_p["name"])
-				knd = want
+				knd = k
+				if k == want:
+					break            # prefer a true settlement when there is one
 		if nm == "":
 			# Not every world ships both kinds — say so rather than write a shot
 			# of an empty screen and let it read as a success.
