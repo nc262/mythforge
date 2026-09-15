@@ -1407,6 +1407,37 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
 	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
 
+	# ── EVERY FAMILY FILLS EVERY SOCKET, AND NO TWO FILL THEM THE SAME ───────
+	#
+	# The town generator asks `WorldSkin.ward_name(family, key)` for what this
+	# world calls its square, its inn, its docks. That is only plug-and-play if
+	# every family answers every key — and only worth having if the answers
+	# DIFFER.
+	#
+	# This check exists because the vocabulary used to live in `local_map` as a
+	# string match against the family's prose `world` line ("contains cyber or
+	# steam"). Eight families produced two vocabularies: a steampunk foundry
+	# town was given a Noodle Bar, and a fantasy village and a pirate port came
+	# out with byte-identical ward names on the same sheet. Nothing failed —
+	# it took looking at two renders side by side to see it.
+	var seen_wards := {}
+	for fam in WorldSkin.FAMILIES:
+		var words: Dictionary = WorldSkin.FAMILIES[fam].get("wards", {})
+		for k in WorldSkin.WARD_KEYS:
+			assert(words.has(k) and str(words[k]).strip_edges() != "",
+				"world family '%s' has no word for the '%s' ward - the town generator asks every family for every key" % [fam, k])
+			assert(WorldSkin.ward_name(fam, k) == str(words[k]),
+				"ward_name('%s', '%s') does not return the family's own word" % [fam, k])
+		var fingerprint := ""
+		for k2 in WorldSkin.WARD_KEYS:
+			fingerprint += str(words[k2]) + "|"
+		assert(not seen_wards.has(fingerprint),
+			"world families '%s' and '%s' name their wards IDENTICALLY - two worlds would draw the same town under different skies" % [
+				fam, str(seen_wards.get(fingerprint, ""))])
+		seen_wards[fingerprint] = fam
+	print("  wards: %d families, %d sockets each, all distinct" % [
+		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
+
 	# INVARIANT: never paint while the narrator talks. Measured three ways - a
 	# resident engine at narrator load costs NOTHING (3.3/3.6/3.5 s against
 	# 3.0/3.5/3.5), but generating 1024x1024 DURING the turns takes them to 6.1 s

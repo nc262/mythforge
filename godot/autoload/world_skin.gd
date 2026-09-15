@@ -12,29 +12,73 @@ extends Node
 const FAMILIES := {
 	"fantasy": {"palette": "arcane", "currency": "gold", "art": "high fantasy oil painting, candlelit",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
-		"flavor": {"map": "chart", "pack": "pack", "book": "tome", "world": "high fantasy"}},
+		"flavor": {"map": "chart", "pack": "pack", "book": "tome", "world": "high fantasy"},
+		"wards": {"square": "Market Square", "inn": "Common Room", "shop": "Trade Row", "hall": "Moot Hall", "homes": "Cottages", "quay": "Quay", "heights": "High Gate", "gate": "Town Gate"}},
 	"cyber": {"palette": "neonspire", "currency": "credits", "art": "cyberpunk neon concept render, volumetric haze",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "neon", "oak": "carbon", "panel": "glass", "page": "glass"},
-		"flavor": {"map": "holo-map", "pack": "grid", "book": "datapad", "world": "cyberpunk sci-fi"}},
+		"flavor": {"map": "holo-map", "pack": "grid", "book": "datapad", "world": "cyberpunk sci-fi"},
+		"wards": {"square": "The Plaza", "inn": "Noodle Bar", "shop": "Stall Row", "hall": "Admin Block", "homes": "The Stacks", "quay": "Docks", "heights": "Upper Terrace", "gate": "Checkpoint"}},
 	"everyday": {"palette": "everyday", "currency": "cash", "art": "warm contemporary slice-of-life illustration",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "leather", "page": "parchment"},
-		"flavor": {"map": "map", "pack": "bag", "book": "notebook", "world": "warm contemporary slice-of-life"}},
+		"flavor": {"map": "map", "pack": "bag", "book": "notebook", "world": "warm contemporary slice-of-life"},
+		"wards": {"square": "Town Square", "inn": "Corner Cafe", "shop": "Shopping Row", "hall": "City Hall", "homes": "The Suburbs", "quay": "Waterfront", "heights": "Hill Road", "gate": "Old Town"}},
 	"space": {"palette": "space", "currency": "credits", "art": "sci-fi space-opera concept art, cold starlight, sleek hull panels",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "steel", "oak": "steel", "panel": "carbon", "page": "glass"},
-		"flavor": {"map": "starmap", "pack": "locker", "book": "log", "world": "sci-fi space opera"}},
+		"flavor": {"map": "starmap", "pack": "locker", "book": "log", "world": "sci-fi space opera"},
+		"wards": {"square": "Concourse", "inn": "Galley", "shop": "Exchange", "hall": "Command Deck", "homes": "Hab Block", "quay": "Docking Ring", "heights": "Upper Deck", "gate": "Airlock"}},
 	"steam": {"palette": "steam", "currency": "cogs", "art": "steampunk illustration, brass and soot, warm gaslight",
 		"materials": {"steel": "copper", "leather": "leather", "brass": "copper", "oak": "oak", "panel": "copper", "page": "parchment"},
-		"flavor": {"map": "chart", "pack": "case", "book": "ledger", "world": "steampunk"}},
+		"flavor": {"map": "chart", "pack": "case", "book": "ledger", "world": "steampunk"},
+		"wards": {"square": "Clockwork Square", "inn": "Public House", "shop": "Merchant Arcade", "hall": "Guildhall", "homes": "Tenements", "quay": "Wharf", "heights": "Upper Works", "gate": "Toll Gate"}},
 	"pirate": {"palette": "pirate", "currency": "doubloons", "art": "age-of-sail painting, salt haze and lantern light",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "oak", "page": "parchment"},
-		"flavor": {"map": "chart", "pack": "sea chest", "book": "logbook", "world": "age-of-sail adventure"}},
+		"flavor": {"map": "chart", "pack": "sea chest", "book": "logbook", "world": "age-of-sail adventure"},
+		"wards": {"square": "Harbour Market", "inn": "Tavern", "shop": "Chandlery", "hall": "Harbourmaster", "homes": "Netmakers Row", "quay": "Quay", "heights": "Cliff Stair", "gate": "Landward Gate"}},
 	"horror": {"palette": "horror", "currency": "coin", "art": "gothic horror illustration, candlelit dread, desaturated",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
-		"flavor": {"map": "chart", "pack": "satchel", "book": "grimoire", "world": "gothic horror"}},
+		"flavor": {"map": "chart", "pack": "satchel", "book": "grimoire", "world": "gothic horror"},
+		"wards": {"square": "Old Square", "inn": "Lodging House", "shop": "Shuttered Row", "hall": "Parish Hall", "homes": "Almshouses", "quay": "Black Wharf", "heights": "Chapel Rise", "gate": "Iron Gate"}},
 	"norse": {"palette": "norse", "currency": "silver", "art": "norse saga illustration, cold fjord light, rune-carved wood",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
-		"flavor": {"map": "chart", "pack": "pack", "book": "saga", "world": "norse saga fantasy"}},
+		"flavor": {"map": "chart", "pack": "pack", "book": "saga", "world": "norse saga fantasy"},
+		"wards": {"square": "Thing-Stead", "inn": "Mead-Hall", "shop": "Traders Row", "hall": "Jarls Hall", "homes": "Longhouses", "quay": "Boat Strand", "heights": "Beacon Rise", "gate": "Stockade Gate"}},
 }
+
+## ── THE WARD VOCABULARY ──────────────────────────────────────────────────────
+##
+## The SOCKETS are fixed and the WORDS are the world's. Every family answers the
+## same eight keys, so the town generator asks for `square` and gets whatever
+## that world calls its square — a Thing-Stead in a saga, a Concourse on a
+## station, Clockwork Square under the soot.
+##
+## THIS USED TO BE A STRING MATCH IN THE GENERATOR, and it is the reason a
+## steampunk foundry town had a Noodle Bar in it. `local_map` asked whether the
+## family's prose `world` line contained "cyber" or "steam", and branched two
+## ways — so eight families produced two vocabularies, cyberpunk words leaked
+## into steampunk, and a fantasy village and a pirate port came out with
+## identical ward names on the same sheet. Flavour belongs in the flavour table,
+## keyed, never inferred from prose.
+## TYPED, for the reason `WorldTerrain.N4` and `LocalMap.SIDES` are: an untyped
+## array literal iterated in a `for` makes every `var x := ...` inside that loop
+## uninferrable, which is a PARSE error — and a parse error in a class_name file
+## is silent at the call site. Third time this shape has come up in this work.
+const WARD_KEYS: Array[String] = ["square", "inn", "shop", "hall", "homes",
+	"quay", "heights", "gate"]
+
+## The five every town has, in the order they are handed out — richest first.
+## `quay`, `heights` and `gate` are chosen by the SITE instead.
+const CORE_WARDS: Array[String] = ["square", "inn", "shop", "hall", "homes"]
+
+
+## What this world calls the given kind of quarter. Falls back to fantasy, which
+## is complete by the check in `self_check` — so this cannot return "".
+func ward_name(family: String, key: String) -> String:
+	var fam: Dictionary = FAMILIES.get(family, FAMILIES["fantasy"])
+	var words: Dictionary = fam.get("wards", {})
+	if words.has(key):
+		return str(words[key])
+	return str(FAMILIES["fantasy"]["wards"].get(key, key))
+
 
 ## EVERY shipped world must be here. `_by_id` is only filled by `remember()`,
 ## which runs when a world is entered — so a world missing from this map

@@ -254,26 +254,26 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 	quarters.sort_custom(func(a, b): return TownPlan.area(a) > TownPlan.area(b))
 	wards = quarters
 
-	var flavor: Dictionary = WorldSkin.skin_for_id(world_id).get("flavor", {})
-	var urban := str(flavor.get("world", "")).contains("cyber") \
-		or str(flavor.get("world", "")).contains("steam")
+	# THE WORLD SUPPLIES THE WORDS, the generator supplies the structure. Ask
+	# `WorldSkin` for this family's name for each kind of quarter rather than
+	# branching on prose — see the RCA on `WorldSkin.WARD_KEYS`, which this used
+	# to be a two-way string match against and which put a Noodle Bar in a
+	# steampunk town and identical ward names in a fantasy village and a pirate
+	# port.
+	var fam := WorldSkin.family_for_id(world_id)
 	# What each ward IS, richest and busiest first. The order matters: a ward's
 	# kind decides how big its buildings are and how chaotic its streets, which
 	# is what makes a town read as having quarters rather than one texture.
-	var roles: Array = [
-		["square", "The %s" % ("Plaza" if urban else "Market Square")],
-		["inn", "The %s" % ("Noodle Bar" if urban else "Common Room")],
-		["shop", "The %s" % ("Stall Row" if urban else "Trade Row")],
-		["hall", "The %s" % ("Admin Block" if urban else "Moot Hall")],
-		["homes", "The %s" % ("Stacks" if urban else "Cottages")],
-	]
+	var roles: Array = []
+	for key in WorldSkin.CORE_WARDS:
+		roles.append([key, "The %s" % WorldSkin.ward_name(fam, key)])
 	match site:
 		WorldTerrain.COAST, WorldTerrain.SHOAL:
-			roles.append(["quay", "The %s" % ("Docks" if urban else "Quay")])
+			roles.append(["quay", "The %s" % WorldSkin.ward_name(fam, "quay")])
 		WorldTerrain.PEAK, WorldTerrain.HILL:
-			roles.append(["gate", "The %s" % ("Upper Terrace" if urban else "High Gate")])
+			roles.append(["gate", "The %s" % WorldSkin.ward_name(fam, "heights")])
 		_:
-			roles.append(["gate", "The %s" % ("Checkpoint" if urban else "Town Gate")])
+			roles.append(["gate", "The %s" % WorldSkin.ward_name(fam, "gate")])
 
 	# THE QUAY GOES WHERE THE WATER IS. Roles were handed out in area order alone,
 	# so Gallows Quay put its Quay on the eastern ward while its sea was to the
