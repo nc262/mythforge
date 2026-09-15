@@ -247,3 +247,80 @@ static func draw_label(ci: CanvasItem, font: Font, at: Vector2, text: String,
 		var o2 := Vector2(r * 0.55, 0).rotated(float(k) / 4.0 * TAU + PI * 0.25)
 		ci.draw_string(font, at + o2, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, paper)
 	ci.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size, Color(ink, strength))
+
+
+## ── A DRAWN LINE, NOT A PLOTTED ONE ──────────────────────────────────────────
+##
+## Read out of rough.js's source rather than invented, because the numbers there
+## are the difference between "hand-drawn" and "drunk":
+##
+##   · THE DOUBLE STROKE IS THE MECHANISM. rough.js draws every line TWICE by
+##     default — a base pass and an overlay offset by a smaller amount — and that
+##     is what produces the sketched look. Per-point jitter alone reads as a
+##     glitch, not as a hand.
+##   · LENGTH-DEPENDENT GAIN. Full roughness under 200 px, falling to 0.4x over
+##     500 px (linear between). Short strokes wobble more per unit length, which
+##     is what keeps a long wall from looking drunk while small details stay
+##     lively.
+##   · maxRandomnessOffset is 2 px, and it is a CAP, not a scale — it does not
+##     grow with the shape.
+##
+## WHAT THIS IS DELIBERATELY NOT USED ON: the six hundred building footprints. At
+## three pixels a side any wobble is noise, the double stroke would turn a dense
+## quarter to mush, and Wood et al. (IEEE TVCG 2012) measured the cost of sketchy
+## rendering landing specifically on RELATIVE AREA JUDGEMENT — which is exactly
+## what a reader does when comparing one building to its neighbours. So this goes
+## on the long lines the eye follows and no further: the wall, the roads, the
+## coast, the field hedges.
+##
+## And it jitters the DRAWN COPY only. The polygons the game reasons about are
+## untouched, which is the other half of that same finding.
+const ROUGH_CAP := 2.0
+
+
+static func _gain(length: float) -> float:
+	if length < 200.0:
+		return 1.0
+	if length > 500.0:
+		return 0.4
+	return -0.0016668 * length + 1.233334
+
+
+## One pass of a roughened polyline. Call it twice with different `pass_no` for
+## the double stroke; `key` keeps it stable across redraws so the ink does not
+## shimmer when the map is panned.
+static func rough(pts: PackedVector2Array, key: int, pass_no := 0) -> PackedVector2Array:
+	var n := pts.size()
+	if n < 2:
+		return pts
+	var total := 0.0
+	for i in range(1, n):
+		total += pts[i - 1].distance_to(pts[i])
+	var amp := ROUGH_CAP * _gain(total) * (1.0 if pass_no == 0 else 0.5)
+	var out := PackedVector2Array()
+	for i in n:
+		var h := absi(hash(Vector2i(int(pts[i].x * 4.0) + key + pass_no * 7919,
+			int(pts[i].y * 4.0) - key)))
+		var ang := float(h % 628) * 0.01
+		var mag := float((h / 628) % 100) * 0.01 * amp
+		var p: Vector2 = pts[i] + Vector2(cos(ang), sin(ang)) * mag
+		# BOWING: the midpoint of a run is pushed off the straight, which is what
+		# rough.js does with its own `bowing` term and what makes a long line read
+		# as drawn rather than merely noisy.
+		if i > 0 and i < n - 1:
+			var along := (pts[i + 1] - pts[i - 1]).normalized()
+			p += along.orthogonal() * sin(float(i) / float(n - 1) * PI) * amp * 0.6
+		out.append(p)
+	return out
+
+
+## Draw a line the way a hand would: twice, the second pass lighter.
+static func draw_rough(ci: CanvasItem, pts: PackedVector2Array, key: int,
+		col: Color, width: float, closed := false) -> void:
+	if pts.size() < 2:
+		return
+	var src := pts.duplicate()
+	if closed:
+		src.append(src[0])
+	ci.draw_polyline(rough(src, key, 0), col, width, true)
+	ci.draw_polyline(rough(src, key, 1), Color(col, col.a * 0.55), width * 0.7, true)

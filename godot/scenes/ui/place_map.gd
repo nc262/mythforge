@@ -494,7 +494,7 @@ func _draw_ground(ci: CanvasItem) -> void:
 		for q in coast:
 			hl.append(q + d * off * _plate())
 		ci.draw_polyline(hl, Color(_ink(), 0.34 - float(band) * 0.055), 1.1, true)
-	ci.draw_polyline(coast, Color(_ink(), 0.95), 2.2, true)
+	MapInk.draw_rough(ci, coast, absi(hash(lm.place)) + 3, Color(_ink(), 0.95), 2.2)
 
 
 ## ── PLATE TO SHEET, AT ONE SCALE ─────────────────────────────────────────────
@@ -540,7 +540,7 @@ func _draw_outside(ci: CanvasItem) -> void:
 				hs.append(_pct(q))
 			ci.draw_colored_polygon(hs, Color(ink, 0.05))
 			hs.append(hs[0])
-			ci.draw_polyline(hs, Color(ink, 0.45), 1.2, true)
+			MapInk.draw_rough(ci, hs, int(hs[0].x) + int(hs[0].y), Color(ink, 0.45), 1.2)
 		for line in f["strips"]:
 			var scr := PackedVector2Array()
 			for q in line:
@@ -555,7 +555,7 @@ func _draw_outside(ci: CanvasItem) -> void:
 			scr2.append(_pct(q))
 		if scr2.size() > 1:
 			ci.draw_polyline(scr2, Color(_paper_tone(), 0.9), 5.4, true)
-			ci.draw_polyline(scr2, Color(ink, 0.7), 2.0, true)
+			MapInk.draw_rough(ci, scr2, absi(hash(lm.place)) + int(scr2[0].x), Color(ink, 0.7), 2.0)
 	# The faubourg: what would not fit, or was not wanted, inside the wall.
 	for b in lm.outskirts:
 		var poly: PackedVector2Array = b["poly"]
@@ -597,7 +597,7 @@ func _draw_town(ci: CanvasItem) -> void:
 			ring2.append(_pct(q))
 		ring2.append(ring2[0])
 		if lm.walled:
-			ci.draw_polyline(ring2, Color(ink, 0.92), 3.4, true)
+			MapInk.draw_rough(ci, ring2, absi(hash(lm.place)), Color(ink, 0.92), 3.4)
 			# A GATE IS A GAP WITH TWO TOWERS. Drawn after the wall so it breaks
 			# it — and drawn LARGER than a mural tower, which is the one rule
 			# about walls safe to make absolute: the gate is always the biggest
@@ -612,7 +612,7 @@ func _draw_town(ci: CanvasItem) -> void:
 				ci.draw_circle(tp2, 3.4, paper)
 				ci.draw_arc(tp2, 3.4, 0, TAU, 14, Color(ink, 0.92), 1.6, true)
 		else:
-			ci.draw_polyline(ring2, Color(ink, 0.45), 1.4, true)
+			MapInk.draw_rough(ci, ring2, absi(hash(lm.place)) + 11, Color(ink, 0.45), 1.4)
 
 	# INK OUTLINES ON PAPER. A drawn town map does not shade its roofs: the
 	# footprint is left blank and the LINE does the work, with a handful filled
