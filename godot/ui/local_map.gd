@@ -66,13 +66,37 @@ var edges: Array = []              # [i, j] into `nodes`
 ## buildings along them, a plaza, a shore where the sea actually is — that is a
 ## map of one. Same split as the world chart: the field decides, the drawing
 ## shows, and nothing here is ever read back.
+## ── WARDS ARE ADDRESSABLE, and that is what lets the GM touch a town ─────────
+## `wards` is the geometry; `ward_of` is the identity. A ward id is its INDEX,
+## and the order is fixed by descending area from a seeded generator, so ward 3
+## is the same quarter on every visit and in every save. Without that there is
+## nothing for a [[site]] tag to attach to — which is what `site_probe`
+## measured: the GM could add a place to the chart and the town never moved.
 var wards: Array = []              # PackedVector2Array per quarter, percent space
+var ward_role: Array = []          # parallel to `wards`: "square", "quay", ...
+var ward_name: Array = []          # parallel: what this world calls it
+## ── WHAT A QUARTER IS LIKE, in two axes rather than one ──────────────────────
+## Blades in the Dark rates a district on separate Wealth and Security dots, and
+## that split is the whole point: a single rich/poor dial is the documented
+## cliche, because it makes wealth stand in for danger, for law, and for who will
+## talk to you, and loses all three. A quarter here can be poor and orderly, or
+## moneyed and unwatched. 0-3 each.
+var ward_wealth: PackedInt32Array = PackedInt32Array()
+var ward_law: PackedInt32Array = PackedInt32Array()
 var buildings: Array = []          # {"poly": PackedVector2Array, "big": bool}
 var rooms: Array = []              # unsettled: one Rect2 per node, same index
 var water_dir := Vector2.ZERO      # toward the sea, or ZERO if landlocked
 var water_at := 0.0                # how far across the plate the shore sits
 var bounds := PackedVector2Array() # the built-up edge, wall or field boundary
 var walled := false                # a settlement has a wall; a hamlet has hedges
+## ── HOW BIG IS THIS PLACE ────────────────────────────────────────────────────
+## 0 hamlet, 1 village, 2 town, 3 city. Every published system ties what a
+## settlement can OFFER to its size — the 2024 DMG gates the top item value on
+## it, Pathfinder gates base value, purchase limit and spell tier. A hamlet and
+## a capital came out of this generator with byte-identical rosters of six
+## wards, which is the shape of that whole problem.
+var size_tier := 1
+var sites: Array = []              # GM-authored, per ward — see `GameState.town_sites`
 
 static var _cache := {}
 
@@ -147,8 +171,10 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 		# it is to DERIVE one from the other so there is only one. The boundary
 		# is built first, and everything inside is placed at a fraction of the
 		# wall's own reach on its own bearing.
+		_size_of(rng)
 		_plan_bounds(rng)
 		_plan_town(rng)
+		_plan_sites()
 	else:
 		_build_site(rng)
 		_plan_rooms(rng)
@@ -194,6 +220,27 @@ func _shore_reach(ang: float) -> float:
 	return 6.0
 
 
+## ── HOW BIG IS THIS PLACE ────────────────────────────────────────────────────
+##
+## Seeded, so it is the same on every visit, and biased by KIND: a place the
+## world calls a settlement is the one that can be a city, while a tavern or a
+## home is a hamlet with a name on it. Every published system ties what a
+## settlement can offer to its size, and a generator that gives a crossroads inn
+## the same seven quarters as a capital has thrown that away before it starts.
+func _size_of(rng: RandomNumberGenerator) -> void:
+	var roll := rng.randf()
+	match kind:
+		"settlement":
+			size_tier = 1 if roll < 0.2 else (2 if roll < 0.7 else 3)
+		"shop":
+			size_tier = 0 if roll < 0.3 else 1
+		_:
+			size_tier = 0 if roll < 0.55 else 1
+	# The site can argue for one more: a harbour gathers people, a peak does not.
+	if site == WorldTerrain.COAST and size_tier < 3 and rng.randf() < 0.4:
+		size_tier += 1
+
+
 ## THE BUILT-UP EDGE, built FIRST because everything else is placed relative to
 ## it. An irregular ring round the square, pulled in wherever the water is.
 ##
@@ -219,7 +266,12 @@ func _plan_bounds(rng: RandomNumberGenerator) -> void:
 		if _in_water(at):
 			at = Vector2(50, 50) + Vector2(cos(ang), sin(ang)) * _shore_reach(ang)
 		bounds.append(at)
-	walled = kind == "settlement"
+	# A WALL IS A SIZE QUESTION, NOT A KIND QUESTION. This read
+	# `kind == "settlement"` and only one shipped world carries a place of that
+	# kind — so five of six towns drew a hairline outline instead of a wall, and
+	# the gates and towers that hang off a wall had nothing to attach to.
+	# Hamlets do not wall themselves; towns and cities do.
+	walled = size_tier >= 2
 
 
 ## How far the built-up edge reaches on a bearing — the ONE number every
@@ -247,7 +299,10 @@ func _reach(ang: float) -> float:
 func _plan_town(rng: RandomNumberGenerator) -> void:
 	if bounds.size() < 3:
 		return
-	var want := 7 if kind == "settlement" else 5
+	# SIZE DECIDES HOW MANY QUARTERS. A hamlet is not a small city — it is a
+	# place with fewer KINDS of ground in it. Four wards to eleven across the
+	# tiers, which is also what decides how many named places a town can hold.
+	var want: int = [4, 5, 7, 11][size_tier]
 	var quarters := TownPlan.wards(bounds, want, rng)
 	# Biggest first, so the named places land in the wards that can hold them and
 	# the market square is the heart rather than an off-centre scrap.
@@ -295,6 +350,52 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 			var tmp: Array = roles[pick]
 			roles[pick] = roles[water_role]
 			roles[water_role] = tmp
+
+	# ── IDENTITY AND CHARACTER, per ward ─────────────────────────────────────
+	# Filled before anything is placed, so a ward id means the same thing to the
+	# renderer, to the save file and to the GM.
+	ward_role.resize(quarters.size())
+	ward_name.resize(quarters.size())
+	ward_wealth.resize(quarters.size())
+	ward_law.resize(quarters.size())
+	# NORMALISED AGAINST THE TOWN, not against a single bearing. `_reach(0.0)` is
+	# how far the wall runs due east and nothing more, so using it as the scale
+	# made every ward "outer" in a town that happens to be wide — wealth never
+	# reached 3 and the market square was as poor as the outskirts.
+	var far_out := 0.001
+	for q in quarters:
+		far_out = maxf(far_out, TownPlan.centroid(q).distance_to(Vector2(50, 50)))
+	for i in quarters.size():
+		var at_i := TownPlan.centroid(quarters[i])
+		var role := str(roles[i][0]) if i < roles.size() else "homes"
+		ward_role[i] = role
+		if i < roles.size():
+			ward_name[i] = str(roles[i][1])
+		else:
+			# BEYOND THE NAMED ROLES, a quarter is still somewhere. Qualified by
+			# its bearing so no two share a name — two wards both called "The
+			# Netmakers Row" is a town that cannot be given directions in.
+			ward_name[i] = "%s %s" % [_quarter_of(at_i), WorldSkin.ward_name(fam, "homes")]
+		# WEALTH falls off from the square, because the centre is where the money
+		# is in every town plan anyone has ever drawn. LAW is separate and is NOT
+		# a copy of it: the hall and the gate are watched, the quay is where the
+		# law is thinnest whatever it costs to live there, and the outskirts are
+		# nobody's beat. That independence is the whole reason there are two.
+		var d := at_i.distance_to(Vector2(50, 50)) / far_out
+		var w := int(round(clampf(3.0 - d * 2.6, 0.0, 3.0)))
+		var l := int(round(clampf(2.7 - d * 2.0, 0.0, 3.0)))
+		match role:
+			"hall", "gate":
+				l = mini(l + 1, 3)
+			"quay":
+				l = maxi(l - 2, 0)          # the docks are where the law is thin
+				w = maxi(w - 1, 0)
+			"square", "shop":
+				w = mini(w + 1, 3)
+			"homes":
+				w = maxi(w - 1, 0)
+		ward_wealth[i] = w
+		ward_law[i] = l
 
 	for i in quarters.size():
 		var poly: PackedVector2Array = quarters[i]
@@ -395,6 +496,51 @@ func _site_name(i: int, n: int, deep: bool, rng: RandomNumberGenerator) -> Strin
 func _side_name(rng: RandomNumberGenerator) -> String:
 	var a := ["A Choked Passage", "A Collapsed Room", "An Old Storeroom", "A Dry Cistern"]
 	return str(a[rng.randi_range(0, a.size() - 1)])
+
+
+## ── WHAT THE GM PUT HERE ─────────────────────────────────────────────────────
+##
+## Read LAST, after the generated quarters, so a site always lands inside a ward
+## that already exists rather than defining one. The GM named a ward; the lot is
+## the engine's choice — a real building lot from the plan, so a site stands ON
+## something instead of floating at a centroid.
+##
+## The lot is picked by a hash of the NAME, not by the rng, because this runs
+## after the seeded pass and must give the same answer on every rebuild without
+## depending on how many sites came before it.
+func _plan_sites() -> void:
+	for spec in GameState.town_sites(place):
+		if not (spec is Dictionary):
+			continue
+		var w := int(spec.get("ward", -1))
+		if w < 0 or w >= wards.size():
+			continue
+		var poly: PackedVector2Array = wards[w]
+		var at := TownPlan.centroid(poly)
+		# Stand it on a real lot inside that ward, if one is there to stand on.
+		var h := absi(hash(str(spec.get("name", ""))))
+		var lots: Array = []
+		for b in buildings:
+			var c := TownPlan.centroid(b["poly"])
+			if Geometry2D.is_point_in_polygon(c, poly):
+				lots.append(c)
+		if not lots.is_empty():
+			at = lots[h % lots.size()]
+		sites.append(spec)
+		_add(str(spec.get("name", "")), "site:" + str(spec.get("kind", "landmark")),
+			at.x, at.y)
+		# Reachable from the square, like every other named place in the town.
+		if nodes.size() > 1:
+			edges.append([0, nodes.size() - 1])
+
+
+## Which way out of the middle a point lies — the qualifier an unnamed quarter
+## takes, so every ward on a plan has a name you could give directions with.
+func _quarter_of(at: Vector2) -> String:
+	var d := at - Vector2(50, 50)
+	if absf(d.x) > absf(d.y):
+		return "East" if d.x > 0.0 else "West"
+	return "South" if d.y > 0.0 else "North"
 
 
 func _add(nm: String, role: String, x: float, y: float) -> void:

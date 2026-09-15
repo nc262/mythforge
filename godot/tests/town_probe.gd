@@ -118,9 +118,36 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 		line2 += " [%d cvx=%s rfx=%d a=%.0f ins=%.0f]" % [
 			i, _convex(w), _reflex(w), TownPlan.area(w), TownPlan.area(ins)]
 	print(line2)
-	var line := "%s/%s  wards=%d  buildings=%d
+	# ── WARD IDENTITY ────────────────────────────────────────────────────────
+	# A ward id is an INDEX, and a [[site]] tag stores one in the save file. So
+	# the same town must produce the same wards in the same order every time it
+	# is built, or a fence the GM put in ward 3 moves quarters between sessions.
+	LocalMap.forget("%s|%s" % [wid, nm])
+	var again := LocalMap.for_place(wid, nm, knd)
+	if again.ward_name != lm.ward_name or again.ward_role != lm.ward_role:
+		_failed.append("%s/%s: ward ids are not stable across rebuilds — a saved site would move" % [wid, nm])
+	var seen := {}
+	for i in lm.wards.size():
+		var wn := str(lm.ward_name[i])
+		if wn.strip_edges() == "":
+			_failed.append("%s/%s ward %d has no name" % [wid, nm, i])
+		elif seen.has(wn):
+			_failed.append("%s/%s: wards %d and %d are both called '%s' — a town you cannot give directions in" % [
+				wid, nm, int(seen[wn]), i, wn])
+		seen[wn] = i
+		# Two axes, each 0-3. A single rich/poor dial is the documented cliche;
+		# these are only worth having if they can disagree.
+		if lm.ward_wealth[i] < 0 or lm.ward_wealth[i] > 3:
+			_failed.append("%s/%s ward %d: wealth %d out of 0-3" % [wid, nm, i, lm.ward_wealth[i]])
+		if lm.ward_law[i] < 0 or lm.ward_law[i] > 3:
+			_failed.append("%s/%s ward %d: law %d out of 0-3" % [wid, nm, i, lm.ward_law[i]])
+	if lm.ward_name.size() != lm.wards.size():
+		_failed.append("%s/%s: %d wards but %d names" % [wid, nm, lm.wards.size(), lm.ward_name.size()])
+
+	var line := "%s/%s  t%d w%s  wards=%d  buildings=%d
    " % [
-		wid, nm, lm.wards.size(), lm.buildings.size()]
+		wid, nm, lm.size_tier, "Y" if lm.walled else "n",
+		lm.wards.size(), lm.buildings.size()]
 	for i in lm.wards.size():
 		var a := TownPlan.area(lm.wards[i])
 		var f := fill[i] / maxf(a, 0.001)

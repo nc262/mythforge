@@ -55,6 +55,7 @@ Sent in every DM envelope. The GM proposes; the engine disposes.
 [[combat-start foes="goblin x3, boss"]]  [[combat-end]]
 [[scene place="the chapel crypt"]]    [[companion name="Ser Aldric"]]
 [[place name="Saltwick" kind=settlement scope=local region="The Reach"]]
+[[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"]]
 [[region name="The Ashen Marches"]]   [[lore cat=Places title="…" note="…"]]
 [[road from="Saltwick" to="The Weir" state=blocked name="the Weir Road"]]
 ```
@@ -62,6 +63,15 @@ Sent in every DM envelope. The GM proposes; the engine disposes.
 One tag per effect, on its own line, and never a dice result, HP total or
 success/failure in prose. `Tags.detect_check` and `detect_combat_start` catch
 turns where the model narrates a roll instead of calling for one.
+
+`[[site]]` is the tier BELOW `[[place]]` — a building inside a town, attached to
+one of the quarters its plan already generated. `kind` is a closed enum
+(`GameState.SITE_KINDS`), so the GM never invents a kind the map cannot draw;
+`ward` must exist in that settlement's plan, and the refusal names the legal
+range ("Gallows Quay has wards 0-6"). It does NOT carry a level gate: scope is
+how the tale's reach is earned, and a shop inside a town the party is standing
+in is not that. The GM never gives coordinates — it names a ward and the engine
+stands the site on a lot the plan already produced.
 
 **The geography tags are the mini-god's real power, and the engine's veto is
 what keeps them a power rather than a mess.** `[[place]]` is refused beyond the

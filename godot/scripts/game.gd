@@ -1365,6 +1365,8 @@ func _apply_world_tags(tags: Array) -> void:
 			# is how "go to the tavern" would quietly charter a second tavern.
 			"place":
 				_gm_makes_place(a)
+			"site":
+				_gm_makes_site(a)
 			"region":
 				_gm_makes_region(a)
 			"road":
@@ -2850,6 +2852,42 @@ func _gm_makes_place(a: Dictionary) -> void:
 		Sfx.play("chime")
 	elif not why.begins_with(nm) or why.find("already") < 0:
 		# "already on the chart" is not worth a line — the world simply knew it.
+		_say_system(why, "compass")
+
+
+## [[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"
+##   lore="Buys what the tide brings in, no questions asked."]]
+##
+## The tier below [[place]]: a building INSIDE a town, attached to one of the
+## quarters the plan already generated. Before this the GM could charter a place
+## on the chart and the town the player stood in never moved — `site_probe`
+## measured exactly that, and it is the difference between a map the story can
+## write on and a map it can only point at.
+##
+## The refusal is spoken, like every other. It names the rule and, where it can,
+## the legal answers — "Gallows Quay has wards 0-6" teaches the next attempt in
+## a way "no" never does, and that matters more here than for a hosted model:
+## the tool-calling literature is clear that small local models recover from
+## vague errors far worse than large ones do.
+func _gm_makes_site(a: Dictionary) -> void:
+	var nm := str(a.get("name", "")).strip_edges()
+	if nm == "":
+		return
+	var town := str(a.get("settlement", "")).strip_edges()
+	if town == "":
+		town = GameState.here()          # the town we are standing in, if unsaid
+	var why := GameState.add_site({
+		"name": nm,
+		"kind": str(a.get("kind", "landmark")),
+		"ward": int(a.get("ward", -1)),
+		"settlement": town,
+		"lore": str(a.get("lore", "")),
+		"shop": str(a.get("shop", "")),
+	})
+	if why == "":
+		_say_system("%s now stands in %s." % [nm, town], "compass")
+		Sfx.play("chime")
+	elif why.find("already stands") < 0:
 		_say_system(why, "compass")
 
 

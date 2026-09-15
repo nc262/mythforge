@@ -1572,6 +1572,92 @@ func add_place(spec: Dictionary) -> String:
 	return ""
 
 
+## ── A SITE: WHAT THE GM PUTS INSIDE A TOWN ───────────────────────────────────
+##
+## `site_probe` measured the gap this closes. The GM could charter a place on
+## the world chart and have it ACCEPTED, and the town the player was standing in
+## came back byte-identical — the plan is generated from (world, name) and never
+## read any of this, so nothing the story invented could appear in a settlement.
+##
+## THE SHAPE IS THE SAME AS `add_place` AND DELIBERATELY SO: the model proposes,
+## the engine disposes, and every refusal says which rule it broke. That pattern
+## is the one thing the research on LLM game masters agrees about — the systems
+## that gate world-writes stay coherent and the one famous for not gating it is
+## famous for incoherence.
+##
+## FOUR CHECKS, and no more:
+##   · the settlement must already be on the chart — otherwise this is a second
+##     way to create a place, the way a road to Atlantis would have been
+##   · the ward must exist in that settlement's generated plan
+##   · the kind must be one the engine can actually render and price
+##   · the name must be free inside that town
+##
+## NO LEVEL GATE. `add_place` refuses a distant kingdom because scope is how the
+## tale's reach is earned; a shop inside a town the party is already standing in
+## is not that, and importing the check would be the wrong rule at this
+## granularity.
+##
+## The GM never says WHERE in the ward. It names the ward; the engine places it
+## on a lot the town plan already produced. The model is good at naming things
+## and bad at coordinates, and the spatial-grounding literature is unanimous
+## about the second half of that.
+const SITE_KINDS := ["inn", "tavern", "store", "smith", "alchemist", "temple",
+	"fence", "sage", "guild", "home", "landmark"]
+
+
+func add_site(spec: Dictionary) -> String:
+	var nm := str(spec.get("name", "")).strip_edges()
+	if nm == "":
+		return "a site needs a name"
+	var town := str(spec.get("settlement", "")).strip_edges()
+	if town == "":
+		return "a site needs the settlement it stands in"
+	var host := {}
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(town) == 0:
+			host = p
+			break
+	if host.is_empty():
+		return "%s is not on the chart — name a settlement that is" % town
+	if not LocalMap.SETTLED_KINDS.has(str(host.get("kind", ""))):
+		return "%s is not a place anyone lives in — a site needs a settlement" % town
+	var knd := str(spec.get("kind", "landmark")).to_lower()
+	if not SITE_KINDS.has(knd):
+		return "kind must be one of: %s" % ", ".join(SITE_KINDS)
+	var lm := LocalMap.for_place(world_id(), town, str(host.get("kind", "settlement")))
+	var ward := int(spec.get("ward", -1))
+	if ward < 0 or ward >= lm.wards.size():
+		return "%s has wards 0-%d — ward %d is not one of them" % [
+			town, lm.wards.size() - 1, ward]
+	for ex in town_sites(town):
+		if ex is Dictionary and str(ex.get("name", "")).nocasecmp_to(nm) == 0:
+			return "%s already stands in %s" % [nm, town]
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("sites") if world.get("sites") is Dictionary else {}
+	var mine: Array = all.get(town) if all.get(town) is Array else []
+	mine.append({
+		"name": nm,
+		"kind": knd,
+		"ward": ward,
+		"lore": str(spec.get("lore", "")),
+		"shop": str(spec.get("shop", "")),
+		"origin": "gm",
+	})
+	all[town] = mine
+	world["sites"] = all
+	save_kind("world", world)
+	# The plan is memoised per (world, name) and now has a new tenant.
+	LocalMap.forget("%s|%s" % [world_id(), town])
+	return ""
+
+
+## Everything the GM has put inside one town. Empty for a town it has not touched.
+func town_sites(town: String) -> Array:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("sites") if world.get("sites") is Dictionary else {}
+	return all.get(town) if all.get(town) is Array else []
+
+
 ## ── AT-6: KNOWING OF A PLACE IS NOT HAVING BEEN THERE ────────────────────────
 ##
 ## Fog was two-state — `seen` or hidden — and the table rule said so in as many

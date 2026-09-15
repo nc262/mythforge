@@ -54,6 +54,15 @@ const PAPER_SHADER := preload("res://ui/local_paper.gdshader")
 ## landmark wears on the world chart and the player learns one alphabet rather
 ## than two. The `col` entries are vestigial on a one-ink map and kept only
 ## because the hover and here states still read them.
+## A GM site's kind -> the ROLE_MARK row it borrows. The engine owns this list,
+## which is the whole point: `GameState.SITE_KINDS` is a closed enum, so every
+## site the GM can invent is one the map already knows how to draw.
+const SITE_MARK := {
+	"inn": "inn", "tavern": "inn", "store": "shop", "smith": "shop",
+	"alchemist": "shop", "temple": "hall", "fence": "shop", "sage": "hall",
+	"guild": "hall", "home": "homes", "landmark": "hall",
+}
+
 const ROLE_MARK := {
 	"square":  {"col": "gold",          "shape": "settlement"},
 	"inn":     {"col": "gold",          "shape": "tavern"},
@@ -197,7 +206,14 @@ func _draw() -> void:
 		if st == 0:
 			continue                       # unknown: nothing, as on the world map
 		var p := _pos_of(n)
-		var m = ROLE_MARK.get(str(n.get("role", "")), {"col": "ink_soft", "shape": "dot"})
+		# A GM-AUTHORED SITE carries its kind in its role ("site:smith"), so the
+		# mark it wears is chosen by the SAME table as everything else — the
+		# player learns one alphabet, and a place the story invented is drawn in
+		# the same ink as a place the generator did.
+		var role_s := str(n.get("role", ""))
+		if role_s.begins_with("site:"):
+			role_s = SITE_MARK.get(role_s.trim_prefix("site:"), "landmark")
+		var m = ROLE_MARK.get(role_s, {"col": "ink_soft", "shape": "dot"})
 		var col: Color = Ui.c(str(m["col"]))
 		var is_here := i == hi
 		if st == 1:

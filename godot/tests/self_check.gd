@@ -1441,6 +1441,16 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 			"world families '%s' and '%s' name their wards IDENTICALLY - two worlds would draw the same town under different skies" % [
 				fam, str(seen_wards.get(fingerprint, ""))])
 		seen_wards[fingerprint] = fam
+	# EVERY KIND THE GM MAY INVENT IS ONE THE MAP CAN DRAW. `SITE_KINDS` is a
+	# closed enum precisely so this can be true — the model never names a kind,
+	# it picks one, and the engine guarantees a mark for each. Leave a kind out
+	# of `SITE_MARK` and that site renders as a bare dot with no silhouette.
+	var pm: GDScript = load("res://scenes/ui/place_map.gd")
+	var site_mark: Dictionary = pm.get("SITE_MARK")
+	for k in GameState.SITE_KINDS:
+		assert(site_mark.has(k),
+			"GameState.SITE_KINDS carries '%s' and place_map.SITE_MARK has no mark for it - the GM could create a site the map cannot draw" % k)
+	print("  sites: %d kinds, every one has a mark" % GameState.SITE_KINDS.size())
 	print("  wards: %d families, %d sockets each, all distinct" % [
 		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
 
