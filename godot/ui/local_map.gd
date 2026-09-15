@@ -96,6 +96,7 @@ var walled := false                # a settlement has a wall; a hamlet has hedge
 ## a capital came out of this generator with byte-identical rosters of six
 ## wards, which is the shape of that whole problem.
 var size_tier := 1
+var trades: Array = []             # {"kind", "name", "ward"} — what this place sells
 var sites: Array = []              # GM-authored, per ward — see `GameState.town_sites`
 ## ── WHAT IS OUTSIDE THE WALL ─────────────────────────────────────────────────
 ## A town that stops dead at its boundary reads as a cut-out pasted on blank
@@ -184,6 +185,7 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 		_plan_bounds(rng)
 		_plan_town(rng)
 		_plan_outside(rng)
+		_plan_trades()
 		_plan_sites()
 	else:
 		_build_site(rng)
@@ -567,6 +569,74 @@ func _plan_sites() -> void:
 		_add(str(spec.get("name", "")), "site:" + str(spec.get("kind", "landmark")),
 			at.x, at.y)
 		# Reachable from the square, like every other named place in the town.
+		if nodes.size() > 1:
+			edges.append([0, nodes.size() - 1])
+
+
+## ── WHAT THE PLACE SELLS, AND WHERE IT STANDS ────────────────────────────────
+##
+## The `shop` field on a place was a free STRING — the whole economy model, and
+## nothing could gate it, price it, draw it or look it up. Trades are a closed
+## enum now, gated by size, named by the world, and placed by rules that are
+## mostly historical rather than invented:
+##
+##   · a SMITH is pushed to the edge. Fire risk; real towns zoned forges out, and
+##     noxious trades (tanners, knackers) were driven outside the walls by
+##     municipal ordinance, not by custom.
+##   · a FENCE goes where the law is thinnest, which is what the law axis is for.
+##     It is not given a criminal QUARTER — the shipped systems that do this well
+##     gate the transaction, not the geography, and their fences live anywhere
+##     plausible.
+##   · an INN goes to the gate, because that is where travellers arrive and
+##     innkeepers were the people who profited from them.
+##   · a TEMPLE takes the square, a SAGE and a GUILD take the hall, and trade
+##     goods cluster in the trade ward — which is the best-attested pattern of
+##     all: guilds were assigned STREETS by the town, which is why English towns
+##     still have an Ironmonger Row and a Shambles.
+func _plan_trades() -> void:
+	if wards.is_empty():
+		return
+	var fam := WorldSkin.family_for_id(world_id)
+	for key in WorldSkin.trades_at(size_tier):
+		var best := -1
+		var best_score := -INF
+		for i in wards.size():
+			var role := str(ward_role[i])
+			var score := 0.0
+			match key:
+				"temple":
+					score = 3.0 if role == "square" else 0.0
+				"sage", "guild":
+					score = 3.0 if role == "hall" else 0.0
+				"store", "alchemist":
+					score = 3.0 if role == "shop" else (1.5 if role == "square" else 0.0)
+				"inn":
+					score = 3.0 if role in ["gate", "quay"] else (1.5 if role == "square" else 0.0)
+				"tavern":
+					score = 3.0 if role == "inn" else (1.0 if role == "square" else 0.0)
+				"smith":
+					# Out to the edge, where the fire cannot take the town with it.
+					score = 2.0 - float(ward_wealth[i]) * 0.6
+				"fence":
+					score = 3.0 - float(ward_law[i]) * 1.4
+			# A tie-break that is stable but not always the same ward.
+			score += float(absi(hash(key + str(i))) % 100) * 0.004
+			if score > best_score:
+				best_score = score
+				best = i
+		if best < 0:
+			continue
+		var at := TownPlan.centroid(wards[best])
+		var lots: Array = []
+		for b in buildings:
+			var c := TownPlan.centroid(b["poly"])
+			if Geometry2D.is_point_in_polygon(c, wards[best]):
+				lots.append(c)
+		if not lots.is_empty():
+			at = lots[absi(hash(key + place)) % lots.size()]
+		var nm := "The %s" % WorldSkin.trade_name(fam, key)
+		trades.append({"kind": key, "name": nm, "ward": best})
+		_add(nm, "site:" + key, at.x, at.y)
 		if nodes.size() > 1:
 			edges.append([0, nodes.size() - 1])
 

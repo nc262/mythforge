@@ -1451,6 +1451,34 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 		assert(site_mark.has(k),
 			"GameState.SITE_KINDS carries '%s' and place_map.SITE_MARK has no mark for it - the GM could create a site the map cannot draw" % k)
 	print("  sites: %d kinds, every one has a mark" % GameState.SITE_KINDS.size())
+	# ── A QUARTER AND A BUSINESS MAY NOT SHARE A NAME ────────────────────────
+	# The town draws both: "The Chandlery" the ward and "The Chandlery" the shop
+	# stood on the same sheet, and only `_add`'s de-duplicator kept them apart —
+	# as "The Chandlery (2)". Four families collided (space on Galley, steam on
+	# Guildhall, pirate on Chandlery AND Tavern, norse on Mead-Hall), and nothing
+	# failed; it took reading a probe's node list to see it.
+	for fam2 in WorldSkin.FAMILIES:
+		var wrd: Dictionary = WorldSkin.FAMILIES[fam2].get("wards", {})
+		var trd: Dictionary = WorldSkin.FAMILIES[fam2].get("trades", {})
+		for tk in WorldSkin.TRADE_KEYS:
+			assert(trd.has(tk) and str(trd[tk]).strip_edges() != "",
+				"world family '%s' has no name for the '%s' trade" % [fam2, tk])
+			assert(not str(trd[tk]).to_lower().begins_with("the "),
+				"world family '%s' spells the '%s' trade as '%s' - the generator adds \"The\"" % [fam2, tk, str(trd[tk])])
+			for wk in WorldSkin.WARD_KEYS:
+				assert(str(wrd[wk]) != str(trd[tk]),
+					"world family '%s' calls both a WARD and a TRADE '%s' - the map would draw two places with one name" % [
+						fam2, str(trd[tk])])
+	# Size gates what a place can offer, and a bigger place never offers less.
+	var prev := 0
+	for tier in 4:
+		var got: Array = WorldSkin.trades_at(tier)
+		assert(got.size() > prev, "settlement tier %d offers no more trades than tier %d - the size gate does nothing" % [tier, tier - 1])
+		prev = got.size()
+	assert(WorldSkin.trades_at(0).size() < WorldSkin.trades_at(3).size(),
+		"a hamlet offers as much as a city")
+	print("  trades: %d kinds, %d..%d by size, none shares a ward's name" % [
+		WorldSkin.TRADE_KEYS.size(), WorldSkin.trades_at(0).size(), WorldSkin.trades_at(3).size()])
 	print("  wards: %d families, %d sockets each, all distinct" % [
 		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
 

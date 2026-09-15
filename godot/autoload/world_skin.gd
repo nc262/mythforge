@@ -14,43 +14,92 @@ const FAMILIES := {
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "pack", "book": "tome", "world": "high fantasy"},
 		"wards": {"square": "Market Square", "inn": "Common Room", "shop": "Trade Row", "hall": "Moot Hall", "homes": "Cottages", "quay": "Quay", "heights": "High Gate", "gate": "Town Gate"},
-		"grain": {"lot": 3.0, "chaos": 0.80, "empty": 0.10, "front": 0.74}},
+		"grain": {"lot": 3.0, "chaos": 0.80, "empty": 0.10, "front": 0.74},
+		"trades": {"inn": "Inn", "tavern": "Tavern", "store": "General Store", "smith": "Smithy", "alchemist": "Apothecary", "temple": "Temple", "fence": "Crooked Door", "sage": "Sage's Study", "guild": "Guildhall"}},
 	"cyber": {"palette": "neonspire", "currency": "credits", "art": "cyberpunk neon concept render, volumetric haze",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "neon", "oak": "carbon", "panel": "glass", "page": "glass"},
 		"flavor": {"map": "holo-map", "pack": "grid", "book": "datapad", "world": "cyberpunk sci-fi"},
 		"wards": {"square": "Plaza", "inn": "Noodle Bar", "shop": "Stall Row", "hall": "Admin Block", "homes": "Stacks", "quay": "Docks", "heights": "Upper Terrace", "gate": "Checkpoint"},
-		"grain": {"lot": 9.0, "chaos": 0.30, "empty": 0.05, "front": 0.95}},
+		"grain": {"lot": 9.0, "chaos": 0.30, "empty": 0.05, "front": 0.95},
+		"trades": {"inn": "Capsule Hotel", "tavern": "Noodle Stand", "store": "Bodega", "smith": "Fabricator", "alchemist": "Ripperdoc", "temple": "Shrine", "fence": "Chop Shop", "sage": "Datahaus", "guild": "Syndicate Office"}},
 	"everyday": {"palette": "everyday", "currency": "cash", "art": "warm contemporary slice-of-life illustration",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "leather", "page": "parchment"},
 		"flavor": {"map": "map", "pack": "bag", "book": "notebook", "world": "warm contemporary slice-of-life"},
 		"wards": {"square": "Town Square", "inn": "Corner Cafe", "shop": "Shopping Row", "hall": "City Hall", "homes": "Suburbs", "quay": "Waterfront", "heights": "Hill Road", "gate": "Old Town"},
-		"grain": {"lot": 5.5, "chaos": 0.40, "empty": 0.14, "front": 0.78}},
+		"grain": {"lot": 5.5, "chaos": 0.40, "empty": 0.14, "front": 0.78},
+		"trades": {"inn": "Motel", "tavern": "Bar", "store": "Corner Store", "smith": "Garage", "alchemist": "Pharmacy", "temple": "Chapel", "fence": "Pawn Shop", "sage": "Library", "guild": "Union Hall"}},
 	"space": {"palette": "space", "currency": "credits", "art": "sci-fi space-opera concept art, cold starlight, sleek hull panels",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "steel", "oak": "steel", "panel": "carbon", "page": "glass"},
 		"flavor": {"map": "starmap", "pack": "locker", "book": "log", "world": "sci-fi space opera"},
-		"wards": {"square": "Concourse", "inn": "Galley", "shop": "Exchange", "hall": "Command Deck", "homes": "Hab Block", "quay": "Docking Ring", "heights": "Upper Deck", "gate": "Airlock"},
-		"grain": {"lot": 8.0, "chaos": 0.18, "empty": 0.04, "front": 0.97}},
+		"wards": {"square": "Concourse", "inn": "Mess Deck", "shop": "Exchange", "hall": "Command Deck", "homes": "Hab Block", "quay": "Docking Ring", "heights": "Upper Deck", "gate": "Airlock"},
+		"grain": {"lot": 8.0, "chaos": 0.18, "empty": 0.04, "front": 0.97},
+		"trades": {"inn": "Berths", "tavern": "Galley", "store": "Commissary", "smith": "Machine Shop", "alchemist": "Medbay", "temple": "Quiet Room", "fence": "Grey Market", "sage": "Archive", "guild": "Union Office"}},
 	"steam": {"palette": "steam", "currency": "cogs", "art": "steampunk illustration, brass and soot, warm gaslight",
 		"materials": {"steel": "copper", "leather": "leather", "brass": "copper", "oak": "oak", "panel": "copper", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "case", "book": "ledger", "world": "steampunk"},
-		"wards": {"square": "Clockwork Square", "inn": "Public House", "shop": "Merchant Arcade", "hall": "Guildhall", "homes": "Tenements", "quay": "Wharf", "heights": "Upper Works", "gate": "Toll Gate"},
-		"grain": {"lot": 3.4, "chaos": 0.62, "empty": 0.08, "front": 0.72}},
+		"wards": {"square": "Clockwork Square", "inn": "Public House", "shop": "Merchant Arcade", "hall": "Board of Works", "homes": "Tenements", "quay": "Wharf", "heights": "Upper Works", "gate": "Toll Gate"},
+		"grain": {"lot": 3.4, "chaos": 0.62, "empty": 0.08, "front": 0.72},
+		"trades": {"inn": "Lodging House", "tavern": "Public Bar", "store": "Emporium", "smith": "Foundry", "alchemist": "Dispensary", "temple": "Chapel", "fence": "Pawnbroker", "sage": "Athenaeum", "guild": "Guildhall"}},
 	"pirate": {"palette": "pirate", "currency": "doubloons", "art": "age-of-sail painting, salt haze and lantern light",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "oak", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "sea chest", "book": "logbook", "world": "age-of-sail adventure"},
-		"wards": {"square": "Harbour Market", "inn": "Tavern", "shop": "Chandlery", "hall": "Harbourmaster", "homes": "Netmakers Row", "quay": "Quay", "heights": "Cliff Stair", "gate": "Landward Gate"},
-		"grain": {"lot": 2.6, "chaos": 0.92, "empty": 0.09, "front": 0.75}},
+		"wards": {"square": "Harbour Market", "inn": "Grog Alley", "shop": "Rope Walk", "hall": "Harbourmaster", "homes": "Netmakers Row", "quay": "Quay", "heights": "Cliff Stair", "gate": "Landward Gate"},
+		"grain": {"lot": 2.6, "chaos": 0.92, "empty": 0.09, "front": 0.75},
+		"trades": {"inn": "Boarding House", "tavern": "Tavern", "store": "Chandlery", "smith": "Forge", "alchemist": "Physicker", "temple": "Chapel", "fence": "Receiver", "sage": "Navigator's Loft", "guild": "Brotherhood Hall"}},
 	"horror": {"palette": "horror", "currency": "coin", "art": "gothic horror illustration, candlelit dread, desaturated",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "satchel", "book": "grimoire", "world": "gothic horror"},
 		"wards": {"square": "Old Square", "inn": "Lodging House", "shop": "Shuttered Row", "hall": "Parish Hall", "homes": "Almshouses", "quay": "Black Wharf", "heights": "Chapel Rise", "gate": "Iron Gate"},
-		"grain": {"lot": 2.8, "chaos": 0.88, "empty": 0.16, "front": 0.70}},
+		"grain": {"lot": 2.8, "chaos": 0.88, "empty": 0.16, "front": 0.70},
+		"trades": {"inn": "Boarding House", "tavern": "Public House", "store": "Dry Goods", "smith": "Blacksmith", "alchemist": "Apothecary", "temple": "Chapel", "fence": "Pawnbroker", "sage": "Antiquarian", "guild": "Lodge"}},
 	"norse": {"palette": "norse", "currency": "silver", "art": "norse saga illustration, cold fjord light, rune-carved wood",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "stone", "page": "parchment"},
 		"flavor": {"map": "chart", "pack": "pack", "book": "saga", "world": "norse saga fantasy"},
-		"wards": {"square": "Thing-Stead", "inn": "Mead-Hall", "shop": "Traders Row", "hall": "Jarls Hall", "homes": "Longhouses", "quay": "Boat Strand", "heights": "Beacon Rise", "gate": "Stockade Gate"},
-		"grain": {"lot": 5.0, "chaos": 0.70, "empty": 0.12, "front": 0.84}},
+		"wards": {"square": "Thing-Stead", "inn": "Ale-Row", "shop": "Traders Row", "hall": "Jarls Hall", "homes": "Longhouses", "quay": "Boat Strand", "heights": "Beacon Rise", "gate": "Stockade Gate"},
+		"grain": {"lot": 5.0, "chaos": 0.70, "empty": 0.12, "front": 0.84},
+		"trades": {"inn": "Guest-Hall", "tavern": "Mead-Hall", "store": "Trade-Booth", "smith": "Forge", "alchemist": "Healer's Croft", "temple": "Hof", "fence": "Silver-Buyer", "sage": "Skald's Seat", "guild": "Thing-Booth"}},
 }
+
+## ── WHAT A PLACE SELLS, AND WHEN IT IS BIG ENOUGH TO SELL IT ─────────────────
+##
+## The same socket idea as the wards: nine trades the engine can price and draw,
+## each named by the world. A fantasy `alchemist` is an Apothecary, a cyber one
+## is a Ripperdoc, a norse one is a Healer's Croft — one mechanic, one mark, nine
+## signs.
+##
+## TIERED, because every published system ties what a settlement can offer to
+## its size and none of them leave it to taste: the 2024 DMG gates the top item
+## value on it, Pathfinder gates base value, purchase limit and spell tier. A
+## hamlet has a tavern and somewhere to buy rope; a city has everything and a
+## guild. The list is cumulative — a tier gets its own row plus every row below.
+const TRADE_KEYS: Array[String] = ["inn", "tavern", "store", "smith",
+	"alchemist", "temple", "fence", "sage", "guild"]
+
+## tier -> the trades that ARRIVE at that size. 0 hamlet, 1 village, 2 town, 3 city.
+const TRADE_TIERS: Array = [
+	["tavern", "store"],
+	["inn", "smith"],
+	["temple", "alchemist", "sage"],
+	["guild", "fence"],
+]
+
+
+func trade_name(family: String, key: String) -> String:
+	var fam: Dictionary = FAMILIES.get(family, FAMILIES["fantasy"])
+	var words: Dictionary = fam.get("trades", {})
+	if words.has(key):
+		return str(words[key])
+	return str(FAMILIES["fantasy"]["trades"].get(key, key))
+
+
+## Everything a settlement of this size offers — its own row and all below it.
+func trades_at(tier: int) -> Array:
+	var out: Array = []
+	for t in mini(tier, TRADE_TIERS.size() - 1) + 1:
+		for k in TRADE_TIERS[t]:
+			out.append(k)
+	return out
+
 
 ## ── THE GRAIN OF A WORLD'S BUILDING ──────────────────────────────────────────
 ##
