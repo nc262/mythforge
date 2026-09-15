@@ -310,7 +310,14 @@ func _solve_labels(font: Font, hi: int) -> void:
 	_label_at.clear()
 	if lm == null:
 		return
+	# THE MARKS GO DOWN FIRST. A label that dodges other labels but sits on a
+	# symbol is still unreadable, and the symbol cannot move.
 	var taken: Array[Rect2] = []
+	for i in lm.nodes.size():
+		if lm.state_of(i, hi, walked) == 0:
+			continue
+		var mp := _pos_of(lm.nodes[i])
+		taken.append(Rect2(mp - Vector2(9, 9), Vector2(18, 18)))
 	for i in lm.nodes.size():
 		var st := lm.state_of(i, hi, walked)
 		if st == 0 or (st == 1 and not lm.settled):
@@ -320,27 +327,36 @@ func _solve_labels(font: Font, hi: int) -> void:
 		if nm == "":
 			continue
 		var p := _pos_of(n)
-		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
+		# MEASURED AT THE SIZE IT IS DRAWN AT. This measured 13 while `_label`
+		# drew 16, so every reserved box was a sixth too small and the solver
+		# cleared collisions that then happened anyway — which is why Gallows
+		# Quay's Rope Walk and Physicker sat on top of each other after the trades
+		# took the label count from six to fourteen.
+		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 16)
 		var best := p + Vector2(-sz.x / 2.0, -13.0)
-		var placed := false
-		for dist in [15.0, 25.0]:
+		var best_cost := INF
+		# MORE RINGS, AND A LEAST-BAD FALLBACK. With fourteen labels on a plate
+		# some of them genuinely cannot be placed clear, and the old solver gave
+		# up to its first guess — directly on top of a neighbour. Scoring every
+		# candidate by how much it overlaps and keeping the cheapest means a
+		# crowded sheet degrades instead of colliding.
+		for dist in [15.0, 24.0, 34.0, 46.0]:
 			for dir in LABEL_TRIES:
 				var c := p + Vector2(dir.x * (sz.x * 0.5 + 8.0), dir.y * dist)
 				var r := Rect2(c - Vector2(sz.x / 2.0, sz.y * 0.8), sz + Vector2(6, 4))
-				var clash := false
+				var cost := 0.0
 				for t in taken:
-					if r.intersects(t):
-						clash = true
-						break
-				if not clash:
+					var hit := r.intersection(t)
+					cost += hit.size.x * hit.size.y
+				# Nearer is better when nothing is in the way, so a clear label
+				# does not drift to the far ring for no reason.
+				cost += dist * 0.4
+				if cost < best_cost:
+					best_cost = cost
 					best = c + Vector2(-sz.x / 2.0, 0)
-					taken.append(r)
-					placed = true
-					break
-			if placed:
-				break
-		if not placed:
-			taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz))
+			if best_cost <= dist * 0.4 + 0.01:
+				break              # found a clear spot on this ring; stop looking
+		taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz + Vector2(6, 4)))
 		_label_at[nm] = best
 
 
