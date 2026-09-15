@@ -17,11 +17,11 @@ const FAMILIES := {
 	"cyber": {"palette": "neonspire", "currency": "credits", "art": "cyberpunk neon concept render, volumetric haze",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "neon", "oak": "carbon", "panel": "glass", "page": "glass"},
 		"flavor": {"map": "holo-map", "pack": "grid", "book": "datapad", "world": "cyberpunk sci-fi"},
-		"wards": {"square": "The Plaza", "inn": "Noodle Bar", "shop": "Stall Row", "hall": "Admin Block", "homes": "The Stacks", "quay": "Docks", "heights": "Upper Terrace", "gate": "Checkpoint"}},
+		"wards": {"square": "Plaza", "inn": "Noodle Bar", "shop": "Stall Row", "hall": "Admin Block", "homes": "Stacks", "quay": "Docks", "heights": "Upper Terrace", "gate": "Checkpoint"}},
 	"everyday": {"palette": "everyday", "currency": "cash", "art": "warm contemporary slice-of-life illustration",
 		"materials": {"steel": "steel", "leather": "leather", "brass": "brass", "oak": "oak", "panel": "leather", "page": "parchment"},
 		"flavor": {"map": "map", "pack": "bag", "book": "notebook", "world": "warm contemporary slice-of-life"},
-		"wards": {"square": "Town Square", "inn": "Corner Cafe", "shop": "Shopping Row", "hall": "City Hall", "homes": "The Suburbs", "quay": "Waterfront", "heights": "Hill Road", "gate": "Old Town"}},
+		"wards": {"square": "Town Square", "inn": "Corner Cafe", "shop": "Shopping Row", "hall": "City Hall", "homes": "Suburbs", "quay": "Waterfront", "heights": "Hill Road", "gate": "Old Town"}},
 	"space": {"palette": "space", "currency": "credits", "art": "sci-fi space-opera concept art, cold starlight, sleek hull panels",
 		"materials": {"steel": "glass", "leather": "carbon", "brass": "steel", "oak": "steel", "panel": "carbon", "page": "glass"},
 		"flavor": {"map": "starmap", "pack": "locker", "book": "log", "world": "sci-fi space opera"},
@@ -65,6 +65,10 @@ const FAMILIES := {
 const WARD_KEYS: Array[String] = ["square", "inn", "shop", "hall", "homes",
 	"quay", "heights", "gate"]
 
+## BARE NOUNS, NO ARTICLE. The generator writes "The %s", so a word carrying its
+## own "The" renders as "The The Plaza" — which it did, on the cyber and everyday
+## sheets, until the check below was written.
+##
 ## The five every town has, in the order they are handed out — richest first.
 ## `quay`, `heights` and `gate` are chosen by the SITE instead.
 const CORE_WARDS: Array[String] = ["square", "inn", "shop", "hall", "homes"]

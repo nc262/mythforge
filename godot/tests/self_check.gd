@@ -1428,6 +1428,12 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 				"world family '%s' has no word for the '%s' ward - the town generator asks every family for every key" % [fam, k])
 			assert(WorldSkin.ward_name(fam, k) == str(words[k]),
 				"ward_name('%s', '%s') does not return the family's own word" % [fam, k])
+			# NO ARTICLE IN THE WORD. `local_map` writes "The %s", so a word that
+			# carries its own "The" renders as "The The Plaza" — which is exactly
+			# what the cyber and everyday sheets said.
+			assert(not str(words[k]).to_lower().begins_with("the "),
+				"world family '%s' spells the '%s' ward as '%s' - the generator adds \"The\", so this renders as \"The %s\"" % [
+					fam, k, str(words[k]), str(words[k])])
 		var fingerprint := ""
 		for k2 in WorldSkin.WARD_KEYS:
 			fingerprint += str(words[k2]) + "|"
