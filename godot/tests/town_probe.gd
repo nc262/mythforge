@@ -147,9 +147,39 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 			_failed.append("%s/%s ward %d: wealth %d out of 0-3" % [wid, nm, i, lm.ward_wealth[i]])
 		if lm.ward_law[i] < 0 or lm.ward_law[i] > 3:
 			_failed.append("%s/%s ward %d: law %d out of 0-3" % [wid, nm, i, lm.ward_law[i]])
+	# EVERY TOWN HAS EXACTLY ONE SQUARE. The quay swap once traded it off the end
+	# of the role list, and The Leaning Lantern shipped with no centre — which only
+	# surfaced because its high streets had nothing to route to.
+	if lm.ward_role.count("square") != 1:
+		_failed.append("%s/%s: %d market squares — a town has exactly one centre (roles %s)" % [
+			wid, nm, lm.ward_role.count("square"), lm.ward_role])
+	if lm.water_dir != Vector2.ZERO and lm.site in [WorldTerrain.COAST, WorldTerrain.SHOAL] 			and lm.ward_role.count("quay") != 1:
+		_failed.append("%s/%s: a coastal town with %d quays" % [wid, nm, lm.ward_role.count("quay")])
 	if lm.ward_name.size() != lm.wards.size():
 		_failed.append("%s/%s: %d wards but %d names" % [wid, nm, lm.wards.size(), lm.ward_name.size()])
 
+	# ── A GATE MUST OPEN ONTO A STREET ───────────────────────────────────────
+	# Probe a short way inside each gate. If that point is inside a building, the
+	# gate opens into somebody's house.
+	var blocked := 0
+	for gt in lm.gates:
+		var gat: Vector2 = gt["at"]
+		var inward := (Vector2(50, 50) - gat).normalized()
+		for step in [2.5, 4.0, 5.5]:
+			var pt: Vector2 = gat + inward * float(step)
+			var hit := false
+			for b in lm.buildings:
+				if Geometry2D.is_point_in_polygon(pt, b["poly"]):
+					hit = true
+					break
+			if hit:
+				blocked += 1
+				break
+	print("  GATES %s/%s: %d gates, %d open onto a building, %d high streets" % [
+		wid, nm, lm.gates.size(), blocked, lm.arteries.size()])
+	if blocked > 0:
+		_failed.append("%s/%s: %d gate(s) open straight onto a building — a gate belongs where a street meets the wall" % [
+			wid, nm, blocked])
 	var line := "%s/%s  t%d w%s  wards=%d  buildings=%d
    " % [
 		wid, nm, lm.size_tier, "Y" if lm.walled else "n",

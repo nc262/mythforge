@@ -614,6 +614,20 @@ func _draw_town(ci: CanvasItem) -> void:
 		else:
 			MapInk.draw_rough(ci, ring2, absi(hash(lm.place)) + 11, Color(ink, 0.45), 1.4)
 
+	# THE HIGH STREETS, under the buildings. Wider than the ordinary gaps, and
+	# edged in ink, so a reader can follow a gate to the square — the one route
+	# through a town that everyone takes. Drawn as paper with a hairline either
+	# side, the way an engraver widens a main road without darkening it.
+	for art in lm.arteries:
+		var scr4 := PackedVector2Array()
+		for q in art:
+			scr4.append(_pct(q))
+		if scr4.size() < 2:
+			continue
+		var wide := TownPlan.MAIN_STREET * _plate()
+		ci.draw_polyline(scr4, Color(ink, 0.5), wide + 2.0, true)
+		ci.draw_polyline(scr4, paper, wide, true)
+
 	# INK OUTLINES ON PAPER. A drawn town map does not shade its roofs: the
 	# footprint is left blank and the LINE does the work, with a handful filled
 	# solid the way an engraver marks what matters without labelling it.

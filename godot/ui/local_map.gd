@@ -105,6 +105,7 @@ var sites: Array = []              # GM-authored, per ward — see `GameState.to
 ## the ploughland beyond.
 var gates: Array = []              # {"at": Vector2, "to": String}
 var out_roads: Array = []          # PackedVector2Array per road, percent space
+var arteries: Array = []           # PackedVector2Array: gate -> square, inside the wall
 var outskirts: Array = []          # {"poly": ...} buildings beyond the wall
 var furlongs: Array = []           # {"strips": Array[PackedVector2Array]}
 
@@ -185,6 +186,7 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 		_plan_bounds(rng)
 		_plan_town(rng)
 		_plan_outside(rng)
+		_plan_arteries()
 		_plan_trades()
 		_plan_sites()
 	else:
@@ -348,20 +350,32 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 	# named for. The site already knows which way the water lies; the ward that
 	# leans furthest that way takes the role.
 	if water_dir != Vector2.ZERO and roles.size() > 1:
-		var far := -INF
-		var pick := -1
-		for i in quarters.size():
-			if i >= roles.size():
-				break
-			var lean := (TownPlan.centroid(quarters[i]) - Vector2(50, 50)).dot(water_dir)
-			if lean > far:
-				far = lean
-				pick = i
+		var n_w := quarters.size()
 		var water_role := roles.size() - 1     # the site-chosen role is appended last
-		if pick >= 0 and pick != water_role and str(roles[water_role][0]) == "quay":
-			var tmp: Array = roles[pick]
-			roles[pick] = roles[water_role]
-			roles[water_role] = tmp
+		if str(roles[water_role][0]) == "quay":
+			# A QUAY WITH NO WARD TO STAND IN takes the least important slot.
+			# Roles run richest first, so the last WARD's role is the filler.
+			# Without this the swap below traded the quay into a real ward and
+			# pushed that ward's role off the end of the list — which, when the
+			# water-facing ward was the square's, deleted the town's market
+			# square outright. The Leaning Lantern shipped with no centre, and
+			# nothing noticed until its high streets had nowhere to go.
+			if water_role >= n_w:
+				roles[n_w - 1] = roles[water_role]
+				water_role = n_w - 1
+			var far := -INF
+			var pick := -1
+			# Never the square's ward (0): the market may well sit on the
+			# waterfront, but evicting it costs the town its centre.
+			for i in range(1, n_w):
+				var lean := (TownPlan.centroid(quarters[i]) - Vector2(50, 50)).dot(water_dir)
+				if lean > far:
+					far = lean
+					pick = i
+			if pick >= 1 and pick != water_role:
+				var tmp: Array = roles[pick]
+				roles[pick] = roles[water_role]
+				roles[water_role] = tmp
 
 	# ── IDENTITY AND CHARACTER, per ward ─────────────────────────────────────
 	# Filled before anything is placed, so a ward id means the same thing to the
@@ -673,28 +687,50 @@ func _plan_outside(rng: RandomNumberGenerator) -> void:
 		bearings.append([rng.randf() * TAU, ""])
 	var want: int = mini(2 + size_tier, bearings.size())
 
+	# A GATE IS WHERE A STREET MEETS THE WALL. Placing gates by bearing alone put
+	# them wherever the wall happened to cross that angle, and the wall is mostly
+	# the back of somebody's house: measured, 22 of 29 gates across the shipped
+	# towns opened straight onto a building. Watabou's rule is the historical one
+	# — a gate goes where a street reaches the wall — so the bearing now only
+	# CHOOSES among the real street mouths, and a bearing with no mouth near it
+	# gets no gate rather than a gate into a kitchen.
+	var mouths := _street_mouths()
 	var used: Array = []
+	var taken_mouth := {}
 	for b in bearings:
 		if gates.size() >= want:
 			break
 		var ang: float = float(b[0])
+		var pick := -1
+		var off := deg_to_rad(40.0)
+		for mi in mouths.size():
+			if taken_mouth.has(mi):
+				continue
+			var d := absf(angle_difference(float(mouths[mi]["ang"]), ang))
+			if d < off:
+				off = d
+				pick = mi
+		if pick < 0:
+			continue
+		var mang: float = float(mouths[pick]["ang"])
 		# No two gates adjacent — the exclusion rule real generators use, and
 		# what stops a town having three doors in one wall.
 		var too_close := false
 		for u in used:
-			if absf(angle_difference(float(u), ang)) < deg_to_rad(50.0):
+			if absf(angle_difference(float(u), mang)) < deg_to_rad(50.0):
 				too_close = true
 				break
 		if too_close:
 			continue
-		# A GATE OPENS ONTO LAND. The bearing comes from a neighbour on the world
-		# chart, and a neighbour across a bay is a real bearing to a real place —
-		# but the road to it does not walk on water. Gallows Quay put two gates
-		# on its seaward wall and drew roads and a suburb out into the harbour.
+		# A GATE OPENS ONTO LAND. A neighbour across a bay is a real bearing to a
+		# real place, but the road to it does not walk on water — Gallows Quay
+		# once put two gates on its seaward wall and drew a suburb into the harbour.
+		var at: Vector2 = mouths[pick]["at"]
+		ang = mang
 		var step0 := Vector2(cos(ang), sin(ang))
-		var at := me + step0 * _reach(ang)
 		if _in_water(at + step0 * 6.0):
 			continue
+		taken_mouth[pick] = true
 		used.append(ang)
 		gates.append({"at": at, "to": str(b[1])})
 
@@ -737,6 +773,126 @@ func _plan_outside(rng: RandomNumberGenerator) -> void:
 					c + Vector2(w, h).rotated(ang), c + Vector2(-w, h).rotated(ang)])
 				outskirts.append({"poly": quad})
 	_plan_fields(rng)
+
+
+## ── THE HIGH STREETS: every gate to the square ───────────────────────────────
+##
+## Watabou computes these once — every gate-to-plaza path — and tiers each street
+## by whether it lies on one. NOT by subdivision depth, which was my first
+## instinct and is wrong: depth says how small a block is, not whether anyone
+## walks past it. The historical version agrees — roads converge on the market
+## from the gates — though in an organic town they bend and merge rather than run
+## ruler-straight, which a path through the real street network does for free.
+##
+## Routed on a one-unit grid where the WARDS are solid, so the only way through
+## is the gaps between them, which are the streets.
+func _plan_arteries() -> void:
+	if gates.is_empty() or wards.is_empty():
+		return
+	var sq := ward_role.find("square")
+	if sq < 0:
+		return
+	var grid := AStarGrid2D.new()
+	grid.region = Rect2i(0, 0, 100, 100)
+	grid.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ONLY_IF_NO_OBSTACLES
+	grid.update()
+	for y in 100:
+		for x in 100:
+			var c := Vector2(float(x) + 0.5, float(y) + 0.5)
+			# OUTSIDE THE WALL IS SOLID TOO. Left open, the whole countryside was
+			# free space and the cheapest way from a gate to the square was round
+			# the OUTSIDE of the town, hugging the wall — both of Gallows Quay's
+			# high streets wrapped the perimeter instead of crossing it.
+			if not Geometry2D.is_point_in_polygon(c, bounds):
+				grid.set_point_solid(Vector2i(x, y), true)
+				continue
+			for w in wards:
+				if Geometry2D.is_point_in_polygon(c, w):
+					grid.set_point_solid(Vector2i(x, y), true)
+					break
+	# The goal is the open street cell nearest the square's middle — the square
+	# ward itself is solid, so the road arrives at its edge, which is the square.
+	var target := TownPlan.centroid(wards[sq])
+	var goal := Vector2i(-1, -1)
+	var best := INF
+	for y in 100:
+		for x in 100:
+			if grid.is_point_solid(Vector2i(x, y)):
+				continue
+			var d := Vector2(float(x) + 0.5, float(y) + 0.5).distance_squared_to(target)
+			if d < best:
+				best = d
+				goal = Vector2i(x, y)
+	if goal.x < 0:
+		return
+	for gt in gates:
+		var gp: Vector2 = gt["at"]
+		var start := Vector2i(clampi(int(gp.x), 0, 99), clampi(int(gp.y), 0, 99))
+		# The gate sits ON the wall; step in until the street is open.
+		var inward := (Vector2(50, 50) - gp).normalized()
+		var tries := 0
+		while grid.is_point_solid(start) and tries < 6:
+			gp += inward
+			start = Vector2i(clampi(int(gp.x), 0, 99), clampi(int(gp.y), 0, 99))
+			tries += 1
+		if grid.is_point_solid(start):
+			continue
+		var path := grid.get_point_path(start, goal)
+		if path.size() < 2:
+			continue
+		var pts := PackedVector2Array([gt["at"]])
+		for q in path:
+			pts.append(q + Vector2(0.5, 0.5))
+		arteries.append(_chaikin(pts))
+
+
+func _chaikin(pts: PackedVector2Array) -> PackedVector2Array:
+	for _pass in 2:
+		if pts.size() < 3:
+			return pts
+		var out := PackedVector2Array([pts[0]])
+		for i in range(pts.size() - 1):
+			out.append(pts[i].lerp(pts[i + 1], 0.25))
+			out.append(pts[i].lerp(pts[i + 1], 0.75))
+		out.append(pts[pts.size() - 1])
+		pts = out
+	return pts
+
+
+## Every place the town's street network reaches its boundary. Walks the wall,
+## steps a little inward at each point, and keeps the runs where that step lands
+## in NO ward — which, since wards are cut apart by their streets, is exactly a
+## street. Each run collapses to its middle.
+func _street_mouths() -> Array:
+	var out: Array = []
+	var me := Vector2(50, 50)
+	var n := bounds.size()
+	var run: Array = []
+	for i in n + 1:
+		var a: Vector2 = bounds[i % n]
+		var b: Vector2 = bounds[(i + 1) % n]
+		var steps := maxi(int(a.distance_to(b) / 0.6), 1)
+		for k in steps:
+			var q := a.lerp(b, float(k) / float(steps))
+			var probe := q + (me - q).normalized() * 3.0
+			var in_ward := false
+			for w in wards:
+				if Geometry2D.is_point_in_polygon(probe, w):
+					in_ward = true
+					break
+			if not in_ward:
+				run.append(q)
+			elif not run.is_empty():
+				out.append(_mouth_of(run))
+				run = []
+	if not run.is_empty():
+		out.append(_mouth_of(run))
+	return out
+
+
+func _mouth_of(run: Array) -> Dictionary:
+	var mid: Vector2 = run[run.size() / 2]
+	return {"at": mid, "ang": (mid - Vector2(50, 50)).angle()}
 
 
 ## ── THE PLOUGHLAND ───────────────────────────────────────────────────────────
