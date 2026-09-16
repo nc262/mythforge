@@ -318,6 +318,18 @@ func _solve_labels(font: Font, hi: int) -> void:
 			continue
 		var mp := _pos_of(lm.nodes[i])
 		taken.append(Rect2(mp - Vector2(9, 9), Vector2(18, 18)))
+	# A LANDMARK'S FOOTPRINT IS RESERVED TOO. The church was drawn at the mark's
+	# spot and is several times its size, so "The Chapel" was lettered across
+	# its own nave.
+	if lm.settled:
+		for lmk in lm.landmarks:
+			var box_lo := Vector2(INF, INF)
+			var box_hi := Vector2(-INF, -INF)
+			for q in lmk["outer"]:
+				var sp := _pct(q)
+				box_lo = Vector2(minf(box_lo.x, sp.x), minf(box_lo.y, sp.y))
+				box_hi = Vector2(maxf(box_hi.x, sp.x), maxf(box_hi.y, sp.y))
+			taken.append(Rect2(box_lo, box_hi - box_lo).grow(3.0))
 	for i in lm.nodes.size():
 		var st := lm.state_of(i, hi, walked)
 		if st == 0 or (st == 1 and not lm.settled):
@@ -706,6 +718,35 @@ func _draw_town(ci: CanvasItem) -> void:
 				var b2 := _pct(rg[1])
 				if a.distance_squared_to(b2) > 9.0:
 					ci.draw_line(a, b2, Color(ink, 0.5), 0.9, true)
+
+	# LANDMARKS, over the ordinary fabric — the silhouette is the information.
+	for lmk in lm.landmarks:
+		var parts: Array = lmk["parts"]
+		if str(lmk["kind"]) == "temple":
+			for part in parts:
+				var sp := PackedVector2Array()
+				for q in part:
+					sp.append(_pct(q))
+				ci.draw_colored_polygon(sp, Color(ink, 0.62))
+			for part2 in parts:
+				var sp2 := PackedVector2Array()
+				for q in part2:
+					sp2.append(_pct(q))
+				sp2.append(sp2[0])
+				ci.draw_polyline(sp2, Color(ink, 0.95), 1.4, true)
+		else:
+			var o := PackedVector2Array()
+			for q in parts[0]:
+				o.append(_pct(q))
+			var yard := PackedVector2Array()
+			for q in parts[1]:
+				yard.append(_pct(q))
+			ci.draw_colored_polygon(o, Color(ink, 0.55))
+			ci.draw_colored_polygon(yard, paper)
+			o.append(o[0])
+			yard.append(yard[0])
+			ci.draw_polyline(o, Color(ink, 0.95), 1.4, true)
+			ci.draw_polyline(yard, Color(ink, 0.8), 1.0, true)
 
 
 

@@ -198,6 +198,14 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 		if lm.plaza.size() > 2 and Geometry2D.is_point_in_polygon(TownPlan.centroid(gd), lm.plaza):
 			_failed.append("%s/%s: a garden is planted in the market square" % [wid, nm])
 			break
+	# A LANDMARK STANDS ON CLEARED GROUND. Nothing ordinary may sit inside one.
+	for lmk in lm.landmarks:
+		for b in lm.buildings:
+			if Geometry2D.is_point_in_polygon(TownPlan.centroid(b["poly"]), lmk["outer"]):
+				_failed.append("%s/%s: a house stands inside the %s" % [wid, nm, lmk["kind"]])
+				break
+	if lm.ward_role.has("hall") and not lm.landmarks.any(func(x): return x["kind"] == "hall"):
+		_failed.append("%s/%s: the hall is still only a mark" % [wid, nm])
 	if lm.ward_name.size() != lm.wards.size():
 		_failed.append("%s/%s: %d wards but %d names" % [wid, nm, lm.wards.size(), lm.ward_name.size()])
 

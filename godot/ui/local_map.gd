@@ -108,6 +108,7 @@ var out_roads: Array = []          # PackedVector2Array per road, percent space
 var arteries: Array = []           # PackedVector2Array: gate -> square, inside the wall
 var plaza := PackedVector2Array()  # the open ground of the market square
 var gardens: Array = []            # PackedVector2Array: plots left unbuilt
+var landmarks: Array = []          # {"kind", "outer": PackedVector2Array, "parts": Array}
 var outskirts: Array = []          # {"poly": ...} buildings beyond the wall
 var furlongs: Array = []           # {"strips": Array[PackedVector2Array]}
 
@@ -190,6 +191,7 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 		_plan_outside(rng)
 		_plan_arteries()
 		_plan_trades()
+		_plan_landmarks()
 		_plan_sites()
 	else:
 		_build_site(rng)
@@ -606,6 +608,69 @@ func _plan_sites() -> void:
 		# Reachable from the square, like every other named place in the town.
 		if nodes.size() > 1:
 			edges.append([0, nodes.size() - 1])
+
+
+## ── LANDMARKS ARE BUILDINGS, NOT SYMBOLS ─────────────────────────────────────
+##
+## A hall or a temple was a mark standing on an ordinary burgage strip — a small
+## glyph with somebody's house under it. Watabou reserves a whole patch for a
+## cathedral and gives it its own cutter (a ring, for the cloister); the cheaper
+## version that reads the same at map zoom is to clear the ground round the named
+## place and stand a footprint on it whose SHAPE says what it is.
+##
+##   · a temple is a CROSS PLAN — nave and transept — laid east-west, because
+##     churches were oriented with the altar to the east, which is the kind of
+##     detail that makes a plan read as surveyed rather than generated
+##   · the hall is a COURTYARD RANGE: four wings round an open yard, the shape
+##     of a guildhall or a moot hall's precinct
+##
+## Shape carries the meaning, not fill — the research found no source for "the
+## important building is filled solid" as a rule, and this map already dropped
+## that for ink density. A silhouette is what an engraver actually changed.
+func _plan_landmarks() -> void:
+	for n in nodes:
+		var role := str(n.get("role", ""))
+		var kind := ""
+		if role == "hall":
+			kind = "hall"
+		elif role == "site:temple":
+			kind = "temple"
+		if kind == "":
+			continue
+		var at := Vector2(float(n["x"]), float(n["y"]))
+		if plaza.size() > 2 and Geometry2D.is_point_in_polygon(at, plaza):
+			continue
+		var outer := PackedVector2Array()
+		var parts: Array = []
+		if kind == "temple":
+			var nave := _rect_at(at, Vector2(5.2, 1.8), 0.0)
+			var transept := _rect_at(at + Vector2(1.1, 0), Vector2(1.5, 3.8), 0.0)
+			parts = [nave, transept]
+			outer = _rect_at(at + Vector2(0.4, 0), Vector2(5.6, 4.2), 0.0)
+		else:
+			# Square to the ward's own long axis, so the range sits with its street.
+			var w: PackedVector2Array = wards[ward_role.find("hall")] if ward_role.has("hall") else PackedVector2Array()
+			var ang := 0.0
+			if w.size() > 2:
+				var e := TownPlan._longest_edge(w)
+				ang = (w[(e + 1) % w.size()] - w[e]).angle()
+			outer = _rect_at(at, Vector2(5.0, 3.6), ang)
+			parts = [outer, _rect_at(at, Vector2(2.6, 1.4), ang)]   # the yard is parts[1]
+		# Clear the ground it stands on.
+		var kept: Array = []
+		for b in buildings:
+			var bc := TownPlan.centroid(b["poly"])
+			if not Geometry2D.is_point_in_polygon(bc, outer.duplicate()) 					and bc.distance_to(at) > 2.4:
+				kept.append(b)
+		buildings = kept
+		landmarks.append({"kind": kind, "at": at, "outer": outer, "parts": parts})
+
+
+func _rect_at(c: Vector2, sz: Vector2, ang: float) -> PackedVector2Array:
+	var h := sz * 0.5
+	return PackedVector2Array([
+		c + Vector2(-h.x, -h.y).rotated(ang), c + Vector2(h.x, -h.y).rotated(ang),
+		c + Vector2(h.x, h.y).rotated(ang), c + Vector2(-h.x, h.y).rotated(ang)])
 
 
 ## ── WHAT THE PLACE SELLS, AND WHERE IT STANDS ────────────────────────────────
