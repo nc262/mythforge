@@ -382,8 +382,11 @@ const LABEL_TRIES: Array[Vector2] = [
 
 
 func _solve_labels(font: Font) -> void:
-	var key := "%s@%dx%d|%d|%s" % [GameState.world_id(), int(size.x), int(size.y),
-		locations.size(), ",".join(PackedStringArray(seen))]
+	# FOCUS IS IN THE KEY: focusing a region changes which names are drawn, and a
+	# layout cached for the whole realm left the focused view's names where the
+	# realm's neighbours had pushed them.
+	var key := "%s@%dx%d|%d|%s|%s" % [GameState.world_id(), int(size.x), int(size.y),
+		locations.size(), ",".join(PackedStringArray(seen)), _focus]
 	if _label_key == key:
 		return
 	_label_key = key
@@ -392,6 +395,17 @@ func _solve_labels(font: Font) -> void:
 	for furniture in [_legend_rect(font), _cartouche_rect(font)]:
 		if furniture.size.x > 0.0:
 			taken.append(furniture.grow(4.0))
+	# REGION BANNERS ARE RESERVED BEFORE ANY PLACE NAME IS SET. They were drawn by
+	# a separate pass the solver never saw, so a place name could be placed
+	# squarely on top of one. On Saltmarsh the region is named after its chief
+	# town — normal, and the banner is not redundant, since Gallows Quay the
+	# region also holds The Leaning Lantern — and "Gallows Quay" the place sat
+	# across "GALLOWS QUAY" the region, reading as a typo.
+	for rg in _visible_regions():
+		taken.append(_region_rect(font, str(rg["name"]), rg["at"]).grow(3.0))
+	for l0 in locations:
+		if l0 is Dictionary and _state_of(str(l0.get("name", ""))) != UNKNOWN and _in_focus(l0):
+			taken.append(Rect2(_pos_of(l0) - Vector2(8, 8), Vector2(16, 16)))
 	for l in locations:
 		if not (l is Dictionary):
 			continue
@@ -401,28 +415,25 @@ func _solve_labels(font: Font) -> void:
 		var p := _pos_of(l)
 		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14)
 		var best := p + Vector2(-sz.x / 2.0, -14.0)
-		var placed := false
-		for dist in [16.0, 26.0]:
+		# LEAST-BAD, NOT FIRST-CLEAR-OR-DEFAULT. Same fix the town tier needed:
+		# score every candidate by the area it actually overlaps plus a small
+		# pull toward the pin, and keep the cheapest. A crowded chart degrades
+		# instead of stacking a name on whatever sat at the default.
+		var best_cost := INF
+		for dist in [16.0, 26.0, 38.0]:
 			for dir in LABEL_TRIES:
 				var c := p + Vector2(dir.x * (sz.x * 0.5 + 8.0), dir.y * dist)
 				var r := Rect2(c - Vector2(sz.x / 2.0, sz.y * 0.8), sz + Vector2(6, 4))
-				var clash := false
+				var cost: float = float(dist) * 0.4
 				for t in taken:
-					if r.intersects(t):
-						clash = true
-						break
-				if not clash:
+					var hit := r.intersection(t)
+					cost += hit.size.x * hit.size.y
+				if cost < best_cost:
+					best_cost = cost
 					best = c + Vector2(-sz.x / 2.0, 0)
-					taken.append(r)
-					placed = true
-					break
-			if placed:
+			if best_cost <= dist * 0.4 + 0.01:
 				break
-		if not placed:
-			# NOWHERE CLEAR. Keep the default rather than stack it on a taken
-			# spot — a name slightly overlapping is legible, and a name shoved to
-			# an arbitrary far corner is a lie about which pin it belongs to.
-			taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz))
+		taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz + Vector2(6, 4)))
 		_label_at[nm] = best
 
 
@@ -1108,6 +1119,15 @@ func _draw_roads() -> void:
 ## label whose anchor is inside it is simply not drawn — there is no room for it
 ## and half a word is worse than none.
 const REGION_DROP := 26.0
+
+## Where a region's letterspaced banner actually lies — the SAME measurement the
+## drawing uses, so the solver reserves exactly what gets inked.
+func _region_rect(font: Font, rname: String, at: Vector2) -> Rect2:
+	var wide := 0.0
+	for ch in rname.to_upper():
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 3.4
+	return Rect2(Vector2(at.x - wide * 0.5, at.y - 9.0), Vector2(wide, 16.0))
+
 
 func _draw_regions(font: Font) -> void:
 	var vis := _visible_regions()

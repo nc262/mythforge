@@ -51,6 +51,34 @@ func _ready() -> void:
 			if not LocalMap.SETTLED_KINDS.has(knd):
 				continue
 			_probe(wid, str(p.get("name", "")), knd)
+	# ── ON THE WORLD CHART, NO PLACE NAME LIES ACROSS A REGION BANNER ────────
+	# Region banners were drawn by a pass the label solver never saw, so on
+	# Saltmarsh "Gallows Quay" the place sat across "GALLOWS QUAY" the region and
+	# read as a typo. Solved headless with every place known, which is the most
+	# crowded the chart gets.
+	for w2 in Rules.builtin_worlds():
+		var wid2 := str(w2.get("id", ""))
+		if wid2 == "":
+			continue
+		GameState.character = {"id": "dm-probe", "world_id": wid2}
+		var chart: Control = load("res://scenes/ui/world_map.gd").new()
+		chart.size = Vector2(1280, 800)
+		chart.locations = GameState.places()
+		chart.regions = GameState.regions()
+		chart.fog = false
+		var font: Font = Ui.display
+		chart._solve_labels(font)
+		for rg in chart._visible_regions():
+			var rr: Rect2 = chart._region_rect(font, str(rg["name"]), rg["at"])
+			for nm2 in chart._label_at.keys():
+				var at2: Vector2 = chart._label_at[nm2]
+				var sz2 := font.get_string_size(str(nm2), HORIZONTAL_ALIGNMENT_LEFT, -1, 14)
+				var lr := Rect2(at2 - Vector2(0, sz2.y * 0.8), sz2)
+				if lr.intersects(rr):
+					_failed.append("%s chart: '%s' is lettered across the region banner '%s'" % [
+						wid2, nm2, rg["name"]])
+		chart.free()
+
 	# Counting the work, not the ask — same lesson `terrain_probe` carries: a
 	# parse error in a class_name file is silent at the call site, so a summary
 	# built from the LIST reports a cheerful OK for zero measurements.
