@@ -107,6 +107,7 @@ var gates: Array = []              # {"at": Vector2, "to": String}
 var out_roads: Array = []          # PackedVector2Array per road, percent space
 var arteries: Array = []           # PackedVector2Array: gate -> square, inside the wall
 var plaza := PackedVector2Array()  # the open ground of the market square
+var gardens: Array = []            # PackedVector2Array: plots left unbuilt
 var outskirts: Array = []          # {"poly": ...} buildings beyond the wall
 var furlongs: Array = []           # {"strips": Array[PackedVector2Array]}
 
@@ -494,9 +495,14 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 			for built in plots:
 				# A yard, a garden, a burnt-out plot. Wealthier quarters keep more
 				# of them, which is what a courtyard IS, structurally.
-				if rng.randf() < empty:
-					continue
 				if open.size() > 2 and Geometry2D.is_point_in_polygon(TownPlan.centroid(built), open):
+					rng.randf()                # keep the stream identical either way
+					continue
+				if rng.randf() < empty:
+					# NOT DISCARDED — KEPT AS A GARDEN. An unbuilt plot is a yard, a
+					# kitchen garden, an orchard; it was thrown away and rendered as
+					# bare paper, so a wealthy quarter's courtyards looked like holes.
+					gardens.append(built)
 					continue
 				buildings.append({"poly": built, "big": TownPlan.area(built) > min_area * 2.0})
 

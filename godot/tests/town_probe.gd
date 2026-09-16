@@ -193,6 +193,11 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 			_failed.append("%s/%s: %d buildings stand in the market square" % [wid, nm, inside])
 	elif lm.ward_role.has("square"):
 		_failed.append("%s/%s: the square has no open ground" % [wid, nm])
+	# Gardens are plots, not scraps — and none of them sits in the plaza.
+	for gd in lm.gardens:
+		if lm.plaza.size() > 2 and Geometry2D.is_point_in_polygon(TownPlan.centroid(gd), lm.plaza):
+			_failed.append("%s/%s: a garden is planted in the market square" % [wid, nm])
+			break
 	if lm.ward_name.size() != lm.wards.size():
 		_failed.append("%s/%s: %d wards but %d names" % [wid, nm, lm.wards.size(), lm.ward_name.size()])
 

@@ -623,6 +623,35 @@ func _draw_town(ci: CanvasItem) -> void:
 		ci.draw_colored_polygon(pz, paper)
 		MapInk.draw_rough(ci, pz, absi(hash(lm.place)) + 29, Color(ink, 0.5), 1.1, true)
 
+	# GARDENS, SEEN FROM ABOVE. The world chart's tree is a side view — a canopy
+	# on a trunk — and among plan-view footprints that reads as a signpost. From
+	# above a tree is a disc, so a garden plot gets one to three of them, sized to
+	# the plot. Capped, because the call count is the whole cost of drawing here.
+	var canopies := 0
+	for gd in lm.gardens:
+		if canopies > 220:
+			break
+		var gpoly: PackedVector2Array = gd
+		var ga := TownPlan.area(gpoly)
+		if ga < 0.6:
+			continue
+		var gc := TownPlan.centroid(gpoly)
+		var h := absi(hash(Vector2i(int(gc.x * 10.0), int(gc.y * 10.0))))
+		var n := clampi(int(ga / 2.5), 1, 3)
+		# At 2.2 px and a 0.55 outline the first pass read as pinholes, not trees.
+		var rad := clampf(sqrt(ga) * _plate() * 0.32, 3.6, 7.0)
+		for k in n:
+			var ang := float((h >> (k * 3)) % 628) * 0.01
+			var off := Vector2(cos(ang), sin(ang)) * (0.0 if n == 1 else sqrt(ga) * 0.28)
+			var cp := _pct(gc + off)
+			ci.draw_circle(cp, rad, paper)
+			ci.draw_arc(cp, rad, 0, TAU, 12, Color(ink, 0.8), 1.1, true)
+			# Shade on the side away from the light — one light for the whole map,
+			# upper left, which is the one rule the illustration tutorials state
+			# as absolute.
+			ci.draw_circle(cp + Vector2(rad * 0.3, rad * 0.3), rad * 0.45, Color(ink, 0.22))
+			canopies += 1
+
 	# THE HIGH STREETS, under the buildings. Wider than the ordinary gaps, and
 	# edged in ink, so a reader can follow a gate to the square — the one route
 	# through a town that everyone takes. Drawn as paper with a hairline either
