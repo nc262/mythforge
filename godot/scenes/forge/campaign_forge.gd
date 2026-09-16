@@ -16,7 +16,18 @@ signal campaign_begun(adv: Dictionary)
 ## down before doing the thing they clicked — after the Character Forge's Cold
 ## Anvil and the Adventure Forge's SIT DOWN. Same defect, same treatment; the
 ## forge opens on naming the campaign, which is a real decision.
-const STAGES := ["The Name", "Ruleset", "Theme", "The Voice", "Table Rules", "The Forging", "Dossier"]
+## PY-18 — *Ruleset* is gone: one card already chosen beside two disabled "a future
+## forging" cards, writing nothing to the draft. Same cut, same reason, as the
+## character forge's. (*The Voice* here STAYS — it is real, archetypes and knobs.)
+## Named navigation for the same reason too: removing a stage shifts every bare
+## index after it.
+const STAGES := ["The Name", "Theme", "The Voice", "Table Rules", "The Forging", "Dossier"]
+
+
+func _s(stage_name: String) -> int:
+	var i := STAGES.find(stage_name)
+	assert(i >= 0, "campaign_forge has no stage named '%s'" % stage_name)
+	return i
 ## Theme cards → worldsmith pillar presets (SMITH_GUIDE field names) + an
 ## idea seasoning line. Free text fields — not limited to the chip lists.
 const THEMES := [
@@ -140,20 +151,18 @@ func _ledger() -> void:
 
 
 func _build_stage(i: int) -> void:
-	match i:
-		0:
+	match STAGES[i]:
+		"The Name":
 			_stage_name()
-		1:
-			_stage_ruleset()
-		2:
+		"Theme":
 			_stage_theme()
-		3:
+		"The Voice":
 			_stage_voice()
-		4:
+		"Table Rules":
 			_stage_rules()
-		5:
+		"The Forging":
 			_stage_forging()
-		6:
+		"Dossier":
 			_stage_dossier()
 
 
@@ -169,31 +178,12 @@ func _stage_name() -> void:
 	_stage_box.add_child(ic)
 	var go := func():
 		draft["name"] = input.text.strip_edges()
-		_enter_stage(1)
+		_enter_stage(_s("Theme"))
 	input.text_submitted.connect(func(_t): go.call())
 	_nav(-1, "Set it down ›", go)   # first stage now — nothing behind it
 
 
-# ── Stage 2: ruleset ─────────────────────────────────────────────────────────
-func _stage_ruleset() -> void:
-	_title_label("Choose the Ruleset")
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", Ui.SPACE["m"])
-	var mf := Card.new({"glyph": "⚒", "title": "The Mythforge Rules",
-		"body": "the engine's own d20 — dice, death, and gold all engine-owned", "foot": "chosen"})
-	mf.set_selected(true)
-	row.add_child(mf)
-	for future in [["📜", "Strict 5e"], ["🧪", "Homebrew"]]:
-		var fc := Card.new({"glyph": future[0], "title": future[1], "body": "a future forging"})
-		fc.disabled = true
-		fc.modulate = Color(1, 1, 1, 0.45)
-		row.add_child(fc)
-	_stage_box.add_child(row)
-	_nav(0, "Continue ›", func(): _enter_stage(2))
-
-
-# ── Stage 3: theme ───────────────────────────────────────────────────────────
+# ── Stage 2: theme ───────────────────────────────────────────────────────────
 func _stage_theme() -> void:
 	_title_label("Choose the Campaign's Theme")
 	var cards: Array = []
@@ -235,7 +225,7 @@ func _stage_theme() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	_nav(1, "Continue ›", func():
+	_nav(_s("The Name"), "Continue ›", func():
 		draft["idea"] = idea.text.strip_edges()
 		for k in pillar_inputs:
 			var v: String = pillar_inputs[k].text.strip_edges()
@@ -244,10 +234,10 @@ func _stage_theme() -> void:
 		if draft["theme"].is_empty() and draft["idea"] == "" and draft["fields"].is_empty():
 			_refuse("Choose a theme — or open the pillars and write your own.")
 			return
-		_enter_stage(3))
+		_enter_stage(_s("The Voice")))
 
 
-# ── Stage 4: the GM's Voice (Session Zero, absorbed) ────────────────────────
+# ── Stage 3: the GM's Voice (Session Zero, absorbed) ────────────────────────
 func _stage_voice() -> void:
 	_title_label("Choose the GM's Voice")
 	var cards: Array = []
@@ -299,7 +289,7 @@ func _stage_voice() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	_nav(2, "Continue ›", func():
+	_nav(_s("Theme"), "Continue ›", func():
 		if adv.content.visible:
 			for key in sliders:
 				draft["gm"][key] = int(sliders[key].value)
@@ -308,10 +298,10 @@ func _stage_voice() -> void:
 		if draft["gm"].is_empty():
 			draft["gm"] = VOICES[0]["knobs"].duplicate()
 			draft["gm"]["style"] = VOICES[0]["title"]
-		_enter_stage(4))
+		_enter_stage(_s("Table Rules")))
 
 
-# ── Stage 5: table rules — every lever engine-enforced ──────────────────────
+# ── Stage 4: table rules — every lever engine-enforced ──────────────────────
 func _stage_rules() -> void:
 	_title_label("Set the Table Rules")
 	var cards: Array = []
@@ -350,20 +340,20 @@ func _stage_rules() -> void:
 	var hc := CenterContainer.new()
 	hc.add_child(house)
 	_stage_box.add_child(hc)
-	_nav(3, "To the forging ›", func():
+	_nav(_s("The Voice"), "To the forging ›", func():
 		if not draft["rules"].has("difficulty"):
 			draft["rules"]["difficulty"] = 1.0
 		for key in checks:
 			draft["rules"][key] = checks[key].button_pressed
 		draft["rules"]["house"] = house.text.strip_edges()
-		_enter_stage(5))
+		_enter_stage(_s("The Forging")))
 
 
 func _smith_guide() -> Array:
 	return [["Magic system", []], ["Technology", []], ["Era & timeline", []], ["Beast variants", []], ["Tone", []]]
 
 
-# ── Stage 6: THE FORGING (C1: one smith strike + refine loop + the seal) ────
+# ── Stage 5: THE FORGING (C1: one smith strike + refine loop + the seal) ────
 func _stage_forging() -> void:
 	_title_label("The Forging")
 	if _forged.is_empty():
@@ -400,11 +390,11 @@ func _strike(refine: String) -> void:
 	if w.get("_status", 0) != 200 or str(w.get("name", "")) == "":
 		_status.text = "The forge sputtered (%s) — strike again." % str(w.get("_status", 0))
 		_forged = {}
-		_enter_stage(2)
+		_enter_stage(_s("Theme"))
 		return
 	_status.text = ""
 	_forged = w
-	_enter_stage(5)
+	_enter_stage(_s("The Forging"))
 
 
 func _show_take() -> void:
@@ -455,7 +445,7 @@ func _show_take() -> void:
 	var back := Button.new()
 	back.theme_type_variation = "GhostButton"
 	back.text = "‹ the rules"
-	back.pressed.connect(func(): _enter_stage(4))
+	back.pressed.connect(func(): _enter_stage(_s("Table Rules")))
 	row.add_child(back)
 	_stage_box.add_child(row)
 
@@ -557,14 +547,14 @@ func _run_sequence() -> void:
 	var onward := Button.new()
 	onward.theme_type_variation = "AccentButton"
 	onward.text = "To the Dossier ›"
-	onward.pressed.connect(func(): _enter_stage(6))
+	onward.pressed.connect(func(): _enter_stage(_s("Dossier")))
 	var oc := CenterContainer.new()
 	oc.add_child(onward)
 	_stage_box.add_child(onward if false else oc)
 	Ui.polish(_stage_box)
 
 
-# ── Stage 7: the Dossier — the campaign, ready to begin ─────────────────────
+# ── Stage 6: the Dossier — the campaign, ready to begin ─────────────────────
 func _stage_dossier() -> void:
 	var world := _sealed_world
 	_title_label("The Campaign Dossier")
@@ -615,7 +605,7 @@ func _stage_dossier() -> void:
 	reroll.text = "↻ Re-strike the opening"
 	reroll.pressed.connect(func():
 		_story = {}
-		_enter_stage(5))
+		_enter_stage(_s("The Forging")))
 	row.add_child(reroll)
 	var begin := Button.new()
 	begin.theme_type_variation = "AccentButton"

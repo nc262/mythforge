@@ -15,7 +15,28 @@ signal hero_forged(draft: Dictionary)
 ## click between the player and the thing they asked for. Ceremony belongs where
 ## there is something to be ceremonious about — the forge now OPENS on the first
 ## real decision, and the eleven-dot progress rail is a ten.
-const STAGES := ["Origin", "Ruleset", "Heritage", "Class", "Background", "Nature", "Appearance", "The Voice", "Equipment", "Quenching"]
+## PY-18 — TWO RUNES THAT ASKED NOTHING ARE GONE. *Ruleset* showed one card,
+## already chosen, beside two disabled "a future forging" cards; *The Voice* was a
+## single disabled card promising to wake "when the voice provider does", and no
+## voice provider exists anywhere in this codebase. Neither wrote a thing to the
+## draft. A click for nothing in the game's signature ritual is the defect the
+## Cold Anvil and "The Table Is Set" were cut for, and this is the same treatment.
+## Put them back when there is a second ruleset or a voice to choose — as stages
+## that ask something.
+##
+## NAMED, NOT NUMBERED. `_build_stage` switched on 0-9 and ten navigation calls
+## hard-coded their neighbours, so removing two stages would have shifted every
+## number after them. `adventure_forge` hit the same thing and said it plainly:
+## a bare `_enter_stage(2)` is precisely where an off-by-one hides and ships.
+const STAGES := ["Origin", "Heritage", "Class", "Background", "Nature", "Appearance", "Equipment", "Quenching"]
+
+
+## A stage's index by NAME, and loud about a typo — a misspelt name would return
+## -1, and `_enter_stage(-1)` fails quietly somewhere far from the cause.
+func _s(stage_name: String) -> int:
+	var i := STAGES.find(stage_name)
+	assert(i >= 0, "character_forge has no stage named '%s'" % stage_name)
+	return i
 const PREBUILT := [
 	{"glyph": "🪓", "title": "Brakka Ironhide", "body": "Half-Orc Fighter — the wall that walks", "race": "Half-Orc", "cls": "Fighter", "bg": "Soldier"},
 	{"glyph": "🔮", "title": "Elara Venn", "body": "Elf Wizard — patience, then fire", "race": "Elf", "cls": "Wizard", "bg": "Sage"},
@@ -148,26 +169,22 @@ func _story_fold(title: String, hint: String, draft_key: String) -> Control:
 
 
 func _build_stage(i: int) -> void:
-	match i:
-		0:
+	match STAGES[i]:
+		"Origin":
 			_stage_origin()
-		1:
-			_stage_ruleset()
-		2:
+		"Heritage":
 			_stage_heritage()
-		3:
+		"Class":
 			_stage_class()
-		4:
+		"Background":
 			_stage_background()
-		5:
+		"Nature":
 			_stage_nature()
-		6:
+		"Appearance":
 			_stage_appearance()
-		7:
-			_stage_voice()
-		8:
+		"Equipment":
 			_stage_equipment()
-		9:
+		"Quenching":
 			_stage_quenching()
 
 
@@ -186,33 +203,14 @@ func _stage_origin() -> void:
 			draft["kit"] = KITS[0]["items"] if str(e["cls"]) in ["Fighter", "Cleric"] else (KITS[1]["items"] if str(e["cls"]) == "Rogue" else KITS[2]["items"])
 			_roll_destiny()
 			_status.text = "%s stands ready — the Quenching awaits (walk back through any rune to reshape them)." % draft["name"]
-			_enter_stage(9)
+			_enter_stage(_s("Quenching"))
 		)
 	_nav(-1, "Continue ›", func():   # first stage now — nothing behind it
 		if str(draft["origin"]) == "":
 			draft["origin"] = "Raw Metal"
-		_enter_stage(1))
+		_enter_stage(_s("Heritage")))
 
 
-func _stage_ruleset() -> void:
-	_title_label("Choose the Ruleset")
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", Ui.SPACE["m"])
-	var mf := Card.new({"glyph": "⚒", "title": "The Mythforge Rules", "body": "the engine's own d20", "foot": "chosen"})
-	mf.set_selected(true)
-	row.add_child(mf)
-	for future in [["📜", "Strict 5e"], ["🧪", "Homebrew"]]:
-		var fc := Card.new({"glyph": future[0], "title": future[1], "body": "a future forging"})
-		fc.disabled = true
-		fc.modulate = Color(1, 1, 1, 0.45)
-		row.add_child(fc)
-	_stage_box.add_child(row)
-	_nav(0, "Continue ›", func(): _enter_stage(2))
-
-
-## The heritages, each with a generated portrait that fills in as you browse
-## (the "pictures of each race" — painted once, cached forever after).
 func _stage_heritage() -> void:
 	_title_label("Choose Your Heritage")
 	var hs: Dictionary = Rules.tables.get("heritages", {})
@@ -287,11 +285,11 @@ func _stage_heritage() -> void:
 		Art.art_ready.connect(_on_race_art)
 	if str(draft["race"]) != "":
 		show_race.call(str(draft["race"]))
-	_nav(1, "Strike ›", func():
+	_nav(_s("Origin"), "Strike ›", func():
 		if str(draft["race"]) == "":
 			_refuse("The metal needs a heritage — choose one.")
 			return
-		_enter_stage(3))
+		_enter_stage(_s("Class")))
 
 
 ## The three art handlers the lambdas above became. Each guards its own target,
@@ -352,13 +350,13 @@ func _stage_class() -> void:
 		"Why did you take up this class? A mentor, a curse, a debt, a calling — the GM weaves it into whatever world you're dropped into.",
 		"cls_story")
 	_stage_box.add_child(story)
-	_nav(2, "Strike ›", func():
+	_nav(_s("Heritage"), "Strike ›", func():
 		if str(draft["cls"]) == "":
 			_refuse("The blade needs a shape — choose a class.")
 			return
 		if _story_edit != null:
 			draft["cls_story"] = _story_edit.text.strip_edges()
-		_enter_stage(4))
+		_enter_stage(_s("Background")))
 
 
 func _stage_background() -> void:
@@ -377,13 +375,13 @@ func _stage_background() -> void:
 		"Where do you come from, and what set you on the road? The GM reinterprets your past inside whatever world the tale drops you into.",
 		"bg_story")
 	_stage_box.add_child(story)
-	_nav(3, "Strike ›", func():
+	_nav(_s("Class"), "Strike ›", func():
 		if str(draft["bg"]) == "":
 			_refuse("Every legend was someone first — choose a background.")
 			return
 		if _story_edit != null:
 			draft["bg_story"] = _story_edit.text.strip_edges()
-		_enter_stage(5))
+		_enter_stage(_s("Nature")))
 
 
 func _roll_destiny() -> void:
@@ -493,7 +491,7 @@ func _stage_nature() -> void:
 	var ac := CenterContainer.new()
 	ac.add_child(adv)
 	_stage_box.add_child(ac)
-	_nav(4, "Strike ›", func():
+	_nav(_s("Background"), "Strike ›", func():
 		if adv.content.visible:
 			var used: Array = []
 			var assign := {}
@@ -509,7 +507,7 @@ func _stage_nature() -> void:
 				return
 			draft["assign"] = assign
 			draft["rolled"] = []
-		_enter_stage(6))
+		_enter_stage(_s("Appearance")))
 
 
 ## The portrait commission — shared by the live Appearance preview and the
@@ -695,21 +693,9 @@ func _stage_appearance() -> void:
 	_prev_port = port
 	if not Art.art_ready.is_connected(_on_prev_art):
 		Art.art_ready.connect(_on_prev_art)
-	_nav(5, "Strike ›", func():
+	_nav(_s("Nature"), "Strike ›", func():
 		draft["appearance"] = desc.text.strip_edges()
-		_enter_stage(7))
-
-
-func _stage_voice() -> void:
-	_title_label("The Voice")
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	var vc := Card.new({"glyph": "🔇", "title": "Awaiting the Bards", "body": "the voice provider sleeps — this rune wakes when it does"})
-	vc.disabled = true
-	vc.modulate = Color(1, 1, 1, 0.45)
-	row.add_child(vc)
-	_stage_box.add_child(row)
-	_nav(6, "Continue ›", func(): _enter_stage(8))
+		_enter_stage(_s("Equipment")))
 
 
 func _stage_equipment() -> void:
@@ -719,10 +705,10 @@ func _stage_equipment() -> void:
 		if draft["kit"] == k["items"]:
 			sel = str(k["title"])
 	_card_grid(KITS, 3, sel, func(e): draft["kit"] = e["items"])
-	_nav(7, "To the Quenching ›", func():
+	_nav(_s("Appearance"), "To the Quenching ›", func():
 		if draft["kit"].is_empty():
 			draft["kit"] = KITS[0]["items"]
-		_enter_stage(9))
+		_enter_stage(_s("Quenching")))
 
 
 # ── The Quenching: steam, gold, the finished legend ─────────────────────────
@@ -813,7 +799,7 @@ func _stage_quenching() -> void:
 	var rsc := CenterContainer.new()
 	rsc.add_child(restrike)
 	_stage_box.add_child(rsc)
-	_nav(8, "BEGIN THE ADVENTURE" if not menu_mode else "BANK THIS LEGEND", func():
+	_nav(_s("Equipment"), "BEGIN THE ADVENTURE" if not menu_mode else "BANK THIS LEGEND", func():
 		draft["name"] = name_in.text.strip_edges()
 		if draft["name"] == "":
 			_refuse("A legend needs a name — strike it.")

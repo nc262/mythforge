@@ -1379,3 +1379,45 @@ func _build_windows() -> void:
 		_ck(f.get("_rail") != null, "forge %s: scaffold never built (_rail is null)" % path)
 		f.queue_free()
 	print("  forges: character, campaign, world, adventure, gm, persona all built")
+
+	# PY-18 — EVERY STAGE BUILDS, AND EVERY NAMED JUMP LANDS. The loop above only
+	# builds stage 0, so the rest of a forge's rail was never exercised: when two
+	# empty runes were cut and navigation moved from bare indices to names, a
+	# green gate said nothing about whether Heritage still led to Class. Two
+	# checks. Each stage is built by NAME and must put something on screen — a
+	# STAGES entry with no `match` arm builds an empty stage silently. And every
+	# `_s("...")` target in the source must be a real stage, because `_s` only
+	# asserts when that button is pressed, which no harness does.
+	var name_re := RegEx.new()
+	name_re.compile('_s[(]"([^"]+)"[)]')   # classes, not escapes: nothing for GDScript to reinterpret
+	for fpath in ["res://scenes/forge/character_forge", "res://scenes/forge/campaign_forge"]:
+		var fg: Node = load(fpath + ".tscn").instantiate()
+		get_tree().root.add_child(fg)
+		for _f in 6:
+			await get_tree().process_frame
+		var st: Array = fg._stages()
+		var built := 0
+		for si in st.size():
+			if str(st[si]) == "The Forging":
+				continue            # strikes the worldsmith on entry; its jumps are covered below
+			fg._clear_stage()
+			fg._build_stage(si)
+			_ck(fg._stage_box.get_child_count() > 0,
+				"%s: stage '%s' built nothing — a STAGES name with no match arm" % [fpath, st[si]])
+			built += 1
+		var fsrc := FileAccess.get_file_as_string(fpath + ".gd")
+		var jumps := 0
+		var landed := 0
+		for m in name_re.search_all(fsrc):
+			jumps += 1
+			if st.has(m.get_string(1)):
+				landed += 1
+			_ck(st.has(m.get_string(1)),
+				"%s: navigation jumps to '%s', which is not a stage" % [fpath, m.get_string(1)])
+		_ck(jumps >= st.size() - 1, "%s: only %d named jumps for %d stages — navigation is not named" % [fpath, jumps, st.size()])
+		fg.queue_free()
+		# COUNTED, not asserted in prose: the first version printed "all land"
+		# unconditionally, and the mutation test showed it saying so beside the
+		# failure it had just recorded.
+		print("  %s: %d stages built by name, %d of %d named jumps land" % [
+			fpath.get_file(), built, landed, jumps])
