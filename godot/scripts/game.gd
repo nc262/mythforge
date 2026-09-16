@@ -3059,8 +3059,18 @@ func _open_place_map(place: String) -> void:
 		# The GM narrates arrival, which is what makes a room a place rather than
 		# a dot. The map moved the pin; the story says what is there.
 		_say_system("You move to %s, within %s." % [room, place], "compass"))
-	Ui.dress_dialog(dlg, view)
+	# THE VIEW GOES IN THE DIALOG, AND THE DIALOG GOES IN THE TREE, BEFORE IT IS
+	# DRESSED. This called `dress_dialog(dlg, view)` and then `add_child(dlg)`,
+	# and never added `view` to `dlg` at all — `dress_dialog` styles and caps a
+	# content node, it does not parent one. So stepping into a town opened a
+	# themed, EMPTY window, and dressing it before it had a tree raised
+	# "data.tree is null" and abandoned the cap half-way. Every other caller
+	# dresses from the dialog's own `_ready`, once it is in the tree. Nobody saw
+	# it because nothing could reach this function — the Atlas tab never wired
+	# "step inside" (AT-5) — and every harness built the town map on its own.
+	dlg.add_child(view)
 	add_child(dlg)
+	Ui.dress_dialog(dlg, view)
 	var lavail := Vector2(get_tree().root.get_visible_rect().size)
 	dlg.min_size = Vector2i(mini(1300, int(lavail.x) - 8), mini(860, int(lavail.y) - 8))
 	dlg.max_size = Vector2i(int(lavail.x) - 8, int(lavail.y) - 8)
@@ -3316,6 +3326,7 @@ func _open_character_screen(at := "", pulse := -1) -> void:
 	if at != "":
 		rec._active = at
 	rec.travel_requested.connect(_travel_to)
+	rec.enter_requested.connect(_open_place_map)   # AT-5: the Atlas tab's way into a town
 	rec.resume_requested.connect(_recall_snapshot)
 	rec.save_chapter_requested.connect(_save_snapshot)
 	rec.leave_requested.connect(_leave_to_hall)

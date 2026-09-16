@@ -1380,6 +1380,88 @@ func _build_windows() -> void:
 		f.queue_free()
 	print("  forges: character, campaign, world, adventure, gm, persona all built")
 
+	# AT-5 — THE REAL WAY INTO A TOWN, THROUGH THE REAL ATLAS. Every harness built
+	# the town map directly, so none noticed the game itself could not reach it:
+	# the in-game Atlas is a character-screen TAB that wired travel and nothing
+	# else, and the one function that wired "step inside" had no caller left. So
+	# this goes the player's way — open the character screen on the Atlas, click
+	# the place you stand in — and asserts a town plan actually opens, and that
+	# the chart carries the world's regions.
+	# Its own context, restored after: the playthrough is inside a forged test
+	# world with no places at this point, so a shipped world is borrowed.
+	var atlas_keep_char := GameState.character
+	var atlas_keep_state := GameState.state
+	GameState.character = {"id": "dm-atlas-probe", "name": "Probe", "world_id": "embervale"}
+	GameState.state = {"world": {}}
+	var settled_here := ""
+	for pl in GameState.places():
+		if pl is Dictionary and LocalMap.SETTLED_KINDS.has(str(pl.get("kind", ""))):
+			settled_here = str(pl["name"])
+			break
+	_ck(settled_here != "", "atlas: this world has no settled place to step into")
+	if settled_here != "":
+		Mode.enter("Exploration")
+		var wd0: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+		wd0["here"] = settled_here
+		GameState.state["world"] = wd0
+		var before := _game.get_child_count()
+		_game._open_character_screen("Atlas")
+		for _f in 8:
+			await get_tree().process_frame
+		# FOUND BY SCRIPT, not by position: other nodes land on the game in the
+		# same frames, so "the last child" is not reliably the screen just opened.
+		var rec: Node = null
+		for c0 in _game.get_children():
+			if c0.get_script() == preload("res://scenes/ui/character_screen.gd"):
+				rec = c0
+		_ck(rec != null, "atlas: the character screen did not open")
+		var chart: Node = null
+		if rec != null:
+			var stack: Array = [rec]
+			while not stack.is_empty() and chart == null:
+				var nd: Node = stack.pop_back()
+				if nd.get_script() == preload("res://scenes/ui/world_map.gd"):
+					chart = nd
+				for c in nd.get_children():
+					stack.append(c)
+		_ck(chart != null, "atlas: the Atlas tab holds no chart")
+		if chart != null:
+			_ck(chart.regions.size() == GameState.regions().size(),
+				"atlas: the in-game chart has %d regions, the world has %d" % [chart.regions.size(), GameState.regions().size()])
+			_ck(chart.enter_requested.get_connections().size() > 0,
+				"atlas: clicking the place you stand in is wired to nothing — the town map is unreachable in the game")
+			# READ BEFORE THE CLICK: the screen frees itself when a place is
+			# entered, and touching the chart afterwards is a script error that
+			# silently ends this whole function.
+			var region_count: int = chart.regions.size()
+			chart.enter_requested.emit(settled_here)
+			for _f in 8:
+				await get_tree().process_frame
+			var opened: Node = null
+			for c in _game.get_children():
+				if c is AcceptDialog and c.title == settled_here:
+					opened = c
+			_ck(opened != null, "atlas: stepping inside %s opened no window" % settled_here)
+			# THE TOWN IS IN THE WINDOW. A dialog with the right title is not a town
+			# map: this one opened empty, because the view was never parented.
+			var town_view: Node = null
+			if opened != null:
+				for c1 in opened.get_children():
+					if c1.get_script() == preload("res://scenes/ui/place_map.gd"):
+						town_view = c1
+			_ck(town_view != null, "atlas: the window for %s is EMPTY — the town map was never put in it" % settled_here)
+			if town_view != null:
+				_ck(town_view.lm != null and town_view.lm.wards.size() > 0,
+					"atlas: the town view for %s has no plan" % settled_here)
+			if opened != null:
+				print("  atlas: stepped inside %s from the in-game Atlas; %d regions on the chart" % [
+					settled_here, region_count])
+				opened.queue_free()
+		if rec != null and is_instance_valid(rec):
+			rec.queue_free()
+	GameState.character = atlas_keep_char
+	GameState.state = atlas_keep_state
+
 	# PY-18 — EVERY STAGE BUILDS, AND EVERY NAMED JUMP LANDS. The loop above only
 	# builds stage 0, so the rest of a forge's rail was never exercised: when two
 	# empty runes were cut and navigation moved from bare indices to names, a
