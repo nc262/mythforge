@@ -82,7 +82,31 @@ function Invoke-Harness {
 	$proc = Start-Process -FilePath $godot -PassThru -NoNewWindow `
 		-ArgumentList ($flags + @('--log-file', "$log.engine", '--path', "$repo\godot", "res://tests/$Scene.tscn")) `
 		-RedirectStandardOutput $log -RedirectStandardError $errLog
-	if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+	# A SCRIPT THAT DOES NOT LOAD IS RED IN SECONDS, NOT FIFTEEN MINUTES. A parse
+	# error does not stop Godot any more than a failed assert does: the scene tree
+	# keeps running with a dead script and the harness waits out the whole
+	# timeout. On 2026-09-16 that happened three times in one session — two name
+	# collisions in self_check and one in town_probe — each an error Godot had
+	# already written to the engine log in the FIRST SECOND, each costing the full
+	# 900 s before the gate said so. Polling the log while waiting turns that into
+	# a red within a couple of seconds. It only fires on a script failing to LOAD,
+	# never on a runtime error, which a harness may raise on purpose.
+	$deadline = (Get-Date).AddSeconds($TimeoutSec)
+	$dead = $null
+	while (-not $proc.WaitForExit(1000)) {
+		$early = (Get-Content "$log.engine", $errLog -ErrorAction SilentlyContinue) |
+			Where-Object { $_ -match 'Parse Error|Failed to load script|Compile Error' }
+		if ($early) { $dead = $early; break }
+		if ((Get-Date) -gt $deadline) { break }
+	}
+	if ($dead) {
+		$proc.Kill(); $proc.WaitForExit()
+		Write-Host "SCRIPT DID NOT LOAD" -ForegroundColor Red
+		$script:failed += $Scene
+		$dead | Select-Object -First 6 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
+		return
+	}
+	if (-not $proc.HasExited) {
 		$proc.Kill(); $proc.WaitForExit()
 		Write-Host "TIMED OUT after ${TimeoutSec}s" -ForegroundColor Red
 		$script:failed += $Scene

@@ -88,6 +88,25 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Related:** sd-server **ignores `steps` in the request body**. Steps are a
   launch flag or nothing.
 
+## The gate sits for fifteen minutes and then says TIMED OUT
+
+- **Cause:** a harness script failed to **load** — almost always a parse error,
+  and in this repo usually a duplicate `var` name in `self_check.gd`'s one long
+  function, or an untyped array literal iterated in a `for` (see *Invariants*).
+  Godot does not exit on a parse error any more than on a failed `assert`: the
+  scene tree keeps running with a dead script, so the harness waits out the
+  900 s timeout for an error it wrote to its engine log in the first second.
+- **Fix:** `Invoke-Harness` polls the engine log while it waits and fails the
+  harness as **SCRIPT DID NOT LOAD** the moment `Parse Error`, `Compile Error`
+  or `Failed to load script` appears. A green gate runs in ~30 s; this was
+  adding 900 s per mistake, and it happened three times on 2026-09-16.
+- **Before blaming the gate,** read `mythforge-<pid>-<scene>.log.engine` in the
+  temp folder — the line is there.
+- **Do not pick a replacement name by guessing.** `wm_src` collided, and so did
+  the next guess, `chart_src`. `grep -c 'name' godot/tests/self_check.gd`
+  first. And do not `sed -g` a rename across that file: the pre-existing
+  `chart_src` got renamed along with the new one.
+
 ## A regex silently matches nothing
 
 - **Cause:** `\uXXXX` is a JavaScript escape. Godot's RegEx is **PCRE2**, where
