@@ -208,9 +208,20 @@ func world_tick() -> Dictionary:
 		for n in codex:
 			if n is Dictionary and str(n.get("goal", "")) != "" and str(n.get("name", "")) != "":
 				goals.append("%s wants %s" % [n["name"], n["goal"]])
+	# THE TOWNS' OWN TROUBLES COUNT AS THINGS IN MOTION, and they are the best
+	# material this call has: a clock says what is going wrong, WHERE, and how far
+	# along it is — which is exactly the "small and reactive" development this
+	# prompt asks for, and something it could previously only get from an NPC's
+	# stated goal.
+	var troubles: Array[String] = []
+	for t in GameState.running_troubles():
+		if str(t["what"]) == "":
+			continue
+		troubles.append("%s: %s (%d of %d)" % [t["place"], t["what"],
+			int(t["filled"]), int(t["size"])])
 	# Nothing in motion yet — a tick here would be the model inventing a world
 	# rather than advancing one.
-	if active.is_empty() and goals.is_empty():
+	if active.is_empty() and goals.is_empty() and troubles.is_empty():
 		return empty
 	var raw := await LocalGM.complete_json(
 		"You simulate a living world between scenes in an ongoing roleplay. A day has "
@@ -224,6 +235,11 @@ func world_tick() -> Dictionary:
 		% [_convo() if not transcript.is_empty() else "(just beginning)",
 			"; ".join(active) if not active.is_empty() else "(none)",
 			"; ".join(goals) if not goals.is_empty() else "(no known agendas)"]
+		+ ("Trouble brewing (the count is how far gone it is; PREFER THESE for your "
+			+ "developments, and say what WORSENED rather than restating the problem): "
+			+ "%s
+
+" % "; ".join(troubles) if not troubles.is_empty() else "")
 		+ "Day %d has dawned. What happened off-screen?" % int(GameState.clock().get("day", 1)),
 		TICK_SCHEMA)
 	var parsed = JSON.parse_string(raw)

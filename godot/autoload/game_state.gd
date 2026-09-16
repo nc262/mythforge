@@ -1170,6 +1170,12 @@ func advance_time(steps := 1) -> Dictionary:
 	if mood_now != mood_before:
 		mood_changed.emit(mood_now)
 	if int(c.get("day", 1)) != prev_day:
+		# A TOWN MOVES WHILE YOU ARE ELSEWHERE. This is the half of the clock that
+		# was missing: it only ever advanced when the GM said so, which makes it a
+		# counter the narrator keeps rather than a world that keeps going. The day
+		# rollover already exists and already fires `world_tick`, so the trouble
+		# creeps on the same heartbeat as everything else off-screen.
+		_creep_troubles()
 		day_changed.emit(int(c["day"]),
 			TIMES[clampi(int(c.get("ti", 0)), 0, TIMES.size() - 1)])
 	# Timed sheet conditions wane as in-world time passes.
@@ -1716,6 +1722,55 @@ func tick_trouble(place_name: String, by: int) -> String:
 	world["trouble"] = all
 	save_kind("world", world)
 	return ""
+
+
+## ── A DAY PASSES, AND TROUBLE GETS WORSE WHERE NOBODY IS WATCHING ────────────
+##
+## Every running clock advances one segment EXCEPT the one where the party is
+## standing. That exception is the whole rule: being there IS dealing with it, so
+## a town you are working in does not slide while you work, and every other town
+## does. It also means a clock cannot run out behind your back in the place you
+## are trying to save, which would read as the game cheating rather than as the
+## world turning.
+##
+## A clock that has already run out stays run out. It is waiting on the GM to
+## narrate the consequence, not counting past the end.
+func _creep_troubles() -> void:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	if all.is_empty():
+		return
+	var standing := here()
+	var moved := false
+	for k in all.keys():
+		if str(k).nocasecmp_to(standing) == 0:
+			continue
+		var t: Dictionary = all[k]
+		var size := int(t.get("size", 6))
+		var was := int(t.get("filled", 0))
+		if was >= size:
+			continue
+		t["filled"] = mini(was + 1, size)
+		all[k] = t
+		moved = true
+	if moved:
+		world["trouble"] = all
+		save_kind("world", world)
+
+
+## Every town with something going wrong in it, worst first — what the world tick
+## should be talking about.
+func running_troubles() -> Array:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	var out: Array = []
+	for k in all.keys():
+		var t: Dictionary = all[k]
+		out.append({"place": str(k), "what": str(t.get("what", "")),
+			"filled": int(t.get("filled", 0)), "size": int(t.get("size", 6))})
+	out.sort_custom(func(a, b):
+		return float(a["filled"]) / maxf(float(a["size"]), 1.0) > float(b["filled"]) / maxf(float(b["size"]), 1.0))
+	return out
 
 
 ## What is going wrong here, and how far along it is. {} if nothing.

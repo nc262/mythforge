@@ -121,6 +121,39 @@ func _ready() -> void:
 		return
 	print("  clock persists: %s" % str(kept.get("what", "")))
 
+	# ── THE WORLD MOVES WHILE YOU ARE ELSEWHERE ──────────────────────────────
+	# The clock only ever advanced when the GM said so, which makes it a counter
+	# the narrator keeps rather than a world that keeps going. A day passing has
+	# to move it — everywhere except where the party is standing.
+	GameState.tick_trouble(town, -6)                # wind it back to empty
+	var away := ""
+	for p2 in GameState.places():
+		if p2 is Dictionary and str(p2.get("name", "")) != town:
+			away = str(p2.get("name", ""))
+			break
+	if away != "":
+		GameState.set_trouble(away, "the mill wheel has cracked", 4)
+	# Stand IN the town, then let a day pass.
+	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	wd["here"] = town
+	GameState.state["world"] = wd
+	GameState.save_kind("world", wd)
+	var here_before := int(GameState.trouble_at(town).get("filled", 0))
+	var away_before := int(GameState.trouble_at(away).get("filled", 0)) if away != "" else 0
+	GameState.advance_time(GameState.TIMES.size())   # one whole day
+	var here_after := int(GameState.trouble_at(town).get("filled", 0))
+	var away_after := int(GameState.trouble_at(away).get("filled", 0)) if away != "" else 0
+	print("  a day passes — standing in %s: %d -> %d" % [town, here_before, here_after])
+	print("                  away in %s: %d -> %d" % [away, away_before, away_after])
+	if here_after != here_before:
+		print("SITE-PROBE FAILED: the trouble crept in the town the party is standing in")
+		get_tree().quit(1)
+		return
+	if away != "" and away_after != away_before + 1:
+		print("SITE-PROBE FAILED: a day passed and the trouble elsewhere did not creep")
+		get_tree().quit(1)
+		return
+
 	print("SITE-PROBE OK")
 	get_tree().quit(0)
 
