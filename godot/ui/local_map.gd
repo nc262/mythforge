@@ -106,6 +106,7 @@ var sites: Array = []              # GM-authored, per ward — see `GameState.to
 var gates: Array = []              # {"at": Vector2, "to": String}
 var out_roads: Array = []          # PackedVector2Array per road, percent space
 var arteries: Array = []           # PackedVector2Array: gate -> square, inside the wall
+var plaza := PackedVector2Array()  # the open ground of the market square
 var outskirts: Array = []          # {"poly": ...} buildings beyond the wall
 var furlongs: Array = []           # {"strips": Array[PackedVector2Array]}
 
@@ -467,6 +468,18 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 		# and `burgage` takes over on one fixed axis per block.
 		var block_area := min_area * 14.0
 		var plot_w := sqrt(min_area) * 0.6
+		# THE SQUARE IS OPEN GROUND. It was a label standing on houses — the
+		# square ward was built up like every other, so "The Market Square"
+		# named a block of burgage strips. Watabou's market ward has no buildings
+		# at all, only the open square and something at its heart; the middle of
+		# this ward is kept clear the same way, and the high streets are brought
+		# into it below.
+		var open := PackedVector2Array()
+		if str(ward_role[i]) == "square":
+			var bc := TownPlan.centroid(block)
+			for v in block:
+				open.append(bc + (v - bc) * 0.46)
+			plaza = open
 		var blocks: Array = []
 		TownPlan.subdivide(block, block_area, chaos, 0.5, 0.0, rng, blocks)
 		for blk in blocks:
@@ -482,6 +495,8 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 				# A yard, a garden, a burnt-out plot. Wealthier quarters keep more
 				# of them, which is what a courtyard IS, structurally.
 				if rng.randf() < empty:
+					continue
+				if open.size() > 2 and Geometry2D.is_point_in_polygon(TownPlan.centroid(built), open):
 					continue
 				buildings.append({"poly": built, "big": TownPlan.area(built) > min_area * 2.0})
 
@@ -843,6 +858,21 @@ func _plan_arteries() -> void:
 		var pts := PackedVector2Array([gt["at"]])
 		for q in path:
 			pts.append(q + Vector2(0.5, 0.5))
+		# INTO THE SQUARE, not merely to its edge. The router stops at the last
+		# open street cell, which is outside the square's ward; the last leg is
+		# cut through to the plaza and anything standing on it is cleared, so the
+		# roads visibly converge on the market rather than stopping at a wall of
+		# houses.
+		if plaza.size() > 2:
+			var pc := TownPlan.centroid(plaza)
+			var a := pts[pts.size() - 1]
+			var kept: Array = []
+			for bld in buildings:
+				var bcen := TownPlan.centroid(bld["poly"])
+				if bcen.distance_to(Geometry2D.get_closest_point_to_segment(bcen, a, pc)) > 1.6:
+					kept.append(bld)
+			buildings = kept
+			pts.append(pc)
 		arteries.append(_chaikin(pts))
 
 

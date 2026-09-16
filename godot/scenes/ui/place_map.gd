@@ -614,6 +614,15 @@ func _draw_town(ci: CanvasItem) -> void:
 		else:
 			MapInk.draw_rough(ci, ring2, absi(hash(lm.place)) + 11, Color(ink, 0.45), 1.4)
 
+	# THE PLAZA — open paved ground, paler than the built quarter around it, with
+	# a drawn edge where the paving stops.
+	if lm.plaza.size() > 2:
+		var pz := PackedVector2Array()
+		for q in lm.plaza:
+			pz.append(_pct(q))
+		ci.draw_colored_polygon(pz, paper)
+		MapInk.draw_rough(ci, pz, absi(hash(lm.place)) + 29, Color(ink, 0.5), 1.1, true)
+
 	# THE HIGH STREETS, under the buildings. Wider than the ordinary gaps, and
 	# edged in ink, so a reader can follow a gate to the square — the one route
 	# through a town that everyone takes. Drawn as paper with a hairline either

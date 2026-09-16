@@ -155,6 +155,16 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 			wid, nm, lm.ward_role.count("square"), lm.ward_role])
 	if lm.water_dir != Vector2.ZERO and lm.site in [WorldTerrain.COAST, WorldTerrain.SHOAL] 			and lm.ward_role.count("quay") != 1:
 		_failed.append("%s/%s: a coastal town with %d quays" % [wid, nm, lm.ward_role.count("quay")])
+	# THE SQUARE IS OPEN. Nothing stands in the plaza, and it is big enough to read.
+	if lm.plaza.size() > 2:
+		var inside := 0
+		for b in lm.buildings:
+			if Geometry2D.is_point_in_polygon(TownPlan.centroid(b["poly"]), lm.plaza):
+				inside += 1
+		if inside > 0:
+			_failed.append("%s/%s: %d buildings stand in the market square" % [wid, nm, inside])
+	elif lm.ward_role.has("square"):
+		_failed.append("%s/%s: the square has no open ground" % [wid, nm])
 	if lm.ward_name.size() != lm.wards.size():
 		_failed.append("%s/%s: %d wards but %d names" % [wid, nm, lm.wards.size(), lm.ward_name.size()])
 
