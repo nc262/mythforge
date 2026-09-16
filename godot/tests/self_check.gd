@@ -1479,6 +1479,16 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 		"a hamlet offers as much as a city")
 	print("  trades: %d kinds, %d..%d by size, none shares a ward's name" % [
 		WorldSkin.TRADE_KEYS.size(), WorldSkin.trades_at(0).size(), WorldSkin.trades_at(3).size()])
+	# THE CHART IS INK ON PAPER — NO DARK-PANEL UI COLOURS ON IT. The hover lore,
+	# the you-are-here ring and the travel dots were still drawn in `gold_soft`
+	# after the chart became parchment, and measured 1.05-1.23:1 against the paper
+	# on five of six worlds: the player's own position was the least visible mark
+	# on the sheet. Ink is asserted at 4.5:1 per family already; this keeps the
+	# chart from quietly reaching back for a UI colour.
+	var parchment_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+	for banned in ['Ui.c("gold_soft")']:
+		assert(not parchment_src.contains(banned),
+			"world_map draws %s on the parchment chart - a dark-panel colour that measured ~1.1:1 against the paper; use _ink()" % banned)
 	print("  wards: %d families, %d sockets each, all distinct" % [
 		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
 

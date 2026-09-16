@@ -863,7 +863,7 @@ func _draw() -> void:
 				if t > 1.0:
 					continue
 				var p := _along(road, t)
-				draw_circle(p, 1.8, Color(Ui.c("gold_soft"), 0.75 * (1.0 - t * 0.3)))
+				draw_circle(p, 1.9, Color(_ink(), 0.8 * (1.0 - t * 0.3)))
 	_draw_roads()
 	_draw_regions(font)
 	for i in locations.size():
@@ -902,7 +902,7 @@ func _draw() -> void:
 			draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(30, 30), Vector2(60, 60)), false, Color(Ui.c("gold"), 0.16 + 0.14 * pulse))
 			var star := "✦"
 			var ss := font.get_string_size(star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
-			draw_string(font, p + Vector2(-ss.x / 2.0, -16), star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(Ui.c("gold"), 0.8 + 0.2 * pulse))
+			draw_string(font, p + Vector2(-ss.x / 2.0, -16), star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(_ink(), 0.75 + 0.25 * pulse))
 		# HEARD OF: THE SHAPE, NOT THE SUBSTANCE.
 		#
 		# Hollow, unlit, and no trade badge — you know the place is out there and
@@ -935,26 +935,13 @@ func _draw() -> void:
 
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
-			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Ui.c("gold_soft"), 2.5)
+			# YOU ARE HERE, in ink. This was `gold_soft`, a colour from the dark
+			# panel the chart used to be — measured on parchment at 1.05-1.23:1 on
+			# five of six worlds, so the one mark that answers "where am I" was
+			# the least visible thing on the sheet.
+			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Color(_ink(), 0.9), 2.2, true)
 		_label(font, nm, p + Vector2(-font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14).x / 2.0, -14),
 			14, 1.0 if (i == _hover or is_here) else 0.85)
-	# Hover lore (known places tell their story; the fog only whispers).
-	if _hover >= 0:
-		var l2: Dictionary = locations[_hover]
-		var nm2 := str(l2.get("name", ""))
-		# Three states, three answers. A place merely heard of has no lore to
-		# tell: the tale named it, and that is all the player has earned.
-		var lore := ""
-		match _state_of(nm2):
-			VISITED:
-				lore = str(l2.get("lore", "")).left(80)
-			HEARD:
-				lore = "you have heard of this place — the road will teach you the rest"
-			_:
-				lore = ""
-		var p2 := _pos_of(l2)
-		draw_string(font, Vector2(clampf(p2.x - 120, 8, size.x - 260), minf(p2.y + 26, size.y - 10)),
-			lore, HORIZONTAL_ALIGNMENT_LEFT, 250, 12, Ui.c("gold_soft"))
 	# THE FRAME AND THE KEY SIT ON THE SHEET, NOT ON THE MAP. Outside the camera
 	# transform, so they stay put while the country pans underneath them — a
 	# border that scrolls away with the land is a rectangle, not a frame.
@@ -966,6 +953,88 @@ func _draw() -> void:
 	_draw_cartouche(font)
 	MapInk.draw_border(self, Rect2(Vector2.ZERO, size), _ink(), _paper_tone())
 	_draw_legend(font)
+	if _hover >= 0 and _hover < locations.size() and locations[_hover] is Dictionary:
+		_draw_place_card(font, locations[_hover])
+
+
+## ── AT-9: WHAT A PLACE IS, WHEN YOU POINT AT IT ──────────────────────────────
+##
+## This printed `lore.left(80)` as bare text — no name, no kind, nothing about
+## what the place offers or what is wrong there, cut off mid-word at eighty
+## characters. And it printed it in `gold_soft`, a dark-panel UI colour, which on
+## parchment measured 1.05-1.23:1 on five of six worlds: the hover was not merely
+## thin, it was invisible everywhere but Neon Spire.
+##
+## A card now, in SCREEN space so it does not shrink when the map is zoomed out:
+## the name, what kind of place it is in this world's own words, whether you have
+## been, and — only for somewhere you have been — its lore, what it trades, and
+## what trouble is running there. The fog rules are the chart's own: a place you
+## have only heard of gives its name and kind and nothing it has not earned.
+func _draw_place_card(font: Font, l: Dictionary) -> void:
+	var nm := str(l.get("name", ""))
+	var state := _state_of(nm)
+	if nm == "" or state == UNKNOWN:
+		return
+	var ink := _ink()
+	var paper := _paper_tone()
+	var wid := GameState.world_id()
+	var kind := str(l.get("kind", ""))
+	var kind_label := str(WorldSkin.place_kind(wid, kind).get("label", kind.capitalize()))
+	var lines: Array = []                 # [text, size, alpha]
+	lines.append([nm, 16, 1.0])
+	lines.append(["%s · %s" % [kind_label, "visited" if state == VISITED else "heard of"], 12, 0.7])
+	if state == VISITED:
+		var lore := str(l.get("lore", "")).strip_edges()
+		if lore != "":
+			lines.append([lore, 13, 0.92])
+		if LocalMap.SETTLED_KINDS.has(kind):
+			var lm := LocalMap.for_place(wid, nm, kind)
+			var names: Array = []
+			for t in lm.trades:
+				names.append(str(t["name"]).trim_prefix("The "))
+			if not names.is_empty():
+				lines.append(["Trades: " + ", ".join(names), 12, 0.85])
+		var tr := GameState.trouble_at(nm)
+		if not tr.is_empty() and str(tr.get("what", "")) != "":
+			lines.append(["Trouble (%d of %d): %s" % [int(tr.get("filled", 0)),
+				int(tr.get("size", 6)), str(tr.get("what", ""))], 12, 0.92])
+		# SAY WHAT THE CLICK DOES. Clicking the place you stand in opens it
+		# (AT-5); clicking anywhere else sets out for it. A card promising "look
+		# inside" on a town three days away would be the map lying.
+		lines.append(["click to look inside" if nm == here else "click to set out", 11, 0.55])
+	else:
+		lines.append(["You have heard of it. The road will teach you the rest.", 12, 0.8])
+
+	var w := 300.0
+	var pad := 10.0
+	var h := pad
+	var heights: Array = []
+	for ln in lines:
+		var sz := font.get_multiline_string_size(str(ln[0]), HORIZONTAL_ALIGNMENT_LEFT, w - pad * 2.0, int(ln[1]))
+		var lh: float = minf(sz.y, float(int(ln[1])) * 4.4)   # at most ~3-4 lines of lore
+		heights.append(lh)
+		h += lh + 3.0
+	h += pad - 3.0
+	# Beside the pin, in screen space, kept on the sheet.
+	var pin := _camera.cam + _pos_of(l) * _camera.zoom
+	var at := pin + Vector2(18.0, 12.0)
+	if at.x + w > size.x - 16.0:
+		at.x = pin.x - w - 18.0
+	if at.y + h > size.y - 16.0:
+		at.y = size.y - 16.0 - h
+	at.x = maxf(at.x, 16.0)
+	at.y = maxf(at.y, 16.0)
+	var box := Rect2(at, Vector2(w, h))
+	draw_rect(box, Color(paper, 0.97))
+	draw_rect(box, Color(ink, 0.85), false, 1.4)
+	draw_rect(box.grow(-3.0), Color(ink, 0.3), false, 0.8)
+	var y := at.y + pad
+	for i in lines.size():
+		var ln: Array = lines[i]
+		var fs := int(ln[1])
+		draw_multiline_string(font, Vector2(at.x + pad, y + float(fs)), str(ln[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, w - pad * 2.0, fs, 4, Color(ink, float(ln[2])))
+		y += float(heights[i]) + 3.0
 
 
 ## The coin beside a pin: someone here sells things. Fog-gated with everything

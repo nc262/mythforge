@@ -189,6 +189,14 @@ func _shot_scene(path: String, stem: String) -> void:
 		node.here = str(wd.get("here", ""))
 		node.seen = wd.get("seen") if wd.get("seen") is Array else []
 		node.fog = true      # AT-6 — fog ON, or the shot cannot show HEARD at all
+		# AT-9 — HOVER THE PLACE YOU ARE STANDING IN, so the place card is drawn.
+		# A shot with nothing hovered cannot show whether the card is legible —
+		# and the old hover measured 1.05:1 on parchment, which is exactly the
+		# kind of thing only a rendered frame reveals.
+		for hi in node.locations.size():
+			if node.locations[hi] is Dictionary and str(node.locations[hi].get("name", "")) == node.here:
+				node._hover = hi
+				break
 	get_tree().root.add_child(node)
 	# A DIALOG IS ITS OWN WINDOW, AND ITS OWN VIEWPORT. The first version of this
 	# grabbed `get_viewport()` — the MAIN window — for every screen, so the three
