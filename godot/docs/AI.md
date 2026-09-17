@@ -83,6 +83,14 @@ comes to a head. A second, different trouble in a town that already has one is
 refused — two live calamities in one village is the GM losing track, not the
 world getting worse.
 
+**The narrator is told the town it stands in.** When `here` is a settled place,
+the SCENE line carries `LocalMap.brief()`: the quarters, numbered (that number is
+`ward=`), each quarter's wealth and law, every trade and GM site already there,
+where inside the town the party is, and the trouble clock. Without it the map drew
+an Inn by the gate and the GM invented a different one, and `ward=` asked for a
+number the model could not know. Clicking a building on the town map asks for a
+turn about arriving there, the same way clicking a place on the chart does.
+
 **The geography tags are the mini-god's real power, and the engine's veto is
 what keeps them a power rather than a mess.** `[[place]]` is refused beyond the
 scope the party's level has earned; `[[region]]` is `far`-gated so it reads as

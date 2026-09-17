@@ -2631,6 +2631,8 @@ The term for spell slots is "Echoes."
 			drew = true
 	assert(drew, "the chart actually draws named roads")
 	assert(Composer.PROTOCOL.contains("[[road"), "the GM is told the road tag exists")
+	# The kinds a [[site]] may take are spelled out in the prompt by hand; the engine refuses any other.
+	assert(Composer.PROTOCOL.contains("kind: " + "/".join(GameState.SITE_KINDS)), "the [[site]] kinds the GM is taught are not GameState.SITE_KINDS")
 	GameState.state.erase("world")
 
 	# ── The first-run tutorial ───────────────────────────────────────────────

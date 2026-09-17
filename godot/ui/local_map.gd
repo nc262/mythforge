@@ -132,6 +132,51 @@ static func forget(key := "") -> void:
 		_cache.erase(key)
 
 
+## ── THE TOWN, SAID TO THE NARRATOR ───────────────────────────────────────────
+## Measured before this existed: no prompt the game sends read `wards`, `trades`,
+## `sites` or the trouble clock. The map drew an Inn by the gate and a Fence in the
+## lawless quarter, and the GM — never told — invented its own, so the story and
+## the map described two different towns. And `[[site ward=N]]` asks for a ward
+## NUMBER the model had no way to know. This is that list, numbered.
+const _WEALTH := ["poor", "modest", "comfortable", "rich"]
+const _LAW := ["lawless", "loosely watched", "watched", "tightly policed"]
+const _TIER := ["hamlet", "village", "town", "city"]
+
+
+func brief(standing_at := "") -> String:
+	if not settled or wards.is_empty():
+		return ""
+	var qs: Array[String] = []
+	for i in wards.size():
+		# The number rides INSIDE the brackets as `ward=N`. Written "4 The Cottages" the
+		# real narrator read it as part of the name and wrote "Cottages 4" in prose.
+		qs.append("%s (ward=%d, %s, %s)" % [ward_name[i], i,
+			_WEALTH[clampi(ward_wealth[i], 0, 3)], _LAW[clampi(ward_law[i], 0, 3)]])
+	var places_in: Array[String] = []
+	for t in trades:
+		places_in.append("%s in %s" % [t["name"], ward_name[int(t["ward"])]])
+	for s in sites:
+		var w := int(s.get("ward", 0))
+		places_in.append("%s (%s) in %s%s" % [s.get("name", ""), s.get("kind", ""), ward_name[w],
+			(" — " + str(s["lore"])) if str(s.get("lore", "")) != "" else ""])
+	# WHAT THE TOWN LACKS, said next to the scene. Taught only in the protocol, the
+	# real narrator made no [[site]] in six turns — including when asked for a fence
+	# in a town that has none.
+	var have: Array = trades.map(func(t): return str(t["kind"])) + sites.map(func(x): return str(x.get("kind", "")))
+	var lacks: Array[String] = []
+	for k in GameState.SITE_KINDS:
+		if not have.has(k) and not ["home", "landmark"].has(k):
+			lacks.append(str(k))
+	var out := "TOWN — %s is a %s. QUARTERS: %s. ALREADY HERE — use these names, do not invent a second of any: %s. NOT HERE YET: %s — when the story needs one, create it with [[site kind=... ward=...]] in the quarter that suits it." % [
+		place, _TIER[clampi(size_tier, 0, 3)], "; ".join(qs), "; ".join(places_in), ", ".join(lacks)]
+	if standing_at != "" and standing_at != place:
+		out += " The party is at %s." % standing_at
+	var t := GameState.trouble_at(place)
+	if not t.is_empty():
+		out += " TROUBLE HERE (clock %d/%d): %s." % [int(t.get("filled", 0)), int(t.get("size", 6)), t.get("what", "")]
+	return out
+
+
 func _build(wid: String, place_name: String, place_kind: String) -> void:
 	world_id = wid
 	place = place_name

@@ -3058,7 +3058,16 @@ func _open_place_map(place: String) -> void:
 		Sfx.ui("travel")
 		# The GM narrates arrival, which is what makes a room a place rather than
 		# a dot. The map moved the pin; the story says what is there.
-		_say_system("You move to %s, within %s." % [room, place], "compass"))
+		#
+		# That comment was true of nothing: this posted a local line and no turn,
+		# so walking into the inn on the town map never reached the story. It
+		# closes the plan the way travelling from the chart does — the answer is
+		# in the transcript, behind the window — and asks for a turn.
+		_say_system("You move to %s, within %s." % [room, place], "compass")
+		if Mode.can("send_message"):
+			dlg.queue_free()
+			_last_player_msg = "I go to %s in %s." % [room, place]
+			_stream(Composer.envelope("[I walk to %s, within %s. Describe briefly what I find there — who is about, and what they want.]" % [room, place])))
 	# THE VIEW GOES IN THE DIALOG, AND THE DIALOG GOES IN THE TREE, BEFORE IT IS
 	# DRESSED. This called `dress_dialog(dlg, view)` and then `add_child(dlg)`,
 	# and never added `view` to `dlg` at all — `dress_dialog` styles and caps a

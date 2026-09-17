@@ -117,6 +117,47 @@ func _turn(label: String, msg: String, reply: String, check: Callable) -> void:
 	print("  turn %s: ok" % label)
 
 
+## THE TOWN MAP AND THE STORY ARE ONE TOWN. Measured before this existed: no
+## prompt read the plan, the GM was never taught [[site]]/[[trouble]]/[[clock]]
+## although their handlers shipped, and clicking a building on the town map
+## posted a local line and asked for no turn. Each half worked alone and the
+## loop between them did not exist. This drives the loop the player's way:
+## the narrator is told the town, a click inside it asks for a turn, and the
+## tags in that reply change the map and the next turn's context.
+func _town_reaches_the_story(town: String, view: Node, dlg: Node) -> void:
+	var lm0: LocalMap = view.lm
+	var env := Composer.envelope("probe")
+	_ck(env.contains("TOWN — %s" % town) and env.contains(str(lm0.ward_name[lm0.wards.size() - 1])),
+		"town: the narrator is not told the quarters of %s, the town it stands in" % town)
+	for t in lm0.trades:
+		_ck(env.contains(str(t["name"])), "town: the map has %s but the narrator is never told" % t["name"])
+	for tag in ["[[site ", "[[trouble ", "[[clock "]:
+		_ck(env.contains(tag), "town: the GM is never taught %s — its handler can never fire" % tag)
+	var fails_before := _fails.size()
+	var room := str(lm0.nodes[1]["name"])
+	var ward := lm0.wards.size() - 1
+	Api.test_replies = ["A crooked door, a crooked smile.\n[[site name=\"The Probe Lantern\" kind=fence ward=%d lore=\"buys what nobody asks about\"]]\n[[trouble what=\"smugglers bleed the market\" clock=6]]" % ward]
+	view.enter_room.emit(room)
+	for _f in 60:
+		await get_tree().process_frame
+		if not Mode.busy and not is_instance_valid(dlg):
+			break
+	_ck(not is_instance_valid(dlg), "town: walking to %s left the plan over the transcript" % room)
+	_ck(str(_game._last_framed).contains(room), "town: walking to %s asked the narrator for nothing" % room)
+	var w: Dictionary = GameState.state.get("world", {})
+	_ck(str(w.get("inside", {}).get(town, {}).get("here", "")) == room, "town: the walk to %s was not recorded" % room)
+	var lm1 := LocalMap.for_place(GameState.world_id(), town, lm0.kind)
+	_ck(lm1.nodes.any(func(n): return str(n["name"]) == "The Probe Lantern"),
+		"town: the GM's [[site]] did not reach the town map of %s" % town)
+	_ck(not GameState.trouble_at(town).is_empty(), "town: the GM's [[trouble]] did not start a clock in %s" % town)
+	var env2 := Composer.envelope("probe")
+	_ck(env2.contains("The Probe Lantern") and env2.contains("TROUBLE HERE") and env2.contains("The party is at %s" % room),
+		"town: the next turn's context does not carry what the last turn changed")
+	if _fails.size() == fails_before:
+		print("  town: %s → narrator told %d quarters, %d trades; walked to %s; [[site]] and [[trouble]] landed on the map" % [
+			town, lm0.wards.size(), lm0.trades.size(), room])
+
+
 func _check_loot(_quiet := false) -> bool:
 	var names: Array = GameState.inv().get("items", []).map(func(it): return str(it.get("name", "")))
 	return int(GameState.sheet().get("gold", 0)) == 35 and "Iron Dagger" in names
@@ -1456,11 +1497,15 @@ func _build_windows() -> void:
 			if opened != null:
 				print("  atlas: stepped inside %s from the in-game Atlas; %d regions on the chart" % [
 					settled_here, region_count])
+			if town_view != null and town_view.lm.nodes.size() > 1:
+				await _town_reaches_the_story(settled_here, town_view, opened)
+			if opened != null and is_instance_valid(opened):
 				opened.queue_free()
 		if rec != null and is_instance_valid(rec):
 			rec.queue_free()
 	GameState.character = atlas_keep_char
 	GameState.state = atlas_keep_state
+	LocalMap.forget("embervale|%s" % settled_here)   # the probe wrote a site into it
 
 	# PY-18 — EVERY STAGE BUILDS, AND EVERY NAMED JUMP LANDS. The loop above only
 	# builds stage 0, so the rest of a forge's rail was never exercised: when two

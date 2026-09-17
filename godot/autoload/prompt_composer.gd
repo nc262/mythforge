@@ -18,6 +18,8 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[place name="Saltwick" kind=settlement scope=local region="The Reach" lore="a fishing village that keeps its own tide-clock"]] when the story needs somewhere that is not yet on the chart. THIS IS YOURS TO CREATE — if the tale walks toward a village nobody has named, name it and it exists. kind: tavern/shop/landmark/wilds/home/settlement/ruin. scope: local (near, a walk) / regional (a journey) / far (the frontier) — reach beyond what the party has earned and the world will refuse you, so build outward from where they stand. Attach it to a region you know.
 [[region name="The Ashen Marches" lore="one sentence"]] ONLY when the story genuinely crosses into land the chart does not hold. A new region is an event, not a convenience — most tales never need one.
 [[road from="Saltwick" to="The Drowned Chapel" state=blocked name="the Weir Road"]] when a way between two places THAT ARE BOTH ALREADY ON THE CHART changes — a pass closes, a bridge goes out, bandits take a stretch of it, or a road reopens. state: open (normal) / hard (slow — snow, flood, mud; the journey costs longer) / dangerous (three times as likely to meet something) / blocked (nobody gets through; the player is turned back). This is real: it changes what travel costs and whether it is possible, so use it when the story genuinely closes or spoils a road, and open it again when the story clears it.
+[[site name="The Drowned Bell" kind=fence ward=3 lore="buys what the tide brings in"]] when the story needs a particular building INSIDE the town the party stands in and the TOWN list above has none that fits. kind: inn/tavern/store/smith/alchemist/temple/fence/sage/guild/home/landmark. ward: a quarter number from the TOWN list. It appears on the town map.
+[[trouble what="press-gangs are taking men off the quay" clock=6]] when something in this town is going wrong and will get worse unless someone acts (clock 4-8; one trouble per town). [[clock tick=1]] when it worsens; [[clock tick=-1]] when the player pushes it back.
 [[lore cat="Places" title="The Sunken Vault" note="one vivid sentence of what was learned"]] when the player discovers a LASTING fact worth remembering — a place, person, creature, faction, history, or truth (cat: History/Places/People/Bestiary/Magic/Faction). Use sparingly, only for real discoveries.
 You MAY also SUGGEST presentation — these change only how the moment looks and sounds, NEVER the game state; use at most one or two, and only when the beat truly calls for it:
 [[mood tone=tense]] (tone: calm/warm/tense/eerie/somber/dread/triumphant) · [[music cue=battle]] (calm/tense/battle/sorrow/triumph) · [[sfx cue=impact]] (impact/chime/tension) · [[portrait expr=grim]] · [[camera move=in]].
@@ -120,7 +122,20 @@ func scene_context() -> String:
 			names.append(str(n["name"]))
 	var loc := here if here != "" else "not yet established — establish where the player is before acting"
 	var near := ", ".join(names.slice(0, 6)) if not names.is_empty() else "no one named yet — establish who, if anyone, is present"
-	return "SCENE — location: %s. Cast who may be near: %s%s" % [loc, near, geography_context()]
+	return "SCENE — location: %s. Cast who may be near: %s%s%s" % [loc, near, geography_context(), town_context()]
+
+
+## The town the party stands in, as its map drew it — see `LocalMap.brief`.
+func town_context() -> String:
+	var here := GameState.here()
+	var w: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	for l in GameState.places():
+		if l is Dictionary and str(l.get("name", "")) == here and LocalMap.SETTLED_KINDS.has(str(l.get("kind", ""))):
+			var inside: Dictionary = w.get("inside") if w.get("inside") is Dictionary else {}
+			var rec: Dictionary = inside.get(here) if inside.get(here) is Dictionary else {}
+			var b := LocalMap.for_place(GameState.world_id(), here, str(l["kind"])).brief(str(rec.get("here", "")))
+			return (" " + b) if b != "" else ""
+	return ""
 
 
 ## WHAT THE WORLD IS MADE OF, and how far this party may reach into it.
