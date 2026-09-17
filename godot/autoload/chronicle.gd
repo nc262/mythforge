@@ -74,6 +74,55 @@ func _after_turn(player_msg: String, gm_reply: String, chronicle_due: bool) -> v
 		await _update_chronicle()
 
 
+## ── THE PLAYER ASKS A TOWN FOR SOMETHING NOT ON ITS MAP ──────────────────────
+## The GM decides whether this town has one; `GameState.answer_ask` decides
+## whether the answer is legal. Schema-constrained, because the caller needs a
+## decision, not prose — and the prose it does write is one in-world sentence.
+## KIND IS REQUIRED. Measured with the real narrator: five asks, five yeses, and
+## `kind` left out of every one, so every answer landed as a generic landmark and
+## the size gate had nothing to bite on.
+const ASK_SCHEMA := '{"type":"object","required":["here","kind","name","ward","answer"],"properties":{' 	+ '"here":{"type":"boolean"},"kind":{"enum":["inn","tavern","store","smith","alchemist",' 	+ '"temple","fence","sage","guild","home","landmark"]},' 	+ '"name":{"type":"string","maxLength":60},"ward":{"type":"integer"},' 	+ '"lore":{"type":"string","maxLength":160},"answer":{"type":"string","maxLength":240}}}'
+
+
+func ask_after(town: String, town_kind: String, query: String) -> Dictionary:
+	if not LocalGM.available() or query.strip_edges() == "":
+		return {}
+	var brief := LocalMap.for_place(GameState.world_id(), town, town_kind).brief()
+	# THE WORLD ITSELF, because the narrator said yes to a SPACEPORT in a fantasy
+	# village: with only the town in front of it, nothing in the prompt said what kind
+	# of world this is, and a model with no grounds to refuse will not refuse.
+	var world := {}
+	for w in Rules.builtin_worlds() + GameState.global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
+			world = w
+			break
+	var raw := await LocalGM.complete_json(
+		"You are the Game Master of %s, %s. %s" % [str(world.get("name", "this world")),
+			str(world.get("kind", "")), str(world.get("lore", "")).left(320)]
+		+ "%s
+
+" % brief
+		+ "The player is in %s, asking after: %s
+
+" % [town, query.strip_edges().left(120)]
+		+ "Decide whether this place HAS such a thing. `here` is true only if it fits a "
+		+ "place of this size and character, serves the story, and is not one of the places "
+		+ "already listed above. If true: `name` it in this world's voice, choose the closest "
+		+ "`kind`, and give the `ward` number of the quarter it stands in, from the list above. "
+		+ "Two examples, in a high-fantasy village: \"a blacksmith\" -> here true, kind smith. "
+		+ "\"a spaceport\" -> here FALSE, because nothing in this world flies; answer: "
+		+ "\"Folk here would stare at you — there is no such thing in this valley.\" "
+		+ "SAY NO WHEN IT DOES NOT BELONG. `here` is false for anything out of this world's "
+		+ "genre, anything grander than a place this size would hold, and anything this tale "
+		+ "has no room for — a no is a good answer and the commonest one. "
+		+ "`answer` is ONE short sentence said to the player in the world's own voice — where "
+		+ "to find it and what it is like, or why there is no such thing here. Never mention "
+		+ "rules, numbers or tags.",
+		ASK_SCHEMA, 25.0)   # somebody is standing at the box waiting for this
+	var parsed = JSON.parse_string(raw)
+	return parsed if parsed is Dictionary else {}
+
+
 ## ── DID THAT TURN TOUCH THE TROUBLE? ─────────────────────────────────────────
 ## MEASURED 2026-09-17 (tests/town_gm_probe, real narrator, a secret trouble,
 ## four turns of the player investigating it): the narrator kept the secret and

@@ -113,6 +113,19 @@ call over that exchange: `lead` (recorded as a clue) and `working_it` (the day
 counts as worked, and the next roll there counts against the clock). The tags
 still work when the model writes them.
 
+**Scale comes from `kind`.** `settlement` is a town (quarters, trades, wall,
+fields); `tavern`, `shop`, `home` are ONE building, drawn as its rooms, and their
+room words are per family (`WorldSkin.rooms_of`); everything else is a site to
+explore. `[[place ... size=hamlet|village|town|city]]` sets what a settlement is,
+and `add_site` refuses a trade the size cannot carry, naming the size it would
+take. The Worldsmith must put at least one settlement in a forged world.
+
+**AT-19 — the player can ask a town for what is not on its map.** The box on the
+town sheet sends the question to `Chronicle.ask_after`, which returns a
+schema-constrained decision (here / kind / name / ward / lore / answer);
+`GameState.answer_ask` validates it exactly as `[[site]]` is validated and puts
+it on the plan. A refusal is spoken to the player as the answer.
+
 **The narrator is told the town it stands in.** When `here` is a settled place,
 the SCENE line carries `LocalMap.brief()`: the quarters, numbered (that number is
 `ward=`), each quarter's wealth and law, every trade and GM site already there,

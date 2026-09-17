@@ -161,7 +161,7 @@ func _shot_scene(path: String, stem: String) -> void:
 			if not (_p is Dictionary):
 				continue
 			var k := str(_p.get("kind", ""))
-			var hit := LocalMap.SETTLED_KINDS.has(k) if town else k == want
+			var hit := LocalMap.TOWN_KINDS.has(k) if town else k == want
 			if hit:
 				nm = str(_p["name"])
 				knd = k

@@ -1559,9 +1559,15 @@ func add_place(spec: Dictionary) -> String:
 	var made: Array = world.get("places") if world.get("places") is Array else []
 	var at := region_at(reg, world)
 	var pos := Rules.place_position(nm, scope, at, str(spec.get("kind", "landmark")), world_id())
+	# HOW BIG, when the place is one people live in. The size was a dice roll in
+	# the generator, so the tale could charter "the capital of the Reach" and get a
+	# hamlet. The GM says; the engine keeps the word only if it knows it, and the
+	# generator falls back to its roll when nothing was said.
+	var sized := str(spec.get("size", "")).strip_edges().to_lower()
 	made.append({
 		"name": nm,
 		"kind": str(spec.get("kind", "landmark")),
+		"size": sized if SETTLEMENT_SIZES.has(sized) else "",
 		"lore": str(spec.get("lore", "")),
 		"shop": str(spec.get("shop", "")),
 		"region": reg,
@@ -1611,6 +1617,10 @@ func add_place(spec: Dictionary) -> String:
 ## on a lot the town plan already produced. The model is good at naming things
 ## and bad at coordinates, and the spatial-grounding literature is unanimous
 ## about the second half of that.
+## 0 hamlet, 1 village, 2 town, 3 city — the index IS `LocalMap.size_tier`, and
+## what a settlement can offer is gated on it (WorldSkin.TRADE_TIERS).
+const SETTLEMENT_SIZES := ["hamlet", "village", "town", "city"]
+
 const SITE_KINDS := ["inn", "tavern", "store", "smith", "alchemist", "temple",
 	"fence", "sage", "guild", "home", "landmark"]
 
@@ -1642,6 +1652,15 @@ func add_site(spec: Dictionary) -> String:
 	for ex in town_sites(town):
 		if ex is Dictionary and str(ex.get("name", "")).nocasecmp_to(nm) == 0:
 			return "%s already stands in %s" % [nm, town]
+	# A SIZE GATE, and only for a settlement. Every published system ties what a
+	# place can offer to how big it is — a hamlet has no guildhall — so a trade
+	# above this town's tier is refused with the size named, which is a fact the
+	# model can act on. A BUILDING is exempt: a fence in a tavern's back room is
+	# exactly right, and a single roof has no tier to speak of.
+	if lm.scale == "town" and WorldSkin.TRADE_KEYS.has(knd) and not WorldSkin.trades_at(lm.size_tier).has(knd):
+		return "%s is a %s — too small for %s; it would take a %s" % [town,
+			SETTLEMENT_SIZES[clampi(lm.size_tier, 0, 3)], WorldSkin.trade_name(WorldSkin.family_for_id(world_id()), knd),
+			SETTLEMENT_SIZES[clampi(_tier_for_trade(knd), 0, 3)]]
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
 	var all: Dictionary = world.get("sites") if world.get("sites") is Dictionary else {}
 	var mine: Array = all.get(town) if all.get(town) is Array else []
@@ -2116,6 +2135,80 @@ func uncover_trouble(place_name: String) -> String:
 func trouble_at(place_name: String) -> Dictionary:
 	var key := _trouble_key(place_name)
 	return _trouble_book()[key] if key != "" else {}
+
+
+## The smallest settlement tier that offers this trade.
+func _tier_for_trade(knd: String) -> int:
+	for t in WorldSkin.TRADE_TIERS.size():
+		if WorldSkin.TRADE_TIERS[t].has(knd):
+			return t
+	return 0
+
+
+## ── THE PLAYER ASKS A TOWN FOR SOMETHING THAT IS NOT ON ITS MAP ──────────────
+##
+## "Is there an apothecary here?" The GM decides whether this place has one —
+## the story's call, not a lookup — and the engine decides whether the answer is
+## legal: a real kind, a real ward, a name nobody else has, and a trade this
+## size of settlement could plausibly carry. Propose-and-validate, the same
+## shape as every other tag: the model invents inside a socket, the engine
+## refuses with a reason.
+##
+## Returns what to tell the player. `found` says whether the map changed.
+func answer_ask(town: String, query: String, said: Dictionary) -> Dictionary:
+	var q := query.strip_edges()
+	if q == "":
+		return {"found": false, "line": ""}
+	if said.is_empty() or not _ask_is_sane(said):
+		# A SCHEMA CALL RUNS WITH NO SAMPLER CHAIN (LocalLLM-Tuning.md), so a bad turn
+		# does not come back wrong, it comes back as rubble: measured once in five, an
+		# object carrying invented keys and a paragraph of noise. Rubble is not an
+		# answer, and the player gets the honest version of that.
+		return {"found": false, "line": "You ask after %s, and get nowhere." % q}
+	# THE SCHEMA CUTS AT ITS CEILING, mid-word: "jars of tea that c". Trim back to
+	# the last sentence that finished, or to the last whole word.
+	var answer := _last_sentence(str(said.get("answer", "")).strip_edges().left(240))
+	var knd := str(said.get("kind", "")).to_lower()
+	if bool(said.get("here", false)) and not SITE_KINDS.has(knd):
+		# It said yes and could not say what the thing IS. Not an answer either.
+		return {"found": false, "line": answer if answer != "" else "There is nothing like %s here." % q}
+	if not bool(said.get("here", false)):
+		return {"found": false, "line": answer if answer != "" else "There is nothing like %s here." % q}
+	var why := add_site({
+		"name": str(said.get("name", "")),
+		"kind": str(said.get("kind", "landmark")),
+		"ward": int(said.get("ward", -1)),
+		"settlement": town,
+		"lore": str(said.get("lore", "")),
+	})
+	if why != "":
+		# The refusal is the truth the player gets, in the engine's own words —
+		# "too small for a Guildhall" IS the answer to "is there a guildhall here".
+		return {"found": false, "line": why}
+	return {"found": true, "line": "%s %s" % [answer if answer != "" else
+		"%s stands in %s." % [said.get("name", ""), town], "(It is on the map now.)"]}
+
+
+## The keys an ask may carry. Anything else means the call came apart.
+const ASK_KEYS := ["here", "kind", "name", "ward", "lore", "answer"]
+
+
+func _last_sentence(t: String) -> String:
+	var s := t.strip_edges()
+	if s == "" or s.ends_with(".") or s.ends_with("!") or s.ends_with("?"):
+		return s
+	var cut := maxi(maxi(s.rfind("."), s.rfind("!")), s.rfind("?"))
+	if cut > 40:
+		return s.left(cut + 1)
+	var sp := s.rfind(" ")
+	return (s.left(sp) + "…") if sp > 20 else s
+
+
+func _ask_is_sane(said: Dictionary) -> bool:
+	for k in said.keys():
+		if not ASK_KEYS.has(str(k)):
+			return false
+	return true
 
 
 ## Everything the GM has put inside one town. Empty for a town it has not touched.

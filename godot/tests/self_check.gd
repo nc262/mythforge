@@ -1495,6 +1495,31 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	for trouble_screen in ["res://scenes/ui/world_map.gd", "res://scenes/ui/place_map.gd"]:
 		assert(not FileAccess.get_file_as_string(trouble_screen).contains("GameState.trouble_at("),
 			"%s shows GameState.trouble_at - that includes SECRET troubles; use trouble_known" % trouble_screen)
+	# ── ONE ROOF HAS ROOMS, and every world names them ───────────────────────
+	# The scale a place is drawn at comes from its kind, and the room words come
+	# from the family. A family missing a kind would silently fall back to
+	# fantasy's cottage, which is how a Noodle Bar got a Scullery.
+	assert(LocalMap.BUILDING_KINDS == WorldSkin.ROOM_KINDS,
+		"LocalMap.BUILDING_KINDS and WorldSkin.ROOM_KINDS disagree about what is one building")
+	for fam_id in WorldSkin.FAMILIES:
+		for bk in WorldSkin.ROOM_KINDS:
+			var rws: Array = WorldSkin.FAMILIES[fam_id].get("rooms", {}).get(bk, [])
+			assert(rws.size() >= WorldSkin.ROOM_KEYS.size(),
+				"%s has %d room words for a %s, and a building can have %d rooms" % [
+					fam_id, rws.size(), bk, WorldSkin.ROOM_KEYS.size()])
+			for rw in rws:
+				assert(str(rw).strip_edges() != "" and not str(rw).begins_with("The "),
+					"%s/%s room '%s' is empty or carries an article" % [fam_id, bk, rw])
+	# THE CONSTANT, NOT AN INSTANCE. `new()` on a Control here leaked a CanvasItem
+	# RID on every run — a warning in a passing gate is still a warning.
+	var marks: Dictionary = (load("res://scenes/ui/place_map.gd") as GDScript).get_script_constant_map()["ROLE_MARK"]
+	for rk in WorldSkin.ROOM_KEYS:
+		assert(marks.has(rk), "a room role '%s' has no mark on the plan — it would draw as a dot" % rk)
+	for fam_id2 in WorldSkin.FAMILIES:
+		assert(WorldSkin.ROOFS.has(str(WorldSkin.FAMILIES[fam_id2].get("roof", ""))),
+			"%s has no roof style, so its town draws fantasy's pitched ridge" % fam_id2)
+	print("  rooms: %d families x %d building kinds, every room socket named and marked" % [
+		WorldSkin.FAMILIES.size(), WorldSkin.ROOM_KINDS.size()])
 	print("  wards: %d families, %d sockets each, all distinct" % [
 		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
 

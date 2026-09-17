@@ -2869,6 +2869,7 @@ func _gm_makes_place(a: Dictionary) -> void:
 		"shop": str(a.get("shop", "")),
 		"region": str(a.get("region", "")),
 		"scope": str(a.get("scope", "local")),
+		"size": str(a.get("size", "")),
 	})
 	if why == "":
 		_say_system("%s is added to the chart." % nm, "compass")
@@ -3075,6 +3076,22 @@ func _open_place_map(place: String) -> void:
 	view.lm = lm
 	view.here_room = str(rec.get("here", str(lm.nodes[0]["name"])))
 	view.walked = rec.get("walked") if rec.get("walked") is Array else [str(lm.nodes[0]["name"])]
+	# AT-19 — the player asks this place for something the plan does not show. The
+	# GM decides whether it is here (the story's call); the engine decides whether
+	# that answer is legal (a real kind, a real ward, a free name, a trade a place
+	# this size could carry) and puts it on the map.
+	view.asked.connect(func(query: String):
+		var said: Dictionary = await Chronicle.ask_after(place, kind, query)
+		var out: Dictionary = GameState.answer_ask(place, query, said)
+		var line := str(out.get("line", ""))
+		if bool(out.get("found", false)):
+			LocalMap.forget("%s|%s" % [GameState.world_id(), place])
+			view.lm = LocalMap.for_place(GameState.world_id(), place, kind)
+			Sfx.play("chime")
+		view.answered(line)
+		view.queue_redraw()
+		# The transcript keeps it too: what the town told you is part of the tale.
+		_say_system("You ask after %s. %s" % [query, line], "compass"))
 	view.enter_room.connect(func(room):
 		var w2: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 		var ins: Dictionary = w2.get("inside") if w2.get("inside") is Dictionary else {}

@@ -43,7 +43,19 @@ class_name LocalMap extends RefCounted
 ## information, which is what makes it a decision. Darkest Dungeon's scouting is
 ## the same idea.
 
-## The kinds somebody lives in. Everything else is a site, not a settlement.
+## ── THREE SCALES, AND THE KIND DECIDES WHICH ─────────────────────────────────
+## MEASURED 2026-09-17 over the six shipped worlds: 29 places, exactly ONE of
+## them a `settlement`. Everything else the map called settled is a single
+## BUILDING — a tavern, a shop, a cottage — and each was generated as a village:
+## The Ember & Oak, a tavern, had four quarters, a wall, ploughland and its own
+## Tavern in one of them. One roof is not a town, and the fix is not a smaller
+## town, it is a different scale.
+##   TOWN      quarters, trades, a wall, fields   (settlement)
+##   BUILDING  rooms under one roof               (tavern, shop, home)
+##   SITE      a spine of chambers, fogged        (ruin, wilds, landmark)
+const TOWN_KINDS := ["settlement"]
+const BUILDING_KINDS := ["tavern", "shop", "home"]
+## Somebody is there to tell you what is where, so none of these are fogged.
 const SETTLED_KINDS := ["settlement", "tavern", "shop", "home"]
 
 ## Typed, for the same reason `WorldTerrain.N4` is: an untyped array literal in a
@@ -56,6 +68,8 @@ var place := ""
 var world_id := ""
 var kind := ""
 var settled := false
+## "town" | "building" | "site" — see TOWN_KINDS.
+var scale := "site"
 var site := WorldTerrain.PLAIN     # the world terrain class under this place
 var nodes: Array = []              # {name, role, x, y}  — x/y percent of the plate
 var edges: Array = []              # [i, j] into `nodes`
@@ -146,6 +160,18 @@ const _TIER := ["hamlet", "village", "town", "city"]
 func brief(standing_at := "") -> String:
 	if not settled or wards.is_empty():
 		return ""
+	var out := ""
+	if scale == "building":
+		var rs: Array[String] = []
+		for i in wards.size():
+			rs.append("%s (ward=%d)" % [ward_name[i], i])
+		out = "INSIDE — %s is one building, a %s. ROOMS: %s." % [place, kind, "; ".join(rs)]
+		for s2 in sites:
+			out += " %s (%s) is in %s." % [s2.get("name", ""), s2.get("kind", ""),
+				ward_name[clampi(int(s2.get("ward", 0)), 0, ward_name.size() - 1)]]
+		if standing_at != "" and standing_at != place:
+			out += " The party is in %s." % standing_at
+		return out + _trouble_brief()
 	var qs: Array[String] = []
 	for i in wards.size():
 		# The number rides INSIDE the brackets as `ward=N`. Written "4 The Cottages" the
@@ -167,10 +193,17 @@ func brief(standing_at := "") -> String:
 	for k in GameState.SITE_KINDS:
 		if not have.has(k) and not ["home", "landmark"].has(k):
 			lacks.append(str(k))
-	var out := "TOWN — %s is a %s. QUARTERS: %s. ALREADY HERE — use these names, do not invent a second of any: %s. NOT HERE YET: %s — when the story needs one, create it with [[site kind=... ward=...]] in the quarter that suits it." % [
+	out = "TOWN — %s is a %s. QUARTERS: %s. ALREADY HERE — use these names, do not invent a second of any: %s. NOT HERE YET: %s — when the story needs one, create it with [[site kind=... ward=...]] in the quarter that suits it." % [
 		place, _TIER[clampi(size_tier, 0, 3)], "; ".join(qs), "; ".join(places_in), ", ".join(lacks)]
 	if standing_at != "" and standing_at != place:
 		out += " The party is at %s." % standing_at
+	return out + _trouble_brief()
+
+
+## What this place's trouble adds to the brief — the same for a town and for one
+## building, because a trouble is a trouble at either scale.
+func _trouble_brief() -> String:
+	var out := ""
 	var t := GameState.trouble_at(place)
 	if not t.is_empty():
 		var fall := str(t.get("fallout", "prices"))
@@ -200,6 +233,7 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 	place = place_name
 	kind = place_kind
 	settled = SETTLED_KINDS.has(place_kind)
+	scale = "town" if TOWN_KINDS.has(place_kind) else ("building" if BUILDING_KINDS.has(place_kind) else "site")
 	# THE SITE COMES FROM THE WORLD MAP. Not a re-roll, not a second opinion —
 	# the same field the pin was placed on and the roads were routed over.
 	var ground := WorldTerrain.for_world(wid)
@@ -236,7 +270,9 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 	# Seeded from the world AND the name, so two towns called Millbrook in
 	# different worlds are different towns, and the same one is itself forever.
 	rng.seed = absi(hash("%s|%s" % [wid, place_name]))
-	if settled:
+	if scale == "building":
+		_build_inside(rng)
+	elif scale == "town":
 		# ORDER MATTERS AND IT DID NOT BEFORE. The wall was generated inside
 		# `_plan_town`, AFTER the named places were already sitting on a ring at
 		# radius 24-33 — while the wall itself ran 25 +/- 9, so 16 to 34. Places
@@ -315,6 +351,14 @@ func _shore_reach(ang: float) -> float:
 ## settlement can offer to its size, and a generator that gives a crossroads inn
 ## the same seven quarters as a capital has thrown that away before it starts.
 func _size_of(rng: RandomNumberGenerator) -> void:
+	# WHAT THE WORLD SAYS IT IS, before any dice. A place chartered as a city is a
+	# city on its own map — the roll is only for places nobody sized.
+	for l in GameState.places():
+		if l is Dictionary and str(l.get("name", "")) == place:
+			var said := str(l.get("size", ""))
+			if GameState.SETTLEMENT_SIZES.has(said):
+				size_tier = GameState.SETTLEMENT_SIZES.find(said)
+				return
 	var roll := rng.randf()
 	match kind:
 		"settlement":
@@ -440,7 +484,14 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 			var pick := -1
 			# Never the square's ward (0): the market may well sit on the
 			# waterfront, but evicting it costs the town its centre.
-			for i in range(1, n_w):
+			#
+			# AND NEVER PAST THE END OF `roles`. A CITY has 11 quarters and the role
+			# list is shorter, so the wards beyond it take compass names below — but
+			# this loop searched all 11 and then swapped `roles[pick]`, which threw
+			# "Out of bounds get index '10'" and abandoned the whole ward pass:
+			# `ward_role` stayed empty and `_plan_trades` died on it. The first city
+			# the game ever generated (a place chartered `size=city`) hit it at once.
+			for i in range(1, mini(n_w, roles.size())):
 				var lean := (TownPlan.centroid(quarters[i]) - Vector2(50, 50)).dot(water_dir)
 				if lean > far:
 					far = lean
@@ -474,7 +525,12 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 			# BEYOND THE NAMED ROLES, a quarter is still somewhere. Qualified by
 			# its bearing so no two share a name — two wards both called "The
 			# Netmakers Row" is a town that cannot be given directions in.
-			ward_name[i] = "%s %s" % [_quarter_of(at_i), WorldSkin.ward_name(fam, "homes")]
+			# FOUR COMPASS WORDS DO NOT COVER ELEVEN QUARTERS. A city generated two
+			# "North Cottages" and the town could not be given directions in — the
+			# comment above claimed the bearing made them unique and, past four
+			# extra wards, it does not. A qualifier is added until the name is free.
+			ward_name[i] = _free_ward_name("%s %s" % [_quarter_of(at_i),
+				WorldSkin.ward_name(fam, "homes")], i)
 		# WEALTH falls off from the square, because the centre is where the money
 		# is in every town plan anyone has ever drawn. LAW is separate and is NOT
 		# a copy of it: the hall and the gate are watched, the quay is where the
@@ -551,6 +607,10 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 			var bc := TownPlan.centroid(block)
 			for v in block:
 				open.append(bc + (v - bc) * 0.46)
+			# ONE SHAPE, used for both. A scaled ring can fold (see TownPlan.simple),
+			# and repairing it only where it is DRAWN left the plot filter testing
+			# the folded original: two houses stood in the market square.
+			open = TownPlan.simple(open)
 			plaza = open
 		var blocks: Array = []
 		TownPlan.subdivide(block, block_area, chaos, 0.5, 0.0, rng, blocks)
@@ -563,7 +623,14 @@ func _plan_town(rng: RandomNumberGenerator) -> void:
 				continue
 			var plots: Array = []
 			TownPlan.burgage(blk, plot_w, front, rng, plots)
-			for built in plots:
+			for raw_plot in plots:
+				# EVERY SHAPE THE SHEET DRAWS IS DRAWABLE. A burgage clip on a thin,
+				# tapering plot folds over itself, and a folded polygon renders as
+				# NOTHING, silently, in the shipped build.
+				var built: PackedVector2Array = TownPlan.simple(raw_plot)
+				if built.size() < 3:
+					rng.randf()
+					continue
 				# A yard, a garden, a burnt-out plot. Wealthier quarters keep more
 				# of them, which is what a courtyard IS, structurally.
 				if open.size() > 2 and Geometry2D.is_point_in_polygon(TownPlan.centroid(built), open):
@@ -608,6 +675,49 @@ func _plan_rooms(rng: RandomNumberGenerator) -> void:
 ## ── A SITE NOBODY LIVES IN ───────────────────────────────────────────────────
 ## A spine inward from the way in, with branches — which is what a barrow, a
 ## flooded fort or a mine reads as, and it means every room has a route back.
+## ── ONE ROOF ─────────────────────────────────────────────────────────────────
+## A tavern, a shop, a cottage: the footprint is the building, the "wards" are
+## its rooms, and there are no trades, no wall towers and no ploughland. Rooms
+## keep the ward machinery on purpose — a [[site]] can stand in a room, the brief
+## numbers them, and the label solver, the fog and the click target all work
+## unchanged. Same sockets, one scale down.
+func _build_inside(rng: RandomNumberGenerator) -> void:
+	size_tier = 0
+	walled = true            # the outline IS a wall: this is a building
+	var fam := WorldSkin.family_for_id(world_id)
+	var words: Array = WorldSkin.rooms_of(fam, kind)
+	var want: int = clampi(3 + (1 if kind == "tavern" else 0) + (1 if rng.randf() < 0.45 else 0),
+		3, mini(5, words.size()))
+	var w := 58.0 + rng.randf_range(-6.0, 8.0)
+	var h := 42.0 + rng.randf_range(-5.0, 7.0)
+	var c := Vector2(50, 50)
+	bounds = PackedVector2Array([c + Vector2(-w, -h) * 0.5, c + Vector2(w, -h) * 0.5,
+		c + Vector2(w, h) * 0.5, c + Vector2(-w, h) * 0.5])
+	var cells: Array = TownPlan.wards(bounds, want, rng)
+	cells.sort_custom(func(a, b): return TownPlan.area(a) > TownPlan.area(b))
+	for i in cells.size():
+		var poly: PackedVector2Array = cells[i]
+		wards.append(poly)
+		ward_role.append(str(WorldSkin.ROOM_KEYS[mini(i, WorldSkin.ROOM_KEYS.size() - 1)]))
+		ward_name.append(str(words[mini(i, words.size() - 1)]))
+	ward_wealth.resize(wards.size())
+	ward_law.resize(wards.size())
+	for i in wards.size():
+		ward_wealth[i] = 1
+		ward_law[i] = 2
+		var at := TownPlan.centroid(wards[i])
+		_add(ward_name[i], ward_role[i], at.x, at.y)
+		# A DOORWAY TO THE NEAREST ROOM ALREADY REACHED, so every room is walkable
+		# from the one you come in by and no room is an island.
+		if i > 0:
+			var best := 0
+			for j in i:
+				if TownPlan.centroid(wards[j]).distance_to(at) < TownPlan.centroid(wards[best]).distance_to(at):
+					best = j
+			edges.append([best, i])
+	_plan_sites()
+
+
 func _build_site(rng: RandomNumberGenerator) -> void:
 	var deep := str(kind) == "ruin"
 	_add("The Way In", "entry", 50.0, 88.0)
@@ -926,7 +1036,7 @@ func _plan_outside(rng: RandomNumberGenerator) -> void:
 				var quad := PackedVector2Array([
 					c + Vector2(-w, -h).rotated(ang), c + Vector2(w, -h).rotated(ang),
 					c + Vector2(w, h).rotated(ang), c + Vector2(-w, h).rotated(ang)])
-				outskirts.append({"poly": quad})
+				outskirts.append({"poly": TownPlan.simple(quad)})
 	_plan_fields(rng)
 
 
@@ -1044,13 +1154,33 @@ func _street_mouths() -> Array:
 		var steps := maxi(int(a.distance_to(b) / 0.6), 1)
 		for k in steps:
 			var q := a.lerp(b, float(k) / float(steps))
-			var probe := q + (me - q).normalized() * 3.0
-			var in_ward := false
+			# WHAT THE GATE CHECK MEASURES, MEASURED HERE. This asked whether a
+			# point 3 units in was inside a WARD, while the rule it exists to serve
+			# is "no building just inside the gate" — and those differ wherever a
+			# ward's street runs along the wall. Hearthwood Market put a gate into
+			# a kitchen through exactly that gap. One test, at the same depths.
+			# AND IT MUST BE OUTSIDE THE WARDS, which is what the first version
+			# tested and I deleted: `_plan_arteries` routes gate->square through
+			# the GAPS between quarters and treats ward interiors as solid, so a
+			# mouth inside a ward is a gate no high street can ever reach. Taking
+			# the ward test out took the arteries with it — measured, 3/2/1/2/2/1
+			# high streets fell to 1/1/0/0/0/0. Both conditions, or neither works.
+			var blocked := false
 			for w in wards:
-				if Geometry2D.is_point_in_polygon(probe, w):
-					in_ward = true
+				if Geometry2D.is_point_in_polygon(q + (me - q).normalized() * 3.0, w):
+					blocked = true
 					break
-			if not in_ward:
+			for depth in [2.5, 4.0, 5.5]:
+				if blocked:
+					break
+				var probe := q + (me - q).normalized() * float(depth)
+				for b2 in buildings:
+					if Geometry2D.is_point_in_polygon(probe, b2["poly"]):
+						blocked = true
+						break
+				if blocked:
+					break
+			if not blocked:
 				run.append(q)
 			elif not run.is_empty():
 				out.append(_mouth_of(run))
@@ -1134,6 +1264,25 @@ func _plan_fields(rng: RandomNumberGenerator) -> void:
 				line.append(c + Vector2(u + bend, (t3 - 0.5) * long).rotated(lay))
 			strips.append(line)
 		furlongs.append({"hull": hull, "strips": strips})
+
+
+## The qualifiers a crowded quarter takes when its bearing is already spoken for.
+## Deliberately ordinary words a map would carry, not numbers: "Lower North
+## Cottages" is an address and "North Cottages 2" is a spreadsheet.
+const WARD_QUALIFIERS: Array[String] = ["Lower", "Upper", "Old", "New", "Far", "Inner", "Outer"]
+
+
+func _free_ward_name(want: String, upto: int) -> String:
+	var taken := {}
+	for k in upto:
+		taken[str(ward_name[k])] = true
+	if not taken.has(want):
+		return want
+	for q in WARD_QUALIFIERS:
+		var tryit := "%s %s" % [q, want]
+		if not taken.has(tryit):
+			return tryit
+	return want
 
 
 ## Which way out of the middle a point lies — the qualifier an unnamed quarter

@@ -44,13 +44,29 @@ func _ready() -> void:
 		# carries: three worlds place ALL their pins by search, so the authored
 		# list is not what the map draws, and reading it means never seeing them.
 		GameState.character = {"id": "dm-probe", "world_id": wid}
+		# A CLEAN CHART PER WORLD: the probe charters places of its own, and without
+		# this they follow it into the next world's list.
+		GameState.state = {"world": {}}
+		var towns := 0
 		for p in GameState.places():
 			if not p is Dictionary:
 				continue
 			var knd := str(p.get("kind", ""))
-			if not LocalMap.SETTLED_KINDS.has(knd):
-				continue
-			_probe(wid, str(p.get("name", "")), knd)
+			if LocalMap.TOWN_KINDS.has(knd):
+				towns += 1
+				_probe(wid, str(p.get("name", "")), knd)
+			elif LocalMap.BUILDING_KINDS.has(knd):
+				_probe_building(wid, str(p.get("name", "")), knd)
+		# EVERY WORLD'S TOWN GENERATOR IS EXERCISED, whether or not that world
+		# ships a town. Measured 2026-09-17: of 29 shipped places exactly one was
+		# a settlement, so retagging the two markets still leaves four worlds with
+		# none — and a generator nobody runs is a generator nobody tests.
+		if towns == 0:
+			_probe(wid, "Probe Town of %s" % wid, "settlement")
+		# AND A CITY, every time. Tier 3 has 11 quarters against a role list of 9,
+		# and until a place was chartered `size=city` nothing had ever generated one:
+		# the quay swap indexed past the end of the roles and abandoned the ward pass.
+		_probe(wid, "Probe City of %s" % wid, "settlement", 3)
 	# ── ON THE WORLD CHART, NO PLACE NAME LIES ACROSS A REGION BANNER ────────
 	# Region banners were drawn by a pass the label solver never saw, so on
 	# Saltmarsh "Gallows Quay" the place sat across "GALLOWS QUAY" the region and
@@ -122,15 +138,102 @@ func _convex(poly: PackedVector2Array) -> bool:
 	return _reflex(poly) == 0
 
 
-func _probe(wid: String, nm: String, knd: String) -> void:
-	if nm == "":
-		return
+## A BUILDING IS NOT A TOWN. One roof: rooms, a footprint, no wall towers, no
+## trades, no ploughland — and every room reachable from the one you enter by.
+func _probe_building(wid: String, nm: String, knd: String) -> void:
 	LocalMap.forget("%s|%s" % [wid, nm])
 	var lm := LocalMap.for_place(wid, nm, knd)
+	var bad := func(why: String): _failed.append("%s/%s: %s" % [wid, nm, why])
+	if lm.scale != "building":
+		bad.call("a %s is drawn as a %s" % [knd, lm.scale])
+		return
+	if lm.wards.size() < 3 or lm.wards.size() > 5:
+		bad.call("%d rooms — a building has 3 to 5" % lm.wards.size())
+	if lm.nodes.size() != lm.wards.size() + lm.sites.size():
+		bad.call("%d rooms but %d marks" % [lm.wards.size(), lm.nodes.size()])
+	if not lm.trades.is_empty():
+		bad.call("one building, and it sells %d trades of its own" % lm.trades.size())
+	if not (lm.buildings.is_empty() and lm.furlongs.is_empty() and lm.gates.is_empty()):
+		bad.call("one building, with houses, fields or gates outside it")
+	var names := {}
+	for n in lm.nodes:
+		names[str(n["name"])] = true
+	if not (names.size() == lm.nodes.size()):
+		bad.call("%s has two rooms with one name" % nm)
+	# Every room reachable from room 0, which is what the doorways are for.
+	var seen := {0: true}
+	var again := true
+	while again:
+		again = false
+		for e in lm.edges:
+			if seen.has(int(e[0])) and not seen.has(int(e[1])):
+				seen[int(e[1])] = true
+				again = true
+			elif seen.has(int(e[1])) and not seen.has(int(e[0])):
+				seen[int(e[0])] = true
+				again = true
+	if not (seen.size() >= lm.wards.size()):
+		bad.call("%s has a room you cannot walk to" % nm)
+
+
+## A POLYGON THAT CROSSES ITSELF IS A SHAPE THE MAP CANNOT DRAW. Godot's
+## `draw_colored_polygon` ear-clips on the server and fails SILENTLY in release —
+## headless it prints "triangulation failed", which is how this was found: a town
+## no harness had ever built (Hearthwood Market) drew a plaza and a house that
+## were bow-ties. Checked here rather than by eye, on every polygon the sheet
+## draws.
+func _crossed(poly: PackedVector2Array) -> bool:
+	var n := poly.size()
+	if n < 4:
+		return false
+	for i in n:
+		var a1: Vector2 = poly[i]
+		var a2: Vector2 = poly[(i + 1) % n]
+		for j in range(i + 1, n):
+			if j == i or (j + 1) % n == i or j == (i + 1) % n:
+				continue
+			var b1: Vector2 = poly[j]
+			var b2: Vector2 = poly[(j + 1) % n]
+			if Geometry2D.segment_intersects_segment(a1, a2, b1, b2) != null:
+				return true
+	return false
+
+
+func _shapes(wid: String, nm: String, lm: LocalMap) -> void:
+	var bad := 0
+	var what := ""
+	var all: Array = [["plaza", [lm.plaza]], ["ward", lm.wards], ["garden", lm.gardens]]
+	var polys: Array = []
+	for b in lm.buildings:
+		polys.append(b["poly"])
+	all.append(["building", polys])
+	for pair in all:
+		for poly in pair[1]:
+			if poly is PackedVector2Array and _crossed(poly):
+				bad += 1
+				what = str(pair[0])
+	if bad > 0:
+		_failed.append("%s/%s: %d polygon(s) cross themselves (a %s) — the map draws nothing there, silently" % [
+			wid, nm, bad, what])
+
+
+func _probe(wid: String, nm: String, knd: String, force_size := -1) -> void:
+	if nm == "":
+		return
+	if force_size >= 0:
+		# Chartered at that size, the way `[[place size=city]]` does it.
+		GameState.add_place({"name": nm, "kind": knd, "size": GameState.SETTLEMENT_SIZES[force_size],
+			"region": "", "scope": "local", "lore": "a probe"})
+	LocalMap.forget("%s|%s" % [wid, nm])
+	var lm := LocalMap.for_place(wid, nm, knd)
+	if force_size >= 0 and lm.size_tier != force_size:
+		_failed.append("%s/%s: chartered as a %s and generated as a %s" % [wid, nm,
+			GameState.SETTLEMENT_SIZES[force_size], GameState.SETTLEMENT_SIZES[clampi(lm.size_tier, 0, 3)]])
 	if lm.wards.is_empty():
 		_failed.append("%s/%s: no wards" % [wid, nm])
 		return
 	_towns += 1
+	_shapes(wid, nm, lm)
 	# Attribute each building to the ward its centroid falls in. Buildings are
 	# sub-polygons of an inset ward, so a centroid cannot land in a neighbour.
 	var fill := PackedFloat32Array()
@@ -228,6 +331,14 @@ func _probe(wid: String, nm: String, knd: String) -> void:
 				break
 	print("  GATES %s/%s: %d gates, %d open onto a building, %d high streets" % [
 		wid, nm, lm.gates.size(), blocked, lm.arteries.size()])
+	# A GATE WITH NO HIGH STREET IS A DOOR IN A WALL. `_plan_arteries` routes each
+	# gate to the square through the gaps between quarters, so a mouth chosen
+	# without that in mind gets a gate and no road: measured when the mouth test
+	# briefly stopped checking the wards, 3/2/1/2/2/1 arteries fell to 1/1/0/0/0/0
+	# and the towns still "passed".
+	if lm.arteries.size() < lm.gates.size():
+		_failed.append("%s/%s: %d gates but %d high streets — a gate the square cannot reach" % [
+			wid, nm, lm.gates.size(), lm.arteries.size()])
 	if blocked > 0:
 		_failed.append("%s/%s: %d gate(s) open straight onto a building — a gate belongs where a street meets the wall" % [
 			wid, nm, blocked])

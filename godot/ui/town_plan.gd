@@ -189,6 +189,41 @@ static func inset(poly: PackedVector2Array, by: float) -> PackedVector2Array:
 	return out
 
 
+## ── A SHAPE THE MAP CAN ACTUALLY DRAW ────────────────────────────────────────
+## `draw_colored_polygon` ear-clips on the rendering server and fails SILENTLY on
+## a polygon that crosses itself — headless it says "triangulation failed", and
+## in the shipped game it simply draws nothing there. An inset or a burgage clip
+## on a thin, tapering plot folds over exactly that way: MEASURED across the six
+## towns, 2 buildings in each of three towns and one plaza.
+##
+## The fold is a degenerate offset, not a meaningful shape, so the honest repair
+## is the convex hull of the same points: it keeps the plot where it was, at
+## about the size it was, and it is always drawable.
+static func crosses(poly: PackedVector2Array) -> bool:
+	var n := poly.size()
+	if n < 4:
+		return false
+	for i in n:
+		var a1: Vector2 = poly[i]
+		var a2: Vector2 = poly[(i + 1) % n]
+		for j in range(i + 1, n):
+			if j == i or (j + 1) % n == i or j == (i + 1) % n:
+				continue
+			if Geometry2D.segment_intersects_segment(a1, a2, poly[j], poly[(j + 1) % n]) != null:
+				return true
+	return false
+
+
+static func simple(poly: PackedVector2Array) -> PackedVector2Array:
+	if not crosses(poly):
+		return poly
+	var hull := Geometry2D.convex_hull(poly)
+	# convex_hull repeats the first point at the end; a ring here does not.
+	if hull.size() > 3 and hull[0].is_equal_approx(hull[hull.size() - 1]):
+		hull.remove_at(hull.size() - 1)
+	return hull if hull.size() >= 3 else PackedVector2Array()
+
+
 static func _signed_area(poly: PackedVector2Array) -> float:
 	var a := 0.0
 	var n := poly.size()

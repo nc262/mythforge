@@ -136,7 +136,10 @@ func _town_reaches_the_story(town: String, view: Node, dlg: Node) -> void:
 	var fails_before := _fails.size()
 	var room := str(lm0.nodes[1]["name"])
 	var ward := lm0.wards.size() - 1
-	Api.test_replies = ["A crooked door, a crooked smile.\n[[site name=\"The Probe Lantern\" kind=fence ward=%d lore=\"buys what nobody asks about\"]]\n[[trouble what=\"smugglers bleed the market\" clock=6 fallout=trade title=\"The Smugglers' Toll\"]]" % ward]
+	# A KIND THIS TOWN IS BIG ENOUGH FOR: a fence arrives at city size, and the
+	# engine now refuses one in a village instead of standing it there.
+	var site_kind := str(WorldSkin.trades_at(lm0.size_tier)[0])
+	Api.test_replies = ["A crooked door, a crooked smile.\n[[site name=\"The Probe Lantern\" kind=%s ward=%d lore=\"buys what nobody asks about\"]]\n[[trouble what=\"smugglers bleed the market\" clock=6 fallout=trade title=\"The Smugglers' Toll\"]]" % [site_kind, ward]]
 	view.enter_room.emit(room)
 	for _f in 60:
 		await get_tree().process_frame
@@ -1503,7 +1506,9 @@ func _build_windows() -> void:
 	GameState.state = {"world": {}}
 	var settled_here := ""
 	for pl in GameState.places():
-		if pl is Dictionary and LocalMap.SETTLED_KINDS.has(str(pl.get("kind", ""))):
+		# A TOWN, not merely a settled place: a tavern is one building now, and this
+		# check reads the town brief (quarters, trades) that only a town has.
+		if pl is Dictionary and LocalMap.TOWN_KINDS.has(str(pl.get("kind", ""))):
 			settled_here = str(pl["name"])
 			break
 	_ck(settled_here != "", "atlas: this world has no settled place to step into")
@@ -1564,6 +1569,25 @@ func _build_windows() -> void:
 			if opened != null:
 				print("  atlas: stepped inside %s from the in-game Atlas; %d regions on the chart" % [
 					settled_here, region_count])
+			# AT-19 — a player can ask this place for something the plan does not
+			# show. Offline the narrator is not there, so what is proved here is the
+			# wiring: the box exists, asking reaches the engine, and the answer comes
+			# back to the sheet rather than vanishing.
+			if town_view != null:
+				var ask_box: Node = null
+				var stack2: Array = [town_view]
+				while not stack2.is_empty() and ask_box == null:
+					var nd2: Node = stack2.pop_back()
+					if nd2 is LineEdit:
+						ask_box = nd2
+					for c2 in nd2.get_children():
+						stack2.append(c2)
+				_ck(ask_box != null, "town: %s has no way to ask after a place that is not drawn" % settled_here)
+				town_view.asked.emit("an apothecary")
+				for _f in 10:
+					await get_tree().process_frame
+				_ck(str(town_view.ask_note) != "" and str(town_view.ask_note) != "Asking…",
+					"town: asking after a place answered nothing (note: '%s')" % str(town_view.ask_note))
 			if town_view != null and town_view.lm.nodes.size() > 1:
 				await _town_reaches_the_story(settled_here, town_view, opened)
 			if opened != null and is_instance_valid(opened):

@@ -26,7 +26,7 @@ func _ready() -> void:
 	var kind := ""
 	var best := -1
 	for pl in GameState.places():
-		if pl is Dictionary and LocalMap.SETTLED_KINDS.has(str(pl.get("kind", ""))):
+		if pl is Dictionary and LocalMap.TOWN_KINDS.has(str(pl.get("kind", ""))):
 			var lm := LocalMap.for_place("embervale", str(pl["name"]), str(pl["kind"]))
 			if lm.wards.size() > best:
 				best = lm.wards.size()

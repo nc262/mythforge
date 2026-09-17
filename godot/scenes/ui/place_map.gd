@@ -10,6 +10,9 @@ extends Control
 ## been walked). No state of its own beyond the camera and the hover.
 
 signal enter_room(room: String)
+## AT-19 — the player asks this place for something that is not drawn on it.
+## The GM decides whether it is here; the engine decides whether that is legal.
+signal asked(query: String)
 
 
 ## ── THE PLAN IS ITS OWN LAYER, AND THAT IS A PERFORMANCE FIX ─────────────────
@@ -44,6 +47,10 @@ var _phase := 0.0
 var _paper: ColorRect = null
 var _plan: PlanLayer = null
 var _plan_key := ""            # what the layer was last drawn for
+var _ask_line: LineEdit = null
+var _asking := false
+var ask_note := ""             # the last answer, drawn above the ask box
+var _roof := "pitch"           # this world's roof style — WorldSkin.roof
 const PAPER_SHADER := preload("res://ui/local_paper.gdshader")
 
 ## Role -> the mark it wears. Colour AND shape, the rule KIND_MARK follows on the
@@ -75,6 +82,12 @@ const ROLE_MARK := {
 	"chamber": {"col": "ink_soft",      "shape": "home"},
 	"vault":   {"col": "danger",        "shape": "ruin"},
 	"side":    {"col": "ink_dim",       "shape": "ruin"},
+	# One building's rooms — LocalMap.BUILDING_KINDS, the same sockets one scale down.
+	"main":    {"col": "gold",          "shape": "tavern"},
+	"work":    {"col": "ember",         "shape": "shop"},
+	"store":   {"col": "ink_dim",       "shape": "home"},
+	"private": {"col": "ink",           "shape": "home"},
+	"outside": {"col": "ink_soft",      "shape": "landmark"},
 }
 
 
@@ -101,7 +114,58 @@ func _ready() -> void:
 	_plan.map = self
 	_plan.show_behind_parent = true
 	add_child(_plan)
+	_build_ask()
 	set_process(true)
+
+
+## THE ONE CONTROL ON THIS SHEET. A map can only ever show what was generated,
+## and the first question a player asks a town is for something that is not on
+## it. Bottom-left, on the margin rather than over the plan, and it says what it
+## is for — an empty box marked "search" would be read as a filter over the
+## marks, which is the one thing it is not.
+func _build_ask() -> void:
+	# Only where there is somebody to ask. A barrow has no innkeeper, and the
+	# engine would refuse every answer anyway — `add_site` wants a settled place.
+	if lm == null or not lm.settled:
+		return
+	var row := HBoxContainer.new()
+	row.name = "AskRow"
+	row.add_theme_constant_override("separation", 8)
+	row.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
+	row.position = Vector2(18, -46)
+	row.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_ask_line = LineEdit.new()
+	_ask_line.placeholder_text = "Ask after a place — \"an apothecary\", \"somewhere to sell this quietly\""
+	_ask_line.custom_minimum_size = Vector2(430, 0)
+	_ask_line.text_submitted.connect(_on_ask)
+	row.add_child(_ask_line)
+	var go := Button.new()
+	go.theme_type_variation = "GhostButton"
+	go.text = "Ask"
+	go.pressed.connect(func(): _on_ask(_ask_line.text))
+	row.add_child(go)
+	add_child(row)
+
+
+func _on_ask(text: String) -> void:
+	if text.strip_edges() == "" or _asking:
+		return
+	_asking = true
+	_ask_line.editable = false
+	ask_note = "Asking…"
+	queue_redraw()
+	asked.emit(text.strip_edges())
+
+
+## The answer, shown where the question was asked — the transcript behind the
+## window gets it too, but a player who asked here is looking here.
+func answered(line: String) -> void:
+	_asking = false
+	ask_note = line
+	if is_instance_valid(_ask_line):
+		_ask_line.editable = true
+		_ask_line.text = ""
+	queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -255,9 +319,14 @@ func _draw() -> void:
 	# What this place IS, said once — a town has no fog and a barrow does, and
 	# the player should not have to infer which from the marks.
 	_draw_trouble(font)
+	# RIGHT, because the bottom-left margin now carries the ask box. Two pieces of
+	# small print in the same corner read as one broken sentence.
 	var note := "every street in sight" if lm.settled else "only what you have walked, and what it opens onto"
-	draw_string(font, Vector2(26, size.y - 24), note, HORIZONTAL_ALIGNMENT_LEFT, size.x - 52, 12,
+	draw_string(font, Vector2(26, size.y - 24), note, HORIZONTAL_ALIGNMENT_RIGHT, size.x - 52, 12,
 		Color(_ink(), 0.62))
+	if ask_note != "":
+		draw_string(font, Vector2(26, size.y - 58), ask_note, HORIZONTAL_ALIGNMENT_LEFT,
+			size.x - 52, 13, Color(_ink(), 0.92))
 	MapInk.draw_border(self, Rect2(Vector2.ZERO, size), _ink(), _paper_tone())
 
 
@@ -583,6 +652,7 @@ func _draw_outside(ci: CanvasItem) -> void:
 
 func _draw_town(ci: CanvasItem) -> void:
 	var ink := _ink()
+	_roof = WorldSkin.roof(WorldSkin.family_for_id(GameState.world_id()))
 	var paper := _paper_tone()
 	# The built-up ground first, a shade off the open sheet: this is what makes
 	# the gaps between wards READ as streets rather than as holes.
@@ -609,17 +679,18 @@ func _draw_town(ci: CanvasItem) -> void:
 			ring2.append(_pct(q))
 		ring2.append(ring2[0])
 		if lm.walled:
-			MapInk.draw_rough(ci, ring2, absi(hash(lm.place)), Color(ink, 0.92), 3.4)
+			MapInk.draw_rough(ci, ring2, absi(hash(lm.place)), Color(ink, 0.92),
+				2.6 if lm.scale == "building" else 3.4)
 			# A GATE IS A GAP WITH TWO TOWERS. Drawn after the wall so it breaks
 			# it — and drawn LARGER than a mural tower, which is the one rule
 			# about walls safe to make absolute: the gate is always the biggest
 			# tower on its circuit, because it is the structural weak point.
-			for gt in lm.gates:
+			for gt in (lm.gates if lm.scale != "building" else []):
 				var gp := _pct(gt["at"])
 				ci.draw_circle(gp, 7.0, paper)
 				ci.draw_arc(gp, 6.4, 0, TAU, 20, Color(ink, 0.95), 2.4, true)
 				ci.draw_circle(gp, 2.2, Color(ink, 0.9))
-			for k in range(0, lm.bounds.size(), 4):
+			for k in (range(0, lm.bounds.size(), 4) if lm.scale != "building" else []):
 				var tp2 := _pct(lm.bounds[k])
 				ci.draw_circle(tp2, 3.4, paper)
 				ci.draw_arc(tp2, 3.4, 0, TAU, 14, Color(ink, 0.92), 1.6, true)
@@ -709,15 +780,28 @@ func _draw_town(ci: CanvasItem) -> void:
 			var ring3 := scr.duplicate()
 			ring3.append(ring3[0])
 			ci.draw_polyline(ring3, Color(ink, lerpf(0.9, 0.62, clampf(d, 0.0, 1.0))), weight, true)
-			# THE RIDGE. One line down the long axis is what makes a rectangle
-			# read as a building rather than a box — the single cheapest mark on
-			# this whole sheet, and the device every hand-drawn town map uses.
-			var rg := TownPlan.ridge(poly)
-			if rg.size() == 2:
-				var a := _pct(rg[0])
-				var b2 := _pct(rg[1])
-				if a.distance_squared_to(b2) > 9.0:
-					ci.draw_line(a, b2, Color(ink, 0.5), 0.9, true)
+			# THE ROOF, AND IT IS NOT THE SAME ROOF EVERYWHERE. One line down the
+			# long axis is the hand-drawn convention for a PITCHED roof, and it was
+			# drawn on every world — including the ones whose roofs are flat, where
+			# a plan shows a parapet instead. `WorldSkin.roof` is the socket.
+			if _roof == "pitch":
+				var rg := TownPlan.ridge(poly)
+				if rg.size() == 2:
+					var a := _pct(rg[0])
+					var b2 := _pct(rg[1])
+					if a.distance_squared_to(b2) > 9.0:
+						ci.draw_line(a, b2, Color(ink, 0.5), 0.9, true)
+			else:
+				# A PARAPET: the roof's own edge, stepped in from the wall. Cheap —
+				# one polyline on a polygon that is already in hand — and it reads
+				# as a flat roof at map zoom, which a ridge never can.
+				var inner := TownPlan.simple(TownPlan.inset(poly, 0.45))
+				if inner.size() >= 3:
+					var ip := PackedVector2Array()
+					for q in inner:
+						ip.append(_pct(q))
+					ip.append(ip[0])
+					ci.draw_polyline(ip, Color(ink, 0.34), 0.8, true)
 
 	# LANDMARKS, over the ordinary fabric — the silhouette is the information.
 	for lmk in lm.landmarks:

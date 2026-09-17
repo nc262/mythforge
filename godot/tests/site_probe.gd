@@ -28,7 +28,7 @@ func _ready() -> void:
 	var town := ""
 	var town_kind := ""
 	for p in GameState.places():
-		if p is Dictionary and LocalMap.SETTLED_KINDS.has(str(p.get("kind", ""))):
+		if p is Dictionary and LocalMap.TOWN_KINDS.has(str(p.get("kind", ""))):
 			town = str(p.get("name", ""))
 			town_kind = str(p.get("kind", ""))
 			break
@@ -78,8 +78,16 @@ func _ready() -> void:
 	]:
 		print("  refused: %s" % GameState.add_site(bad))
 
+	# A TRADE THE TOWN IS BIG ENOUGH FOR. A fence arrives at city size, and the
+	# engine now says so rather than quietly standing one in a village — which is
+	# what this line used to ask for, and what turned this probe red when the size
+	# gate landed.
+	var lm0 := LocalMap.for_place(wid, town, town_kind)
+	var legal := str(WorldSkin.trades_at(lm0.size_tier)[0])
+	print("  refused (too small): %s" % GameState.add_site({
+		"name": "The Guild That Cannot Be", "kind": "guild", "ward": 0, "settlement": town}))
 	var ok := GameState.add_site({
-		"name": "The Drowned Bell", "kind": "fence", "ward": 2,
+		"name": "The Drowned Bell", "kind": legal, "ward": 2,
 		"settlement": town, "lore": "Buys what the tide brings in.",
 	})
 	print("  add_site verdict: %s" % ("ACCEPTED" if ok == "" else ok))
@@ -101,8 +109,92 @@ func _ready() -> void:
 	if not _trouble_lifecycle(town, town_kind):
 		get_tree().quit(1)
 		return
+	if not _ask_after(town, town_kind):
+		get_tree().quit(1)
+		return
 	print("SITE-PROBE OK")
 	get_tree().quit(0)
+
+
+## AT-19 — THE PLAYER ASKS FOR SOMETHING THAT IS NOT ON THE MAP. The GM decides
+## whether the town has it; the engine decides whether that answer is legal and
+## puts it on the plan. Only the engine half can be checked offline, which is the
+## half that matters: a model proposing a Guildhall in a hamlet must be refused
+## with the size named, not quietly obeyed.
+func _ask_after(town: String, town_kind: String) -> bool:
+	var lm := LocalMap.for_place(GameState.world_id(), town, town_kind)
+	var tier := lm.size_tier
+	var nothing := GameState.answer_ask(town, "an apothecary", {})
+	if bool(nothing.get("found", true)) or str(nothing.get("line", "")).find("nowhere") < 0:
+		return _bad("an ask the model could not answer did not fail quietly: %s" % str(nothing))
+	var refused := GameState.answer_ask(town, "a temple", {"here": false, "answer": "No god keeps a house here."})
+	if bool(refused.get("found", true)) or str(refused.get("line", "")) != "No god keeps a house here.":
+		return _bad("a GM saying no did not reach the player: %s" % str(refused))
+	# A trade the size of the place cannot carry is refused WITH THE SIZE.
+	var too_big := ""
+	for k in WorldSkin.TRADE_KEYS:
+		if not WorldSkin.trades_at(tier).has(k):
+			too_big = k
+			break
+	if too_big != "":
+		var over := GameState.answer_ask(town, "a %s" % too_big,
+			{"here": true, "kind": too_big, "name": "The Overreach", "ward": 0, "answer": "Aye, just there."})
+		if bool(over.get("found", true)) or str(over.get("line", "")).find("too small") < 0:
+			return _bad("a %s was allowed in a %s: %s" % [too_big, GameState.SETTLEMENT_SIZES[tier], str(over)])
+	# A ward that does not exist is refused with the range, as [[site]] is.
+	var nowhere := GameState.answer_ask(town, "a stable", {"here": true, "kind": "home", "name": "The Blind Stable", "ward": 99})
+	if bool(nowhere.get("found", true)) or str(nowhere.get("line", "")).find("wards 0-") < 0:
+		return _bad("a site proposed for a ward that does not exist was accepted: %s" % str(nowhere))
+	# And a legal proposal lands on the plan.
+	var kind_ok := str(WorldSkin.trades_at(tier)[0]) if not WorldSkin.trades_at(tier).is_empty() else "landmark"
+	var got := GameState.answer_ask(town, "somewhere to sell this quietly",
+		{"here": true, "kind": kind_ok, "name": "The Quiet Counter", "ward": 1,
+		"lore": "A shutter that opens for the right knock.", "answer": "Off the alley, mind the dog."})
+	if not bool(got.get("found", false)):
+		return _bad("a legal answer was refused: %s" % str(got))
+	LocalMap.forget("%s|%s" % [GameState.world_id(), town])
+	var after := LocalMap.for_place(GameState.world_id(), town, town_kind)
+	if not after.nodes.any(func(n): return str(n["name"]) == "The Quiet Counter"):
+		return _bad("the asked-after place is not on the town map")
+	if after.brief().find("The Quiet Counter") < 0:
+		return _bad("the asked-after place is not in what the narrator is told")
+	# Asking again for the same name is refused rather than duplicated.
+	var twice := GameState.answer_ask(town, "the quiet counter",
+		{"here": true, "kind": kind_ok, "name": "The Quiet Counter", "ward": 1})
+	if bool(twice.get("found", true)):
+		return _bad("the same place was added to the town twice")
+	# ── A SIZE THE WORLD DECLARED, not one the generator rolled ──────────────
+	# "the capital of the Reach" used to come out a hamlet: the tier was a dice
+	# roll off the kind. What the chart says it is, it is.
+	var sized := GameState.add_place({"name": "Probe City", "kind": "settlement",
+		"size": "city", "region": "", "scope": "local", "lore": "a declared city"})
+	if sized != "":
+		return _bad("a place could not be chartered with a size: " + sized)
+	LocalMap.forget("%s|Probe City" % GameState.world_id())
+	var city := LocalMap.for_place(GameState.world_id(), "Probe City", "settlement")
+	if city.size_tier != 3:
+		return _bad("a place chartered as a city came out tier %d" % city.size_tier)
+	if GameState.add_site({"name": "The Big Guild", "kind": "guild", "ward": 0, "settlement": "Probe City"}) != "":
+		return _bad("a city is too small for a guild")
+	print("  size: a place chartered as a city is a city on its own map, and carries what a city carries")
+	# RUBBLE IS NOT AN ANSWER. A schema call runs with no sampler chain, and one
+	# real reply in five came back carrying invented keys and a paragraph of noise.
+	var junk := GameState.answer_ask(town, "a bank",
+		{"here": true, "kind": "store", "name": "The Vault", "ward": 0, "wardnumberlabel": "0"})
+	if bool(junk.get("found", true)):
+		return _bad("an answer carrying keys nobody asked for was accepted: %s" % str(junk))
+	# YES, WITHOUT SAYING WHAT THE THING IS, is not an answer either.
+	var kindless := GameState.answer_ask(town, "a bathhouse",
+		{"here": true, "name": "The Steam", "ward": 0, "answer": "Down the lane."})
+	if bool(kindless.get("found", true)):
+		return _bad("an answer with no kind was accepted: %s" % str(kindless))
+	# The schema cuts at its ceiling, mid-word; the player never reads the stump.
+	var cut := GameState.answer_ask(town, "a bakery", {"here": false,
+		"answer": "The baker died last winter. Since then the ovens have been cold and nobody has taken them on, though the widow still keeps the ke"})
+	if str(cut.get("line", "")).ends_with("ke") or str(cut.get("line", "")).find("died last winter") < 0:
+		return _bad("a cut-off answer reached the player as a stump: %s" % str(cut.get("line", "")))
+	print("  ask: a %s refuses what it is too small for, refuses a ward it has not got, and puts a legal answer on the plan" % GameState.SETTLEMENT_SIZES[tier])
+	return true
 
 
 func _bad(why: String) -> bool:

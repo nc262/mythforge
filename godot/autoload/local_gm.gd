@@ -256,7 +256,11 @@ func _tune_narrator() -> void:
 ## half. See docs/LocalLLM-Tuning.md.
 ##
 ## Returns "" when unusable.
-func complete_json(prompt: String, schema := "") -> String:
+## `wait` overrides GEN_DEADLINE for a call somebody is SITTING THERE WAITING FOR.
+## Measured: an ask from the town map took 180 s once in five, because a schema
+## call runs with no sampler chain and a degenerate one runs to the deadline.
+## Three minutes is fine for a background pass and unplayable at a counter.
+func complete_json(prompt: String, schema := "", wait := 0.0) -> String:
 	if not available():
 		return ""
 	if _model == null and not _ensure_nodes(""):
@@ -317,7 +321,7 @@ func complete_json(prompt: String, schema := "") -> String:
 	# The timer always fires, answer or not, so it carries the id of the call it
 	# was armed for — otherwise a deadline left over from a call that finished in
 	# time would go off in the middle of a perfectly healthy later one.
-	get_tree().create_timer(GEN_DEADLINE).timeout.connect(_on_deadline.bind(gen))
+	get_tree().create_timer(GEN_DEADLINE if wait <= 0.0 else wait).timeout.connect(_on_deadline.bind(gen))
 	return await _json_done
 
 
