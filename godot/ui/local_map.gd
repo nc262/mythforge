@@ -173,7 +173,15 @@ func brief(standing_at := "") -> String:
 		out += " The party is at %s." % standing_at
 	var t := GameState.trouble_at(place)
 	if not t.is_empty():
-		out += " TROUBLE HERE (clock %d/%d): %s." % [int(t.get("filled", 0)), int(t.get("size", 6)), t.get("what", "")]
+		var head := "CAME TO A HEAD — narrate the fallout" if GameState.trouble_spent(t) else "clock %d/%d" % [int(t.get("filled", 0)), int(t.get("size", 6))]
+		out += " TROUBLE HERE (%s): %s." % [head, t.get("what", "")]
+		if GameState.trouble_known(place).is_empty():
+			out += " IT IS SECRET — the player does not know. Let them find traces of it; never state it outright. Write [[uncover]] only when they have truly found it out."
+	var region := GameState.region_of_place(place)
+	for rt in GameState.running_troubles():
+		if rt["reach"] == "region" and region != "" and str(rt["place"]) != place \
+				and GameState.region_of_place(str(rt["place"])) == region:
+			out += " ACROSS THE REGION, from %s: %s — folk here feel it too." % [rt["place"], rt["what"]]
 	return out
 
 

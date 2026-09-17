@@ -994,7 +994,7 @@ func _draw_place_card(font: Font, l: Dictionary) -> void:
 				names.append(str(t["name"]).trim_prefix("The "))
 			if not names.is_empty():
 				lines.append(["Trades: " + ", ".join(names), 12, 0.85])
-		var tr := GameState.trouble_at(nm)
+		var tr := GameState.trouble_known(nm)   # a secret is not on the card until uncovered
 		if not tr.is_empty() and str(tr.get("what", "")) != "":
 			lines.append(["Trouble (%d of %d): %s" % [int(tr.get("filled", 0)),
 				int(tr.get("size", 6)), str(tr.get("what", ""))], 12, 0.92])

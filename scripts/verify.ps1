@@ -174,6 +174,7 @@ if ($Import) {
 # ── The offline gate — deterministic, no model, no GPU ───────────────────────
 Invoke-Harness -Scene 'self_check'     -Token 'SELF-CHECK OK'
 Invoke-Harness -Scene 'town_probe'     -Token 'TOWN-PROBE OK'
+Invoke-Harness -Scene 'site_probe'     -Token 'SITE-PROBE OK'   # sites, and a trouble's life: ends, reach, who hears
 Invoke-Harness -Scene 'click_driver'   -Token 'CLICKDRIVE OK'
 Invoke-Harness -Scene 'ui_playthrough' -Token 'PLAYTHROUGH OK'
 

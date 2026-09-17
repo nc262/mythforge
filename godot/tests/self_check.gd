@@ -1489,6 +1489,12 @@ The rain kept on.")["clean"].contains("[I never saw her again.]"),
 	for banned in ['Ui.c("gold_soft")']:
 		assert(not parchment_src.contains(banned),
 			"world_map draws %s on the parchment chart - a dark-panel colour that measured ~1.1:1 against the paper; use _ink()" % banned)
+	# WHAT THE PLAYER SEES OF A TROUBLE IS WHAT THEY KNOW. Both maps read
+	# `trouble_at`, which returns secrets too, so a conspiracy was printed on the
+	# Atlas card before a single clue. A screen goes through `trouble_known`.
+	for trouble_screen in ["res://scenes/ui/world_map.gd", "res://scenes/ui/place_map.gd"]:
+		assert(not FileAccess.get_file_as_string(trouble_screen).contains("GameState.trouble_at("),
+			"%s shows GameState.trouble_at - that includes SECRET troubles; use trouble_known" % trouble_screen)
 	print("  wards: %d families, %d sockets each, all distinct" % [
 		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
 
@@ -2633,6 +2639,9 @@ The term for spell slots is "Echoes."
 	assert(Composer.PROTOCOL.contains("[[road"), "the GM is told the road tag exists")
 	# The kinds a [[site]] may take are spelled out in the prompt by hand; the engine refuses any other.
 	assert(Composer.PROTOCOL.contains("kind: " + "/".join(GameState.SITE_KINDS)), "the [[site]] kinds the GM is taught are not GameState.SITE_KINDS")
+	for trouble_reach in GameState.TROUBLE_REACH:
+		assert(Composer.PROTOCOL.contains("%s (" % trouble_reach), "the GM is never taught trouble reach=%s" % trouble_reach)
+	assert(Composer.PROTOCOL.contains("[[uncover]]"), "the GM is never taught [[uncover]] - a secret trouble could never be found out")
 	GameState.state.erase("world")
 
 	# ── The first-run tutorial ───────────────────────────────────────────────

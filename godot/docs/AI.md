@@ -83,6 +83,16 @@ comes to a head. A second, different trouble in a town that already has one is
 refused — two live calamities in one village is the GM losing track, not the
 world getting worse.
 
+**Who hears of a trouble is the engine's call, by its `reach`** (`GameState.TROUBLE_REACH`).
+`town` is announced the moment the player is there; `region` anywhere in that
+region; `secret` never, until the GM writes `[[uncover place="..."]]` or the clock
+comes to a head where the player stands. `notice_troubles()` runs whenever the
+party's place changes and whenever a trouble starts. Both maps read
+`trouble_known`, never `trouble_at`, so a secret is not on the Atlas card; the
+narrator is told the secret with an instruction to leave traces rather than say
+it. A trouble ENDS: pushed back to nothing it is erased, and a full clock stays
+on the record as fallout but no longer blocks the town's next trouble.
+
 **The narrator is told the town it stands in.** When `here` is a settled place,
 the SCENE line carries `LocalMap.brief()`: the quarters, numbered (that number is
 `ward=`), each quarter's wealth and law, every trade and GM site already there,

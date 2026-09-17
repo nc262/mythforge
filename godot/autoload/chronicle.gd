@@ -217,8 +217,9 @@ func world_tick() -> Dictionary:
 	for t in GameState.running_troubles():
 		if str(t["what"]) == "":
 			continue
-		troubles.append("%s: %s (%d of %d)" % [t["place"], t["what"],
-			int(t["filled"]), int(t["size"])])
+		troubles.append("%s: %s (%d of %d%s)" % [t["place"], t["what"],
+			int(t["filled"]), int(t["size"]),
+			", SECRET — only traces may surface" if GameState.trouble_known(str(t["place"])).is_empty() else ""])
 	# Nothing in motion yet — a tick here would be the model inventing a world
 	# rather than advancing one.
 	if active.is_empty() and goals.is_empty() and troubles.is_empty():

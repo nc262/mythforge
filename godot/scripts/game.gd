@@ -1371,6 +1371,8 @@ func _apply_world_tags(tags: Array) -> void:
 				_gm_makes_trouble(a)
 			"clock":
 				_gm_ticks_clock(a)
+			"uncover":
+				_gm_uncovers(a)
 			"region":
 				_gm_makes_region(a)
 			"road":
@@ -2874,11 +2876,35 @@ func _gm_makes_trouble(a: Dictionary) -> void:
 	var where := str(a.get("place", "")).strip_edges()
 	if where == "":
 		where = GameState.here()
-	var why := GameState.set_trouble(where, str(a.get("what", "")), int(a.get("clock", 6)))
-	if why == "":
-		_say_system("Trouble is brewing in %s." % where, "compass")
-	else:
+	var why := GameState.set_trouble(where, str(a.get("what", "")), int(a.get("clock", 6)),
+		str(a.get("reach", "town")).strip_edges().to_lower())
+	if why != "":
 		_say_system(why, "compass")
+		return
+	# NOT "trouble is brewing": that told the player about a secret the moment the
+	# GM thought of it. Whether they hear is the engine's call — see notice_troubles.
+	_hear_of_troubles()
+
+
+## Say whatever troubles just reached the player's ears. One call site per way
+## the player's place can change, plus when a trouble starts.
+func _hear_of_troubles() -> void:
+	for line in GameState.notice_troubles():
+		_say_system(line, "compass")
+
+
+## [[uncover place="Gallows Quay"]] — the player has found out a secret trouble.
+func _gm_uncovers(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	if where == "":
+		where = GameState.here()
+	var why := GameState.uncover_trouble(where)
+	if why != "":
+		_say_system(why, "compass")
+		return
+	_say_system("You have uncovered what is really happening in %s: %s." % [
+		where, str(GameState.trouble_at(where).get("what", ""))], "compass")
+	Sfx.play("chime")
 
 
 func _gm_ticks_clock(a: Dictionary) -> void:
@@ -2886,10 +2912,14 @@ func _gm_ticks_clock(a: Dictionary) -> void:
 	if where == "":
 		where = GameState.here()
 	var by := int(a.get("tick", 1))
+	var knew := not GameState.trouble_known(where).is_empty()
 	var why := GameState.tick_trouble(where, by)
 	if why != "":
 		_say_system(why, "compass")
 		return
+	_hear_of_troubles()   # a secret that comes to a head where you stand is out
+	if GameState.trouble_known(where).is_empty() and not knew:
+		return            # it moved, and the player does not know it exists
 	var t := GameState.trouble_at(where)
 	var filled := int(t.get("filled", 0))
 	var size := int(t.get("size", 6))
@@ -3108,6 +3138,7 @@ func _track_here(place: String) -> void:
 			seen.append(nm)
 		world["seen"] = seen
 		GameState.save_kind("world", world)
+		_hear_of_troubles()
 		return
 
 
@@ -3137,6 +3168,7 @@ func _travel_to(place: String) -> void:
 	GameState.advance_time(GameState.travel_cost(place))
 	Sfx.ui("travel")   # MIL — departure has a sound; the road opens
 	_say_system("You set off for %s." % place, "compass")
+	_hear_of_troubles()
 	# Distance is the one cost that is invisible in the prose — the clock moved,
 	# and nothing on screen says a far road spent more of the day than a near one.
 	_coach("travel",

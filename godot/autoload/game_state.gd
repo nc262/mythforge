@@ -1674,9 +1674,20 @@ func add_site(spec: Dictionary) -> String:
 ## out. The GM owns what it IS. Same split as everything else here.
 const CLOCK_MIN := 4
 const CLOCK_MAX := 8
+## ── WHO KNOWS ABOUT IT ───────────────────────────────────────────────────────
+## A famine is not a secret and a cult in the cellars is nothing else. So the
+## trouble's REACH is a socket, and the engine — not the narrator's memory —
+## decides when the player learns of it:
+##   town   — everyone here feels it; the player hears the moment they are there.
+##   region — every town in the region feels it; heard anywhere in the region.
+##   secret — cloak and dagger; hidden until the GM writes [[uncover]], or until
+##            it comes to a head, because by then the fallout is in the street.
+## Before this the map printed every trouble to anyone who had visited the town,
+## so a conspiracy was spoiled on the Atlas card before a single clue.
+const TROUBLE_REACH := ["town", "region", "secret"]
 
 
-func set_trouble(place_name: String, what: String, size: int) -> String:
+func set_trouble(place_name: String, what: String, size: int, reach := "town") -> String:
 	var nm := place_name.strip_edges()
 	var txt := what.strip_edges()
 	if nm == "" or txt == "":
@@ -1691,14 +1702,26 @@ func set_trouble(place_name: String, what: String, size: int) -> String:
 		return "%s is not on the chart — name a place that is" % nm
 	if size < CLOCK_MIN or size > CLOCK_MAX:
 		return "a clock runs %d to %d segments, not %d" % [CLOCK_MIN, CLOCK_MAX, size]
+	if not TROUBLE_REACH.has(reach):
+		return "reach must be one of: %s" % ", ".join(TROUBLE_REACH)
+	if reach == "region" and region_of_place(nm) == "":
+		return "%s belongs to no region — use reach=town" % nm
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
 	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
 	# A NEW TROUBLE DOES NOT RESET AN OLD ONE'S PROGRESS silently. If the town
-	# already has one, say so — two live calamities in one village is the GM
-	# losing track, not the world getting worse.
-	if all.has(nm) and str(all[nm].get("what", "")) != txt:
+	# already has one RUNNING, say so — two live calamities in one village is the
+	# GM losing track, not the world getting worse.
+	#
+	# RUNNING, not merely present. This refused on any record at all, and nothing
+	# ever removed one, so a town whose trouble had come to a head could never be
+	# troubled again: "already has a trouble running" about a clock that had
+	# stopped. A spent trouble is history, and the next one replaces it.
+	var old: Dictionary = all.get(nm, {})
+	var same := str(old.get("what", "")) == txt
+	if not old.is_empty() and not same and not trouble_spent(old):
 		return "%s already has a trouble running — see it through or resolve it first" % nm
-	all[nm] = {"what": txt, "size": size, "filled": int(all.get(nm, {}).get("filled", 0))}
+	all[nm] = {"what": txt, "size": size, "filled": int(old.get("filled", 0)) if same else 0,
+		"reach": reach, "known": bool(old.get("known", false)) if same else false}
 	world["trouble"] = all
 	save_kind("world", world)
 	return ""
@@ -1719,6 +1742,10 @@ func tick_trouble(place_name: String, by: int) -> String:
 	var size := int(t.get("size", 6))
 	t["filled"] = clampi(int(t.get("filled", 0)) + by, 0, size)
 	all[nm] = t
+	# PUSHED BACK TO NOTHING IS RESOLVED, and a resolved trouble is gone — it
+	# stayed as an empty clock that blocked the town's next one forever.
+	if by < 0 and int(t["filled"]) <= 0:
+		all.erase(nm)
 	world["trouble"] = all
 	save_kind("world", world)
 	return ""
@@ -1766,11 +1793,77 @@ func running_troubles() -> Array:
 	var out: Array = []
 	for k in all.keys():
 		var t: Dictionary = all[k]
+		if trouble_spent(t):
+			continue   # it came to a head; the world tick narrates what is moving
 		out.append({"place": str(k), "what": str(t.get("what", "")),
-			"filled": int(t.get("filled", 0)), "size": int(t.get("size", 6))})
+			"filled": int(t.get("filled", 0)), "size": int(t.get("size", 6)),
+			"reach": str(t.get("reach", "town"))})
 	out.sort_custom(func(a, b):
 		return float(a["filled"]) / maxf(float(a["size"]), 1.0) > float(b["filled"]) / maxf(float(b["size"]), 1.0))
 	return out
+
+
+## A clock that has run out. It stays on the record — the fallout is real — but
+## it no longer blocks a new trouble and it no longer creeps.
+func trouble_spent(t: Dictionary) -> bool:
+	return int(t.get("filled", 0)) >= int(t.get("size", 6))
+
+
+func region_of_place(place_name: String) -> String:
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(place_name) == 0:
+			return str(p.get("region", ""))
+	return ""
+
+
+## Does the player know about this place's trouble? A record written before reach
+## existed counts as known — the map was already showing it to them.
+func trouble_known(place_name: String) -> Dictionary:
+	var t := trouble_at(place_name)
+	return t if not t.is_empty() and bool(t.get("known", true)) else {}
+
+
+## THE ENGINE DECIDES WHEN WORD REACHES THE PLAYER. Called whenever the party's
+## place changes and whenever a trouble starts. Returns one announcement per
+## trouble learned just now, so the caller can say it; the flag is saved here.
+func notice_troubles() -> Array[String]:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	var at := here()
+	var my_region := region_of_place(at)
+	var heard: Array[String] = []
+	for k in all.keys():
+		var t: Dictionary = all[k]
+		if bool(t.get("known", true)):
+			continue
+		var reach := str(t.get("reach", "town"))
+		var line := ""
+		if str(k).nocasecmp_to(at) == 0 and (reach == "town" or trouble_spent(t)):
+			line = "All of %s is talking about it: %s." % [k, t.get("what", "")]
+		elif reach == "region" and my_region != "" and region_of_place(str(k)) == my_region:
+			line = "Word is on every road in %s — in %s, %s." % [my_region, k, t.get("what", "")]
+		if line == "":
+			continue
+		t["known"] = true
+		all[k] = t
+		heard.append(line)
+	if not heard.is_empty():
+		world["trouble"] = all
+		save_kind("world", world)
+	return heard
+
+
+## [[uncover]] — the player has found out a secret trouble. "" or why not.
+func uncover_trouble(place_name: String) -> String:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("trouble") if world.get("trouble") is Dictionary else {}
+	for k in all.keys():
+		if str(k).nocasecmp_to(place_name.strip_edges()) == 0:
+			all[k]["known"] = true
+			world["trouble"] = all
+			save_kind("world", world)
+			return ""
+	return "%s has no trouble to uncover" % place_name
 
 
 ## What is going wrong here, and how far along it is. {} if nothing.

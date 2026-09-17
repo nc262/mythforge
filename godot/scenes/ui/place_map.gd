@@ -400,7 +400,7 @@ func _label(font: Font, p: Vector2, nm: String, sz: int, strength: float) -> voi
 func _draw_trouble(font: Font) -> void:
 	if lm == null:
 		return
-	var t := GameState.trouble_at(lm.place)
+	var t := GameState.trouble_known(lm.place)   # a secret is not in the margin until uncovered
 	if t.is_empty():
 		return
 	var what := str(t.get("what", ""))

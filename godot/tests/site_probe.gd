@@ -154,8 +154,112 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
+	if not _trouble_lifecycle(town, town_kind):
+		get_tree().quit(1)
+		return
 	print("SITE-PROBE OK")
 	get_tree().quit(0)
+
+
+func _bad(why: String) -> bool:
+	print("SITE-PROBE FAILED: " + why)
+	return false
+
+
+func _stand(place: String) -> void:
+	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	wd["here"] = place
+	GameState.state["world"] = wd
+
+
+## A TROUBLE ENDS, AND WHO HEARS OF IT DEPENDS ON WHAT KIND IT IS. Two bugs and
+## one mechanism, each asserted rather than printed:
+##   · a town whose trouble came to a head, or was resolved, could never have
+##     another ("already has a trouble running" about a stopped clock);
+##   · the map showed every trouble to anyone who had visited, secret or not;
+##   · reach=town is heard on arrival, reach=region anywhere in the region,
+##     reach=secret only by [[uncover]] or when it comes to a head.
+func _trouble_lifecycle(town: String, town_kind: String) -> bool:
+	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	wd.erase("trouble")
+	GameState.state["world"] = wd
+	var away := ""
+	for p in GameState.places():
+		if p is Dictionary and str(p.get("name", "")) != town:
+			away = str(p["name"])
+			break
+	_stand(away)
+	# ── BUG 1: a spent trouble blocks nothing ──
+	if GameState.set_trouble(town, "a", 4) != "":
+		return _bad("a first trouble was refused")
+	if GameState.set_trouble(town, "b", 4).find("already has a trouble running") < 0:
+		return _bad("a RUNNING trouble let a second, different one replace it")
+	GameState.tick_trouble(town, 4)
+	var why := GameState.set_trouble(town, "c", 5)
+	if why != "":
+		return _bad("a trouble that came to a head still blocks the next one: " + why)
+	if int(GameState.trouble_at(town).get("filled", -1)) != 0:
+		return _bad("the new trouble inherited the old clock's segments")
+	GameState.tick_trouble(town, 2)
+	GameState.tick_trouble(town, -2)
+	if not GameState.trouble_at(town).is_empty():
+		return _bad("a trouble pushed back to nothing is still on the record")
+	if GameState.set_trouble(town, "d", 4) != "":
+		return _bad("a resolved trouble still blocks the next one")
+	if GameState.set_trouble(away, "x", 4, "loud").find("reach must be") < 0:
+		return _bad("an unknown reach was accepted")
+	# ── BUG 2 + reach=town: heard on arrival, not before ──
+	if not GameState.trouble_known(town).is_empty():
+		return _bad("a town trouble is known to a player who has not been there since it began")
+	if not GameState.notice_troubles().is_empty():
+		return _bad("a town trouble was announced to a player standing elsewhere")
+	_stand(town)
+	if GameState.notice_troubles().size() != 1 or GameState.trouble_known(town).is_empty():
+		return _bad("arriving in a troubled town did not announce the trouble")
+	if not GameState.notice_troubles().is_empty():
+		return _bad("a trouble was announced twice")
+	# ── reach=secret: never heard, found out by [[uncover]] ──
+	GameState.tick_trouble(town, -4)
+	if GameState.set_trouble(town, "the reeve is selling children to the fae", 6, "secret") != "":
+		return _bad("a secret trouble was refused")
+	if not GameState.notice_troubles().is_empty() or not GameState.trouble_known(town).is_empty():
+		return _bad("a SECRET trouble was announced to the player standing in the town")
+	LocalMap.forget("%s|%s" % [GameState.world_id(), town])
+	var brief := LocalMap.for_place(GameState.world_id(), town, town_kind).brief()
+	if brief != "" and brief.find("IT IS SECRET") < 0:
+		return _bad("the narrator is not told the trouble is secret: " + brief.right(200))
+	if GameState.uncover_trouble(town) != "" or GameState.trouble_known(town).is_empty():
+		return _bad("[[uncover]] did not make the secret known")
+	# A secret that comes to a head is out in the street.
+	GameState.tick_trouble(town, -6)
+	GameState.set_trouble(town, "a smuggling ring", 4, "secret")
+	GameState.tick_trouble(town, 4)
+	if GameState.notice_troubles().size() != 1:
+		return _bad("a secret that came to a head where the player stands stayed hidden")
+	# ── reach=region: heard anywhere in the region ──
+	var reg := GameState.region_of_place(town)
+	var kin := ""
+	for p in GameState.places():
+		if p is Dictionary and str(p.get("name", "")) != town and str(p.get("region", "")) == reg and reg != "":
+			kin = str(p["name"])
+			break
+	if kin != "":
+		var wd2: Dictionary = GameState.state.get("world")
+		wd2.erase("trouble")
+		_stand(kin)
+		if GameState.set_trouble(town, "the harvest has failed", 6, "region") != "":
+			return _bad("a region trouble was refused")
+		if GameState.notice_troubles().size() != 1:
+			return _bad("a region trouble was not heard in %s, in the same region" % kin)
+	# A record written before reach existed was already on the map: still known.
+	var wd3: Dictionary = GameState.state.get("world")
+	wd3["trouble"] = {town: {"what": "old", "size": 6, "filled": 1}}
+	if GameState.trouble_known(town).is_empty():
+		return _bad("a trouble from an older save vanished from the player's map")
+	wd3.erase("trouble")
+	print("  trouble lifecycle: spent and resolved troubles free the town; town/region/secret reach heard correctly%s" % (
+		"" if kin != "" else " (no second place in the region — region reach unchecked)"))
+	return true
 
 
 ## The town's named places, rebuilt from scratch so a cache cannot hide a change.
