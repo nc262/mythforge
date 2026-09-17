@@ -83,6 +83,7 @@ func _wire_signals() -> void:
 	GameState.mood_changed.connect(_on_mood_changed)
 	# PS-5 — the day divider, from the engine that actually moved the clock.
 	GameState.day_changed.connect(_on_day_changed)
+	GameState.trouble_news.connect(_on_trouble_news)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
 	_build_suggestions()   # R6 PLAY-04 — verbs above the box, before the box is empty
@@ -827,7 +828,7 @@ func _render_suggestions() -> void:
 				acts.append(["Browse the wares", "I ask to see what the keeper has for sale."])
 				break
 	for q in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
-		if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+		if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 			acts.append(["Ask about the task", "I ask around about %s." % str(q["title"])])
 			break
 	for cmp in GameState.sheet().get("companions", []):
@@ -1373,6 +1374,8 @@ func _apply_world_tags(tags: Array) -> void:
 				_gm_ticks_clock(a)
 			"uncover":
 				_gm_uncovers(a)
+			"clue":
+				_gm_finds_clue(a)
 			"region":
 				_gm_makes_region(a)
 			"road":
@@ -1651,6 +1654,11 @@ func _roll_pending() -> void:
 		GameState.apply_hp(int(res["total"]) if check.get("heal", false) else -int(res["total"]))
 		_render_sheet()
 	_say_me(_md(str(res["text"])))
+	# A ROLL AGAINST THE TOWN'S TROUBLE MOVES ITS CLOCK. The GM marks the check;
+	# the dice decide which way. Said before the stream so the GM's next context
+	# already carries the clock where the roll left it.
+	if bool(check.get("trouble", false)) and check.has("dc"):
+		GameState.work_trouble(GameState.here(), int(res["total"]) >= int(check["dc"]))
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope(str(res["text"])))
 
@@ -2622,9 +2630,16 @@ func _hud_bar(ratio: float) -> ImageTexture:
 func _open_shop() -> void:
 	if not Mode.can("shop"):
 		return
+	# A TROUBLE THAT CAME TO A HEAD COSTS SOMETHING HERE. The GM chose the fallout
+	# when the trouble began; the counter is where two of them are felt.
+	var fall := GameState.fallout_at(GameState.here())
+	if fall == "trade":
+		Sfx.ui("ui_deny")
+		_say_system(GameState.fallout_line(GameState.here(), fall).capitalize() + ".", "compass")
+		return
 	Mode.enter("Merchant")
 	var win := preload("res://scenes/ui/merchant_window.gd").new()
-	win.markup = _shop_markup
+	win.markup = _shop_markup * (1.5 if fall == "prices" else 1.0)
 	win.haggled.connect(func(m: float): _shop_markup = m)
 	win.counter_left.connect(_on_counter_left)
 	add_child(win)
@@ -2695,8 +2710,7 @@ func _render_codex() -> void:
 		for q in quests:
 			if q is Dictionary and str(q.get("title", "")) != "":
 				anyq = true
-				var done: bool = str(q.get("status", "active")) == "done"
-				_sheet_panel.append_text("%s %s%s\n" % ["✓" if done else "◈", _bb(str(q["title"])),
+				_sheet_panel.append_text("%s %s%s\n" % [Chronicle.quest_mark(q), _bb(str(q["title"])),
 					(" — " + _bb(str(q.get("desc", "")))) if str(q.get("desc", "")) != "" else ""])
 	if not anyq:
 		_sheet_panel.append_text("[color=%s]No threads yet — make a promise, take a job, swear revenge.[/color]\n" % Ui.c("ink_dim").to_html(false))
@@ -2877,60 +2891,47 @@ func _gm_makes_trouble(a: Dictionary) -> void:
 	if where == "":
 		where = GameState.here()
 	var why := GameState.set_trouble(where, str(a.get("what", "")), int(a.get("clock", 6)),
-		str(a.get("reach", "town")).strip_edges().to_lower())
+		str(a.get("reach", "town")).strip_edges().to_lower(),
+		{"fallout": str(a.get("fallout", "")), "thread": str(a.get("thread", "")), "title": str(a.get("title", ""))})
 	if why != "":
 		_say_system(why, "compass")
 		return
 	# NOT "trouble is brewing": that told the player about a secret the moment the
 	# GM thought of it. Whether they hear is the engine's call — see notice_troubles.
-	_hear_of_troubles()
+	GameState.notice_troubles()
 
 
-## Say whatever troubles just reached the player's ears. One call site per way
-## the player's place can change, plus when a trouble starts.
-func _hear_of_troubles() -> void:
-	for line in GameState.notice_troubles():
-		_say_system(line, "compass")
+## Everything the engine says about a trouble — heard of, a lead, worse, eased,
+## come to a head — arrives here, worded, from the moment it happened. A METHOD,
+## for the reason `_on_purse_changed` is one (PL-5, freed lambda captures).
+func _on_trouble_news(line: String) -> void:
+	_say_system(line, "compass")
+	Chronicle.chronicle_updated.emit()   # the quest log moved with it
 
 
 ## [[uncover place="Gallows Quay"]] — the player has found out a secret trouble.
 func _gm_uncovers(a: Dictionary) -> void:
 	var where := str(a.get("place", "")).strip_edges()
-	if where == "":
-		where = GameState.here()
-	var why := GameState.uncover_trouble(where)
+	var why := GameState.uncover_trouble(where if where != "" else GameState.here())
 	if why != "":
 		_say_system(why, "compass")
-		return
-	_say_system("You have uncovered what is really happening in %s: %s." % [
-		where, str(GameState.trouble_at(where).get("what", ""))], "compass")
-	Sfx.play("chime")
+
+
+## [[clue place="Gallows Quay" note="..."]] — a lead on a trouble.
+func _gm_finds_clue(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	var why := GameState.add_clue(where if where != "" else GameState.here(), str(a.get("note", "")))
+	if why != "":
+		_say_system(why, "compass")
 
 
 func _gm_ticks_clock(a: Dictionary) -> void:
 	var where := str(a.get("place", "")).strip_edges()
-	if where == "":
-		where = GameState.here()
-	var by := int(a.get("tick", 1))
-	var knew := not GameState.trouble_known(where).is_empty()
-	var why := GameState.tick_trouble(where, by)
+	var why := GameState.tick_trouble(where if where != "" else GameState.here(), int(a.get("tick", 1)))
 	if why != "":
 		_say_system(why, "compass")
 		return
-	_hear_of_troubles()   # a secret that comes to a head where you stand is out
-	if GameState.trouble_known(where).is_empty() and not knew:
-		return            # it moved, and the player does not know it exists
-	var t := GameState.trouble_at(where)
-	var filled := int(t.get("filled", 0))
-	var size := int(t.get("size", 6))
-	if filled >= size:
-		# THE ENGINE SAYS IT RAN OUT; the GM says what that means. Keeping the
-		# consequence out of here is the same rule the whole tag protocol runs
-		# on — the model narrates, the engine adjudicates.
-		_say_system("In %s, it has come to a head: %s" % [where, str(t.get("what", ""))], "compass")
-		Sfx.play("chime")
-	elif filled <= 0:
-		_say_system("%s breathes easier." % where, "compass")
+	GameState.notice_troubles()   # a secret that comes to a head where you stand is out
 
 
 ## [[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"
@@ -3138,7 +3139,7 @@ func _track_here(place: String) -> void:
 			seen.append(nm)
 		world["seen"] = seen
 		GameState.save_kind("world", world)
-		_hear_of_troubles()
+		GameState.notice_troubles()
 		return
 
 
@@ -3168,7 +3169,7 @@ func _travel_to(place: String) -> void:
 	GameState.advance_time(GameState.travel_cost(place))
 	Sfx.ui("travel")   # MIL — departure has a sound; the road opens
 	_say_system("You set off for %s." % place, "compass")
-	_hear_of_troubles()
+	GameState.notice_troubles()
 	# Distance is the one cost that is invisible in the prose — the clock moved,
 	# and nothing on screen says a far road spent more of the day than a near one.
 	_coach("travel",
@@ -3243,7 +3244,7 @@ func _render_chips() -> void:
 	var quests = GameState.state.get("quests", [])
 	if quests is Array:
 		for q in quests:
-			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 				bits.append("◈ " + str(q["title"]).left(36))
 				break
 	if bool(GameState.sheet().get("inspiration", false)):

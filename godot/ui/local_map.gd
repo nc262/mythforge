@@ -173,10 +173,20 @@ func brief(standing_at := "") -> String:
 		out += " The party is at %s." % standing_at
 	var t := GameState.trouble_at(place)
 	if not t.is_empty():
-		var head := "CAME TO A HEAD — narrate the fallout" if GameState.trouble_spent(t) else "clock %d/%d" % [int(t.get("filled", 0)), int(t.get("size", 6))]
-		out += " TROUBLE HERE (%s): %s." % [head, t.get("what", "")]
-		if GameState.trouble_known(place).is_empty():
-			out += " IT IS SECRET — the player does not know. Let them find traces of it; never state it outright. Write [[uncover]] only when they have truly found it out."
+		var fall := str(t.get("fallout", "prices"))
+		if GameState.trouble_spent(t):
+			out += " TROUBLE HERE CAME TO A HEAD: %s — and now %s; show it." % [t.get("what", ""), GameState.fallout_line(place, fall)]
+		else:
+			var clues: Array = t.get("clues") if t.get("clues") is Array else []
+			out += " TROUBLE HERE (clock %d/%d; if it fills, %s): %s." % [int(t.get("filled", 0)), int(t.get("size", 6)),
+				GameState.fallout_line(place, fall), t.get("what", "")]
+			if str(t.get("thread", "")) != "":
+				out += " It bears on %s." % t["thread"]
+			if not clues.is_empty():
+				out += " Leads the player has: %s." % "; ".join(clues)
+			if GameState.trouble_known(place).is_empty():
+				out += " IT IS SECRET — the player does not know. Plant traces they can find (%d of %d clues found so far; tag each with [[clue]]); never state it outright." % [
+					clues.size(), GameState.CLUES_TO_UNCOVER]
 	var region := GameState.region_of_place(place)
 	for rt in GameState.running_troubles():
 		if rt["reach"] == "region" and region != "" and str(rt["place"]) != place \
@@ -246,6 +256,12 @@ func _build(wid: String, place_name: String, place_kind: String) -> void:
 		_plan_trades()
 		_plan_landmarks()
 		_plan_sites()
+		# A TROUBLE THAT CAME TO A HEAD WITH fallout=law takes a step of law off
+		# every quarter. AFTER the trades are placed, so the fence does not move
+		# house because the watch lost its nerve; the brief and the GM see it.
+		if GameState.fallout_at(place) == "law":
+			for i in ward_law.size():
+				ward_law[i] = maxi(0, ward_law[i] - 1)
 	else:
 		_build_site(rng)
 		_plan_rooms(rng)

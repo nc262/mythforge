@@ -264,8 +264,7 @@ func _discoveries() -> void:
 func _quests() -> void:
 	for q in (GameState.state.get("quests") if GameState.state.get("quests") is Array else []):
 		if q is Dictionary and str(q.get("title", "")) != "":
-			var done := str(q.get("status", "active")) == "done"
-			_host.add_child(_entry(("✓ " if done else "◈ ") + str(q["title"]), str(q.get("desc", "")), "", ""))
+			_host.add_child(_entry(Chronicle.quest_mark(q) + " " + str(q["title"]), str(q.get("desc", "")), "", ""))
 
 
 func _chronicle() -> void:

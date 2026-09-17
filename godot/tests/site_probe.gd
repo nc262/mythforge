@@ -98,62 +98,6 @@ func _ready() -> void:
 		return
 	# ── THE TOWN'S LIVE PROBLEM ──────────────────────────────────────────────
 	print("")
-	for bad2 in [["Nowhere-at-All", "x", 6], [town, "", 6], [town, "x", 99]]:
-		print("  trouble refused: %s" % GameState.set_trouble(str(bad2[0]), str(bad2[1]), int(bad2[2])))
-	var tw := GameState.set_trouble(town, "press-gangs are taking men off the quay", 6)
-	print("  set_trouble: %s" % ("ACCEPTED" if tw == "" else tw))
-	# A SECOND, DIFFERENT trouble must not silently replace the first.
-	print("  second trouble refused: %s" % GameState.set_trouble(town, "a different calamity", 6))
-	for k in 4:
-		GameState.tick_trouble(town, 2)
-		var t2 := GameState.trouble_at(town)
-		print("    tick -> %d/%d" % [int(t2.get("filled", 0)), int(t2.get("size", 0))])
-	var done := GameState.trouble_at(town)
-	if int(done.get("filled", 0)) != int(done.get("size", 0)):
-		print("SITE-PROBE FAILED: the clock did not fill and did not clamp")
-		get_tree().quit(1)
-		return
-	# And it survives a rebuild of the town, which is the whole point of a clock.
-	var kept := GameState.trouble_at(town)
-	if str(kept.get("what", "")) == "":
-		print("SITE-PROBE FAILED: the trouble did not persist")
-		get_tree().quit(1)
-		return
-	print("  clock persists: %s" % str(kept.get("what", "")))
-
-	# ── THE WORLD MOVES WHILE YOU ARE ELSEWHERE ──────────────────────────────
-	# The clock only ever advanced when the GM said so, which makes it a counter
-	# the narrator keeps rather than a world that keeps going. A day passing has
-	# to move it — everywhere except where the party is standing.
-	GameState.tick_trouble(town, -6)                # wind it back to empty
-	var away := ""
-	for p2 in GameState.places():
-		if p2 is Dictionary and str(p2.get("name", "")) != town:
-			away = str(p2.get("name", ""))
-			break
-	if away != "":
-		GameState.set_trouble(away, "the mill wheel has cracked", 4)
-	# Stand IN the town, then let a day pass.
-	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
-	wd["here"] = town
-	GameState.state["world"] = wd
-	GameState.save_kind("world", wd)
-	var here_before := int(GameState.trouble_at(town).get("filled", 0))
-	var away_before := int(GameState.trouble_at(away).get("filled", 0)) if away != "" else 0
-	GameState.advance_time(GameState.TIMES.size())   # one whole day
-	var here_after := int(GameState.trouble_at(town).get("filled", 0))
-	var away_after := int(GameState.trouble_at(away).get("filled", 0)) if away != "" else 0
-	print("  a day passes — standing in %s: %d -> %d" % [town, here_before, here_after])
-	print("                  away in %s: %d -> %d" % [away, away_before, away_after])
-	if here_after != here_before:
-		print("SITE-PROBE FAILED: the trouble crept in the town the party is standing in")
-		get_tree().quit(1)
-		return
-	if away != "" and away_after != away_before + 1:
-		print("SITE-PROBE FAILED: a day passed and the trouble elsewhere did not creep")
-		get_tree().quit(1)
-		return
-
 	if not _trouble_lifecycle(town, town_kind):
 		get_tree().quit(1)
 		return
@@ -172,24 +116,61 @@ func _stand(place: String) -> void:
 	GameState.state["world"] = wd
 
 
-## A TROUBLE ENDS, AND WHO HEARS OF IT DEPENDS ON WHAT KIND IT IS. Two bugs and
-## one mechanism, each asserted rather than printed:
-##   · a town whose trouble came to a head, or was resolved, could never have
-##     another ("already has a trouble running" about a stopped clock);
-##   · the map showed every trouble to anyone who had visited, secret or not;
-##   · reach=town is heard on arrival, reach=region anywhere in the region,
-##     reach=secret only by [[uncover]] or when it comes to a head.
-func _trouble_lifecycle(town: String, town_kind: String) -> bool:
+var _news: Array[String] = []
+
+
+func _heard(line: String) -> void:
+	_news.append(line)
+
+
+## The NEWEST quest for this town's trouble — an earlier one, resolved, stays on the log.
+func _quest_for(town: String) -> Dictionary:
+	var found := {}
+	for q in (GameState.state.get("quests") if GameState.state.get("quests") is Array else []):
+		if q is Dictionary and str(q.get("trouble", "")).begins_with(town + "|"):
+			found = q
+	return found
+
+
+func _fresh() -> void:
 	var wd: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	wd.erase("trouble")
 	GameState.state["world"] = wd
+	GameState.state["quests"] = []
+	_news.clear()
+
+
+## A TROUBLE, END TO END, asserted rather than printed. This probe used to print
+## its verdicts and was not in the gate, so "a town gets exactly one trouble,
+## ever" sat in its own output as a refusal nobody was checking.
+##   · validation, and a running trouble blocking a second while a spent one does not
+##   · reach: town heard on arrival, region anywhere in it, secret never
+##   · a known trouble is a QUEST: side matter, or bearing on a named thread
+##   · clues: recorded, and the third exposes a secret without the first two saying it
+##   · rolls against it move the clock; a day creeps it unless somebody WORKED it
+##   · fallout the engine applies when it fills: trade, prices, road, law
+##   · the model's quest rewrite cannot drop or re-status an engine quest
+func _trouble_lifecycle(town: String, town_kind: String) -> bool:
+	GameState.trouble_news.connect(_heard)
+	var wid := GameState.world_id()
 	var away := ""
+	var kin := ""
+	var reg := GameState.region_of_place(town)
 	for p in GameState.places():
-		if p is Dictionary and str(p.get("name", "")) != town:
+		if not (p is Dictionary) or str(p.get("name", "")) == town:
+			continue
+		if away == "":
 			away = str(p["name"])
-			break
+		if kin == "" and reg != "" and str(p.get("region", "")) == reg:
+			kin = str(p["name"])
+	_fresh()
 	_stand(away)
-	# ── BUG 1: a spent trouble blocks nothing ──
+	# ── validation ──
+	for bad in [["Nowhere-at-All", "x", 6, "town", {}], [town, "", 6, "town", {}], [town, "x", 99, "town", {}],
+			[town, "x", 6, "loud", {}], [town, "x", 6, "town", {"fallout": "fire"}]]:
+		if GameState.set_trouble(str(bad[0]), str(bad[1]), int(bad[2]), str(bad[3]), bad[4]) == "":
+			return _bad("a malformed trouble was accepted: %s" % str(bad))
+	# ── a spent trouble blocks nothing; a resolved one is gone ──
 	if GameState.set_trouble(town, "a", 4) != "":
 		return _bad("a first trouble was refused")
 	if GameState.set_trouble(town, "b", 4).find("already has a trouble running") < 0:
@@ -204,65 +185,142 @@ func _trouble_lifecycle(town: String, town_kind: String) -> bool:
 	GameState.tick_trouble(town, -2)
 	if not GameState.trouble_at(town).is_empty():
 		return _bad("a trouble pushed back to nothing is still on the record")
-	if GameState.set_trouble(town, "d", 4) != "":
-		return _bad("a resolved trouble still blocks the next one")
-	if GameState.set_trouble(away, "x", 4, "loud").find("reach must be") < 0:
-		return _bad("an unknown reach was accepted")
-	# ── BUG 2 + reach=town: heard on arrival, not before ──
-	if not GameState.trouble_known(town).is_empty():
-		return _bad("a town trouble is known to a player who has not been there since it began")
-	if not GameState.notice_troubles().is_empty():
-		return _bad("a town trouble was announced to a player standing elsewhere")
+	# ── reach=town: heard on arrival, and filed as a side quest ──
+	_fresh()
+	GameState.set_trouble(town, "press-gangs take men off the quay", 6, "town", {"fallout": "trade"})
+	if not GameState.trouble_known(town).is_empty() or GameState.notice_troubles() != 0 or not _news.is_empty():
+		return _bad("a town trouble reached a player standing elsewhere")
+	if not _quest_for(town).is_empty():
+		return _bad("a quest was filed for a trouble the player has never heard of")
 	_stand(town)
-	if GameState.notice_troubles().size() != 1 or GameState.trouble_known(town).is_empty():
+	if GameState.notice_troubles() != 1 or GameState.trouble_known(town).is_empty():
 		return _bad("arriving in a troubled town did not announce the trouble")
-	if not GameState.notice_troubles().is_empty():
+	if GameState.notice_troubles() != 0:
 		return _bad("a trouble was announced twice")
-	# ── reach=secret: never heard, found out by [[uncover]] ──
-	GameState.tick_trouble(town, -4)
-	if GameState.set_trouble(town, "the reeve is selling children to the fae", 6, "secret") != "":
-		return _bad("a secret trouble was refused")
-	if not GameState.notice_troubles().is_empty() or not GameState.trouble_known(town).is_empty():
-		return _bad("a SECRET trouble was announced to the player standing in the town")
-	LocalMap.forget("%s|%s" % [GameState.world_id(), town])
-	var brief := LocalMap.for_place(GameState.world_id(), town, town_kind).brief()
-	if brief != "" and brief.find("IT IS SECRET") < 0:
-		return _bad("the narrator is not told the trouble is secret: " + brief.right(200))
-	if GameState.uncover_trouble(town) != "" or GameState.trouble_known(town).is_empty():
-		return _bad("[[uncover]] did not make the secret known")
-	# A secret that comes to a head is out in the street.
-	GameState.tick_trouble(town, -6)
-	GameState.set_trouble(town, "a smuggling ring", 4, "secret")
+	var q := _quest_for(town)
+	if q.is_empty() or str(q.get("status", "")) != "active" or str(q.get("desc", "")).find("A side matter") < 0:
+		return _bad("hearing of a trouble did not file it as an active side quest: %s" % str(q))
+	# ── rolls move it, and the quest follows the clock ──
+	GameState.work_trouble(town, false)
+	GameState.work_trouble(town, false)
+	GameState.work_trouble(town, true)
+	if int(GameState.trouble_at(town).get("filled", -1)) != 1:
+		return _bad("two failed rolls and one success against the trouble left the clock at %d, not 1" % int(GameState.trouble_at(town).get("filled", -1)))
+	if str(_quest_for(town).get("desc", "")).find("(1 of 6)") < 0:
+		return _bad("the quest does not follow the clock: " + str(_quest_for(town).get("desc", "")))
+	# ── a day creeps what nobody worked, even where the party stands ──
+	GameState.set_trouble(away, "the mill wheel has cracked", 4)
+	var day := int(GameState.clock().get("day", 1))
+	GameState.advance_time(GameState.TIMES.size())
+	if int(GameState.trouble_at(town).get("filled", -1)) != 1:
+		return _bad("a trouble the player worked today crept overnight anyway")
+	if int(GameState.trouble_at(away).get("filled", -1)) != 1:
+		return _bad("a trouble nobody worked did not creep overnight")
+	GameState.advance_time(GameState.TIMES.size())
+	if int(GameState.trouble_at(town).get("filled", -1)) != 2:
+		return _bad("standing in a troubled town without working it still protects it (the old rule) — day %d" % day)
+	# ── fallout: trade shuts the counter, and the quest fails ──
+	_news.clear()
+	GameState.tick_trouble(town, 6)
+	if GameState.fallout_at(town) != "trade":
+		return _bad("a trouble that filled left no fallout: '%s'" % GameState.fallout_at(town))
+	if str(_quest_for(town).get("status", "")) != "failed" or Chronicle.quest_mark(_quest_for(town)) != "✕":
+		return _bad("a trouble that came to a head did not fail its quest: %s" % str(_quest_for(town)))
+	if not _news.any(func(l): return l.find("come to a head") >= 0):
+		return _bad("a known trouble came to a head and the player was not told")
+	# ── law lowers the town's quarters on its plan ──
+	LocalMap.forget("%s|%s" % [wid, town])
+	var law_before := 0
+	for v in LocalMap.for_place(wid, town, town_kind).ward_law:
+		law_before += v
+	_fresh()
+	GameState.set_trouble(town, "the watch captain has been bought", 4, "town", {"fallout": "law"})
 	GameState.tick_trouble(town, 4)
-	if GameState.notice_troubles().size() != 1:
-		return _bad("a secret that came to a head where the player stands stayed hidden")
-	# ── reach=region: heard anywhere in the region ──
-	var reg := GameState.region_of_place(town)
-	var kin := ""
-	for p in GameState.places():
-		if p is Dictionary and str(p.get("name", "")) != town and str(p.get("region", "")) == reg and reg != "":
-			kin = str(p["name"])
-			break
+	var law_after := 0
+	for v in LocalMap.for_place(wid, town, town_kind).ward_law:
+		law_after += v
+	if law_after >= law_before and law_before > 0:
+		return _bad("fallout=law left the town's quarters as lawful as before (%d -> %d)" % [law_before, law_after])
+	# ── road: the ways into the place turn dangerous ──
+	# Asserted against a JOURNEY, because that is what the fallout is for: the
+	# shipped worlds have no authored roads, and a check that looped over roads()
+	# passed on an empty list with the whole fallout deleted.
+	_fresh()
+	_stand(away)
+	var peril_before := GameState.travel_peril(town)
+	GameState.set_trouble(town, "bandits hold the crossings", 4, "town", {"fallout": "road"})
+	GameState.tick_trouble(town, 4)
+	var dangerous := 0
+	for r in GameState.roads():
+		if (str(r["from"]) == town or str(r["to"]) == town) and str(r["state"]) == "dangerous":
+			dangerous += 1
+	if dangerous == 0:
+		return _bad("fallout=road turned no road into %s dangerous" % town)
+	print("    road fallout: %d ways into %s now dangerous; peril from %s %.2f -> %.2f" % [
+		dangerous, town, away, peril_before, GameState.travel_peril(town)])
+	# ── secret: clues, and only the third one says what it is ──
+	_fresh()
+	_stand(town)
+	GameState.set_trouble(town, "the reeve is selling children to the fae", 6, "secret")
+	if GameState.notice_troubles() != 0 or not GameState.trouble_known(town).is_empty():
+		return _bad("a SECRET trouble was announced to the player standing in the town")
+	var brief := LocalMap.for_place(wid, town, town_kind).brief()
+	if brief != "" and brief.find("IT IS SECRET") < 0:
+		return _bad("the narrator is not told the trouble is secret")
+	GameState.add_clue(town, "a child's shoe in the reeve's barn")
+	GameState.add_clue(town, "fairy-rings in the reeve's barn")
+	GameState.add_clue(town, "A CHILD'S SHOE in the reeve's barn")   # the same clue again
+	if not GameState.trouble_known(town).is_empty() or not _quest_for(town).is_empty():
+		return _bad("a secret was exposed, or its quest filed, before the third clue")
+	if _news.any(func(l): return l.find("selling children") >= 0):
+		return _bad("a clue's announcement gave the secret away before it was found out")
+	GameState.add_clue(town, "the reeve's ledger lists names with no debts")
+	if GameState.trouble_known(town).is_empty():
+		return _bad("three clues did not expose the secret")
+	if str(_quest_for(town).get("desc", "")).find("ledger") < 0:
+		return _bad("the quest does not carry the leads that exposed it")
+	# ── thread: bears on a real quest, or is a side matter ──
+	_fresh()
+	GameState.state["quests"] = [{"title": "Find the Drowned Bell", "desc": "", "status": "active"}]
+	GameState.set_trouble(town, "smugglers bleed the market", 6, "town", {"thread": "find the drowned bell"})
+	GameState.notice_troubles()
+	if str(_quest_for(town).get("thread", "")) != "Find the Drowned Bell":
+		return _bad("a trouble naming a real quest did not tie into it: %s" % str(_quest_for(town)))
+	GameState.tick_trouble(town, -6)
+	GameState.set_trouble(town, "a feud between the net-menders", 6, "town", {"thread": "No Such Quest"})
+	GameState.notice_troubles()
+	if str(_quest_for(town).get("thread", "x")) != "":
+		return _bad("a trouble naming a quest that does not exist was tied to something")
+	# ── the model's rewrite of the log cannot touch an engine quest ──
+	var merged := Chronicle.merge_quests(GameState.state["quests"],
+		[{"title": _quest_for(town).get("title", ""), "desc": "all sorted", "status": "done"}, {"title": "A new errand", "desc": "", "status": "active"}])
+	var kept := false
+	for mq in merged:
+		if mq is Dictionary and mq.has("trouble") and str(mq.get("status", "")) == "active":
+			kept = true
+	if not kept or merged.size() != 3:
+		return _bad("the model's quest rewrite dropped or re-statused a trouble quest: %s" % str(merged))
+	# ── region ──
 	if kin != "":
-		var wd2: Dictionary = GameState.state.get("world")
-		wd2.erase("trouble")
+		_fresh()
 		_stand(kin)
 		if GameState.set_trouble(town, "the harvest has failed", 6, "region") != "":
 			return _bad("a region trouble was refused")
-		if GameState.notice_troubles().size() != 1:
+		if GameState.notice_troubles() != 1:
 			return _bad("a region trouble was not heard in %s, in the same region" % kin)
 	# A record written before reach existed was already on the map: still known.
-	var wd3: Dictionary = GameState.state.get("world")
-	wd3["trouble"] = {town: {"what": "old", "size": 6, "filled": 1}}
+	_fresh()
+	GameState.state["world"]["trouble"] = {town: {"what": "old", "size": 6, "filled": 1}}
 	if GameState.trouble_known(town).is_empty():
 		return _bad("a trouble from an older save vanished from the player's map")
-	wd3.erase("trouble")
-	print("  trouble lifecycle: spent and resolved troubles free the town; town/region/secret reach heard correctly%s" % (
+	_fresh()
+	LocalMap.forget("%s|%s" % [wid, town])
+	GameState.trouble_news.disconnect(_heard)
+	print("  trouble: ends, reach, quests, threads, clues, rolls, creep and fallout all hold%s" % (
 		"" if kin != "" else " (no second place in the region — region reach unchecked)"))
 	return true
 
 
-## The town's named places, rebuilt from scratch so a cache cannot hide a change.
 func _snapshot(wid: String, town: String, knd: String) -> Array:
 	LocalMap.forget("%s|%s" % [wid, town])
 	var lm := LocalMap.for_place(wid, town, knd)

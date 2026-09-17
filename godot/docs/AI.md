@@ -93,6 +93,19 @@ narrator is told the secret with an instruction to leave traces rather than say
 it. A trouble ENDS: pushed back to nothing it is erased, and a full clock stays
 on the record as fallout but no longer blocks the town's next trouble.
 
+**A known trouble is a quest, and the engine runs it.** The moment the player
+hears of one it is filed on the log (`trouble` key, so `Chronicle.merge_quests`
+keeps the model's rewrite off it). `thread=` ties it to an active quest or the
+campaign if the GM names one that exists; otherwise it is "a side matter".
+`[[clue]]` records a lead on the trouble and its quest, and the third one exposes
+a secret (`CLUES_TO_UNCOVER`). `[[check ... trouble=1]]` moves the clock back on
+a success and forward on a failure. A day creeps every clock nobody WORKED that
+day (a clue or such a roll) — standing in town no longer counts. When a clock
+fills, the engine applies the `fallout=` the GM chose (`TROUBLE_FALLOUT`): road
+(the ways to its three nearest neighbours turn dangerous), trade (the counter will
+not open), prices (x1.5 at the counter), law (every quarter drops a step), and the
+quest is marked failed.
+
 **The narrator is told the town it stands in.** When `here` is a settled place,
 the SCENE line carries `LocalMap.brief()`: the quarters, numbered (that number is
 `ward=`), each quarter's wealth and law, every trade and GM site already there,

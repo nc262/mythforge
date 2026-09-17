@@ -171,17 +171,34 @@ func _update_quests() -> void:
 	var parsed = JSON.parse_string(raw)
 	if not (parsed is Dictionary) or not (parsed.get("quests") is Array):
 		return
+	GameState.save_kind("quests", merge_quests(current if current is Array else [], parsed["quests"]))
+	chronicle_updated.emit()
+
+
+## The model's rewrite of the log, merged over what the log already holds.
+func merge_quests(current: Array, from_model: Array) -> Array:
 	var out: Array = []
-	for q in parsed["quests"]:
+	# THE ENGINE'S QUESTS ARE NOT THE MODEL'S TO REWRITE. A trouble's quest is
+	# opened, updated and closed by `GameState` from the clock itself; this pass
+	# replaces the whole log, so without this it would drop them, or mark "done" a
+	# trouble whose clock is still running. Kept as they are, and any model entry
+	# carrying the same title is the model restating one.
+	var engine_titles: Array = []
+	for q in current:
+		if q is Dictionary and q.has("trouble"):
+			out.append(q)
+			engine_titles.append(str(q.get("title", "")).to_lower())
+	for q in from_model:
 		if not (q is Dictionary) or str(q.get("title", "")).strip_edges() == "":
+			continue
+		if engine_titles.has(str(q.get("title", "")).strip_edges().to_lower()):
 			continue
 		out.append({
 			"title": str(q.get("title", "")).strip_edges().left(80),
 			"desc": str(q.get("desc", "")).strip_edges().left(240),
 			"status": str(q.get("status", "active")),
 		})
-	GameState.save_kind("quests", out)
-	chronicle_updated.emit()
+	return out
 
 
 ## A day passes off-screen. Returns {"events": [String], "newQuest": Dictionary}
@@ -201,7 +218,7 @@ func world_tick() -> Dictionary:
 	var active: Array[String] = []
 	if quests is Array:
 		for q in quests:
-			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 				active.append(str(q["title"]))
 	var goals: Array[String] = []
 	if codex is Array:
@@ -368,13 +385,23 @@ func codex_text() -> String:
 	return "The named cast so far — keep them consistent: %s." % "; ".join(parts)
 
 
+## The mark a quest carries in every list: done, failed (a trouble that came to a
+## head) or still open. One place, so the log and the book cannot disagree.
+func quest_mark(q: Dictionary) -> String:
+	return {"done": "✓", "failed": "✕"}.get(str(q.get("status", "active")), "◈")
+
+
 func quests_text() -> String:
 	var quests = GameState.state.get("quests", [])
 	var active: Array[String] = []
 	if quests is Array:
 		for q in quests:
-			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 				active.append("%s%s" % [q["title"], (" — " + str(q.get("desc", ""))) if str(q.get("desc", "")) != "" else ""])
+	# A trouble quest that failed stays in the tale: its fallout is still standing.
+	for q in (quests if quests is Array else []):
+		if q is Dictionary and str(q.get("status", "")) == "failed":
+			active.append("FAILED, fallout still standing — %s: %s" % [q.get("title", ""), q.get("desc", "")])
 	if active.is_empty():
 		return ""
 	return "Active quests: %s. Keep the story moving toward these." % "; ".join(active)

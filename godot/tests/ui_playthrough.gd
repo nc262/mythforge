@@ -136,7 +136,7 @@ func _town_reaches_the_story(town: String, view: Node, dlg: Node) -> void:
 	var fails_before := _fails.size()
 	var room := str(lm0.nodes[1]["name"])
 	var ward := lm0.wards.size() - 1
-	Api.test_replies = ["A crooked door, a crooked smile.\n[[site name=\"The Probe Lantern\" kind=fence ward=%d lore=\"buys what nobody asks about\"]]\n[[trouble what=\"smugglers bleed the market\" clock=6]]" % ward]
+	Api.test_replies = ["A crooked door, a crooked smile.\n[[site name=\"The Probe Lantern\" kind=fence ward=%d lore=\"buys what nobody asks about\"]]\n[[trouble what=\"smugglers bleed the market\" clock=6 fallout=trade title=\"The Smugglers' Toll\"]]" % ward]
 	view.enter_room.emit(room)
 	for _f in 60:
 		await get_tree().process_frame
@@ -156,6 +156,62 @@ func _town_reaches_the_story(town: String, view: Node, dlg: Node) -> void:
 	if _fails.size() == fails_before:
 		print("  town: %s → narrator told %d quarters, %d trades; walked to %s; [[site]] and [[trouble]] landed on the map" % [
 			town, lm0.wards.size(), lm0.trades.size(), room])
+	await _trouble_is_a_quest(town)
+
+
+## THE TROUBLE, PLAYED. `site_probe` holds the rules; this drives them through the
+## game the way a turn does: the tag parser, the dispatch, the roll bar and the
+## counter. The [[trouble]] above was written while the party stood in the town,
+## so it is heard at once and must already be a quest.
+func _trouble_is_a_quest(town: String) -> void:
+	var fails_before := _fails.size()
+	var quest := {}
+	for q in GameState.state.get("quests", []):
+		if q is Dictionary and str(q.get("trouble", "")).begins_with(town + "|"):
+			quest = q
+	_ck(str(quest.get("title", "")) == "The Smugglers' Toll" and str(quest.get("status", "")) == "active",
+		"trouble: a trouble the player heard of in %s is not an active quest on the log: %s" % [town, str(quest)])
+	# A clue and a roll against the trouble, in one real turn. dc=99 cannot pass.
+	Api.test_replies = ["The sergeant spits. \"Ask the tanners.\"
+[[clue note=\"the smugglers use the tannery drains\"]]
+[[check ability=CHA skill=Persuasion dc=99 trouble=1]]",
+		"The sergeant turns his back."]
+	_game._send("I lean on the watch sergeant about the smugglers")
+	await _settle()
+	var t := GameState.trouble_at(town)
+	_ck(str(t.get("clues", [])).contains("tannery drains"), "trouble: the GM's [[clue]] did not reach the trouble")
+	_ck(bool(_game._pending_check.get("trouble", false)), "trouble: a [[check ... trouble=1]] did not arm a roll against the trouble")
+	var before := int(t.get("filled", 0))
+	await _game._roll_pending()
+	await _settle()
+	_ck(int(GameState.trouble_at(town).get("filled", 0)) == before + 1,
+		"trouble: a failed roll against the trouble did not worsen it (%d -> %d)" % [before, int(GameState.trouble_at(town).get("filled", 0))])
+	_ck(str(quest.get("desc", "")).contains("tannery drains"), "trouble: the quest does not carry the lead: " + str(quest.get("desc", "")))
+	# Let it run out, then walk up to a counter: fallout=trade shuts it.
+	GameState.tick_trouble(town, 99)
+	_ck(str(quest.get("status", "")) == "failed", "trouble: a trouble that came to a head left its quest %s" % quest.get("status", ""))
+	_game._open_shop()
+	await get_tree().process_frame
+	_ck(Mode.state != "Merchant", "trouble: the shops of %s opened although its trouble shut them" % town)
+	if Mode.state == "Merchant":
+		Mode.enter("Exploration")
+	# fallout=prices: the counter opens, dearer by half.
+	GameState.set_trouble(town, "the millers hoard the grain", 4, "town", {"fallout": "prices"})
+	GameState.tick_trouble(town, 4)
+	_game._open_shop()
+	await get_tree().process_frame
+	var counter: Node = null
+	for ch in _game.get_children():
+		if ch is AcceptDialog and ch.get_script() != null and str(ch.get_script().resource_path).ends_with("merchant_window.gd"):
+			counter = ch
+	_ck(counter != null and is_equal_approx(float(counter.markup), float(_game._shop_markup) * 1.5),
+		"trouble: fallout=prices did not raise the counter's prices in %s" % town)
+	if counter != null:
+		counter.queue_free()
+	if Mode.state == "Merchant":
+		Mode.enter("Exploration")
+	if _fails.size() == fails_before:
+		print("  trouble: heard in %s → quest filed; [[clue]] recorded; a roll against it worsened the clock; it came to a head, the quest failed, the shops shut" % town)
 
 
 func _check_loot(_quiet := false) -> bool:

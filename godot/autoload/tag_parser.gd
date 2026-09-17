@@ -72,6 +72,7 @@ func check_from_tags(tags: Array) -> Dictionary:
 				if a.has("dc"):
 					c["dc"] = int(a["dc"])
 				c["adv"] = "adv" if a.has("adv") else ("dis" if a.has("dis") else "")
+				c["trouble"] = a.has("trouble")   # the roll works against the town's trouble
 				if c["ability"] == "" and Rules.SKILL2AB.has(c["skill"].to_lower()):
 					c["ability"] = Rules.SKILL2AB[c["skill"].to_lower()]
 				return c
