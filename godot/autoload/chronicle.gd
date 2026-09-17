@@ -63,8 +63,56 @@ func record(player_msg: String, gm_reply: String) -> void:
 	# The embedding runs on the same Vulkan device as the narrator; the beat never
 	# leaves the machine or the process.
 	LocalMemory.add_beat(GameState.cid(), beat, int(GameState.clock().get("day", 1)))
-	if _player_turns % CODEX_EVERY == 0:
-		_update_chronicle()
+	_after_turn(player_msg, gm_reply, _player_turns % CODEX_EVERY == 0)
+
+
+## The trouble read, then (on its cadence) the codex and quests — in that order,
+## on the one JSON node, so the three never contend.
+func _after_turn(player_msg: String, gm_reply: String, chronicle_due: bool) -> void:
+	await read_trouble(player_msg, gm_reply)
+	if chronicle_due:
+		await _update_chronicle()
+
+
+## ── DID THAT TURN TOUCH THE TROUBLE? ─────────────────────────────────────────
+## MEASURED 2026-09-17 (tests/town_gm_probe, real narrator, a secret trouble,
+## four turns of the player investigating it): the narrator kept the secret and
+## planted traces in prose — worried faces at the well, a bitter tang at the mill
+## — and wrote ZERO [[clue]] tags and marked ZERO rolls trouble=1. The engine
+## side was correct and never fed. LocalLLM-Tuning.md already says why: one call
+## should not both invent and serialise. So the narrator writes the scene, and
+## this reads it afterwards: one small schema call, only on turns where the town
+## the party stands in has a trouble running.
+const TROUBLE_READ_SCHEMA := '{"type":"object","required":["lead","working_it"],"properties":{' 	+ '"lead":{"type":"string","maxLength":160},"working_it":{"type":"boolean"}}}'
+
+
+func read_trouble(player_msg: String, gm_reply: String) -> Dictionary:
+	var here := GameState.here()
+	var t := GameState.trouble_at(here)
+	if t.is_empty() or GameState.trouble_spent(t) or not LocalGM.available():
+		return {}
+	var clues: Array = t.get("clues") if t.get("clues") is Array else []
+	var raw := await LocalGM.complete_json(
+		"A trouble is running in %s: %s.
+Leads the player already has: %s
+
+" % [here, t.get("what", ""),
+			"; ".join(clues) if not clues.is_empty() else "(none)"]
+		+ "Read ONLY this exchange.
+Player: %s
+Narrator: %s
+
+" % [player_msg.left(400), gm_reply.left(1200)]
+		+ "`lead`: if the player saw, heard or learned something concrete in this exchange that points "
+		+ "toward the trouble and is not already a lead, one sentence describing what they found — "
+		+ "only what the exchange shows, never the hidden truth itself. Otherwise an empty string. "
+		+ "`working_it`: true only if the player was deliberately acting on or investigating this trouble.",
+		TROUBLE_READ_SCHEMA)
+	var parsed = JSON.parse_string(raw)
+	if not (parsed is Dictionary):
+		return {}
+	GameState.apply_trouble_read(here, parsed)
+	return parsed
 
 
 ## The beats most relevant to this moment. Empty when the encoder is missing —

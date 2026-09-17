@@ -106,6 +106,13 @@ fills, the engine applies the `fallout=` the GM chose (`TROUBLE_FALLOUT`): road
 not open), prices (x1.5 at the counter), law (every quarter drops a step), and the
 quest is marked failed.
 
+**The tags are not what feeds a trouble in real play.** Measured, the narrator
+wrote no `[[clue]]` and no `trouble=1` while investigating a secret. So after every
+turn in a town with a running trouble, `Chronicle.read_trouble` makes one schema
+call over that exchange: `lead` (recorded as a clue) and `working_it` (the day
+counts as worked, and the next roll there counts against the clock). The tags
+still work when the model writes them.
+
 **The narrator is told the town it stands in.** When `here` is a settled place,
 the SCENE line carries `LocalMap.brief()`: the quarters, numbered (that number is
 `ward=`), each quarter's wealth and law, every trade and GM site already there,

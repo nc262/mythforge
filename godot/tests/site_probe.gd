@@ -208,6 +208,16 @@ func _trouble_lifecycle(town: String, town_kind: String) -> bool:
 		return _bad("two failed rolls and one success against the trouble left the clock at %d, not 1" % int(GameState.trouble_at(town).get("filled", -1)))
 	if str(_quest_for(town).get("desc", "")).find("(1 of 6)") < 0:
 		return _bad("the quest does not follow the clock: " + str(_quest_for(town).get("desc", "")))
+	# ── the turn-read: what the real narrator does not tag, the engine reads ──
+	GameState.apply_trouble_read(town, {"lead": "the press-gang's boat is moored at the tannery", "working_it": true})
+	if not str(GameState.trouble_at(town).get("clues", [])).contains("tannery"):
+		return _bad("a lead read from the turn was not recorded on the trouble")
+	if not GameState.take_engaged(town) or GameState.take_engaged(town):
+		return _bad("a turn spent working the trouble did not mark exactly the next roll as against it")
+	GameState.apply_trouble_read(town, {"lead": "", "working_it": true})
+	GameState.apply_trouble_read(town, {"lead": "", "working_it": false})
+	if GameState.take_engaged(town):
+		return _bad("a turn spent NOT working the trouble left an earlier turn's roll marked against it")
 	# ── a day creeps what nobody worked, even where the party stands ──
 	GameState.set_trouble(away, "the mill wheel has cracked", 4)
 	var day := int(GameState.clock().get("day", 1))

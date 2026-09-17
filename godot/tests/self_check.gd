@@ -2642,6 +2642,13 @@ The term for spell slots is "Echoes."
 	for trouble_reach in GameState.TROUBLE_REACH:
 		assert(Composer.PROTOCOL.contains("%s (" % trouble_reach), "the GM is never taught trouble reach=%s" % trouble_reach)
 	assert(Composer.PROTOCOL.contains("[[uncover]]"), "the GM is never taught [[uncover]] - a secret trouble could never be found out")
+	# THE TURN-READ IS WHAT FEEDS A TROUBLE IN REAL PLAY: the narrator wrote 0 [[clue]] in
+	# four investigating turns (town_gm_probe). Nothing offline can run it - the model is
+	# not there - so this pins the one line that calls it after every recorded turn.
+	var chron_src := FileAccess.get_file_as_string("res://autoload/chronicle.gd")
+	var rec_body := chron_src.substr(chron_src.find("func record("), 900)
+	assert(rec_body.contains("_after_turn(") and chron_src.contains("await read_trouble(player_msg, gm_reply)"),
+		"Chronicle.record no longer reads the turn for the trouble - leads and effort would only ever come from tags the real narrator does not write")
 	GameState.state.erase("world")
 
 	# ── The first-run tutorial ───────────────────────────────────────────────

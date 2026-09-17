@@ -187,6 +187,17 @@ func _trouble_is_a_quest(town: String) -> void:
 	_ck(int(GameState.trouble_at(town).get("filled", 0)) == before + 1,
 		"trouble: a failed roll against the trouble did not worsen it (%d -> %d)" % [before, int(GameState.trouble_at(town).get("filled", 0))])
 	_ck(str(quest.get("desc", "")).contains("tannery drains"), "trouble: the quest does not carry the lead: " + str(quest.get("desc", "")))
+	# THE REAL NARRATOR DOES NOT WRITE trouble=1 (town_gm_probe: 0 of 4). A plain
+	# check, on a turn the turn-read saw the player working the trouble, counts too.
+	Api.test_replies = ["\"Fine,\" he mutters. \"Prove it.\"\n[[check ability=CHA skill=Intimidation dc=99]]", "He laughs you off."]
+	_game._send("I tell the sergeant I know he takes the smugglers' coin")
+	await _settle()
+	GameState.apply_trouble_read(town, {"lead": "", "working_it": true})
+	var before2 := int(GameState.trouble_at(town).get("filled", 0))
+	await _game._roll_pending()
+	await _settle()
+	_ck(int(GameState.trouble_at(town).get("filled", 0)) == before2 + 1,
+		"trouble: a plain roll on a turn spent working the trouble did not move its clock (%d -> %d)" % [before2, int(GameState.trouble_at(town).get("filled", 0))])
 	# Let it run out, then walk up to a counter: fallout=trade shuts it.
 	GameState.tick_trouble(town, 99)
 	_ck(str(quest.get("status", "")) == "failed", "trouble: a trouble that came to a head left its quest %s" % quest.get("status", ""))

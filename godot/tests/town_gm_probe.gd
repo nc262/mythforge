@@ -1,77 +1,82 @@
 extends Node
-## REAL MODEL: does the narrator use the town its map drew? The offline check in
-## `ui_playthrough` proves the town reaches the envelope and the tags reach the
-## map; only the model can say whether it then names the map's Inn instead of
-## inventing its own, and gives a [[site]] a ward the engine accepts. Same town,
-## same lines, A = with the TOWN context, B = with it cut out of the envelope.
-## Manual probe (GPU, ~1 min warm): not in the gate.
+## REAL MODEL: does the narrator use the town and its trouble the way the engine
+## expects? The offline harnesses prove every tag lands; only the model can say
+## whether it WRITES them. Manual probe (GPU, ~1 min warm): not in the gate.
+##
+## Scenario: the richest settled place in Embervale, with a SECRET trouble. The
+## player investigates. Measured per turn: does the reply leak the secret, does it
+## write [[clue]] (and does the engine accept it), does it mark a roll trouble=1,
+## and does it use a name the map has.
+const SECRET := "the miller is poisoning the well on the baron's orders"
+const LEAK := ["poison", "baron"]
 const LINES := [
-	"I look for somewhere in town to sell a ring I would rather nobody asked about.",
-	"I find the busiest place to eat and ask what has been going wrong around here lately.",
-	"I go looking for a smith to mend my buckler.",
+	"I ask around the market about why so many people have fallen sick.",
+	"I go and look closely at the town well.",
+	"I watch the mill after dark to see who comes and goes.",
+	"I confront the miller and press him hard for the truth.",
 ]
 var _acc := ""
-var _town := ""
-var _kind := ""
 
 
 func _ready() -> void:
 	await get_tree().process_frame
 	GameState.character = {"id": "dm-town-gm-probe", "name": "Probe", "world_id": "embervale"}
 	GameState.state = {"world": {}}
+	var town := ""
+	var kind := ""
 	var best := -1
 	for pl in GameState.places():
 		if pl is Dictionary and LocalMap.SETTLED_KINDS.has(str(pl.get("kind", ""))):
 			var lm := LocalMap.for_place("embervale", str(pl["name"]), str(pl["kind"]))
 			if lm.wards.size() > best:
 				best = lm.wards.size()
-				_town = str(pl["name"])
-				_kind = str(pl["kind"])
-	GameState.state["world"] = {"here": _town}
+				town = str(pl["name"])
+				kind = str(pl["kind"])
+	GameState.state["world"] = {"here": town}
+	print("set_trouble: '%s'" % GameState.set_trouble(town, SECRET, 6, "secret", {"fallout": "law"}))
 	if not LocalGM.available():
 		print("unavailable: ", LocalGM.why_unavailable()); get_tree().quit(); return
 	Api.sse_delta.connect(func(t): _acc += t)
 	await LocalGM.warm()
-	var lm := LocalMap.for_place("embervale", _town, _kind)
-	var names: Array = lm.trades.map(func(t): return str(t["name"]))
-	print("TOWN %s (%s): %d quarters; on the map: %s" % [_town, _kind, lm.wards.size(), ", ".join(names)])
-	print("  context: ", Composer.town_context())
-	for arm in ["A with town", "B without"]:
-		var hits := 0
-		var tags := 0
-		var accepted := 0
-		for line in LINES:
-			var env := Composer.envelope(line)
-			if arm.begins_with("B"):
-				env = env.replace(Composer.town_context(), "")
-			_acc = ""
-			var t0 := Time.get_ticks_msec()
-			LocalGM.stream(env, Composer.system_prompt())
-			await Api.sse_done
-			var reply := _acc
-			var named: Array = names.filter(func(n): return reply.contains(n) or reply.contains(n.trim_prefix("The ")))
-			hits += 1 if not named.is_empty() else 0
-			var said: Array[String] = []
-			for tg in Tags.parse(reply)["tags"]:
-				var k := str(tg["name"])
-				var a: Dictionary = tg["attrs"]
-				if not ["site", "trouble", "clock"].has(k):
-					continue
-				tags += 1
-				var why := ""
-				match k:
-					"site":
-						why = GameState.add_site({"name": str(a.get("name", "")), "kind": str(a.get("kind", "landmark")),
-							"ward": int(a.get("ward", -1)), "settlement": _town, "lore": str(a.get("lore", ""))})
-					"trouble":
-						why = GameState.set_trouble(_town, str(a.get("what", "")), int(a.get("clock", 6)))
-					"clock":
-						why = GameState.tick_trouble(_town, int(a.get("tick", 1)))
-				accepted += 1 if why == "" else 0
-				said.append("%s%s" % [k, "" if why == "" else " REFUSED: " + why])
-			print("[%s] %.1fs  names-from-map=%s  tags=%s\n    \"%s\"" % [arm, (Time.get_ticks_msec() - t0) / 1000.0,
-				named, said, Tags.parse(reply)["clean"].strip_edges().replace("\n", " ").left(260)])
-		print("ARM %s: %d/%d replies used a name the map has; %d town tags, %d accepted" % [arm, hits, LINES.size(), tags, accepted])
-		GameState.state["world"] = {"here": _town}   # B starts from the same town A did
-		LocalMap.forget("embervale|%s" % _town)
+	var names: Array = LocalMap.for_place("embervale", town, kind).trades.map(func(t): return str(t["name"]))
+	print("TOWN %s; context: %s" % [town, Composer.town_context()])
+	var leaks := 0
+	var clues := 0
+	var accepted := 0
+	var worked := 0
+	for line in LINES:
+		_acc = ""
+		var t0 := Time.get_ticks_msec()
+		LocalGM.stream(Composer.envelope(line), Composer.system_prompt())
+		await Api.sse_done
+		var reply := _acc
+		var clean := str(Tags.parse(reply)["clean"])
+		var leaked := LEAK.any(func(w): return clean.to_lower().contains(w)) and GameState.trouble_known(town).is_empty()
+		leaks += 1 if leaked else 0
+		var said: Array[String] = []
+		for tg in Tags.parse(reply)["tags"]:
+			var a: Dictionary = tg["attrs"]
+			match str(tg["name"]):
+				"clue":
+					clues += 1
+					var why := GameState.add_clue(str(a.get("place", town)) if str(a.get("place", "")) != "" else town, str(a.get("note", "")))
+					accepted += 1 if why == "" else 0
+					said.append("clue%s" % ("" if why == "" else " REFUSED: " + why))
+				"check":
+					if a.has("trouble"):
+						worked += 1
+						said.append("check trouble=1")
+					else:
+						said.append("check")
+				"trouble", "site", "clock", "uncover":
+					said.append(str(tg["name"]))
+		var t1 := Time.get_ticks_msec()
+		var read: Dictionary = await Chronicle.read_trouble(line, clean)
+		print("[%s] %.1fs leak=%s map-names=%s tags=%s\n    \"%s\"\n    READ %.1fs %s" % [line.left(30), (t1 - t0) / 1000.0,
+			leaked, names.filter(func(n): return clean.contains(n.trim_prefix("The "))), said,
+			clean.strip_edges().replace("\n", " ").left(300), (Time.get_ticks_msec() - t1) / 1000.0, str(read)])
+		# NOT Chronicle.record: it runs read_trouble again, and the leads would count twice.
+	var t := GameState.trouble_at(town)
+	print("RESULT: %d turns; leaked the secret in %d; %d [[clue]] (%d accepted); %d rolls marked trouble=1; clues on record %d; known=%s" % [
+		LINES.size(), leaks, clues, accepted, worked, (t.get("clues", []) as Array).size(), not GameState.trouble_known(town).is_empty()])
 	get_tree().quit()

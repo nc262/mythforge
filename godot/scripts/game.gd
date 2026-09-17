@@ -1657,7 +1657,10 @@ func _roll_pending() -> void:
 	# A ROLL AGAINST THE TOWN'S TROUBLE MOVES ITS CLOCK. The GM marks the check;
 	# the dice decide which way. Said before the stream so the GM's next context
 	# already carries the clock where the roll left it.
-	if bool(check.get("trouble", false)) and check.has("dc"):
+	# `take_engaged` is the fallback the real narrator needs: it does not write
+	# trouble=1 (measured, 0 of 4 turns), so a roll made while the turn-read saw the
+	# player working the trouble counts too.
+	if check.has("dc") and (bool(check.get("trouble", false)) or GameState.take_engaged(GameState.here())):
 		GameState.work_trouble(GameState.here(), int(res["total"]) >= int(check["dc"]))
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope(str(res["text"])))

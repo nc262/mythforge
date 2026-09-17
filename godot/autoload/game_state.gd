@@ -1841,6 +1841,34 @@ func work_trouble(place_name: String, succeeded: bool) -> String:
 	return tick_trouble(key, -1 if succeeded else 1)
 
 
+## What `Chronicle.read_trouble` concluded about the turn just played: a lead to
+## record, and whether the player was working the trouble — which counts the day
+## as worked, and makes the next roll here count against the clock.
+func apply_trouble_read(place_name: String, read: Dictionary) -> void:
+	var key := _trouble_key(place_name)
+	if key == "" or trouble_spent(_trouble_book()[key]):
+		return
+	# Set either way: the flag describes THIS turn, so a turn spent elsewhere
+	# clears one left over from an earlier turn's unrolled check.
+	_trouble_book()[key]["engaged"] = bool(read.get("working_it", false))
+	if bool(read.get("working_it", false)):
+		_trouble_book()[key]["worked_day"] = int(clock().get("day", 1))
+	_commit_troubles()
+	var lead := str(read.get("lead", "")).strip_edges()
+	if lead != "":
+		add_clue(key, lead)
+
+
+## Was the player working this place's trouble when the pending roll was called?
+## Read once: the flag belongs to that roll, not to every roll after it.
+func take_engaged(place_name: String) -> bool:
+	var key := _trouble_key(place_name)
+	if key == "" or not bool(_trouble_book()[key].get("engaged", false)):
+		return false
+	_trouble_book()[key].erase("engaged")
+	return true
+
+
 ## [[clue]] — the player found a lead. Recorded on the trouble (and so on its
 ## quest), and the third one exposes a secret.
 func add_clue(place_name: String, note: String) -> String:
