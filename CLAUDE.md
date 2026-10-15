@@ -90,13 +90,13 @@ decides and says what it decided. Unknowns about the world go to the
 **One command is the gate:**
 
 ```
-pwsh scripts/verify.ps1          # offline harnesses → export → Desktop copy
+pwsh scripts/verify.ps1          # offline harnesses → export → Desktop shortcut
 pwsh scripts/verify.ps1 -Full    # + the two that drive the real model
 pwsh scripts/verify.ps1 -Audit   # + the windowed body audit (~4 min)
 ```
 
 It refuses to export when anything is red, which is the only reliable way the
-Desktop copy stays honest. Underneath it are five harnesses over the game, run
+Desktop shortcut stays honest. Underneath it are five harnesses over the game, run
 from the repo root. The first three are offline (`Api.test_mode`); the last two
 drive the real model.
 
@@ -110,7 +110,7 @@ drive the real model.
 
 `local_stack` and `bench_gm` are the only ones that can tell you an answer is
 *good*, not merely well-shaped. **Re-export after any `godot/**` change** or you
-are testing a stale exe, and copy it to the Desktop — that copy is the one that
+are testing a stale exe, and refresh the Desktop shortcut — the dist build it opens is the one that
 gets played.
 
 A sixth harness tests the **published download** rather than the game, in a

@@ -4,7 +4,7 @@
 # and the one most often forgotten was the export: a `godot/**` change that is
 # never re-exported means the next playtest runs YESTERDAY'S EXE and every bug
 # it finds is already fixed. That has cost whole sessions. Making the gate a
-# single command means a run either goes green all the way to the Desktop copy
+# single command means a run either goes green all the way to the Desktop shortcut
 # or it does not go green at all.
 #
 # SERIAL ON PURPOSE. Nothing here runs in parallel and nothing here should. The
@@ -13,14 +13,14 @@
 # windowed render plus a headless harness plus a Blender bake is what froze this
 # machine once already. One thing on the card at a time.
 #
-#   pwsh scripts/verify.ps1                # offline gate + export + Desktop copy
+#   pwsh scripts/verify.ps1                # offline gate + export + Desktop shortcut
 #   pwsh scripts/verify.ps1 -Full          # + the two that drive the real model
 #   pwsh scripts/verify.ps1 -Audit         # + the windowed body audit (~4 min)
 #   pwsh scripts/verify.ps1 -NoExport      # tests only, leave the exe alone
 param(
 	[switch]$Full,      # local_stack + bench_gm — real models, real GPU
 	[switch]$Audit,     # body_audit — windowed, slow, pre-release rather than inner loop
-	[switch]$NoExport,  # skip export and the Desktop copy
+	[switch]$NoExport,  # skip export and the Desktop shortcut
 	[switch]$Import,    # force a re-import first (after new or rewritten assets)
 	[int]$HarnessTimeoutSec = 900   # per harness; a red one hangs rather than fails
 )
@@ -176,23 +176,23 @@ if ($failed.Count) {
 if (-not $NoExport) {
 	Write-Host "`n── export " -NoNewline -ForegroundColor Cyan
 	New-Item -ItemType Directory -Force "$repo\dist" | Out-Null
+	$exportStart = Get-Date
 	& $godot --headless --log-file (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-export.engine') --path "$repo\godot" --export-release 'Windows Desktop' '../dist/Mythforge.exe' `
 		> (Join-Path ([IO.Path]::GetTempPath()) 'mythforge-export.log') 2>&1
 	$exe = "$repo\dist\Mythforge.exe"
-	if (-not (Test-Path $exe)) { Write-Host 'FAILED' -ForegroundColor Red; exit 1 }
+	# LOUD, NEVER SILENT. A running game locks the exe, the export fails, and the
+	# old exe left in dist is the one that gets playtested by mistake.
+	if (-not (Test-Path $exe) -or (Get-Item $exe).LastWriteTime -lt $exportStart) {
+		Write-Host 'FAILED — no fresh exe. Close the running game and re-run.' -ForegroundColor Red; exit 1
+	}
 	Write-Host ("{0:N0} bytes" -f (Get-Item $exe).Length) -ForegroundColor Green
 
-	$desk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Mythforge.exe'
-	try {
-		Copy-Item $exe $desk -Force -ErrorAction Stop
-		Write-Host "desktop $desk" -ForegroundColor Green
-	} catch {
-		# LOUD, NEVER SILENT. A locked Desktop copy means the game is open, and a
-		# stale Desktop build is the one that gets playtested by mistake.
-		Write-Host "DESKTOP COPY FAILED — close the running game, then re-copy:" -ForegroundColor Red
-		Write-Host "  Copy-Item '$exe' '$desk' -Force" -ForegroundColor Yellow
-		exit 1
-	}
+	# The game runs from dist: the nobodywho dll and baked/ must sit beside the
+	# exe (world_compiler.gd baked_dirs), so the Desktop gets a shortcut, not a copy.
+	$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Mythforge.lnk'
+	$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
+	$s.TargetPath = $exe; $s.WorkingDirectory = "$repo\dist"; $s.Save()
+	Write-Host "desktop $lnk" -ForegroundColor Green
 }
 
 Write-Host "`nGREEN" -ForegroundColor Green
