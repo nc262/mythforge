@@ -390,35 +390,124 @@ func scope_for_level(level: int) -> String:
 	return best
 
 
-## WHERE A NEW PLACE LANDS, deterministically.
+## Positions are pure functions of their inputs, so they are memoised rather than
+## recomputed. `mini_map._draw` calls `GameState.places()` EVERY FRAME, and
+## places() positions every place that has no coordinates — a terrain search per
+## place per frame would be roughly 170k score() calls a second.
+var _pos_memo := {}
+
+
+## WHERE A NEW PLACE LANDS.
 ##
-## Seeded from the place's own name, so the same place forged twice sits in the
-## same spot and a save reloaded does not shuffle the map. Positioned on its
-## region's ring by scope, then clamped inside the chart with a margin so a pin
-## never rides the edge where its label would be cut off.
+## THE RING SAYS HOW FAR OUT; THE GROUND SAYS WHERE ON IT.
+##
+## This used to be `hash(name)` alone: an angle and a radius, with a little
+## jitter. Deterministic, which was the point, and completely blind to the world
+## — so a fishing village could land on a mountaintop and a keep in the sea, and
+## nothing could notice, because nothing compared a pin to the ground beneath it.
+## Measured 2026-08-26: three of the twenty hand-authored pins stood in open
+## water and Saltmarsh, which is 46 % sea, placed all three of its places by hash.
+##
+## Now the scope ring still decides the BAND a place sits in — that is a fact
+## about the story's reach, not about geography — and `WorldTerrain.score` picks
+## the cell within that band. A tavern takes the coast, a landmark the high
+## ground, a ruin the drowned shoal.
+##
+## The tie-break is hashed per (name, cell) rather than a spacing pass over
+## already-placed pins. Two places of the same kind in the same region would
+## otherwise both take the single best-scoring cell and stack on top of each
+## other; a spacing term would fix that too, but it would make the answer depend
+## on WHAT ELSE has been placed, which is exactly what stops this being a pure
+## function and therefore memoisable. `self_check` asserts no two places share a
+## cell, which is the property the spacing term would have been bought for.
 ##
 ## The model is never asked for coordinates. It is bad at them, they carry no
 ## meaning it can reason about, and a wrong number here is invisible until the
 ## chart looks wrong.
-func place_position(place_name: String, scope: String, region_at: Vector2) -> Vector2:
+func place_position(place_name: String, scope: String, region_at: Vector2,
+		kind := "", wid := "") -> Vector2:
+	var key := "p|%s|%s|%s|%s|%.1f,%.1f" % [wid, place_name, scope, kind, region_at.x, region_at.y]
+	if _pos_memo.has(key):
+		return _pos_memo[key]
+	var ring := float(SCOPE_RING.get(scope, 9.0))
+	var out := _ring_position(place_name, ring, region_at)
+	if wid != "":
+		var ter := WorldTerrain.for_world(wid)
+		var h: int = absi(hash(place_name))
+		var best := -INF
+		# Pass one: inside the scope band. Pass two, only if nothing there scored
+		# — a region whose heart sits offshore has no suitable band, and falling
+		# back to the blind ring would put the place in the sea, which is the
+		# whole defect.
+		for pass_n in 2:
+			var near: float = ring * 0.35 if pass_n == 0 else 0.0
+			var far: float = ring * 1.5 if pass_n == 0 else 200.0
+			for cy in WorldTerrain.H:
+				for cx in WorldTerrain.W:
+					var c := Vector2i(cx, cy)
+					var pct := ter.pct_of(c)
+					var d := pct.distance_to(region_at)
+					if d < near or d > far:
+						continue
+					var sc := ter.score(kind, c)
+					if sc <= 0.0:
+						continue
+					sc += float((h ^ (cx * 73856093) ^ (cy * 19349663)) % 1000) / 1000.0 * 0.35
+					if sc > best:
+						best = sc
+						out = pct
+			if best > -INF:
+				break
+	out = Vector2(clampf(out.x, 6.0, 94.0), clampf(out.y, 8.0, 92.0))
+	_pos_memo[key] = out
+	return out
+
+
+## The old blind ring — kept as the answer when there is no world to ask, which
+## is every caller that has not been given one and the tests that predate terrain.
+func _ring_position(place_name: String, ring: float, region_at: Vector2) -> Vector2:
 	var h: int = absi(hash(place_name))
 	var ang := float(h % 3600) / 3600.0 * TAU
-	# A little ring jitter so a region's places do not sit on a perfect circle.
-	var ring := float(SCOPE_RING.get(scope, 9.0)) * (0.72 + 0.56 * float((h >> 12) % 100) / 100.0)
-	var p := region_at + Vector2(cos(ang), sin(ang)) * ring
-	return Vector2(clampf(p.x, 6.0, 94.0), clampf(p.y, 8.0, 92.0))
+	var r := ring * (0.72 + 0.56 * float((h >> 12) % 100) / 100.0)
+	return region_at + Vector2(cos(ang), sin(ang)) * r
 
 
 ## Where a REGION sits. Regions spread around the chart's heart rather than
-## clustering, because they are the coarse structure everything else hangs on.
-func region_position(region_name: String, index: int, total: int) -> Vector2:
+## clustering, because they are the coarse structure everything else hangs on —
+## so the SPOKE still decides the direction, and the ground decides how far along
+## it the region's heart lands. A region centred in open water would drag every
+## place it holds out to sea with it.
+func region_position(region_name: String, index: int, total: int, wid := "") -> Vector2:
+	var key := "r|%s|%s|%d|%d" % [wid, region_name, index, total]
+	if _pos_memo.has(key):
+		return _pos_memo[key]
 	var h: int = absi(hash(region_name))
 	var span := maxi(total, 1)
 	var ang := (float(index) / float(span)) * TAU + float(h % 100) / 100.0 * 0.6
-	# The heart of the chart, with regions pushed out toward the frontier.
-	var r := 20.0 + float(h % 14)
-	var p := Vector2(50.0, 50.0) + Vector2(cos(ang), sin(ang)) * r
-	return Vector2(clampf(p.x, 12.0, 88.0), clampf(p.y, 14.0, 86.0))
+	var dir := Vector2(cos(ang), sin(ang))
+	var out := Vector2(50.0, 50.0) + dir * (20.0 + float(h % 14))
+	if wid != "":
+		var ter := WorldTerrain.for_world(wid)
+		var best := -INF
+		# Along the spoke, and a little either side of it, at the radii regions
+		# have always used. A region wants habitable ground at its heart, which is
+		# what the settlement score already means.
+		for step in 26:
+			var r := 12.0 + float(step) * 1.4
+			for off in [-0.30, -0.15, 0.0, 0.15, 0.30]:
+				var a2 := ang + float(off)
+				var pct := Vector2(50.0, 50.0) + Vector2(cos(a2), sin(a2)) * r
+				var c := ter.cell_of(pct)
+				var sc := ter.score("settlement", c)
+				if sc <= 0.0:
+					continue
+				sc += float((h ^ (step * 83492791)) % 1000) / 1000.0 * 0.20
+				if sc > best:
+					best = sc
+					out = pct
+	out = Vector2(clampf(out.x, 12.0, 88.0), clampf(out.y, 14.0, 86.0))
+	_pos_memo[key] = out
+	return out
 
 
 ## UI-7 — NAME THE SILHOUETTE, using only the item's own words.
@@ -524,6 +613,26 @@ func kit_gaps(items: Array, fam: String) -> Array:
 func heritage_features(race: String) -> Array:
 	var f = heritage(race).get("features", [])
 	return f if f is Array else []
+
+
+## The doll `look` a heritage implies — the missing wire between the table and
+## the rig (PY-21). `heritage_features()` above has declared `["horns", "tail"]`
+## for a Tiefling since it was written and had **no callers at all**, while
+## `modular_doll` carried four horn styles and a tail in both sexes, grown on
+## purpose by `scripts/author_horns.py` because no free pack ships them. So a
+## Tiefling previewed in the forge as a plain human, and the 2D portrait — which
+## goes to the image model and does read the heritage — came back with horns.
+## Two pictures of one character, disagreeing on the same screen.
+##
+## Absent and empty mean different things to `apply_look`: absent falls back to
+## the rig default, empty is an explicit "none". Every key is therefore stated,
+## so a Human is bald of horns because we said so and not by omission.
+func heritage_look(race: String) -> Dictionary:
+	var f := heritage_features(race)
+	return {
+		"horns": "swept" if f.has("horns") else "",
+		"tail": "drake" if f.has("tail") else "",
+	}
 
 
 ## Every worn slot the paper doll knows (key, label). Rings are two slots.
@@ -651,6 +760,28 @@ func eff_ac(s: Dictionary, inv: Dictionary) -> int:
 # ── Casting / XP ─────────────────────────────────────────────────────────────
 const CAST_ABIL := {"Wizard": "INT", "Cleric": "WIS", "Druid": "WIS", "Bard": "CHA",
 	"Sorcerer": "CHA", "Warlock": "CHA", "Paladin": "CHA", "Ranger": "WIS", "Artificer": "INT"}
+
+
+## The order a class wants its scores in, best first (PY-9).
+##
+## The forge promised "the best land where your class wants them" and then sorted
+## the dice descending and poured them into STR, DEX, CON, INT, WIS, CHA - so a
+## WARLOCK was handed 15 STR and a 9 in the CHA every one of its spells keys off.
+## Right by accident for a Fighter, exactly backwards for the seven casters.
+##
+## `class_prime` already knows every primary, casters and martials both, so this
+## only has to say what comes after it: CON, because nobody wants to be
+## fragile, then DEX for the armour class, then whatever is left in the canonical
+## order so the result is stable rather than arbitrary.
+func ability_priority(cls: String) -> Array:
+	var want: Array = [class_prime(cls)]
+	for ab in ["CON", "DEX"]:
+		if not want.has(ab):
+			want.append(ab)
+	for ab in ABILITIES:
+		if not want.has(ab):
+			want.append(ab)
+	return want
 
 
 # ── Multiclass ───────────────────────────────────────────────────────────────
@@ -803,6 +934,24 @@ func prof_bonus(sheet: Dictionary) -> int:
 	return 2 + floori((int(sheet.get("level", 1)) - 1) / 4.0)
 
 
+## The ability a check REALLY uses. `SKILL2AB` has always known that Insight is
+## WIS, and only `is_proficient` ever asked it: `check_mod` took `check.ability`
+## from the tag at face value, so when the narrator wrote
+## `[[check ability=INT skill=Insight]]` the table rolled Insight off INTELLIGENCE
+## while the player's own Skills tab, three clicks away, read "Insight (WIS) +0"
+## (PY-3, seen in play — the bar said d20 +1 and resolved 16 +1 = 17).
+##
+## The model is allowed to be wrong about which ability a skill uses; it is not
+## allowed to change the sheet. So a named skill the engine recognises wins, and
+## `ability` is honoured only for bare ability checks and saves — which is where
+## the tag is the only source there is.
+func check_ability(check: Dictionary) -> String:
+	var skill := str(check.get("skill", "")).to_lower()
+	if skill != "" and not skill.contains("sav") and SKILL2AB.has(skill):
+		return str(SKILL2AB[skill])
+	return str(check.get("ability", ""))
+
+
 func is_proficient(sheet: Dictionary, check: Dictionary) -> bool:
 	var skill := str(check.get("skill", "")).to_lower()
 	if skill.contains("sav"):
@@ -813,7 +962,7 @@ func is_proficient(sheet: Dictionary, check: Dictionary) -> bool:
 
 
 func check_mod(sheet: Dictionary, check: Dictionary) -> int:
-	var ab := str(check.get("ability", ""))
+	var ab := check_ability(check)
 	var abilities: Dictionary = sheet.get("abilities", {})
 	var mod := ability_mod(int(abilities.get(ab, 10))) if ab != "" else 0
 	if is_proficient(sheet, check):
@@ -861,7 +1010,9 @@ func d20_text(r: Dictionary) -> String:
 
 
 func check_label(c: Dictionary) -> String:
-	var ab: String = AB_NAME.get(str(c.get("ability", "")), str(c.get("ability", "")))
+	# The corrected ability, or the label lies about the number beside it.
+	var raw_ab := check_ability(c)
+	var ab: String = AB_NAME.get(raw_ab, raw_ab)
 	var skill := str(c.get("skill", ""))
 	if skill == "":
 		return "%s check" % ab

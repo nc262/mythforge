@@ -10,7 +10,7 @@ The DLL is gitignored because it is over GitHub's 100 MB per-file hard limit;
 the manifest and icon are tracked, so the addon's shape lives in git and only
 its weight does not.
 
-    python scripts/fetch_nobodywho.py [--version nobodywho-godot-v9.5.0]
+    python scripts/fetch_nobodywho.py [--version nobodywho-godot-v9.6.0]
 """
 import argparse
 import io
@@ -25,7 +25,7 @@ KEEP = ("x86_64-pc-windows-msvc-release.dll", "nobodywho.gdextension", "icon.svg
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--version", default="nobodywho-godot-v9.5.0")
+    ap.add_argument("--version", default="nobodywho-godot-v9.6.0")
     args = ap.parse_args()
 
     out = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -36,7 +36,7 @@ def main() -> None:
         return
 
     # The asset name repeats the tag in full, so the tag appears twice:
-    #   .../download/nobodywho-godot-v9.5.0/nobodywho-godot-nobodywho-godot-v9.5.0.zip
+    #   .../download/nobodywho-godot-v9.6.0/nobodywho-godot-nobodywho-godot-v9.6.0.zip
     # It looks like a bug and is not — installer/clean-room checks this exact URL
     # anonymously, so if upstream ever renames it, that fails instead of a player.
     url = "https://github.com/%s/releases/download/%s/nobodywho-godot-%s.zip" % (REPO, args.version, args.version)

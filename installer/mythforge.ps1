@@ -64,8 +64,23 @@ finally {
     foreach ($p in $started) {
         try { if ($p -and -not $p.HasExited) { Log "stopping pid $($p.Id)"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue } } catch {}
     }
-    # sd-server is launched via a PowerShell wrapper, so stop the engine itself
-    # rather than only the shell that started it.
-    Get-Process -Name 'sd-server' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    # sd-server is launched via a PowerShell wrapper, so stopping the shell that
+    # started it does not stop the engine. This used to reach for EVERY sd-server
+    # on the machine, three lines under a comment promising to stop only what we
+    # started - so quitting the game killed an engine the player had running for
+    # something else, including the one the "already running" branch above had
+    # just decided to leave alone. The script records the pid of the child it
+    # actually spawned, and nothing else is ours to touch.
+    $enginePid = Join-Path $env:TEMP 'mythforge-sd-8189.pid'
+    if (Test-Path $enginePid) {
+        $id = (Get-Content $enginePid -ErrorAction SilentlyContinue | Select-Object -First 1)
+        if ($id -match '^\d+$') {
+            Log "stopping the image engine we started (pid $id)"
+            Stop-Process -Id ([int]$id) -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Item $enginePid -ErrorAction SilentlyContinue
+    } else {
+        Log 'image engine was not ours to stop - leaving it running'
+    }
     Log '=== shutdown complete ==='
 }

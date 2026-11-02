@@ -39,10 +39,34 @@ var _tex_cache := {}     # key -> ImageTexture (avoid re-reading disk every fram
 var _queue: Array = []   # [{key, prompt, size}] — one generation at a time
 var _pumping := false
 
-## A2 — the generative-art pipeline: a manifest (key → {size, used}) drives LRU
-## eviction so the cache stops growing forever; a per-asset .json sidecar records
-## how it was made (prompt/size/seed/model/…) so anything can be regenerated.
-const CACHE_BUDGET := 700 * 1024 * 1024   # ~700 MB of paintings before eviction
+## A2 — the generative-art pipeline. A manifest (key → {size, used}) records what
+## exists; a per-asset .json sidecar records how it was made.
+##
+## THE PAINTINGS ARE PERMANENT. There used to be a 700 MB LRU that deleted the
+## least-recently-used art to stay under budget, justified by "evicted art
+## self-heals: the next ensure(key, prompt) simply repaints it". That is not
+## true, and the same function said so four paragraphs further down —
+## "destroys art the player already waited for".
+##
+## Three things settle it:
+##   · NOTHING REGENERATES FROM A SIDECAR. Every reference to `_meta_path` in
+##     this repo either writes one or deletes one. There is no restore path, so
+##     eviction was never caching — it was deletion with a note attached.
+##   · SOME ART CANNOT BE REMADE EVEN IN PRINCIPLE. A hero's portrait is copied
+##     from `heroprev`, a shared scratch key the next forging overwrites. Once
+##     evicted, that face is gone for good; `heroes.json` on this machine has a
+##     hero pointing at a file the LRU took.
+##   · 700 MB IS ~520 PAINTINGS. Warming six worlds makes 273. The ceiling was
+##     two warm runs away, and this is a game whose whole premise is its art.
+##
+## The repo had already reasoned its way here for tiles and never generalised it:
+## "it is a one-way door — the detail cannot come back without another GPU pour.
+## Keep the pixels." Disk is the cheapest thing in the stack. Keep all of them.
+##
+## A runaway generator is still real (R10 queued 1.3 GB of tiles), so the total
+## is still watched — but the answer to runaway growth is to SHOUT, never to
+## delete work the player waited minutes for.
+const ART_WARN_BYTES := 10 * 1024 * 1024 * 1024   # ~10 GB — a loop, not a player
 var _manifest := {}
 var _manifest_loaded := false
 
@@ -146,73 +170,35 @@ func _write_sidecar(key: String, job: Dictionary, r: Dictionary) -> void:
 		f.close()
 
 
-## What eviction has cost this session. Public because it is the only evidence
-## that the cache is CHURNING rather than caching, and because a number nothing
-## can read is a number nobody will ever see.
-var evicted_bytes := 0
-var evicted_count := 0
-var thrash_warned := false
+var size_warned := false
 
 
-## Evict least-recently-used paintings until back under budget. Evicted art
-## self-heals: the next ensure(key, prompt) simply repaints it.
-##
-## AND IT SAYS SO NOW. Eviction used to be perfectly silent: files deleted, no
-## line anywhere. That is what let R10 run for HOURS — every finished tile threw
-## away an older painting, the total never moved, and the only symptom a player
-## could see was that their hero's portrait had quietly stopped existing.
-func _enforce_budget() -> void:
+## What the paintings weigh. Public because a number nothing can read is a number
+## nobody will ever see.
+func art_bytes() -> int:
+	_load_manifest()
 	var total := 0
 	for k in _manifest:
 		total += int(_manifest[k].get("size", 0))
-	if total <= CACHE_BUDGET:
+	return total
+
+
+## Watch the total; DELETE NOTHING. The old version of this evicted the
+## least-recently-used paintings to stay under 700 MB, and the only symptom a
+## player could see was that their hero's portrait had quietly stopped existing.
+## A runaway generator is still worth catching — R10 queued 753 tiles, ~1.3 GB —
+## so say so once, loudly, and leave every file where it is.
+func _enforce_budget() -> void:
+	if size_warned:
 		return
-	var keys := _manifest.keys()
-	keys.sort_custom(func(a, b): return float(_manifest[a].get("used", 0)) < float(_manifest[b].get("used", 0)))
-	var freed := 0
-	var gone := 0
-	for k in keys:
-		if total <= CACHE_BUDGET:
-			break
-		var sz := int(_manifest[k].get("size", 0))
-		total -= sz
-		freed += sz
-		gone += 1
-		_evict(str(k))
-	_save_manifest()
-	if gone == 0:
+	var total := art_bytes()
+	if total <= ART_WARN_BYTES:
 		return
-	evicted_bytes += freed
-	evicted_count += gone
-	print("art: evicted %d painting(s), %.1f MB, to stay under the %d MB budget"
-		% [gone, freed / 1048576.0, CACHE_BUDGET / 1048576])
-
-	# THRASH, NAMED. Not "a big queue is coming" — nothing declares a batch size,
-	# and inventing one would mean guessing an average painting's weight and
-	# refusing real work on the guess. This is the thing itself, measured: once a
-	# session has thrown away MORE THAN THE WHOLE BUDGET, the cache is no longer
-	# caching. It is a treadmill, and every lap costs GPU minutes and destroys art
-	# the player already waited for.
-	#
-	# Once per session. A warning that repeats every eviction is the same as no
-	# warning by the fiftieth line.
-	if not thrash_warned and evicted_bytes > CACHE_BUDGET:
-		thrash_warned = true
-		push_warning(("art cache is THRASHING: %d paintings and %.1f MB evicted this session, " +
-			"more than the entire %d MB budget. Generation is now destroying older art as fast " +
-			"as it makes new art, so the total never grows and nothing finishes. Something is " +
-			"asking for more art at once than the cache can hold.")
-			% [evicted_count, evicted_bytes / 1048576.0, CACHE_BUDGET / 1048576])
-
-
-func _evict(key: String) -> void:
-	if has_art(key):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(path_for(key)))
-	if FileAccess.file_exists(_meta_path(key)):
-		DirAccess.remove_absolute(ProjectSettings.globalize_path(_meta_path(key)))
-	_tex_cache.erase(key)
-	_round_cache.erase(key)
-	_manifest.erase(key)
+	size_warned = true
+	push_warning(("art is %.1f GB across %d paintings, past the %d GB mark. Nothing has been " +
+		"deleted and nothing will be — but this is far more than play produces, so something " +
+		"is probably generating in a loop.")
+		% [total / 1073741824.0, _manifest.size(), ART_WARN_BYTES / 1073741824])
 
 
 func has_art(key: String) -> bool:
@@ -315,8 +301,12 @@ func request(key: String, prompt := "", opts := {}) -> void:
 			cb.call(key)     # already painted — answer immediately, still routed
 		return
 	if prompt == "":
-		prompt = WORLD_PROMPTS.get(key, "")
+		prompt = world_prompt(key)   # the table first, then the world's own data
 	if prompt == "":
+		# SILENCE IS WHAT HID PY-15. This returned with no signal at all, so
+		# `Art.ensure("saltmarsh")` looked like it worked and painted nothing for
+		# as long as the world has existed. Say so.
+		push_warning("ArtCache: nothing to paint for '%s' — no prompt given and none could be derived" % key)
 		return
 	if cb is Callable and cb.is_valid():
 		var list: Array = _callbacks.get(key, [])
@@ -332,7 +322,8 @@ func request(key: String, prompt := "", opts := {}) -> void:
 	var prof: Dictionary = PROFILES.get(str(opts.get("profile", DEFAULT_PROFILE)), PROFILES[DEFAULT_PROFILE])
 	_generating[key] = true
 	_queue.append({"key": key, "prompt": prompt, "lane": lane,
-		"size": str(opts.get("size", prof["size"]))})
+		"size": str(opts.get("size", prof["size"])),
+		"negative": str(opts.get("negative", ""))})
 	_sort_queue()
 	art_progress.emit(key, "queued")
 	if not _pumping:
@@ -411,6 +402,20 @@ const HOLD_MAX := 180.0   # ponytail: safety valve — a stuck flag must never f
 const IMAGE_SERVER := "http://127.0.0.1:8189"
 const IMAGE_PATH := "/v1/images/generations"
 const IMAGE_MODEL := "sd-cpp-local"
+## THE ONLY ROUTE TO A NEGATIVE PROMPT. `/v1/images/generations` accepts no
+## `negative_prompt` field at all — read from sdcpp's `routes_openai.cpp` at our
+## pinned commit — while `/sdapi/v1/txt2img` does, and this file already speaks
+## that dialect for img2img. Proven necessary by picture: the chart prompt was
+## rewritten to DESCRIBE ("a plain unlabelled surface, bare of markings and
+## lettering") instead of forbid, which fixed the ground and did nothing about
+## lettering — brasshaven came back with a BRASSHAVEN cartouche, legend blocks
+## down both sides and a decorative frame, all baked into the package the map
+## draws pins on top of.
+const T2I_PATH := "/sdapi/v1/txt2img"
+## A chart is drawn ON. Anything that claims a position or an edge fights the
+## pins and roads the engine puts over it — see the Atlas note about a chart that
+## "draws a position it cannot honour".
+const CHART_NEG := "text, letters, words, title, caption, cartouche, legend, key, label, signature, watermark, border, frame, ornate margin, torn paper edge, rolled scroll"
 
 
 ## One picture, one request. Measured: 8.7 s for 512x512 cold, base64 PNG in the
@@ -421,15 +426,26 @@ const IMAGE_MODEL := "sd-cpp-local"
 ## .safetensors so it cannot switch checkpoints per style. Matting, regions and
 ## character-consistency adapters do not exist here. When any of them become
 ## possible they belong in this payload, as fields.
-func _paint(prompt: String, size: String) -> Dictionary:
+func _paint(prompt: String, size: String, negative := "") -> Dictionary:
 	# The harnesses drive the real game headless and must not reach a GPU.
 	if Api.test_mode:
 		return {}
 	var req := HTTPRequest.new()
 	add_child(req)
-	var err := req.request(IMAGE_SERVER + IMAGE_PATH,
+	# A negative prompt means the A1111-shaped endpoint, because the OpenAI one
+	# has no field for it. Same engine, same checkpoint, different dialect.
+	var wh := size.split("x")
+	var use_neg := negative != "" and wh.size() == 2
+	var path := T2I_PATH if use_neg else IMAGE_PATH
+	var body := {}
+	if use_neg:
+		body = {"prompt": prompt, "negative_prompt": negative,
+			"width": int(wh[0]), "height": int(wh[1])}
+	else:
+		body = {"model": IMAGE_MODEL, "prompt": prompt, "n": 1, "size": size}
+	var err := req.request(IMAGE_SERVER + path,
 		PackedStringArray(["Content-Type: application/json"]), HTTPClient.METHOD_POST,
-		JSON.stringify({"model": IMAGE_MODEL, "prompt": prompt, "n": 1, "size": size}))
+		JSON.stringify(body))
 	if err != OK:
 		req.queue_free()
 		return {}
@@ -438,9 +454,14 @@ func _paint(prompt: String, size: String) -> Dictionary:
 	if res[1] != 200:
 		return {}
 	var out = JSON.parse_string(res[3].get_string_from_utf8())
-	if not (out is Dictionary) or not (out.get("data") is Array) or out["data"].is_empty():
+	if not (out is Dictionary):
 		return {}
-	var b64 := str(out["data"][0].get("b64_json", ""))
+	# The two dialects answer differently: {"images":[b64]} vs {"data":[{b64_json}]}
+	var b64 := ""
+	if out.get("images") is Array and not out["images"].is_empty():
+		b64 = str(out["images"][0])
+	elif out.get("data") is Array and not out["data"].is_empty():
+		b64 = str(out["data"][0].get("b64_json", ""))
 	if b64 == "":
 		return {}
 	return {"bytes": Marshalls.base64_to_raw(b64), "prompt": prompt, "size": size,
@@ -461,7 +482,7 @@ func _pump() -> void:
 			continue
 		_painting = key
 		art_progress.emit(key, "painting")
-		var r := await _paint(str(job["prompt"]), str(job["size"]))
+		var r := await _paint(str(job["prompt"]), str(job["size"]), str(job.get("negative", "")))
 		_painting = ""
 		_generating[key] = false
 		var bytes: PackedByteArray = r.get("bytes", PackedByteArray())
@@ -558,11 +579,20 @@ func item_flavor() -> String:
 ## the World Skin's setting, so a cyberpunk campaign gets a cyber war room, not
 ## a fantasy one (per-world EAS variants — the World Style Guide driving
 ## environment generation). Fantasy keeps its richly-authored ENV_PROMPTS.
+##
+## THE %s MUST REACH THE NOUNS, not just sit in front of them (PY-24). These read
+## "a %s merchant's STALL interior: wares, CURIOS and coin on WORN SHELVES, warm
+## LAMPLIGHT" — a pre-industrial scene with an adjective bolted on, so Neon Spire
+## painted a wooden market stall and put it behind a counter selling Pulse Rifles
+## for credits. Seen in a played session. `env-fireside` already had the right
+## technique and is untouched: it asks for "a source of warmth and light" rather
+## than a hearth, and lets the setting decide what that is. Say the FUNCTION of
+## the room and the materials of the world; never name the furniture.
 const ENV_ROLE := {
 	"env-wartable": "a %s campaign war room seen from a seated player's view: a great table spread with a huge map, markers, plans, and the tools of command, dramatic focused light, dust in the air, ultra detailed interior illustration, no people, no text",
 	"env-forge": "a %s place of making where heroes are equipped and created: the tools and energy of creation glowing against deep shadow, sparks of light, ultra detailed interior illustration, no people, no text",
-	"env-pack": "an opened %s traveler's kit laid out on a surface: pouches, gear, and belongings, warm focused light, ultra detailed still life, slightly top-down view, no people, no text",
-	"env-merchant": "a %s merchant's stall interior: wares, curios, and coin on worn shelves, warm lamplight and deep shadow, ultra detailed interior illustration, no people, no text",
+	"env-pack": "one traveller's belongings from a %s setting, laid out on a surface: their carried gear and containers in that setting's own materials, focused light, ultra detailed still life, slightly top-down view, no people, no text",
+	"env-merchant": "the inside of a %s place where goods are sold, seen from the customer's side: a service counter, stock racked and cased behind it, the light and materials of that setting, deep shadow, ultra detailed interior illustration, no people, no text",
 	"env-journal": "a %s archive where the world's lore is kept and read: an open record on a desk under focused warm light, ultra detailed still life, slightly top-down view, no people, no text",
 	"env-maptable": "a %s cartographer's table seen from above: a chart with route markers and instruments, a light at one corner, ultra detailed still life, no people, no text",
 	"env-fireside": "a warm %s gathering corner: two seats across a small table, a source of warmth and light, rich shadow, ultra detailed interior illustration, no people, no text",
@@ -571,9 +601,101 @@ const ENV_ROLE := {
 
 ## The active skin's family scopes the cache key so each world keeps its own
 ## rooms; fantasy reuses the base key (and its authored art).
+## Bumped when a skinned prompt changes, because the key is role+family and knows
+## nothing about the words: without this, anyone who had already painted an
+## `env-merchant-cyber` would keep the wooden stall for ever (PY-24). Fantasy is
+## deliberately outside it — its keys and its authored art are untouched.
+const ENV_SKIN_REV := 2
+
+
 func env_resolved(base_key: String) -> String:
 	var fam := WorldSkin.family_for_id(GameState.world_id())
-	return base_key if fam == "fantasy" else "%s-%s" % [base_key, fam]
+	return base_key if fam == "fantasy" else "%s-%s-v%d" % [base_key, fam, ENV_SKIN_REV]
+
+
+## The same idea as `env_resolved`, for every OTHER key whose PROMPT carries
+## `world_flavor()` but whose KEY did not carry the world. Those keys collided:
+## `race-tiefling.png` painted in Embervale was served straight back in
+## Neonspire, because `has_art` hit and nothing in the key said which world had
+## commissioned it. Fantasy stays unsuffixed — its files are already on disk and
+## it was here first.
+##
+## Build keys through these, never by hand. The old inline `"item-" + nm` was
+## written out in five places and that is precisely how three of them drifted.
+func fam_key(base: String) -> String:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	return base if fam == "fantasy" else "%s-%s" % [base, fam]
+
+
+## The inverse, for the code that parses a key back into a slug.
+func fam_base(key: String) -> String:
+	for f in WorldSkin.FAMILIES:
+		if str(f) != "fantasy" and key.ends_with("-" + str(f)):
+			return key.trim_suffix("-" + str(f))
+	return key
+
+
+func item_key(nm: String) -> String:
+	return fam_key("item-" + nm.to_lower().replace(" ", "-"))
+
+
+func race_key(nm: String) -> String:
+	return fam_key("race-" + nm.to_lower().replace(" ", "-").validate_filename())
+
+
+## THE PROMPT BELONGS WITH THE KEY. These were briefly written out in both the
+## forge and the warm harness, which is the same hand-copying that let five
+## `"item-" + nm` spellings drift apart. One caller cannot change a prompt
+## without changing what every other caller paints.
+const _CATALOG_POSE := "head and shoulders, neutral heroic pose, detailed face and costume, dramatic rim light, dark background, painted illustration, no text"
+
+
+func race_prompt(nm: String, h: Dictionary) -> String:
+	var traits: Array = h.get("traits", [])
+	var look := str(traits[0]).split("—")[0].strip_edges() if not traits.is_empty() else ""
+	return "character concept portrait of a %s%s, %s, %s" % [
+		nm, (", " + look) if look != "" else "", world_flavor(), _CATALOG_POSE]
+
+
+func class_prompt(nm: String, lore: Dictionary) -> String:
+	var blurb := str(lore.get("blurb", "")).split(".")[0].strip_edges()
+	return "character concept portrait of a %s%s, %s, %s" % [
+		nm, (", " + blurb) if blurb != "" else "", world_flavor(), _CATALOG_POSE]
+
+
+func bg_prompt(nm: String, bg: Dictionary) -> String:
+	var line := str(bg.get("line", "")).split(".")[0].strip_edges()
+	return "character concept portrait of a %s%s, %s, everyday dress of their trade, %s" % [
+		nm, (", " + line) if line != "" else "", world_flavor(), _CATALOG_POSE]
+
+
+func class_key(nm: String) -> String:
+	return fam_key("class-" + nm.to_lower().replace(" ", "-").validate_filename())
+
+
+func bg_key(nm: String) -> String:
+	return fam_key("bg-" + nm.to_lower().replace(" ", "-").validate_filename())
+
+
+## PY-28. A cast portrait's prompt is world-flavored too — `lore_book` appends
+## `world_flavor()`, `game.gd` picks its style word by world id, and a foe's
+## prompt carries `subject_style("char")`, which reads the world's family. So
+## these leak exactly like `race-` did: the first world to paint a name owns that
+## face everywhere. The prefix was spelled by hand at fourteen sites.
+func npc_key(nm: String) -> String:
+	return fam_key("npc-" + nm.to_lower().strip_edges().replace(" ", "-").validate_filename())
+
+
+func foe_key(nm: String) -> String:
+	return fam_key("foe-" + nm.to_lower().strip_edges().replace(" ", "-").validate_filename())
+
+
+func beast_key(slug: String) -> String:
+	return fam_key("beast-" + slug)
+
+
+func map_key(place: String) -> String:
+	return fam_key("map-" + place.to_lower().replace(" ", "-").validate_filename())
 
 
 func env_prompt(base_key: String) -> String:
@@ -697,14 +819,100 @@ func ensure_item_icon(nm: String) -> void:
 	# cartouches from a prompt that forbade both.
 	var shape := Rules.shape_clause(nm)
 	var subject: String = shape if shape != "" else nm
-	ensure("item-" + nm.to_lower().replace(" ", "-"),
+	ensure(item_key(nm),
 		"%s, made of %s. a single %s, alone, floating centered against a flat empty black background. %s, game inventory icon, sharp silhouette, whole object in frame" % [
 			subject, subject_style("item"), nm, item_flavor()], "1024x1024")
 
 
+## A world's key art: THE PACKAGE FIRST, then the cache. PY-15.
+##
+## The fifth appearance of the root cause this file already carries an RCA for
+## (see `roster_art` below). Both world-card builders in `main_menu.gd` asked
+## `Art.texture_for(wid)` — the art CACHE — and nothing else, so a COMPILED
+## world that ships a painted `art/key.png` in its package rendered as the
+## generic diamond regardless. Ask the package first, exactly as `item_tex`
+## already does for icons, and the baked art is found.
+## A world's establishing prompt, DERIVED when no one hand-wrote it. PY-15.
+##
+## WORLD_PROMPTS held three entries for six shipped worlds, and `request()`
+## answered the other three by returning — silently — so saltmarsh, fimbulreach
+## and brasshaven could never have key art at all. A table cannot be the answer
+## anyway: PY-15's own example is Elyrien, a world the PLAYER forged, which no
+## table will ever contain.
+##
+## WHY IT STOPS AT THE TAGLINE, measured rather than chosen. sd-server does not
+## truncate a long prompt — it splits it into 77-token chunks and concatenates
+## the encodings (`tokenizer.cpp` / `conditioner.hpp` at our pinned commit). But
+## SDXL's POOLED embedding, the global vector that carries overall style, is
+## built from CHUNK 0 ONLY. Text past ~75 tokens still reaches cross-attention
+## and never touches the style vector. Counted on the six shipped worlds:
+##
+##   anchor + kind + tagline    29-38 tokens   inside chunk 0, all six
+##   …with lore appended        88-106 tokens  overflows, by a DIFFERENT amount
+##                                             per world
+##
+## So appending lore would give six worlds six different amounts of style-bearing
+## text, which is precisely the cross-world drift this is meant to prevent. The
+## anchor leads for the same reason. Nothing here needs chunk-aware machinery —
+## it needs a prompt that fits in one chunk.
+func world_prompt(wid: String) -> String:
+	if wid == "" or WORLD_PROMPTS.has(wid):
+		return str(WORLD_PROMPTS.get(wid, ""))
+	var w := _world_by_id(wid)
+	if w.is_empty():
+		return ""
+	var fam := WorldSkin.family_for_id(wid)
+	# THE MEDIUM ONLY — the rest of the anchor is prop vocabulary. These strings
+	# were authored to be APPENDED to prompts that already have a subject (an
+	# item, a face) via `world_flavor()`, so they carry material cues: norse ends
+	# "…cold fjord light, RUNE-CARVED WOOD". In a landscape prompt that is an
+	# object the model will happily paint instead of the place — fimbulreach came
+	# back twice as carved rune-posts on a plinth, once with the anchor leading
+	# and again with it trailing, so ORDER WAS NOT THE FIX. Taking the head
+	# clause is what `item_flavor()` already does for the same reason ("medium
+	# only, no trailing weather"); the world's kind and tagline carry the content.
+	var anchor := str(WorldSkin.FAMILIES.get(fam, {}).get("art", "")).split(",")[0].strip_edges()
+	var kind := str(w.get("kind", "")).to_lower().strip_edges()
+	var tag := str(w.get("tagline", "")).strip_edges().trim_suffix(".")
+	if anchor == "" and kind == "":
+		return ""
+	# SUBJECT FIRST, ANCHOR LAST — and both rules that decide this are real.
+	# Leading with the anchor (which the pooled-embedding note above argues for)
+	# put `norse`'s anchor, "…cold fjord light, RUNE-CARVED WOOD", at the front,
+	# and the model did what this file already documents at `ensure_item_icon`:
+	# "a diffusion model paints the first concrete noun it is given". Fimbulreach
+	# came back as a carved rune-signboard standing on ice — a product shot, with
+	# invented glyphs on it — instead of a fjord. saltmarsh and brasshaven were
+	# fine because their anchors are pure atmosphere with no object noun to grab.
+	# At ~35 tokens the anchor is inside chunk 0 wherever it sits, so it reaches
+	# the style vector either way; it only has to stop being the leading noun.
+	# This is also how the three hand-authored prompts read: subject, details,
+	# then "cinematic high fantasy establishing shot" at the end.
+	var bits: Array = ["wide cinematic establishing shot of %s" % (kind if kind != "" else "a strange land")]
+	if tag != "":
+		bits.append(tag)
+	if anchor != "":
+		bits.append(anchor)
+	return ", ".join(bits)
+
+
+func _world_by_id(wid: String) -> Dictionary:
+	for w in Rules.builtin_worlds() + GameState.global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == wid:
+			return w
+	return {}
+
+
+func world_tex(wid: String) -> Texture2D:
+	if wid == "":
+		return null
+	var baked: Texture2D = Compiler.key_art(wid)
+	return baked if baked != null else texture_for(wid)
+
+
 func item_tex(nm: String) -> Texture2D:
 	var baked := Compiler.named_icon(GameState.world_id(), nm)
-	return baked if baked != null else texture_for("item-" + nm.to_lower().replace(" ", "-"))
+	return baked if baked != null else texture_for(item_key(nm))
 
 
 ## The right icon for an inventory item: a compiled catalogue item carries its
@@ -976,10 +1184,10 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 			return fig
 		return round_tex(hero_key())
 	if id.begins_with("cmp"):
-		return round_tex("npc-" + str(m.get("name", "")).to_lower().replace(" ", "-"))
+		return round_tex(npc_key(str(m.get("name", ""))))
 	var entry := Combat.bestiary_for(str(m.get("name", "")))
 	if not entry.is_empty():
-		var key := "beast-" + str(entry.get("slug", ""))
+		var key := beast_key(str(entry.get("slug", "")))
 		# R6 FUN-12/BLANK-29 — the world's beasts were painted at bake time; a
 		# fight was commissioning them again because it only checked the cache.
 		var baked: Texture2D = Compiler.roster_art(GameState.world_id(), key)
@@ -997,23 +1205,24 @@ func combatant_tex(m: Dictionary) -> Texture2D:
 	var nm := str(m.get("name", ""))
 	if nm == "":
 		return null
-	var slug := nm.to_lower().replace(" ", "-").validate_filename()
+	var nkey := npc_key(nm)
+	var fkey := foe_key(nm)
 	# Someone the world already knows, who has turned hostile, keeps their face.
-	var known: Texture2D = Compiler.roster_art(GameState.world_id(), "npc-" + slug)
+	var known: Texture2D = Compiler.roster_art(GameState.world_id(), nkey)
 	if known != null:
 		return known
-	if has_art("npc-" + slug):
-		return round_tex("npc-" + slug)
-	if has_art("foe-" + slug):
-		return round_tex("foe-" + slug)
-	ensure("foe-" + slug,
+	if has_art(nkey):
+		return round_tex(nkey)
+	if has_art(fkey):
+		return round_tex(fkey)
+	ensure(fkey,
 		"character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [nm, subject_style("char")],
 		"1024x1024", true)
 	return null
 
 
 func ensure_battle_map(place: String) -> String:
-	var key := "map-" + place.to_lower().replace(" ", "-").validate_filename()
+	var key := map_key(place)
 	ensure(key, "top-down tabletop RPG battle map of %s, %s style, overhead view, painted terrain, no grid lines, no tokens, no text, muted lighting" % [place, world_flavor()], "1024x1024", true)
 	return key
 
@@ -1044,6 +1253,46 @@ func ensure_battle_map(place: String) -> String:
 ## What it CAN take from the world honestly is its regions, because a region is
 ## an area and an area can be painted. A place is a point, and the points are
 ## ours.
+## PY-26 — WHAT THE GROUND IS MADE OF, per family. The chart asked for "terrain,
+## water, forest, hills and coast … empty wilderness" for EVERY world, which is
+## right for Embervale and painted Neon Spire — a vertical megacity — as a
+## neon-tinted river valley. The Atlas note "paints terrain, water and coast and
+## nothing that claims a position" is about POSITION, not about biome: a city
+## chart can show districts and arterials without claiming where anything is.
+##
+## Said POSITIVELY. The old prompt ended "no buildings, no settlements, no
+## landmarks, no roads, no icons, no text labels, no border" — and this exact
+## prompt is the one `ensure_item_icon`'s RCA is about: "the chart bake proved
+## that at scale, producing a painted city and two misspelled cartouches from a
+## prompt that forbade both". Forbidding does not work; describing does.
+const CHART_GROUND := {
+	"cyber": "dense city blocks and arterial roads, elevated rail, rooftops and light-filled canals, seen from far above",
+	"steam": "packed brick districts, canals and rail yards, chimney rows and viaducts, seen from far above",
+	"everyday": "suburbs and town blocks, parks, roads and river crossings, seen from far above",
+	"space": "station rings and habitat modules, docking spars and service corridors, seen from far above",
+	"pirate": "drowned coastline and shoals, tidal channels, sandbars and reef water",
+	"norse": "fjords and snowfield, black rock coast, pine slopes and frozen inlets",
+	"horror": "black woodland and marsh, dead water, low fog over broken ground",
+	"fantasy": "open country of terrain, water, forest, hills and coast",
+}
+
+
+func chart_ground(world_id2: String) -> String:
+	var fam := WorldSkin.family_for_id(world_id2)
+	return str(CHART_GROUND.get(fam, CHART_GROUND["fantasy"]))
+
+
+## ONE CHART PROMPT, NOT TWO. `world_compiler` carried its own copy for the BAKE
+## and labelled it "the runtime twin of this prompt" — so PY-26 fixed the runtime
+## one and the bake kept painting wilderness for a megacity. A re-bake would have
+## faithfully reproduced the bug. Both callers come here now.
+func chart_prompt(world_id2: String, world_name: String, country := "", style := "") -> String:
+	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
+	var st := style if style != "" else str(flavor.get("world", "high fantasy"))
+	return "illustrated %s of the lands around %s%s, %s style, %s. a plain unlabelled surface, bare of markings and lettering, edge to edge" % [
+		str(flavor.get("map", "chart")), world_name, country, st, chart_ground(world_id2)]
+
+
 func ensure_world_chart(world_id2: String, world_name: String, locations: Array = []) -> String:
 	var key := "chart-" + world_id2.validate_filename()
 	var lands: Array[String] = []
@@ -1061,7 +1310,8 @@ func ensure_world_chart(world_id2: String, world_name: String, locations: Array 
 					kinds[k] = true
 		lands.assign(kinds.keys())
 	var country := (", country of " + ", ".join(lands)) if not lands.is_empty() else ""
-	var flavor: Dictionary = WorldSkin.skin_for_id(world_id2).get("flavor", {})
-	ensure(key, "illustrated %s of the lands around %s%s, %s style, overhead view of open country — terrain, water, forest, hills and coast. empty wilderness, no buildings, no settlements, no landmarks, no roads or routes, no icons, no text labels, no border or frame" % [
-		str(flavor.get("map", "chart")), world_name, country, str(flavor.get("world", "high fantasy"))])
+	# WITH A NEGATIVE. A chart is drawn ON, so a title cartouche or a frame is a
+	# claim the pins have to fight. Positive wording alone did not stop either.
+	request(key, chart_prompt(world_id2, world_name, country),
+		{"size": "1024x1024", "negative": CHART_NEG, "lane": Lane.IDLE})
 	return key

@@ -245,6 +245,10 @@ func compile_seed(world: Dictionary, resume := false) -> Dictionary:
 	var assets: Dictionary = pack["assets"] if keep and pack.get("assets") is Dictionary else {}
 	if assets.is_empty():
 		assets = await _stage_asset_language(world, style)
+	# The family rides WITH the assets, because `_forms()` is called from three
+	# places (parts, catalogue, kits) and the RCA above says they must cross the
+	# same grid or the armoury paints art nothing can reference.
+	assets["family"] = WorldSkin.family_of(world)
 	pack["assets"] = assets
 	stage_done.emit("assets", not assets.is_empty())
 
@@ -429,9 +433,12 @@ func _stage_identity(world_id: String, world: Dictionary, style: Dictionary) -> 
 	# absent scale bar — a chart that draws a position it cannot honour is a
 	# drawn lie. See Art.ensure_world_chart for the runtime twin of this prompt.
 	stage_started.emit("chart", "Drawing the paper…")
+	# THE PROMPT LIVES IN ONE PLACE NOW. This was a hand-copy labelled "the runtime
+	# twin", and PY-26 fixed the twin and not this — so the BAKE, which is what a
+	# compiled world actually draws, kept painting open wilderness for a megacity.
+	# Re-baking would have reproduced the bug faithfully.
 	await _await_art("chart-" + world_id.validate_filename(),
-		"illustrated map of the lands around %s, %s. overhead view of open country — terrain, water, forest, hills and coast. empty wilderness, no buildings, no settlements, no landmarks, no roads or routes, no icons, no text labels, no border or frame" % [
-			name, anchor],
+		Art.chart_prompt(world_id, name, "", anchor),
 		{"profile": "scene", "lane": Art.Lane.IDLE},
 		"art/chart.png")
 	stage_done.emit("chart", true)
@@ -1394,6 +1401,80 @@ const WEAPON_FAMILIES := {
 ## The floor under the seed's own armour group. Only used when the model returned
 ## nothing usable — `everyday` shipped with 2 weapon forms and 33 images because
 ## nothing caught that. A world may be plain; it may not be empty.
+## PY-23 — A HALBERD IS NOT A UNIVERSAL SHAPE.
+##
+## `SLOT_FORMS` and `WEAPON_FAMILIES` carry "a shape prompt only", on the theory
+## that the world's own `prompt_anchor` supplies medium and materials, "so a
+## brine-iron circlet and a chrome one come out world-true". That holds for a
+## circlet, a scarf, a mask, a club — shapes every era has. It does NOT hold for
+## a halberd, a mail coif, mail chausses or a kite shield. No anchor makes those
+## cyberpunk, and Neon Spire shipped all of them while offering no pistol, no
+## rifle, no deck, no drone and no visor at all. Everyday, whose own card reads
+## "no magic, no chrome — just real people", ships halberds too.
+##
+## So a family may REPLACE the entries that are era-locked. Anything it does not
+## name keeps the universal shape, because most of them genuinely are universal:
+## overriding all 89 would be a worse answer than overriding the 15 that are wrong.
+##
+## COST OF MAKING THIS VISIBLE: `_stage_parts` paints an icon per form × material
+## (embervale: 267 owed), so a world whose forms change needs its armoury
+## re-baked — roughly 1.2 h of GPU each. The table is cheap; the pictures are not.
+const FAMILY_FORMS := {
+	"cyber": {
+		"weapons": {
+			"blade": [["monoblade", "a humming monomolecular blade", ["rigid"]],
+				["combat_knife", "a matte combat knife", ["rigid"]],
+				["arc_sabre", "an arc-lit sabre", ["exotic"]]],
+			"axe": [["breaching_axe", "a breaching axe with a powered head", ["rigid"]],
+				["riot_cleaver", "a heavy riot cleaver", ["rigid"]]],
+			"blunt": [["shock_baton", "a collapsible shock baton", ["rigid"]],
+				["riot_maul", "a two-handed riot maul", ["rigid"]],
+				["knuckle_rig", "a powered knuckle rig", ["exotic"]]],
+			"polearm": [["shock_lance", "a long shock lance", ["rigid"]],
+				["breach_pike", "a breaching pike", ["rigid"]]],
+			"ranged": [["holdout_pistol", "a compact holdout pistol", ["rigid"]],
+				["service_pistol", "a service sidearm", ["rigid"]],
+				["smart_rifle", "a long smart rifle", ["rigid"]],
+				["scatter_gun", "a short scatter gun", ["rigid"]]],
+			"thrown": [["frag_disc", "a throwing frag disc", ["rigid"]],
+				["emp_charge", "a palm-sized EMP charge", ["exotic"]]],
+			"exotic_arm": [["deck", "a folding cyberdeck", ["exotic"]],
+				["drone_rig", "a shoulder drone rig", ["exotic"]],
+				["mono_whip", "a coiled mono-whip", ["soft"]]],
+		},
+		# EVERY era-locked slot, not just the obvious two. The first pass overrode
+		# head and neck and the check caught it still shipping mail chausses —
+		# a half-fix that claimed to be whole. Slots whose shapes are universal
+		# (rings, sashes, cloaks) are deliberately left alone.
+		"slots": {
+			"head": [["visor", "a wraparound data visor", ["rigid", "exotic"]],
+				["rebreather", "a half-face rebreather", ["soft"]],
+				["hood", "a deep hood", ["soft"]],
+				["crash_helm", "a armoured crash helm", ["rigid"]]],
+			"neck": [["collar_rig", "a padded interface collar", ["soft"]],
+				["dog_tags", "a strip of ID tags", ["rigid"]],
+				["throat_mic", "a slim throat mic", ["exotic"]]],
+			"hands": [["wraps", "wrapped hand bindings", ["soft"]],
+				["grip_gloves", "a pair of grip gloves", ["soft"]],
+				["armoured_gloves", "reinforced tactical gloves", ["rigid"]],
+				["cyber_digits", "chromed replacement fingers", ["exotic"]]],
+			"legs": [["cargo_pants", "hard-wearing cargo trousers", ["soft"]],
+				["shock_leggings", "padded shock leggings", ["soft"]],
+				["shin_plates", "strapped shin plates", ["rigid"]]],
+			"feet": [["street_boots", "a pair of street boots", ["soft"]],
+				["mag_boots", "magnetic grip boots", ["rigid"]],
+				["blade_runners", "spring-heeled runners", ["exotic"]]],
+			"shield": [["riot_shield", "a clear riot shield", ["rigid"]],
+				["arm_plate", "a strapped forearm plate", ["rigid"]],
+				["field_emitter", "a projected field emitter", ["exotic"]]],
+			"offhand": [["holdout_blade", "a concealed holdout blade", ["rigid"]],
+				["flashlight", "a hooded flashlight", ["rigid"]],
+				["stim_kit", "a bundled stim kit", ["soft", "exotic"]]],
+		},
+	},
+}
+
+
 const FALLBACK_FORMS := {
 	"armor": [["jerkin", "a leather jerkin", ["soft"]], ["padded_coat", "a padded coat", ["soft"]],
 		["mail_shirt", "a mail shirt", ["mail"]], ["scale_vest", "a scaled vest", ["mail"]],
@@ -1419,12 +1500,20 @@ func _forms(assets: Dictionary) -> Array:
 			for pair in FALLBACK_FORMS["armor"]:
 				out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
 					"prompt": str(pair[1]), "kind": "armor", "classes": pair[2]})
+	# PY-23: a family may replace the era-locked shapes; whatever it does not name
+	# keeps the universal one.
+	var famk := str(assets.get("family", "fantasy"))
+	var over: Dictionary = FAMILY_FORMS.get(famk, {})
+	var w_over: Dictionary = over.get("weapons", {}) if over.get("weapons") is Dictionary else {}
+	var s_over: Dictionary = over.get("slots", {}) if over.get("slots") is Dictionary else {}
 	for fam in WEAPON_FAMILIES:
-		for pair in WEAPON_FAMILIES[fam]:
+		var wlist: Array = w_over[fam] if w_over.has(fam) else WEAPON_FAMILIES[fam]
+		for pair in wlist:
 			out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
 				"prompt": str(pair[1]), "kind": "weapon", "family": str(fam), "classes": pair[2]})
 	for slot in SLOT_FORMS:
-		for pair in SLOT_FORMS[slot]:
+		var slist: Array = s_over[slot] if s_over.has(slot) else SLOT_FORMS[slot]
+		for pair in slist:
 			out.append({"id": str(pair[0]), "name": str(pair[0]).capitalize().replace("_", " "),
 				"prompt": str(pair[1]), "kind": str(slot),
 				"classes": (pair[2] if pair.size() > 2 else [])})
@@ -1713,13 +1802,13 @@ func roster_art(world_id: String, key: String) -> Texture2D:
 	var slug := ""
 	if key.begins_with("beast-"):
 		sub = "creatures"
-		slug = key.trim_prefix("beast-")
+		slug = Art.fam_base(key.trim_prefix("beast-"))
 	elif key.begins_with("creature-"):
 		sub = "creatures"
 		slug = key.trim_prefix("creature-")
 	elif key.begins_with("npc-"):
 		sub = "npc"
-		slug = key.trim_prefix("npc-")
+		slug = Art.fam_base(key.trim_prefix("npc-"))
 	if sub == "" or slug == "":
 		return null
 	var t := _load_tex("%s/art/%s/%s.png" % [world_dir(world_id), sub, slug], 320)
@@ -1893,10 +1982,53 @@ func kit_for(world_id: String, archetype: String) -> Array:
 	if not (ids is Array):
 		return []
 	var by_id := {}
+	var by_form := {}
 	for it in catalogue_for(world_id):
-		by_id[str(it.get("id", ""))] = it
+		var iid := str(it.get("id", ""))
+		by_id[iid] = it
+		var seg := iid.split(".")
+		if seg.size() >= 3:
+			if not by_form.has(seg[0]):
+				by_form[seg[0]] = []
+			by_form[seg[0]].append(it)
 	var out: Array = []
 	for id in ids:
-		if by_id.has(str(id)):
-			out.append(by_id[str(id)])
+		var want := str(id)
+		if by_id.has(want):
+			out.append(by_id[want])
+			continue
+		var sub = _kit_substitute(by_form, want)
+		if sub != null:
+			out.append(sub)
 	return out
+
+
+## A kit id is `form.material.rarity`, and the material the compiler wrote is not
+## always one THIS world actually forged: neonspire's caster kit asks for
+## `focus_rod.brine_iron.common`, and brine iron is Saltmarsh's material. The id
+## missed, `kit_for` returned an empty array, and `character_forge` fell back to
+## its hardcoded FANTASY kit — which is how a Warlock in a neon city was handed a
+## Quarterstaff, Traveler's Leathers and a Healing Potion.
+##
+## Measured before this existed: **66 kit ids across five worlds did not resolve**
+## (neonspire, everyday and fimbulreach 16 of 20 each; embervale and brasshaven 9
+## of 20), and EVERY ONE of the 66 had its form present under some other material.
+##
+## So match on the FORM — which is the part the kit is really specifying — and let
+## the world supply the material. That is more correct than the literal id, not
+## less: the whole point of a per-world catalogue is that the world picks what
+## things are made of. Rarity is honoured first so a starting kit cannot promote
+## itself, and the plainest tier wins when the asked-for one is absent.
+func _kit_substitute(by_form: Dictionary, want: String):
+	var seg := want.split(".")
+	if seg.size() < 3 or not by_form.has(seg[0]):
+		return null
+	var pool: Array = by_form[seg[0]]
+	for it in pool:
+		if str(it.get("id", "")).ends_with("." + seg[2]):
+			return it
+	for r in ["common", "uncommon", "rare", "epic", "legendary"]:
+		for it in pool:
+			if str(it.get("id", "")).ends_with("." + r):
+				return it
+	return pool[0] if not pool.is_empty() else null

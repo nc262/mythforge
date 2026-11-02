@@ -88,7 +88,15 @@ func _ready() -> void:
 	if ResourceLoader.exists(body):
 		doll.build(load(body))   # build() stands the figure itself
 		doll.apply_build(Rules.hero_body(GameState.sheet()))
-		doll.apply_look(GameState.sheet().get("look", {}) if GameState.sheet().get("look") is Dictionary else {})
+		# The heritage first, then anything the hero chose on top. `sheet["look"]`
+		# is a STRING here — the appearance prose the image model reads — so the
+		# `is Dictionary` guard below was falling through to {} on every hero
+		# ever built, and the rig's horns and tail were never asked for (PY-21).
+		var dl := Rules.heritage_look(str(GameState.sheet().get("race", "")))
+		var chosen = GameState.sheet().get("look")
+		if chosen is Dictionary:
+			dl.merge(chosen, true)
+		doll.apply_look(dl)
 		# THIS page is the one that breathes. The board token and the painted
 		# hero are both one captured frame, and the difference is deliberate:
 		# here the player is looking straight at their character, and a figure

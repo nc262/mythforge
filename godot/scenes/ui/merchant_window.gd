@@ -48,7 +48,10 @@ func _ready() -> void:
 	for l in GameState.places():
 		if l is Dictionary and str(l.get("name", "")) == here and str(l.get("shop", "")) != "":
 			here_shop = str(l.get("shop", ""))
-	title = here if here_shop != "" else "The trading post"
+	# PY-25 - the counter's nouns follow the world, as its currency already did.
+	# This read "The trading post" beside a purse of credits in a neon city.
+	var _wid := GameState.world_id()
+	title = here if here_shop != "" else WorldSkin.shop_word(_wid, "post")
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 8)
 	# R6 BUG-07/08/09 — the shared panel contract: the grey chrome band, the
@@ -68,7 +71,7 @@ func _ready() -> void:
 	_purse_row.add_theme_constant_override("separation", Ui.SPACE["xs"])
 	var purse_pre := Label.new()
 	purse_pre.theme_type_variation = "HintLabel"
-	purse_pre.text = "Your purse:"
+	purse_pre.text = "Your %s:" % WorldSkin.shop_word(_wid, "purse")
 	_purse_amount = Label.new()
 	_purse_amount.add_theme_color_override("font_color", Ui.c("gold"))
 	var purse_cur := Label.new()
@@ -89,7 +92,7 @@ func _ready() -> void:
 	var left := VBoxContainer.new()
 	var lt := Label.new()
 	lt.theme_type_variation = "HeaderLabel"
-	lt.text = "The keeper's wares"
+	lt.text = WorldSkin.shop_word(_wid, "wares")
 	var buy := Button.new()
 	buy.theme_type_variation = "AccentButton"  # buying is THE act at a counter
 	buy.text = "Buy ›"
@@ -120,7 +123,7 @@ func _ready() -> void:
 	# The parenthetical is for a rules lawyer: it names the skill and the target
 	# number before the player has decided to try. The die icon already promises a
 	# roll; the outcome will say what it was.
-	haggle.text = "Haggle with the keeper"
+	haggle.text = "Haggle with the %s" % WorldSkin.shop_word(_wid, "keeper")
 	haggle.pressed.connect(func():
 		if markup != 1.0:
 			return
@@ -141,11 +144,7 @@ func _ready() -> void:
 	# its painted face, the buy price, and why the sell price reads low.
 	_detail = HBoxContainer.new()
 	_detail.add_theme_constant_override("separation", Ui.SPACE["m"])
-	# PL-7 — laid out from the start, only transparent. Toggling `visible` let the
-	# autowrapped label be measured at zero width for a frame: the dialog grew to
-	# 1002 px for 571 px of content, never shrank, and pushed "Leave the counter"
-	# off the screen. A Window grows to its content's minimum and never shrinks.
-	_detail.modulate.a = 0.0
+	_detail.visible = false
 	_detail_art = MythPlate.new(Vector2(72, 72), 0.0)
 	_detail.add_child(_detail_art)
 	_detail_txt = Label.new()
@@ -180,8 +179,9 @@ func _ready() -> void:
 
 func _refresh() -> void:
 	_purse_amount.text = "%d" % int(GameState.sheet().get("gold", 0))
-	_purse.text = "   ·   the keeper likes you (a fifth off)" if markup < 1.0 \
-		else ("   ·   the keeper is annoyed (prices nudge up)" if markup > 1.0 else "")
+	var kw := WorldSkin.shop_word(GameState.world_id(), "keeper")
+	_purse.text = ("   ·   the %s likes you (a fifth off)" % kw) if markup < 1.0 \
+		else (("   ·   the %s is annoyed (prices nudge up)" % kw) if markup > 1.0 else "")
 	_wares.clear()
 	_wares_meta.clear()
 	var stock: Dictionary = Rules.vendor_stock()  # world-skinned goods, not daggers-everywhere
@@ -214,7 +214,7 @@ func _refresh() -> void:
 
 
 func _show_detail(item_name: String, line: String) -> void:
-	_detail.modulate.a = 1.0
+	_detail.visible = true
 	_detail_art.set_texture(Art.item_tex(item_name))
 	_detail_txt.text = line
 

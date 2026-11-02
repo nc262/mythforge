@@ -55,6 +55,9 @@ Sent in every DM envelope. The GM proposes; the engine disposes.
 [[combat-start foes="goblin x3, boss"]]  [[combat-end]]
 [[scene place="the chapel crypt"]]    [[companion name="Ser Aldric"]]
 [[place name="Saltwick" kind=settlement scope=local region="The Reach"]]
+[[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"]]
+[[trouble place="Gallows Quay" what="press-gangs are taking men" clock=6]]
+[[clock place="Gallows Quay" tick=1]]
 [[region name="The Ashen Marches"]]   [[lore cat=Places title="…" note="…"]]
 [[road from="Saltwick" to="The Weir" state=blocked name="the Weir Road"]]
 ```
@@ -62,6 +65,74 @@ Sent in every DM envelope. The GM proposes; the engine disposes.
 One tag per effect, on its own line, and never a dice result, HP total or
 success/failure in prose. `Tags.detect_check` and `detect_combat_start` catch
 turns where the model narrates a roll instead of calling for one.
+
+`[[site]]` is the tier BELOW `[[place]]` — a building inside a town, attached to
+one of the quarters its plan already generated. `kind` is a closed enum
+(`GameState.SITE_KINDS`), so the GM never invents a kind the map cannot draw;
+`ward` must exist in that settlement's plan, and the refusal names the legal
+range ("Gallows Quay has wards 0-6"). It does NOT carry a level gate: scope is
+how the tale's reach is earned, and a shop inside a town the party is standing
+in is not that. The GM never gives coordinates — it names a ward and the engine
+stands the site on a lot the plan already produced.
+
+`[[trouble]]` and `[[clock]]` are what make a town ALIVE rather than described:
+segmented state that persists across visits and advances whether or not the
+player is there. The engine owns the clock (4-8 segments, how it fills, when it
+runs out); the GM owns what the trouble IS, and narrates the consequence when it
+comes to a head. A second, different trouble in a town that already has one is
+refused — two live calamities in one village is the GM losing track, not the
+world getting worse.
+
+**Who hears of a trouble is the engine's call, by its `reach`** (`GameState.TROUBLE_REACH`).
+`town` is announced the moment the player is there; `region` anywhere in that
+region; `secret` never, until the GM writes `[[uncover place="..."]]` or the clock
+comes to a head where the player stands. `notice_troubles()` runs whenever the
+party's place changes and whenever a trouble starts. Both maps read
+`trouble_known`, never `trouble_at`, so a secret is not on the Atlas card; the
+narrator is told the secret with an instruction to leave traces rather than say
+it. A trouble ENDS: pushed back to nothing it is erased, and a full clock stays
+on the record as fallout but no longer blocks the town's next trouble.
+
+**A known trouble is a quest, and the engine runs it.** The moment the player
+hears of one it is filed on the log (`trouble` key, so `Chronicle.merge_quests`
+keeps the model's rewrite off it). `thread=` ties it to an active quest or the
+campaign if the GM names one that exists; otherwise it is "a side matter".
+`[[clue]]` records a lead on the trouble and its quest, and the third one exposes
+a secret (`CLUES_TO_UNCOVER`). `[[check ... trouble=1]]` moves the clock back on
+a success and forward on a failure. A day creeps every clock nobody WORKED that
+day (a clue or such a roll) — standing in town no longer counts. When a clock
+fills, the engine applies the `fallout=` the GM chose (`TROUBLE_FALLOUT`): road
+(the ways to its three nearest neighbours turn dangerous), trade (the counter will
+not open), prices (x1.5 at the counter), law (every quarter drops a step), and the
+quest is marked failed.
+
+**The tags are not what feeds a trouble in real play.** Measured, the narrator
+wrote no `[[clue]]` and no `trouble=1` while investigating a secret. So after every
+turn in a town with a running trouble, `Chronicle.read_trouble` makes one schema
+call over that exchange: `lead` (recorded as a clue) and `working_it` (the day
+counts as worked, and the next roll there counts against the clock). The tags
+still work when the model writes them.
+
+**Scale comes from `kind`.** `settlement` is a town (quarters, trades, wall,
+fields); `tavern`, `shop`, `home` are ONE building, drawn as its rooms, and their
+room words are per family (`WorldSkin.rooms_of`); everything else is a site to
+explore. `[[place ... size=hamlet|village|town|city]]` sets what a settlement is,
+and `add_site` refuses a trade the size cannot carry, naming the size it would
+take. The Worldsmith must put at least one settlement in a forged world.
+
+**AT-19 — the player can ask a town for what is not on its map.** The box on the
+town sheet sends the question to `Chronicle.ask_after`, which returns a
+schema-constrained decision (here / kind / name / ward / lore / answer);
+`GameState.answer_ask` validates it exactly as `[[site]]` is validated and puts
+it on the plan. A refusal is spoken to the player as the answer.
+
+**The narrator is told the town it stands in.** When `here` is a settled place,
+the SCENE line carries `LocalMap.brief()`: the quarters, numbered (that number is
+`ward=`), each quarter's wealth and law, every trade and GM site already there,
+where inside the town the party is, and the trouble clock. Without it the map drew
+an Inn by the gate and the GM invented a different one, and `ward=` asked for a
+number the model could not know. Clicking a building on the town map asks for a
+turn about arriving there, the same way clicking a place on the chart does.
 
 **The geography tags are the mini-god's real power, and the engine's veto is
 what keeps them a power rather than a mess.** `[[place]]` is refused beyond the

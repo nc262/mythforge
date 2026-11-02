@@ -129,7 +129,17 @@ if ($imagePath -eq 'none') {
   Step 'Installing the image engine (stable-diffusion.cpp, Vulkan)'
   $sdcpp = Join-Path $sib 'stable-diffusion.cpp'
   python (Join-Path $PSScriptRoot 'fetch_sdcpp.py') --dest $sdcpp
-  if (Test-Path (Join-Path $sdcpp 'sd-server.exe')) { Ok 'Image engine installed (~106 MB)' }
+  if (Test-Path (Join-Path $sdcpp 'sd-server.exe')) {
+    Ok 'Image engine installed (~106 MB)'
+    # WRITE DOWN WHERE IT WENT. The engine deliberately lands OUTSIDE {app} so a
+    # player who already keeps 7 GB checkpoints is not made to keep them twice —
+    # but that means the path is a convention, and every consumer was left to
+    # re-derive it by walking parent directories and hoping. The installer is the
+    # one process that KNOWS, so it says so once, here, and the launcher reads it
+    # instead of guessing. Also survives the player choosing a custom install dir,
+    # which no amount of walking upwards can.
+    Set-Content -Path (Join-Path $root 'image-engine.path') -Value $sdcpp -Encoding utf8
+  }
   else { Warn 'Image engine did not install — the game still plays with pre-baked art.' }
 
   $ckptDir = Join-Path $sdcpp 'models'

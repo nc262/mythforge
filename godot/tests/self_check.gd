@@ -16,6 +16,30 @@ func _ready() -> void:
 	assert(Rules.check_mod(sheet, {"ability": "DEX", "skill": "Stealth"}) == 6)  # 3 + prof
 	assert(Rules.check_mod(sheet, {"ability": "DEX", "skill": "save"}) == 6)     # save prof
 	assert(Rules.check_mod(sheet, {"ability": "WIS", "skill": "Insight"}) == 2)  # untrained
+	# PY-3 - THE SHEET OWNS WHICH ABILITY A SKILL USES, not the narrator. Seen in
+	# play: the GM wrote Insight against INT, the bar read d20 +1 and resolved
+	# 16 +1 = 17, while the player's own Skills tab said "Insight (WIS) +0" three
+	# clicks away. SKILL2AB had known the right answer since it was written and
+	# only is_proficient ever asked it.
+	#
+	# The wrong ability is passed DELIBERATELY here, because that is what the
+	# defect looked like - a check that only ever passed the right one would go
+	# green with the bug still in.
+	assert(Rules.check_ability({"ability": "INT", "skill": "Insight"}) == "WIS",
+		"check ability: a named skill overrules the ability the narrator asked for")
+	assert(Rules.check_mod(sheet, {"ability": "INT", "skill": "Insight"})
+		== Rules.check_mod(sheet, {"ability": "WIS", "skill": "Insight"}),
+		"check ability: ...and the modifier is the same either way")
+	assert(Rules.check_label({"ability": "INT", "skill": "Insight"}).begins_with("Wisdom"),
+		"check ability: ...and the label does not still say Intelligence")
+	# A bare ability check and a saving throw have no skill to appeal to, so the
+	# tag stays the only source and must be honoured.
+	assert(Rules.check_ability({"ability": "STR"}) == "STR",
+		"check ability: a bare ability check keeps the ability it was given")
+	assert(Rules.check_ability({"ability": "CHA", "skill": "save"}) == "CHA",
+		"check ability: a saving throw keeps its ability")
+	assert(Rules.check_ability({"ability": "INT", "skill": "Hotwiring"}) == "INT",
+		"check ability: a skill the engine does not know keeps the narrator's ability")
 	assert(Rules.passive_perception(sheet) == 15)  # 10 + 2 + prof 3
 	assert(Rules.attack_mod(sheet, {}) == 6)  # max(STR,DEX) + prof; {} = no gear, said out loud
 
@@ -39,6 +63,133 @@ func _ready() -> void:
 	assert(p["tags"].size() == 1)
 	assert(not str(p["clean"]).contains("[["))
 	var c := Tags.check_from_tags(p["tags"])
+
+	# PY-2 - TAG DEBRIS THE PLAYER ACTUALLY SAW. A played session put raw markup
+	# in the chat twice: `dc=15]` alone on a line, then all of
+	# `[check ability=WIS insight dc=15]`. The model had used SINGLE brackets, so
+	# the parser correctly declined to act on it and then showed it verbatim - the
+	# player reads markup AND loses the roll. Three shapes escaped the old
+	# scrubber; these are the exact strings, not paraphrases of them.
+	for debris in [
+			"The console hums.
+[check ability=WIS insight
+dc=15]",
+			"Vex leans in with interest.
+
+dc=15]",
+			"Echo looks up. [check ability=WIS insight dc=15]",
+			"You steady your hand. [check ability=WIS skill=Insight adv=1 reason=\"reading the ledger\" dc=15]",
+			"[Active Perception]"]:
+		var scrubbed := str(Tags.parse(str(debris))["clean"])
+		assert(not scrubbed.contains("dc=15]") and not scrubbed.contains("[check")
+			and not scrubbed.contains("[Active"),
+			"tag debris: %s survived into the bubble" % scrubbed)
+	# ...and PROSE MUST SURVIVE. A scrubber that eats a bracketed aside is a worse
+	# bug than the one it fixes, and the blank-line guard is what protects it.
+	assert(Tags.parse("He paused [he always did] and looked up.")["clean"].contains("[he always did]"),
+		"tag debris: a bracketed aside in prose was eaten")
+	assert(Tags.parse("She left.
+
+[I never saw her again.]
+
+The rain kept on.")["clean"].contains("[I never saw her again.]"),
+		"tag debris: an aside across paragraphs was eaten")
+	assert(Tags.parse("the sign read [VEX'S] in faded letters")["clean"].contains("[VEX'S]"),
+		"tag debris: a bracketed sign in prose was eaten")
+	# The real protocol still parses, including across a newline.
+	assert(Tags.parse("[[check ability=DEX skill=Stealth dc=13]]")["tags"].size() == 1,
+		"tag debris: the widened scrubber must not stop a real tag parsing")
+
+	# PY-1 - THE NARRATOR IS NOT TOLD THE NUMBER. Seen in play: the engine handed
+	# the GM "bought a Shock Blade (25 credits)" and asked it to colour the
+	# exchange, and it wrote "your purse is 30 credits lighter" - a figure nothing
+	# in the engine ever produced, in a game whose contract is that the table owns
+	# every number. The player keeps the exact amount; only the model's copy loses
+	# it, and only parentheticals carrying a digit.
+	assert(Composer.without_amounts("bought a Shock Blade (25 credits)") == "bought a Shock Blade",
+		"amounts: the price still reaches the narrator")
+	assert(Composer.without_amounts("sold a Mono-Knife (3 credits); haggled (won a fifth off)")
+		== "sold a Mono-Knife; haggled (won a fifth off)",
+		"amounts: a parenthetical WITHOUT a number is flavour and must survive")
+	assert(not Composer.without_amounts("At the trader: bought a Shock Blade (25 credits).").contains("25"),
+		"amounts: a digit survived into the narrator's copy")
+	# The play screen must actually USE it - the helper existing proves nothing.
+	var shop_src := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var told_at := shop_src.find("Briefly color the exchange")
+	assert(told_at >= 0, "amounts: the counter-left prompt is gone")
+	assert(shop_src.substr(maxi(0, told_at - 400), 800).contains("without_amounts"),
+		"amounts: the counter-left prompt hands the narrator the raw summary again")
+
+	# PY-4 - THE ENGINE MUST NOT TELL THE NARRATOR THE WRONG WORD. The sheet
+	# summary hardcoded "Purse: %d gold" for every world, so Neon Spire handed the
+	# GM "Purse: 95 gold" and it duly charged the player "50 gold pieces" in a city
+	# whose HUD, merchant and starting kit all say credits. The model was
+	# repeating us, not inventing. Asserted per world, because a summary that said
+	# "credits" everywhere would be the same bug pointing the other way.
+	var world_was = GameState.character.get("world_id", "")
+	for pair in [["embervale", "gold"], ["neonspire", "credits"]]:
+		GameState.character["world_id"] = str(pair[0])
+		assert(GameState.currency() == str(pair[1]),
+			"currency: %s should trade in %s" % [pair[0], pair[1]])
+		var told := Composer.sheet_summary(GameState.sheet())
+		assert(told.contains("Purse: %d %s" % [int(GameState.sheet().get("gold", 0)), str(pair[1])]),
+			"currency: the narrator is not told %s calls its money %s" % [pair[0], pair[1]])
+	GameState.character["world_id"] = "neonspire"
+	assert(not Composer.sheet_summary(GameState.sheet()).contains(" gold."),
+		"currency: the sheet still says gold in a credits world")
+
+	# PY-6 - THE BANNER FOLLOWS THE PURSE. Buying a 25-credit blade left the
+	# merchant reading "Your purse: 4 credits" while the chip row above it still
+	# said 29 - two truths on one screen for as long as the player kept shopping.
+	# Announced from add_gold, which every delta goes through, so a [[gold]] tag
+	# and a sale are covered too and not just the case that was noticed.
+	var purse_fired := [0, -1]
+	GameState.purse_changed.connect(func(t): purse_fired[0] += 1; purse_fired[1] = t)
+	# A known purse first: add_gold clamps at zero, so a delta bigger than the
+	# balance would make the arithmetic here wrong rather than the code.
+	var s_purse := GameState.sheet()
+	s_purse["gold"] = 40
+	GameState.set_sheet(s_purse)
+	GameState.add_gold(-25)
+	assert(purse_fired[0] == 1, "purse: add_gold did not announce the change")
+	assert(purse_fired[1] == 15, "purse: announced %d, the sheet says 15" % purse_fired[1])
+	assert(int(GameState.sheet().get("gold", 0)) == 15, "purse: the sheet itself did not move")
+	GameState.add_gold(5)
+	assert(purse_fired[0] == 2 and purse_fired[1] == 20, "purse: a credit does not announce")
+	# ...and the play screen must actually listen, or the signal is decoration.
+	var chips_src := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(chips_src.contains("GameState.purse_changed.connect("),
+		"purse: the play screen does not listen for a purse change")
+	# PY-9 - THE NATURE PAGE MUST SHOW THE ORDER THE SHEET WILL USE. It displayed
+	# the sorted roll against the canonical STR..CHA order while new_hero_sheet
+	# assigned by class priority, so a Warlock read "15 STR / 9 CHA" on the one
+	# page whose promise is "the best land where your class wants them" - and a
+	# player rerolls off that screen. The numbers committed were always right; the
+	# screen was the lie, which is why this asserts the two AGREE rather than
+	# asserting either alone.
+	for cls_ab in [["Warlock", "CHA"], ["Wizard", "INT"], ["Cleric", "WIS"], ["Fighter", "STR"], ["Rogue", "DEX"]]:
+		var prio_now := Rules.ability_priority(str(cls_ab[0]))
+		assert(str(prio_now[0]) == str(cls_ab[1]),
+			"nature: a %s wants its best score in %s, not %s" % [cls_ab[0], cls_ab[1], prio_now[0]])
+		var built := GameState.new_hero_sheet("Probe", "Human", str(cls_ab[0]), [15, 14, 13, 12, 10, 8] as Array[int])
+		var abil: Dictionary = built.get("abilities", {})
+		var best := ""
+		for ab_k in abil:
+			if best == "" or int(abil[ab_k]) > int(abil[best]):
+				best = str(ab_k)
+		assert(best == str(cls_ab[1]),
+			"nature: a %s committed its best score to %s, but the page shows %s" % [cls_ab[0], best, cls_ab[1]])
+	# The forge must READ that same order rather than keeping its own copy.
+	var forge_src := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
+	assert(forge_src.contains("Rules.ability_priority(str(draft[\"cls\"]))"),
+		"nature: the forge displays the roll against its own order again")
+	# PY-10 - the standard array can no longer be built into an illegal state. The
+	# refusal on Strike is real and stays; the pickers swap so it is unreachable.
+	assert(forge_src.contains("SWAP, do not duplicate"),
+		"nature: the standard-array pickers no longer swap")
+	assert(forge_src.contains("must be used exactly once"),
+		"nature: the array refusal was removed — the swap is a convenience, not the guard")
+	GameState.character["world_id"] = world_was
 	assert(c["ability"] == "DEX" and c["skill"] == "Stealth" and int(c["dc"]) == 13 and c["adv"] == "adv")
 	c = Tags.check_from_tags(Tags.parse('The blade bites. [[damage roll=2d6+3]]')["tags"])
 	assert(c["type"] == "damage" and c["n"] == 2 and c["sides"] == 6 and c["bonus"] == 3)
@@ -343,7 +494,41 @@ func _ready() -> void:
 	assert(item_f != "")
 	assert(not item_f.contains(","))          # medium only, no trailing weather
 	assert(flav_full.begins_with(item_f))     # and it is genuinely the head of it
+	# …and every key whose PROMPT carries that flavour must carry the world in
+	# the KEY too, or one world is served another's paintings. `race-tiefling.png`
+	# sat in the cache with no family on it while `_race_prompt` fed it
+	# `world_flavor()` — so a Tiefling painted in Embervale was handed straight
+	# back in Neonspire. Fantasy stays unsuffixed on purpose; every other family
+	# must differ from it AND from each other.
+	var fam_keys := {}
+	for probe in [["embervale", "fantasy"], ["neonspire", "cyber"], ["brasshaven", "steam"]]:
+		GameState.character = {"id": "dm-key-probe", "world_id": str(probe[0])}
+		for k in [Art.race_key("Tiefling"), Art.item_key("Healing Potion"),
+				Art.beast_key("ogre"), Art.map_key("The Ember & Oak"),
+				Art.npc_key("Cael Mercer"), Art.foe_key("Samuel Jenkins"),
+				Art.class_key("Wizard"), Art.bg_key("Acolyte")]:
+			assert(not fam_keys.has(k),
+				"art key '%s' is reused across worlds — its prompt is world-flavored, so the first world to paint it wins" % k)
+			fam_keys[k] = true
+	GameState.character = {"id": "dm-key-probe", "world_id": "embervale"}
+	assert(Art.race_key("Tiefling") == "race-tiefling")        # fantasy: unsuffixed, as shipped
+	assert(Art.fam_base(Art.beast_key("ogre")) == "beast-ogre")
+	GameState.character = {"id": "dm-key-probe", "world_id": "neonspire"}
+	assert(Art.fam_base(Art.beast_key("ogre")) == "beast-ogre")  # the slug survives the round trip
 	GameState.character = keep_w
+	# …and every SHIPPED world must resolve to its own family without anyone
+	# having entered it first. A world absent from BUILTIN falls through to the
+	# "fantasy" default, and because art keys are family-scoped it then eats
+	# Embervale's paintings whole. saltmarsh shipped that way and it took a
+	# real warm run to notice: 0 pictures painted, 0.0 minutes, everything it
+	# asked for already on disk.
+	var shipped: Array = Rules.worlds_json.get("worlds", [])
+	for w in shipped:
+		var wid := str(w.get("id", ""))
+		if wid == "":
+			continue
+		assert(WorldSkin.BUILTIN.has(wid),
+			"shipped world '%s' is not in WorldSkin.BUILTIN — it resolves to the fantasy default and will be served Embervale's art" % wid)
 
 	# Phase 3: combat helpers
 	assert(Combat.weapon_dmg_type("Warhammer") == "bludgeoning")
@@ -456,6 +641,31 @@ func _ready() -> void:
 				"%s's %s ground is a real role" % [wid, slot])
 		assert(int(Combat.ROLES[str(ground["open"])]["move"]) == 1,
 			"%s's open ground is walkable at full speed" % wid)
+	# An object tile is prompted onto "a plain flat dark grey background", so a
+	# boulder arrives as a grey SQUARE. `board_paint._key_background` lifts that
+	# field out at composite time. Nothing proved it — TechnicalDebt still carried
+	# the row as open, which is how a paid debt starts looking like an open one.
+	#
+	# ASSERT BOTH DIRECTIONS. "an object tile has transparency" alone passes for a
+	# keyer that has gone mad and erased the boulder too, so the ground roles are
+	# checked to be FULLY opaque in the same breath. Measured on fimbulreach:
+	# boulder 68.5 %, crates 78.3 %, grass and dirt 0.0 %.
+	var bp := load("res://scenes/combat/board_paint.gd")
+	for probe in [["boulder", true], ["crates", true], ["grass", false], ["dirt", false]]:
+		var pi: Image = bp._tile("fimbulreach", str(probe[0]), 1)
+		assert(pi != null, "board paint: no '%s' tile for fimbulreach — is the world package unpacked?" % probe[0])
+		var clear := 0
+		for py in pi.get_height():
+			for px in pi.get_width():
+				if pi.get_pixelv(Vector2i(px, py)).a < 0.02:
+					clear += 1
+		var pct := 100.0 * float(clear) / float(pi.get_width() * pi.get_height())
+		if bool(probe[1]):
+			assert(pct > 25.0, "board paint: '%s' keeps its studio background (%.1f%% clear) — it will draw as a grey square" % [probe[0], pct])
+			assert(pct < 95.0, "board paint: '%s' was keyed away almost entirely (%.1f%% clear) — the object is gone, not its background" % [probe[0], pct])
+		else:
+			assert(pct < 2.0, "board paint: ground role '%s' is %.1f%% transparent — the keyer is eating material tiles" % [probe[0], pct])
+	print("  board paint: object tiles keyed off their studio field, ground tiles left opaque")
 	var first_lay: Dictionary = Combat.data().get("cells", {}).duplicate()
 	Combat.lay_battlefield("shore", "fimbulreach", 7)
 	assert(Combat.data().get("cells", {}) == first_lay, "the same seed lays the same field")
@@ -775,6 +985,373 @@ func _ready() -> void:
 	var force_at := after_forge.find('Mode.enter("Exploration")')
 	assert(guard_at >= 0 and force_at >= 0 and guard_at < force_at,
 		"the resume forces Exploration without asking whether a saved fight is still on")
+	# PY-22 — EVERY SHIPPED WORLD'S KIT MUST RESOLVE. A kit id that misses is not
+	# a cosmetic miss: `kit_for` returns an empty array, `character_forge` falls
+	# back to its hardcoded FANTASY kit, and a Warlock in a neon city is handed a
+	# Quarterstaff, Traveler's Leathers and a Healing Potion. Found by playing the
+	# game, not by any harness. Measured at the time: 66 ids across five worlds did
+	# not resolve — neonspire, everyday and fimbulreach 16 of 20 each — and the
+	# fallback was SILENT, which is why it survived to a played session.
+	#
+	# A world shipping no kits.json is skipped; a world that has one must resolve
+	# every id in it.
+	for wid in ["embervale", "neonspire", "brasshaven", "everyday", "fimbulreach"]:
+		var kp := "%s/data/kits.json" % Compiler.world_dir(wid)
+		if not FileAccess.file_exists(kp):
+			continue
+		var kdata = JSON.parse_string(FileAccess.get_file_as_string(kp))
+		if not (kdata is Dictionary):
+			continue
+		for arch in kdata:
+			var want_n := int((kdata[arch].get("items", []) as Array).size())
+			var got_n := int(Compiler.kit_for(wid, str(arch)).size())
+			assert(got_n == want_n,
+				"world kit: %s/%s resolved %d of %d items — the forge falls back to the generic FANTASY kit" % [wid, arch, got_n, want_n])
+	print("  world kits: every archetype in every shipped world resolves to real catalogue items")
+
+	# PL-9, and structural for the same reason: the narrator must be woken BEHIND
+	# the curtain. Its nodes are built lazily by the first `stream()`, so the
+	# ~4.6 GB load used to land on the player's first sentence — `bench_gm`
+	# measured turn 1 at 9.0 s against 2-4 s after. Warming under `MythLoading`
+	# put 4.5 s of labelled progress on the loading screen and brought turn 1 to
+	# 3.6 s. The seconds did not vanish; they became visible. Nothing offline can
+	# measure that (no model under `Api.test_mode`), but the wiring is exactly
+	# what would rot: reorder these two and the load walks back into turn 1 with
+	# every harness still green.
+	var warm_at := gsrc_boot.find("await LocalGM.warm()")
+	var lift_at := gsrc_boot.find("MythLoading.lift()")
+	assert(warm_at >= 0, "boot: the narrator is never warmed — turn 1 pays the model load again (PL-9)")
+	assert(lift_at >= 0, "boot: the loading curtain is never lifted")
+	assert(warm_at < lift_at,
+		"boot: the curtain lifts BEFORE the narrator is warm — the load moves back into the player's first sentence")
+	# THE IMAGE ENGINE MUST NOT TAKE THE CARD FIRST. sd-server loads its whole
+	# checkpoint into VRAM at startup, before it listens - its own log says
+	# "total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)" - and its
+	# small working set is system RAM, which is what made "it loads per request"
+	# look true for so long. llama.cpp fixes its GPU/CPU split once, at load, and
+	# the engine's first image takes 6.6 GB it never gives back - 19.3 s per turn
+	# against 3.7 s for the whole session. Warming first is what keeps the engine
+	# from ever generating before the narrator has its split. Structural, like the
+	# curtain above: the order is the fix, and the order is what rots.
+	var eng_at := gsrc_boot.find("Services.ensure_engine()")
+	assert(eng_at >= 0, "boot: nothing starts the image engine — art will never appear")
+	assert(warm_at < eng_at,
+		"boot: the image engine is started BEFORE the narrator warms — its first image takes 6.6 GB it never returns, and the narrator would keep the worse split all session")
+	var svc_src := FileAccess.get_file_as_string("res://autoload/services.gd")
+	assert(not svc_src.contains("call_deferred(\"ensure_engine\")"),
+		"boot: Services starts the engine at boot again — that is before the narrator loads")
+
+	# PY-15. EVERY shipped world must be able to produce an establishing prompt,
+	# and it must fit inside SDXL's first 77-token chunk — past that, text still
+	# reaches cross-attention but never touches the POOLED embedding that carries
+	# global style, so a long prompt gives each world a different amount of
+	# style-bearing text. Three of six worlds had no prompt at all and `request()`
+	# returned silently for them. ~1.3 CLIP tokens per English word.
+	for w in Rules.builtin_worlds():
+		var pw := Art.world_prompt(str(w.get("id", "")))
+		assert(pw != "",
+			"world '%s' can produce no establishing prompt — its card will be a bare glyph for ever" % str(w.get("id", "")))
+		var approx := int(float(pw.split(" ").size()) * 1.3) + pw.count(",")
+		assert(approx <= 75,
+			"world '%s' prompt is ~%d tokens — past chunk 0, where SDXL's style vector stops looking" % [str(w.get("id", "")), approx])
+
+	# INVARIANTS.MD IS CHECKED AGAINST REALITY. Three of its rows went stale within
+	# an hour of it being written - listed as gaps while their checks were being
+	# committed in the same session. A tracker that drifts is worse than none,
+	# because it reads as information; that is why this repo deleted a 107-row
+	# feature matrix. So every check NAME quoted in the Enforced table must exist
+	# in this file or in verify.ps1. Claiming a check you did not write is red.
+	#
+	# The separators are BUILT from char(), not escaped. Writing them as escapes
+	# is how the first version of this block shipped a string literal containing a
+	# real newline and parsed zero rows while reporting success.
+	var NEWLINE := char(10)
+	var OPENQ := "*" + char(34)
+	var CLOSEQ := char(34) + "*"
+	var inv := FileAccess.get_file_as_string("res://docs/Invariants.md")
+	assert(inv != "", "Invariants.md is missing - CLAUDE.md points every change at it")
+	var vps := FileAccess.get_file_as_string("res://../scripts/verify.ps1")
+	# EVERY HARNESS, not just this one. The parser read self_check.gd and the gate
+	# script alone, so an invariant enforced anywhere else could not be declared —
+	# which quietly pushed new checks INTO this file to satisfy the parser rather
+	# than into the harness they belong to. `town_probe` was the first row that hit
+	# it, and the row is not wrong; the reader was too narrow.
+	var me := ""
+	for f in DirAccess.get_files_at("res://tests"):
+		if str(f).ends_with(".gd"):
+			me += FileAccess.get_file_as_string("res://tests/" + str(f))
+	var in_enforced := false
+	var claims := 0
+	for line in inv.split(NEWLINE):
+		if line.begins_with("## "):
+			in_enforced = line.begins_with("## Enforced")
+			continue
+		if not in_enforced or not line.begins_with("| "):
+			continue
+		var q := line.split(OPENQ)
+		if q.size() < 2:
+			continue
+		var needle := str(q[1]).split(CLOSEQ)[0]
+		if needle.strip_edges() == "":
+			continue
+		claims += 1
+		assert(me.contains(needle) or vps.contains(needle),
+			"Invariants.md claims a check that does not exist: '%s' - write the check, or move the row to Not yet enforced" % needle)
+	assert(claims >= 8, "Invariants.md: only %d enforced rows parsed - the table shape changed and this check went blind" % claims)
+	print("  invariants: %d enforced rows, every claimed check found" % claims)
+
+	# A SHIPPED WORLD KEEPS ITS AUTHORED ACCENT. Every builtin is compiled, and
+	# the pack accent was replacing all four hand-tuned palettes. Two came out
+	# visibly wrong: brasshaven — "brass, soot and secrets" — rendered PALE BLUE
+	# (#c9d3f5 over an authored #d69a52), and Neon Spire rendered ORANGE (#ff8400
+	# over an authored #2de2e6 cyan). A forged world has no authored palette and
+	# still needs its pack's accent, so the split is exactly BUILTIN.
+	var pal_keep2 := Ui.pal.duplicate(true)
+	var wid_keep2 := Ui.world_id
+	for probe2 in ["neonspire", "brasshaven", "embervale"]:
+		Ui.apply(probe2)
+		var authored: Dictionary = Ui.PALETTES.get(str(WorldSkin.skin_for_id(probe2).get("palette", "arcane")), {})
+		if authored.has("gold"):
+			assert(Ui.c("gold").is_equal_approx(authored["gold"]),
+				"a shipped world's authored accent was overruled by its generated pack — %s wanted %s, got %s (Invariants.md)" % [
+					probe2, Color(authored["gold"]).to_html(false), Ui.c("gold").to_html(false)])
+	Ui.apply(str(wid_keep2))
+	Ui.pal = pal_keep2
+
+	# PY-14, THE REAL ONE. Measured from a windowed screenshot, not from source:
+	# `Ui.c("gold")` came back #ff8706 on Neon Spire while its palette says
+	# #2de2e6. The world is COMPILED, so `_overlay_world_palette` replaces the
+	# primary accent with the pack's (#ff8400) — and left the SECONDARY at the
+	# palette's magenta. Orange beside magenta, neither of them the authored cyan:
+	# "two accents on one screen". The earlier repaint_on_skin fix was for a real
+	# but different bug and never touched this.
+	var pal_keep := Ui.pal.duplicate(true)
+	var wid_keep := Ui.world_id
+	if Compiler.is_compiled("neonspire"):
+		Ui.apply("neonspire")
+		# TEST THE DERIVATION, not a distance. The first version of this asserted
+		# the two hues sat 0.18-0.5 apart on the wheel — and orange-to-magenta,
+		# which IS the bug, measures 0.196. It passed the mutation. A band that
+		# admits the failure it was written for is not a check.
+		var acc_h := Ui.c("gold").h
+		var want_h := fposmod(acc_h + 0.38, 1.0)
+		var got_h := Ui.c("amethyst").h
+		var off := absf(want_h - got_h)
+		off = minf(off, 1.0 - off)   # around the wheel, not across it
+		assert(off < 0.04,
+			"PY-14: the secondary accent is not derived from the world's own — expected hue %.3f, got %.3f. A compiled world that overlays only its primary leaves two unrelated accents on one screen (Invariants.md)" % [want_h, got_h])
+	Ui.apply(str(wid_keep))
+	Ui.pal = pal_keep
+
+	# PY-26. A CITY IS NOT A RIVER VALLEY. The chart asked every world for "open
+	# country — terrain, water, forest, hills and coast", so Neon Spire's minimap
+	# during a scene in The Undercity was a neon-tinted wilderness. The Atlas rule
+	# it cites ("nothing that claims a position") is about POSITION, not biome.
+	var keep26 := GameState.character
+	GameState.character = {"id": "dm-chart-probe", "world_id": "neonspire"}
+	var cyber_ground := Art.chart_ground("neonspire")
+	GameState.character = {"id": "dm-chart-probe", "world_id": "embervale"}
+	var fant_ground := Art.chart_ground("embervale")
+	GameState.character = keep26
+	assert(cyber_ground != fant_ground, "PY-26: a megacity and a green valley get the same chart ground")
+	assert(cyber_ground.contains("blocks") or cyber_ground.contains("districts"),
+		"PY-26: the cyber chart does not describe a city")
+	assert(fant_ground.contains("forest") or fant_ground.contains("hills"),
+		"PY-26: the fantasy chart lost its open country")
+	assert(Art.chart_ground("no-such-world") == fant_ground,
+		"PY-26: an unknown world must fall back to open country, not to nothing")
+	# …and the prompt must DESCRIBE, not forbid. This exact prompt is the one
+	# `ensure_item_icon`'s RCA is about: it forbade buildings and text and the
+	# bake produced "a painted city and two misspelled cartouches".
+	var chart_src := FileAccess.get_file_as_string("res://autoload/art_cache.gd")
+	var chart_at := chart_src.find("illustrated %s of the lands around")
+	assert(chart_at >= 0, "PY-26: the chart prompt is gone — this check has gone blind")
+	var chart_txt := chart_src.substr(chart_at, 320)
+	# AND THE BAKE MUST NOT KEEP ITS OWN COPY. world_compiler carried a hand-copy
+	# labelled "the runtime twin of this prompt", so PY-26 fixed the twin and the
+	# bake — which is what a COMPILED world actually draws — kept painting
+	# wilderness. Re-baking would have reproduced the bug faithfully.
+	var wc_src := FileAccess.get_file_as_string("res://autoload/world_compiler.gd")
+	assert(wc_src.contains("Art.chart_prompt("),
+		"PY-26: the bake does not use Art.chart_prompt — a second copy of that prompt is how the runtime fix missed every compiled world (Invariants.md)")
+	assert(not wc_src.contains("overhead view of open country"),
+		"PY-26: world_compiler still spells the chart prompt by hand")
+	for forbid in ["no buildings", "no settlements", "no text labels", "no border"]:
+		assert(not chart_txt.contains(forbid),
+			"PY-26: the chart prompt still says \"%s\" — a negative inside a positive prompt does not work, and this prompt is the RCA (Invariants.md)" % forbid)
+
+	# PY-23. A world may be plain; it may not be MEDIEVAL by accident. Forms carry
+	# "a shape prompt only" on the theory that the world's anchor makes them
+	# world-true — which holds for a circlet and fails for a halberd. Neon Spire
+	# shipped halberds, mail coifs and kite shields and offered no pistol at all.
+	var fantasy_forms: Array = Compiler._forms({})
+	var cyber_forms: Array = Compiler._forms({"family": "cyber"})
+	assert(fantasy_forms.size() > 40, "PY-23: the base form spine collapsed")
+	var fids := {}
+	for f in fantasy_forms:
+		fids[str(f.get("id", ""))] = true
+	var cids := {}
+	for f in cyber_forms:
+		cids[str(f.get("id", ""))] = true
+	# The era-locked shapes must be GONE from a cyber world…
+	for banned in ["halberd", "glaive", "pike", "coif", "mail_chausses", "greaves",
+			"kite_shield", "targe", "mail_gloves", "gauntlets", "sandals", "parry_dagger"]:
+		if fids.has(banned):
+			assert(not cids.has(banned),
+				"PY-23: a cyber world is still offered '%s' — no prompt anchor makes that cyberpunk (Invariants.md)" % banned)
+	# …and it must actually have something of its own to swing and shoot.
+	for want in ["monoblade", "service_pistol", "deck"]:
+		assert(cids.has(want), "PY-23: a cyber world has no '%s' — the override table is not reaching _forms()" % want)
+	# A family with no overrides keeps the universal spine, unchanged.
+	var norse_forms: Array = Compiler._forms({"family": "norse"})
+	assert(norse_forms.size() == fantasy_forms.size(),
+		"PY-23: a family with no overrides must keep the universal shapes, not lose them")
+
+	# PY-7. AN INSTRUCTION THAT DOES NOT MOVE THE PLAYER MUST SAY SO. The location
+	# is already in the envelope, near the top — and a trailing "briefly color the
+	# exchange" or "narrate the outcome" is an open invitation to invent a scene.
+	# Recency wins in a long context. `GameState.here_pin()` was written for CN-1
+	# (camped at a barrow-mound, woke in a mead-hall) and applied ONLY to the rest
+	# paths, so the merchant counter and the roll result — PY-7's two symptoms —
+	# never carried it. Travel and resume must NOT be pinned: they move on purpose.
+	var g7 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	# WINDOWED, not line-by-line. The counter-left statement wraps, so `here_pin()`
+	# sits on the continuation line — the first version of this check demanded it
+	# on the SAME line and failed against correct code.
+	var stay := ["Briefly color the exchange", "Narrate the outcome — set a DC",
+		"Narrate the making briefly", "Narrate the aftermath of the battle"]
+	var moves := ["I travel to %s — but something finds me", "We resume from this saved chapter"]
+	for s in stay:
+		var pin_at := g7.find(s)
+		assert(pin_at >= 0, "PY-7: the stay-put instruction \"%s\" is gone — this check has gone blind" % s)
+		assert(g7.substr(pin_at, 340).contains("here_pin()"),
+			"PY-7: \"%s\" is a stay-put instruction with no location pin — the GM will invent a place (Invariants.md)" % s)
+	for m in moves:
+		var move_at := g7.find(m)
+		if move_at < 0:
+			continue
+		assert(not g7.substr(move_at, 340).contains("here_pin()"),
+			"PY-7: a TRAVEL instruction must not be pinned in place — the player is moving on purpose")
+	# …and the pin has to actually name somewhere.
+	var keep7 := GameState.state
+	GameState.state = {"world": {"here": "Mercer's clinic"}}
+	assert(GameState.here_pin().contains("Mercer's clinic"), "PY-7: the pin does not name where the player is")
+	assert(GameState.here_pin().contains("not travelled"), "PY-7: the pin does not forbid moving them")
+	GameState.state = {}
+	assert(GameState.here_pin().contains("do not relocate"), "PY-7: with no location the pin must still forbid a move")
+	GameState.state = keep7
+
+	# PY-14. A CONTROL THAT PAINTS ITSELF MUST ASK TO BE REPAINTED. Godot re-runs
+	# `_draw()` only on `queue_redraw()`, so a widget reading `Ui.c()` inside
+	# `_draw()` keeps whatever palette was live when it last painted. 13 of 14
+	# self-drawn controls never asked: the title, input border and buttons are
+	# THEMED and went magenta in Neon Spire while the toolbar, the Session Zero
+	# sliders and the HP bar are SELF-DRAWN and stayed gold. Two accents, one
+	# screen. `backdrop.gd` is the one that always did it right.
+	var NL14 := char(10)
+	for df in ["res://scenes/combat/battle_grid.gd", "res://scenes/ui/mini_map.gd",
+			"res://scenes/ui/skill_tree.gd", "res://scenes/ui/world_map.gd",
+			"res://scenes/ui/cinematic.gd", "res://ui/myth_environment.gd",
+			"res://ui/myth_gauge.gd", "res://ui/myth_icon.gd",
+			"res://ui/myth_portrait.gd", "res://ui/myth_stage_rail.gd",
+			"res://ui/forge_flow.gd"]:
+		var dsrc2 := FileAccess.get_file_as_string(df)
+		assert(dsrc2 != "", "self_check: %s could not be read" % df)
+		var self_drawn := false
+		for dl in dsrc2.split(NL14):
+			if dl.begins_with("func _draw("):
+				self_drawn = true
+				break
+		if not self_drawn:
+			continue
+		assert(dsrc2.contains("Ui.repaint_on_skin(self)") or dsrc2.contains("Ui.changed.connect"),
+			"%s paints itself but never repaints on a skin change — it will hold the old world's accent (Invariants.md)" % df)
+
+	# PY-12. EVERY dialog is dressed, and a dressed dialog carries the THEME. In
+	# Godot 4 a Window starts a new theme context, so a PanelContainer inside an
+	# undressed dialog renders in the engine default — hard-edged, borderless,
+	# unrounded, "a grey debug-looking box over a fully skinned neon screen".
+	# Three of five dialogs never called dress_dialog at all, and dress_dialog
+	# itself never set `theme`, which is why even the dressed ones had unstyled
+	# innards.
+	var skn := FileAccess.get_file_as_string("res://autoload/skin.gd")
+	assert(skn.contains("dlg.theme = theme"),
+		"PY-12: dress_dialog does not give the dialog the theme — every panel inside it falls back to engine grey (Invariants.md)")
+	for dlgf in ["res://scenes/ui/gm_tuner.gd", "res://scenes/ui/levelup_window.gd",
+			"res://scenes/ui/reaction_prompt.gd", "res://scenes/ui/character_screen.gd",
+			"res://scenes/ui/merchant_window.gd"]:
+		var dsrc := FileAccess.get_file_as_string(dlgf)
+		assert(dsrc != "", "self_check: %s could not be read" % dlgf)
+		assert(dsrc.contains("Ui.dress_dialog("),
+			"%s is a dialog that never gets dressed — it renders in the engine default theme (Invariants.md)" % dlgf)
+
+	# PY-11. Card prose was cut with `.left(N)`, which severs mid-word and gives no
+	# sign it happened: "quiet adventu", "stolen blueprt", "answer them i", on four
+	# separate screens. Ui.trim cuts at a word and says so.
+	assert(Ui.trim("a short one", 60) == "a short one", "trim: text that fits is untouched")
+	var t11 := Ui.trim("A snug realm of hearth-fires, hedge-magic, and quiet adventure.", 60)
+	assert(t11.ends_with("…"), "PY-11: a trimmed line must SAY it was trimmed")
+	assert(not t11.contains("adventu…"), "PY-11: trimmed mid-word — the whole point is to cut at a space")
+	assert(t11.length() <= 61, "PY-11: trim overshot its budget")
+	# One very long word still has to be cut, or the line collapses to nothing.
+	assert(Ui.trim("Supercalifragilisticexpialidocious", 10).ends_with("…"))
+	assert(Ui.trim("Supercalifragilisticexpialidocious", 10).length() > 3, "PY-11: an early space must not eat the line")
+	# …and no card payload may go back to raw truncation. LINE-AWARE: `.left(1)`
+	# for a name's initial is fine and common, so the file-wide test this started
+	# as fired on innocent code. Only a line that builds a card FIELD counts.
+	var NEWLINE2 := char(10)
+	for cf in ["res://scenes/forge/adventure_forge.gd", "res://scenes/forge/character_forge.gd"]:
+		var csrc := FileAccess.get_file_as_string(cf)
+		assert(csrc != "", "self_check: %s could not be read" % cf)
+		for cline in csrc.split(NEWLINE2):
+			var is_payload := cline.contains("\"body\":") or cline.contains("\"title\":") or cline.contains("\"foot\":")
+			assert(not (is_payload and cline.contains(".left(")),
+				"%s truncates card prose with .left() — use Ui.trim(), which cuts at a word (Invariants.md)" % cf)
+
+	# PY-27. THE WORLD IS CHOSEN BEFORE THE HERO. Everything the character forge
+	# commits — kit, body, portrait, heritage art — is world-flavored, so a hero
+	# forged before the world is known is dressed for the wrong one. That is the
+	# upstream half of PY-21, PY-22 and PY-23. The menu already announced
+	# "world > campaign > hero"; only this rail disagreed.
+	var afsrc := FileAccess.get_file_as_string("res://scenes/forge/adventure_forge.gd")
+	assert(afsrc != "", "self_check: adventure_forge.gd could not be read")
+	var af_stages := afsrc.split("const STAGES := [")
+	assert(af_stages.size() > 1, "PY-27: adventure_forge has no STAGES to check")
+	var af_first := str(af_stages[1]).split("]")[0]
+	assert(af_first.find("The Campaign") < af_first.find("The Hero"),
+		"PY-27: the Adventure Forge asks for the hero before the world — the kit is then committed for a world nobody has chosen (Invariants.md)")
+	# …and the child forge must be TOLD which world, not left to read a stale one.
+	assert(afsrc.contains("GameState.character = {\"id\": \"forge-draft\", \"world_id\""),
+		"PY-27: the hero forge is spawned without publishing the chosen world, so world_flavor() reads whatever was last played")
+
+	# PY-28, structural. The npc-/foe- prefixes were spelled by hand at FOURTEEN
+	# sites, which is how they stayed unscoped while race-/item-/beast-/map- were
+	# fixed. A cast portrait's prompt is world-flavored (lore_book appends
+	# world_flavor(); a foe's carries subject_style("char")), so the first world
+	# to paint a name owned that face everywhere. Art.npc_key/foe_key are the
+	# only spellings now — a prefix TEST (begins_with) is still fine.
+	for kf in ["res://scripts/game.gd", "res://scenes/ui/lore_book.gd",
+			"res://scenes/forge/campaign_forge.gd", "res://scenes/forge/persona_forge.gd"]:
+		var ksrc := FileAccess.get_file_as_string(kf)
+		assert(ksrc != "", "self_check: %s could not be read" % kf)
+		for pre in ["\"npc-\" +", "\"foe-\" +"]:
+			assert(not ksrc.contains(pre),
+				"%s builds a cast art key by hand — use Art.npc_key()/foe_key(), which carry the world (Invariants.md)" % kf)
+
+	# PY-15, structural. A world's key art lives in TWO places — the compiled
+	# package (`art/key.png`) and the art cache — and the fallback between them
+	# was spelled out by hand at five call sites in three different spellings.
+	# Two were wrong, in opposite directions: world_forge asked the cache only
+	# (so a compiled world's baked art never showed) and adventure_forge asked
+	# the package only (so an uncompiled world's painted art never showed). That
+	# is the fifth appearance of the RCA art_cache.gd already carries for
+	# `roster_art`. `Art.world_tex` is the one spelling now.
+	for f in ["res://scripts/main_menu.gd", "res://scripts/game.gd",
+			"res://scenes/forge/world_forge.gd", "res://scenes/forge/adventure_forge.gd"]:
+		var wsrc := FileAccess.get_file_as_string(f)
+		assert(wsrc != "", "self_check: %s could not be read" % f)
+		assert(not wsrc.contains("Compiler.key_art("),
+			"%s spells the key-art fallback by hand — use Art.world_tex(), which asks the package before the cache" % f)
 
 	Mode.state = "Boot"  # leave the machine as the game boots it
 
@@ -830,11 +1407,216 @@ func _ready() -> void:
 	assert(WorldSkin.style_for_id("neonspire")["dialogue"] != WorldSkin.style_for_id("embervale")["dialogue"])
 	assert(WorldSkin.style_of({"id": "cw-x", "kind": "steampunk", "tagline": "brass towers"})["beast"] == WorldSkin.STYLE["steam"]["beast"])
 
-	# A2 art manifest: an asset can be noted and evicted (LRU bookkeeping).
+	# ── EVERY FAMILY FILLS EVERY SOCKET, AND NO TWO FILL THEM THE SAME ───────
+	#
+	# The town generator asks `WorldSkin.ward_name(family, key)` for what this
+	# world calls its square, its inn, its docks. That is only plug-and-play if
+	# every family answers every key — and only worth having if the answers
+	# DIFFER.
+	#
+	# This check exists because the vocabulary used to live in `local_map` as a
+	# string match against the family's prose `world` line ("contains cyber or
+	# steam"). Eight families produced two vocabularies: a steampunk foundry
+	# town was given a Noodle Bar, and a fantasy village and a pirate port came
+	# out with byte-identical ward names on the same sheet. Nothing failed —
+	# it took looking at two renders side by side to see it.
+	var seen_wards := {}
+	for fam in WorldSkin.FAMILIES:
+		var words: Dictionary = WorldSkin.FAMILIES[fam].get("wards", {})
+		for k in WorldSkin.WARD_KEYS:
+			assert(words.has(k) and str(words[k]).strip_edges() != "",
+				"world family '%s' has no word for the '%s' ward - the town generator asks every family for every key" % [fam, k])
+			assert(WorldSkin.ward_name(fam, k) == str(words[k]),
+				"ward_name('%s', '%s') does not return the family's own word" % [fam, k])
+			# NO ARTICLE IN THE WORD. `local_map` writes "The %s", so a word that
+			# carries its own "The" renders as "The The Plaza" — which is exactly
+			# what the cyber and everyday sheets said.
+			assert(not str(words[k]).to_lower().begins_with("the "),
+				"world family '%s' spells the '%s' ward as '%s' - the generator adds \"The\", so this renders as \"The %s\"" % [
+					fam, k, str(words[k]), str(words[k])])
+		var fingerprint := ""
+		for k2 in WorldSkin.WARD_KEYS:
+			fingerprint += str(words[k2]) + "|"
+		assert(not seen_wards.has(fingerprint),
+			"world families '%s' and '%s' name their wards IDENTICALLY - two worlds would draw the same town under different skies" % [
+				fam, str(seen_wards.get(fingerprint, ""))])
+		seen_wards[fingerprint] = fam
+	# EVERY KIND THE GM MAY INVENT IS ONE THE MAP CAN DRAW. `SITE_KINDS` is a
+	# closed enum precisely so this can be true — the model never names a kind,
+	# it picks one, and the engine guarantees a mark for each. Leave a kind out
+	# of `SITE_MARK` and that site renders as a bare dot with no silhouette.
+	var pm: GDScript = load("res://scenes/ui/place_map.gd")
+	var site_mark: Dictionary = pm.get("SITE_MARK")
+	for k in GameState.SITE_KINDS:
+		assert(site_mark.has(k),
+			"GameState.SITE_KINDS carries '%s' and place_map.SITE_MARK has no mark for it - the GM could create a site the map cannot draw" % k)
+	print("  sites: %d kinds, every one has a mark" % GameState.SITE_KINDS.size())
+	# ── A QUARTER AND A BUSINESS MAY NOT SHARE A NAME ────────────────────────
+	# The town draws both: "The Chandlery" the ward and "The Chandlery" the shop
+	# stood on the same sheet, and only `_add`'s de-duplicator kept them apart —
+	# as "The Chandlery (2)". Four families collided (space on Galley, steam on
+	# Guildhall, pirate on Chandlery AND Tavern, norse on Mead-Hall), and nothing
+	# failed; it took reading a probe's node list to see it.
+	for fam2 in WorldSkin.FAMILIES:
+		var wrd: Dictionary = WorldSkin.FAMILIES[fam2].get("wards", {})
+		var trd: Dictionary = WorldSkin.FAMILIES[fam2].get("trades", {})
+		for tk in WorldSkin.TRADE_KEYS:
+			assert(trd.has(tk) and str(trd[tk]).strip_edges() != "",
+				"world family '%s' has no name for the '%s' trade" % [fam2, tk])
+			assert(not str(trd[tk]).to_lower().begins_with("the "),
+				"world family '%s' spells the '%s' trade as '%s' - the generator adds \"The\"" % [fam2, tk, str(trd[tk])])
+			for wk in WorldSkin.WARD_KEYS:
+				assert(str(wrd[wk]) != str(trd[tk]),
+					"world family '%s' calls both a WARD and a TRADE '%s' - the map would draw two places with one name" % [
+						fam2, str(trd[tk])])
+	# Size gates what a place can offer, and a bigger place never offers less.
+	var prev := 0
+	for tier in 4:
+		var got: Array = WorldSkin.trades_at(tier)
+		assert(got.size() > prev, "settlement tier %d offers no more trades than tier %d - the size gate does nothing" % [tier, tier - 1])
+		prev = got.size()
+	assert(WorldSkin.trades_at(0).size() < WorldSkin.trades_at(3).size(),
+		"a hamlet offers as much as a city")
+	print("  trades: %d kinds, %d..%d by size, none shares a ward's name" % [
+		WorldSkin.TRADE_KEYS.size(), WorldSkin.trades_at(0).size(), WorldSkin.trades_at(3).size()])
+	# THE CHART IS INK ON PAPER — NO DARK-PANEL UI COLOURS ON IT. The hover lore,
+	# the you-are-here ring and the travel dots were still drawn in `gold_soft`
+	# after the chart became parchment, and measured 1.05-1.23:1 against the paper
+	# on five of six worlds: the player's own position was the least visible mark
+	# on the sheet. Ink is asserted at 4.5:1 per family already; this keeps the
+	# chart from quietly reaching back for a UI colour.
+	var parchment_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+	for banned in ['Ui.c("gold_soft")']:
+		assert(not parchment_src.contains(banned),
+			"world_map draws %s on the parchment chart - a dark-panel colour that measured ~1.1:1 against the paper; use _ink()" % banned)
+	# WHAT THE PLAYER SEES OF A TROUBLE IS WHAT THEY KNOW. Both maps read
+	# `trouble_at`, which returns secrets too, so a conspiracy was printed on the
+	# Atlas card before a single clue. A screen goes through `trouble_known`.
+	for trouble_screen in ["res://scenes/ui/world_map.gd", "res://scenes/ui/place_map.gd"]:
+		assert(not FileAccess.get_file_as_string(trouble_screen).contains("GameState.trouble_at("),
+			"%s shows GameState.trouble_at - that includes SECRET troubles; use trouble_known" % trouble_screen)
+	# ── ONE ROOF HAS ROOMS, and every world names them ───────────────────────
+	# The scale a place is drawn at comes from its kind, and the room words come
+	# from the family. A family missing a kind would silently fall back to
+	# fantasy's cottage, which is how a Noodle Bar got a Scullery.
+	assert(LocalMap.BUILDING_KINDS == WorldSkin.ROOM_KINDS,
+		"LocalMap.BUILDING_KINDS and WorldSkin.ROOM_KINDS disagree about what is one building")
+	for fam_id in WorldSkin.FAMILIES:
+		for bk in WorldSkin.ROOM_KINDS:
+			var rws: Array = WorldSkin.FAMILIES[fam_id].get("rooms", {}).get(bk, [])
+			assert(rws.size() >= WorldSkin.ROOM_KEYS.size(),
+				"%s has %d room words for a %s, and a building can have %d rooms" % [
+					fam_id, rws.size(), bk, WorldSkin.ROOM_KEYS.size()])
+			for rw in rws:
+				assert(str(rw).strip_edges() != "" and not str(rw).begins_with("The "),
+					"%s/%s room '%s' is empty or carries an article" % [fam_id, bk, rw])
+	# THE CONSTANT, NOT AN INSTANCE. `new()` on a Control here leaked a CanvasItem
+	# RID on every run — a warning in a passing gate is still a warning.
+	var marks: Dictionary = (load("res://scenes/ui/place_map.gd") as GDScript).get_script_constant_map()["ROLE_MARK"]
+	for rk in WorldSkin.ROOM_KEYS:
+		assert(marks.has(rk), "a room role '%s' has no mark on the plan — it would draw as a dot" % rk)
+	for fam_id2 in WorldSkin.FAMILIES:
+		assert(WorldSkin.ROOFS.has(str(WorldSkin.FAMILIES[fam_id2].get("roof", ""))),
+			"%s has no roof style, so its town draws fantasy's pitched ridge" % fam_id2)
+	print("  rooms: %d families x %d building kinds, every room socket named and marked" % [
+		WorldSkin.FAMILIES.size(), WorldSkin.ROOM_KINDS.size()])
+	print("  wards: %d families, %d sockets each, all distinct" % [
+		WorldSkin.FAMILIES.size(), WorldSkin.WARD_KEYS.size()])
+
+	# INVARIANT: never paint while the narrator talks. Measured three ways - a
+	# resident engine at narrator load costs NOTHING (3.3/3.6/3.5 s against
+	# 3.0/3.5/3.5), but generating 1024x1024 DURING the turns takes them to 6.1 s
+	# by the sixth. Peak VRAM there was 15310 MB of 16384, so nothing was evicted:
+	# the two processes contend for shaders, not memory. `Art.hold` around the
+	# stream is the whole fix, and until now nothing asserted it existed.
+	# LINE-AWARE, because `contains` matched the guard COMMENTED OUT. Mutation-
+	# testing this check is what found that: the first version passed against
+	# "# Art.hold = true MUTATION", which is exactly the change it must catch.
+	var hsrc := FileAccess.get_file_as_string("res://scripts/game.gd")
+	var hold_on := 0
+	var hold_off := 0
+	for line in hsrc.split("
+"):
+		var t := line.strip_edges()
+		if t.begins_with("Art.hold = true"):
+			hold_on += 1
+		elif t.begins_with("Art.hold = false"):
+			hold_off += 1
+	assert(hold_on >= 1,
+		"invariant: nothing holds the art queue while the narrator streams - turns go 3.5 s to 6.1 s (Invariants.md)")
+	assert(hold_off >= 3,
+		"invariant: every exit from a stream must release Art.hold - done, cancel and leaving the table are three paths")
+
+	# INVARIANT: Godot's RegEx is PCRE2, where a \u escape does NOT exist. A
+	# pattern using one compiles clean and then silently matches nothing, which is
+	# the worst failure shape available: no error, no match, no clue.
+	# The needle is BUILT, not escaped: char(92) is a backslash, so this line
+	# cannot itself trip the very parse error it is looking for. It did, once.
+	var u_esc := char(92) + "u"
+	for rf in ["res://autoload/tag_parser.gd", "res://autoload/prompt_composer.gd",
+			"res://autoload/rules_engine.gd", "res://autoload/world_skin.gd"]:
+		var rsrc2 := FileAccess.get_file_as_string(rf)
+		for line in rsrc2.split("\n"):
+			assert(not (line.contains(".compile(") and line.contains(u_esc)),
+				"invariant: %s uses a backslash-u escape in a RegEx - PCRE2 does not know it, so the pattern matches nothing (Invariants.md)" % rf)
+
+	# PY-16 / PY-17 both turn on ONE primitive: the difference between "not
+	# painted" and "being painted". `Art.status` is the only thing that knows it.
+	Art._generating["unit-inflight"] = true
+	assert(Art.status("unit-inflight") == "queued",
+		"art: a commission in flight must not look the same as one never asked for")
+	assert(Art.status("unit-never") == "", "art: an unasked key is empty, not queued")
+	Art._generating.erase("unit-inflight")
+
+	# PY-16: the codex sweep narrated "Painting X…" once per UPDATE rather than
+	# once per commission, because it asked `has_art` — true only when the paint
+	# FINISHES, ~20 s later. The work was never duplicated; the line was.
+	var gsrc5 := FileAccess.get_file_as_string("res://scripts/game.gd")
+	assert(gsrc5.contains("if Art.status(key) == \"\":"),
+		"PY-16: _auto_portrait must skip a portrait already in flight, or it narrates the same one twice")
+
+	# PY-17: the forge's re-strike went silent for the ~25 s it paints, and left
+	# itself pressable. It must say so AND come back — including when the paint
+	# fails, which never emits art_ready at all.
+	var cfsrc := FileAccess.get_file_as_string("res://scenes/forge/character_forge.gd")
+	assert(cfsrc.contains("restrike.text = \"The forge paints…\""),
+		"PY-17: the re-strike must say it is working — 25 s of silence reads as failure")
+	assert(cfsrc.contains("func _on_quench_progress"),
+		"PY-17: a failed paint emits no art_ready, so the button would stay dead for ever without a progress handler")
+
+	# PY-13. Banking a hero must PIN THEIR FACE, and the hero the forge just
+	# painted is exactly the one it failed for. `hero_portrait_key` refuses the
+	# shared "heroprev" scratch key by design, and `bank_hero` asked IT for the
+	# copy source — so a menu-forged hero (portrait_key == "heroprev") yielded
+	# "", the copy never ran, and the roster card asked the same refusing
+	# function and got "" for ever. Real save: 2 of 4 heroes stranded that way.
+	var pin_keep := Art._manifest.duplicate(true)
+	Art._manifest_loaded = true
+	var pin_img := Image.create(8, 8, false, Image.FORMAT_RGBA8)
+	pin_img.fill(Color.RED)
+	pin_img.save_png(Art.path_for("heroprev"))
+	var pin_hero := {"name": "Unit Pin", "id": null, "portrait_key": "heroprev"}
+	GameState.bank_hero(pin_hero)
+	var pinned: Array = GameState.banked_heroes().filter(func(h): return str(h.get("name", "")) == "Unit Pin")
+	assert(pinned.size() == 1, "PY-13: the banked hero was not written")
+	var pk := str(pinned[0].get("portrait_key", ""))
+	assert(pk != "heroprev",
+		"PY-13: a banked hero is still pinned to the shared scratch key — the next forging overwrites their face")
+	assert(Art.has_art(pk), "PY-13: the banked hero's portrait key names no file")
+	assert(GameState.hero_portrait_key(pinned[0]) != "",
+		"PY-13: the roster card will show a glyph for a hero who has a portrait")
+	GameState.unbank_hero("Unit Pin")
+	Art.forget(pk)
+	Art.forget("heroprev")
+	Art._manifest = pin_keep
+	print("  PY-13: banking pins the forge's scratch portrait to the hero's own key")
+
+	# A2 art manifest: an asset is noted, and NOTHING removes it behind the
+	# player's back. `_evict` used to live here.
 	Art._manifest_loaded = true  # skip the disk scan in this unit check
 	Art._manifest = {"unit-old": {"size": 100, "used": 1.0}, "unit-new": {"size": 100, "used": 9.0}}
-	Art._evict("unit-old")
-	assert(not Art._manifest.has("unit-old") and Art._manifest.has("unit-new"))
+	assert(not Art.has_method("_evict"),
+		"art: _evict is back — paintings must never be deleted to make room, there is no path that regenerates one")
 	Art._manifest = {}
 
 	# A4 Character Resources: structured NPCs + a clamped relationship bond.
@@ -1253,6 +2035,61 @@ The term for spell slots is "Echoes."
 		qd.equip("head", "")
 		qd.apply_look({"hair": "", "beard": "", "horns": ""})
 		assert(qd._all_meshes(qd).size() == plain, "q-doll: and they come off again")
+		# PY-21 — THE HERITAGE MUST REACH THE RIG, not just the proportions. The
+		# table has declared `features: ["horns", "tail"]` for a Tiefling since it
+		# was written, `Rules.heritage_features()` was built to read it, and it had
+		# ZERO callers — so a Tiefling previewed as a plain human while the 2D
+		# portrait, which does read the heritage, came back with horns. Found by
+		# playing the game and looking at the two pictures side by side.
+		#
+		# Asserted through the DOLL, not just the table, or this passes while the
+		# wire is cut again: a lookup returning the right dictionary proves nothing
+		# if nobody applies it.
+		assert(Rules.heritage_look("Human")["horns"] == "", "heritage look: a Human grows no horns")
+		assert(Rules.heritage_look("Human")["tail"] == "", "heritage look: a Human grows no tail")
+		assert(str(Rules.heritage_look("Tiefling")["horns"]) != "", "heritage look: a Tiefling has horns")
+		assert(str(Rules.heritage_look("Tiefling")["tail"]) != "", "heritage look: a Tiefling has a tail")
+		assert(str(Rules.heritage_look("Dragonborn")["tail"]) != "", "heritage look: a Dragonborn has a tail")
+		qd.apply_look(Rules.heritage_look("Human"))
+		var human_meshes := qd._all_meshes(qd).size()
+		assert(qd.worn("horns") == "", "heritage look: a Human doll wears no horns")
+		qd.apply_look(Rules.heritage_look("Tiefling"))
+		assert(qd.worn("horns") != "", "heritage look: a Tiefling doll actually WEARS its horns")
+		assert(qd.worn("tail") != "", "heritage look: ...and its tail")
+		assert(qd._all_meshes(qd).size() > human_meshes,
+			"heritage look: a Tiefling carries more geometry than a Human — the features are really on the rig")
+		qd.apply_look({"hair": "", "beard": "", "horns": ""})
+		print("  heritage look: horns and tail reach the rig from the heritage table")
+		# PY-25 - the counter's nouns follow the world, as its currency already did.
+		# A Neon Spire fixer sold Mono-Knives for credits from behind "The trading
+		# post", and the Record said those credits were "in the purse". Found by
+		# playing it. Asserted as a DIFFERENCE, not a spelling: a lexicon that
+		# returns the fantasy word for every family would pass a spelling check.
+		assert(WorldSkin.shop_word("embervale", "post") == "The trading post",
+			"shop words: a fantasy world keeps the fantasy default")
+		for fam_world in ["neonspire", "everyday"]:
+			for key in ["post", "keeper", "wares", "purse"]:
+				assert(WorldSkin.shop_word(str(fam_world), key) != WorldSkin.shop_word("embervale", key),
+					"shop words: %s still says the fantasy '%s'" % [fam_world, key])
+		assert(WorldSkin.shop_word("embervale", "nonsense") == "nonsense",
+			"shop words: an unknown key returns itself rather than an empty label")
+		print("  shop words: the counter speaks each world's own vocabulary")
+		# PY-24 - a skinned room prompt must not name medieval furniture. These read
+		# "a %s merchant's STALL interior ... on WORN SHELVES, warm LAMPLIGHT", so
+		# Neon Spire painted a wooden market and stood it behind a counter selling
+		# Pulse Rifles. Asserted as a WORD BAN rather than by rendering, because
+		# rendering costs a GPU minute per room and the defect is in the text.
+		var period_nouns := ["stall", "lamplight", "curio", "torch", "parchment",
+			"tavern", "hearth", "candle", "scroll", "pouch"]
+		for role_key in Art.ENV_ROLE:
+			var tmpl := str(Art.ENV_ROLE[role_key]).to_lower()
+			for noun in period_nouns:
+				assert(not tmpl.contains(noun),
+					"env prompt: the skinned '%s' names '%s' - every world gets that furniture" % [role_key, noun])
+		# ...and the skinned key must move when the words do, or a player who has
+		# already painted the room keeps it for ever.
+		assert(Art.ENV_SKIN_REV >= 2, "env prompt: the skinned cache key was not revved after a prompt change")
+		print("  env prompts: no skinned room names period furniture")
 		assert(ModularDoll.HORN_COLORS.has(ModularDoll.DEFAULT_HORN),
 			"q-doll: the default horn colour is one of the palette")
 		assert(ModularDoll.SKIN_TONES.has(ModularDoll.DEFAULT_SKIN),
@@ -1630,59 +2467,41 @@ The term for spell slots is "Echoes."
 		"figurine: late art must refresh the initiative rail, not just the board")
 	print("  figurine: loadout key tracks gear, headless declines, board and rail agree")
 
-	# ── THE ART CACHE HAS TO SAY WHEN IT IS EATING ITSELF ────────────────────
-	# R10 ran for hours: every finished tile evicted an older painting, the total
-	# never moved, and nothing anywhere printed a word. The tiles themselves are
-	# out of the LRU now, so that exact pour cannot recur — but ANY bulk request
-	# still can, and silence was the reason it took hours to notice rather than
-	# minutes. These assert the noise, not the eviction.
-	#
-	# The manifest is swapped for a fake one and put back below. Sizes here are
-	# declared numbers, not files, so nothing on disk is touched: `_evict` only
-	# deletes a path that exists, and none of these do.
+	# ── THE PAINTINGS ARE PERMANENT ──────────────────────────────────────────
+	# There was a 700 MB LRU here that deleted the least-recently-used art to
+	# stay under budget, defended by "evicted art self-heals: the next
+	# ensure(key, prompt) simply repaints it". Nothing in this repo regenerates
+	# from a sidecar — every `_meta_path` reference writes one or deletes one —
+	# and a hero's face cannot be repainted at all, because its source is the
+	# shared `heroprev` scratch key the next forging overwrites. So these assert
+	# that a total far past the ceiling costs NOTHING, and that the size is still
+	# named out loud, because a runaway generator is real (R10 queued ~1.3 GB).
 	var art_keep: Dictionary = Art._manifest.duplicate(true)
 	var art_loaded: bool = Art._manifest_loaded
-	var art_bytes: int = Art.evicted_bytes
-	var art_count: int = Art.evicted_count
-	var art_warned: bool = Art.thrash_warned
+	var art_warned: bool = Art.size_warned
 	Art._manifest_loaded = true
-	Art.evicted_bytes = 0
-	Art.evicted_count = 0
-	Art.thrash_warned = false
-	var MB := 1024 * 1024
+	Art.size_warned = false
+	var GB := 1024 * 1024 * 1024
 
-	# Two 400 MB paintings against a 700 MB budget: one has to go, and it has to
-	# be the older one — an LRU that evicts the thing on screen is worse than no
-	# cache at all.
-	Art._manifest = {"stale": {"size": 400 * MB, "used": 100.0},
-		"fresh": {"size": 400 * MB, "used": 900.0}}
+	# Twelve GB against a 10 GB warning mark: it complains, and it keeps both.
+	Art._manifest = {"stale": {"size": 6 * GB, "used": 100.0},
+		"fresh": {"size": 6 * GB, "used": 900.0}}
 	Art._enforce_budget()
-	assert(not Art._manifest.has("stale"), "art budget: the least recently used painting is the one evicted")
-	assert(Art._manifest.has("fresh"), "art budget: the painting in use survives")
-	assert(Art.evicted_count == 1, "art budget: an eviction is counted, not silent")
-	assert(Art.evicted_bytes == 400 * MB, "art budget: the bytes freed are reported")
-	assert(not Art.thrash_warned, "art budget: one ordinary eviction is not thrashing")
+	assert(Art._manifest.has("stale"), "art: the oldest painting must SURVIVE — nothing regenerates it")
+	assert(Art._manifest.has("fresh"), "art: the painting in use survives")
+	assert(Art._manifest.size() == 2, "art: going over the mark must delete nothing at all")
+	assert(Art.size_warned, "art: passing the mark is said out loud, once")
 
-	# Throw away more than the whole budget and it has stopped being a cache.
-	Art._manifest = {"stale2": {"size": 400 * MB, "used": 100.0},
-		"fresh2": {"size": 400 * MB, "used": 900.0}}
-	Art._enforce_budget()
-	assert(Art.evicted_bytes > Art.CACHE_BUDGET, "art budget: the session total carries across rounds")
-	assert(Art.thrash_warned, "art budget: evicting more than the entire budget is named as thrashing")
-
-	# A shipped terrain tile is a library asset. If it ever re-enters the LRU,
-	# R10 comes back exactly as it was.
+	# A shipped terrain tile is a library asset and is not even counted.
 	Art._manifest = {}
 	Art._note_asset("tile-grass-01")
-	assert(Art._manifest.is_empty(), "art budget: a shipped terrain tile is never counted against the LRU")
+	assert(Art._manifest.is_empty(), "art: a shipped terrain tile is never counted")
 
 	Art._manifest = art_keep
 	Art._manifest_loaded = art_loaded
-	Art.evicted_bytes = art_bytes
-	Art.evicted_count = art_count
-	Art.thrash_warned = art_warned
+	Art.size_warned = art_warned
 	Art._save_manifest()
-	print("  art budget: LRU order held, evictions counted, thrash named once, tiles exempt")
+	print("  art: paintings are permanent, size named once past the mark, tiles exempt")
 
 	# ── THE CONTRAST GATE ────────────────────────────────────────────────────
 	# InteractionLanguage.md has always required body text at >= 4.5:1 "measured
@@ -1843,6 +2662,18 @@ The term for spell slots is "Echoes."
 			drew = true
 	assert(drew, "the chart actually draws named roads")
 	assert(Composer.PROTOCOL.contains("[[road"), "the GM is told the road tag exists")
+	# The kinds a [[site]] may take are spelled out in the prompt by hand; the engine refuses any other.
+	assert(Composer.PROTOCOL.contains("kind: " + "/".join(GameState.SITE_KINDS)), "the [[site]] kinds the GM is taught are not GameState.SITE_KINDS")
+	for trouble_reach in GameState.TROUBLE_REACH:
+		assert(Composer.PROTOCOL.contains("%s (" % trouble_reach), "the GM is never taught trouble reach=%s" % trouble_reach)
+	assert(Composer.PROTOCOL.contains("[[uncover]]"), "the GM is never taught [[uncover]] - a secret trouble could never be found out")
+	# THE TURN-READ IS WHAT FEEDS A TROUBLE IN REAL PLAY: the narrator wrote 0 [[clue]] in
+	# four investigating turns (town_gm_probe). Nothing offline can run it - the model is
+	# not there - so this pins the one line that calls it after every recorded turn.
+	var chron_src := FileAccess.get_file_as_string("res://autoload/chronicle.gd")
+	var rec_body := chron_src.substr(chron_src.find("func record("), 900)
+	assert(rec_body.contains("_after_turn(") and chron_src.contains("await read_trouble(player_msg, gm_reply)"),
+		"Chronicle.record no longer reads the turn for the trouble - leads and effort would only ever come from tags the real narrator does not write")
 	GameState.state.erase("world")
 
 	# ── The first-run tutorial ───────────────────────────────────────────────
@@ -1871,6 +2702,353 @@ The term for spell slots is "Echoes."
 	# A hint nobody can replay is a bug for the second player on one machine.
 	var msrc := FileAccess.get_file_as_string("res://scripts/main_menu.gd")
 	assert(msrc.contains("coach_reset()"), "Settings can replay the hints")
+
+	# ── THE GROUND IS DATA, AND THE PINS STAND ON IT ─────────────────────────
+	#
+	# The chart used to be an SDXL painting and the road router read terrain back
+	# out of its PIXELS. Measured 2026-08-26: that gave Neon Spire a cost field
+	# 73.2 % "expensive" (night shadow read as mountain) while finding 0.2 % water
+	# in a world whose prompt asks for canals, and three of the twenty authored
+	# pins stood in open water — `Your Apartment` at wet=1.00.
+	#
+	# Nothing ever compared a pin against the ground beneath it, so nothing could
+	# fail. These are the comparisons.
+	for fam in WorldSkin.FAMILIES.keys():
+		# THE RENDERER MUST NOT CONTRADICT THE WORLD'S STATED GROUND. One natural
+		# ramp for all eight families drew Neon Spire — "dense city blocks and
+		# arterial roads" in CHART_GROUND's own words — as grass and hills, which
+		# is PY-26 relocated from the prompt into the shader.
+		assert(WorldTerrain.PAPER.has(fam),
+			"WorldTerrain.PAPER has no colours for the '%s' family - its chart would render in fantasy green whatever Art.CHART_GROUND says it is" % fam)
+		for role in ["paper", "dark", "ink", "land"]:
+			assert(WorldTerrain.PAPER[fam].has(role),
+				"WorldTerrain.PAPER['%s'] is missing '%s' - the shader would take the previous world's colour for it" % [fam, role])
+		assert(WorldTerrain.GROUND.has(fam),
+			"WorldTerrain.GROUND has no ground for the '%s' family - it would silently fall back to fantasy, which is how a megacity got a river valley (PY-26)" % fam)
+	var _seen_terrain := 0
+	for w in Rules.builtin_worlds():
+		var twid := str(w.get("id", ""))
+		if twid == "":
+			continue
+		WorldTerrain.forget(twid)
+		var ter := WorldTerrain.for_world(twid)
+		_seen_terrain += 1
+		var wf := ter.water_fraction()
+		assert(wf > 0.001 and wf < 0.999,
+			"%s terrain is degenerate (%.1f%% water) - all-land or all-sea passes every other check for the wrong reason" % [twid, wf * 100.0])
+		# THE BUG ITSELF: a place standing somewhere its kind cannot stand.
+		for l in Rules.world_locations(twid):
+			if not (l is Dictionary) or not (l.has("x") and l.has("y")):
+				continue
+			var lc := ter.cell_of(Vector2(float(l["x"]), float(l["y"])))
+			var lk := str(l.get("kind", ""))
+			var lclass: String = ["deep", "shoal", "coast", "plain", "hill", "peak"][ter.klass(lc)]
+			assert(ter.suits(lk, lc),
+				"%s: '%s' (%s) stands on %s - the seed search failed to find ground that suits the authored pins" % [
+					twid, str(l.get("name", "")), lk, lclass])
+			# SCORE, NOT JUST `suits`. Asserting only `suits` is asserting "not
+			# drowned", which the very first candidate seed satisfies for every
+			# pin - so the check passed while Hearthwood Market, a shop, sat on a
+			# glacier at score 0.00. The bug was never that pins were underwater;
+			# it was that nothing compared a pin to the ground at all.
+			assert(ter.score(lk, lc) > 0.15,
+				"%s: '%s' (%s) scores %.2f on %s - possible ground, but not ground of its kind; the seed search is not searching" % [
+					twid, str(l.get("name", "")), lk, ter.score(lk, lc), lclass])
+		# DETERMINISM. The Atlas, the minimap and the compiler each ask for this
+		# world's ground separately; if two calls disagree, the pins and the paper
+		# disagree, which is the whole defect being fixed here.
+		WorldTerrain.forget(twid)
+		var ter_again := WorldTerrain.for_world(twid)
+		assert(ter_again.seed_used == ter.seed_used and is_equal_approx(ter_again.sea, ter.sea),
+			"%s terrain is not deterministic - two calls gave seeds %d and %d" % [twid, ter.seed_used, ter_again.seed_used])
+	assert(_seen_terrain >= 6, "only %d worlds had terrain built - the loop went blind" % _seen_terrain)
+	# A PLACE WITH NO AUTHORED COORDINATES IS PLACED BY THE GROUND, NOT BY A HASH.
+	#
+	# `Rules.place_position` was `hash(name)` on a ring: deterministic, which was
+	# the point, and blind to the world. Saltmarsh is 46 % sea and positioned all
+	# three of its places that way, so each had roughly a 2-in-5 chance of
+	# standing in open water - the same way every playthrough, since the hash
+	# never changes.
+	var _char_was = GameState.character
+	for w2 in Rules.builtin_worlds():
+		var ter_wid := str(w2.get("id", ""))
+		if ter_wid == "":
+			continue
+		GameState.character = {"id": "dm-selfcheck", "world_id": ter_wid}
+		var ter_g := WorldTerrain.for_world(ter_wid)
+		var occupied := {}
+		var searched := 0
+		for l in GameState.places():
+			if not (l is Dictionary) or not (l.has("x") and l.has("y")):
+				continue
+			var ter_cell := ter_g.cell_of(Vector2(float(l["x"]), float(l["y"])))
+			var ter_kind := str(l.get("kind", ""))
+			var ter_name := str(l.get("name", ""))
+			# TWO PINS ON ONE CELL. The tie-break is hashed per (name, cell)
+			# instead of a spacing pass over already-placed pins, because a
+			# spacing term makes the answer depend on what else has been placed
+			# and that is what stops it being memoisable - and it must be
+			# memoisable, since mini_map._draw calls places() every frame. This
+			# assertion is the property that spacing pass would have bought.
+			var ter_ck := "%d,%d" % [ter_cell.x, ter_cell.y]
+			assert(not occupied.has(ter_ck),
+				"%s: '%s' and '%s' stand on the same cell %s - the placement tie-break has stopped spreading them" % [
+					ter_wid, str(occupied.get(ter_ck, "")), ter_name, ter_ck])
+			occupied[ter_ck] = ter_name
+			assert(ter_g.suits(ter_kind, ter_cell),
+				"%s: '%s' (%s) was placed on %s" % [ter_wid, ter_name, ter_kind,
+					["deep", "shoal", "coast", "plain", "hill", "peak"][ter_g.klass(ter_cell)]])
+			# A SEARCHED place must land WELL, not merely legally. An authored pin
+			# is what it is and the terrain fits around it; a place the engine
+			# positions itself has no excuse for poor ground.
+			var authored := false
+			for al in Rules.world_locations(ter_wid):
+				if al is Dictionary and al.has("x") and str(al.get("name", "")) == ter_name:
+					authored = true
+			if not authored:
+				searched += 1
+				assert(ter_g.score(ter_kind, ter_cell) > 0.5,
+					"%s: '%s' (%s) was SEARCHED for and still only scores %.2f on %s - the search is not reading the ground" % [
+						ter_wid, ter_name, ter_kind, ter_g.score(ter_kind, ter_cell), ["deep", "shoal", "coast", "plain", "hill", "peak"][ter_g.klass(ter_cell)]])
+		assert(occupied.size() > 0, "%s placed no pins at all - places() went blind" % ter_wid)
+	GameState.character = _char_was
+
+	# ── AT-6: KNOWING OF A PLACE IS NOT HAVING BEEN THERE ────────────────────
+	#
+	# Fog was two-state and the table rule said so: "the map hides what you
+	# haven't walked". In a game narrated by an LLM that produces one specific,
+	# severe failure — the GM says "word reaches you of the Sunken Fort", the
+	# player opens the Atlas, and there is no such place. The map calls the
+	# narrator a liar.
+	#
+	# Unlike the two rows below this, these are BEHAVIOURAL: hear_of/heard_of/
+	# visited are pure data, so the states can be driven and read directly.
+	var _fog_char = GameState.character
+	var _fog_state = GameState.state
+	GameState.character = {"id": "dm-fog", "world_id": "embervale"}
+	GameState.state = {"world": {"here": "", "seen": [], "heard": []}}
+	assert(not GameState.heard_of("Nowhere At All"), "an unmentioned place is not heard of")
+	assert(not GameState.visited("Nowhere At All"), "an unmentioned place is not visited")
+	GameState.hear_of("The Sunken Fort")
+	assert(GameState.heard_of("The Sunken Fort"),
+		"a place the tale NAMED is not on the chart - this is the exact contradiction AT-6 exists to end")
+	assert(not GameState.visited("The Sunken Fort"),
+		"hearing of a place must not count as having stood in it, or there are two states again")
+	# VISITING IMPLIES HEARING OF, and this is the row that matters most.
+	# Every save written before `heard` existed carries a `seen` list and no
+	# `heard` at all. A place the player has STOOD IN must never come back as a
+	# rumour because the format changed underneath them.
+	GameState.state = {"world": {"here": "", "seen": ["Gallows Quay"]}}
+	assert(GameState.visited("Gallows Quay"), "a seen place is visited")
+	assert(GameState.heard_of("Gallows Quay"),
+		"an OLD SAVE with `seen` and no `heard` demoted a visited place back to a rumour")
+	# `here` counts on its own: a tale can open somewhere before anything is
+	# written to either list.
+	GameState.state = {"world": {"here": "The Ember & Oak", "seen": []}}
+	assert(GameState.visited("The Ember & Oak") and GameState.heard_of("The Ember & Oak"),
+		"where the player is STANDING must be the most known place on the chart")
+	GameState.character = _fog_char
+	GameState.state = _fog_state
+
+	# ── AT-5 / AT-6: THE LOCAL TIER, AND FOG THAT LEAVES A CHOICE ────────────
+	#
+	# AT-3 cut this and was right to at the time: "a street tier would mean
+	# inventing the data and then painting it". Both halves died with the painted
+	# chart — the data is generated and there is nothing to paint.
+	var _loc_char = GameState.character
+	var _loc_state = GameState.state
+	GameState.character = {"id": "dm-local", "world_id": "saltmarsh"}
+	GameState.state = {"world": {"here": "", "seen": [], "heard": []}}
+	LocalMap.forget()
+	var town := LocalMap.for_place("saltmarsh", "Gallows Quay", "settlement")
+	var barrow := LocalMap.for_place("fimbulreach", "The Barrow-Field", "ruin")
+	assert(town.settled and not barrow.settled,
+		"a settlement is settled and a ruin is not - the whole fog rule hangs off this")
+	for lm in [town, barrow]:
+		assert(lm.nodes.size() >= 4, "%s generated only %d rooms" % [lm.place, lm.nodes.size()])
+		assert(not lm.edges.is_empty(), "%s generated no ways between its rooms" % lm.place)
+		# EVERY ROOM REACHABLE FROM THE WAY IN. A node with no edge is a room the
+		# player can see and never enter, which reads as a broken map.
+		var seen_idx := {0: true}
+		var queue := [0]
+		while not queue.is_empty():
+			var cur: int = queue.pop_front()
+			for nb in lm.exits_of(cur):
+				if not seen_idx.has(nb):
+					seen_idx[nb] = true
+					queue.append(nb)
+		assert(seen_idx.size() == lm.nodes.size(),
+			"%s: %d of %d rooms are cut off from the entrance" % [
+				lm.place, lm.nodes.size() - seen_idx.size(), lm.nodes.size()])
+		# Unique names: the fog lists are lists of NAMES, so a duplicate would
+		# reveal two rooms at once.
+		var names := {}
+		for nd in lm.nodes:
+			var nn := str(nd.get("name", ""))
+			assert(not names.has(nn), "%s has two rooms called '%s'" % [lm.place, nn])
+			names[nn] = true
+	# A FRIENDLY TOWN IS NEVER FOGGED. People live there, there is signage, and
+	# you can ask; fogging one means walking it to reveal streets, which is
+	# busywork wearing exploration's clothes.
+	for i in town.nodes.size():
+		assert(town.state_of(i, 0, []) > 0,
+			"'%s' in a SETTLED place is hidden - a town you have just walked into is not a dungeon" % str(town.nodes[i]["name"]))
+	# ...and the DRAWING has to honour that. The screen treats state 1 as "a
+	# doorway, not a room" — right for a barrow, wrong for a town, where the
+	# footer promises "every street in sight". The first version drew five
+	# unnamed rings under that promise.
+	var pm_src := FileAccess.get_file_as_string("res://scenes/ui/place_map.gd")
+	# A COASTAL TOWN MUST DRAW ITS WATER. The shore block was deleted by a
+	# careless slice while removing something next to it, and Gallows Quay — a
+	# QUAY — rendered landlocked. Nothing failed; the shot simply had no sea in
+	# it, and only looking caught it.
+	assert(pm_src.contains("lm.water_dir") and pm_src.contains("draw_colored_polygon(pts"),
+		"place_map no longer draws the shore - a coastal town renders landlocked and nothing else notices")
+	assert(pm_src.contains("if lm.settled:"),
+		"place_map draws every un-walked room the same way - a settled place must still show its names, or the map contradicts its own footer")
+	# A BARROW IS. And the fog must leave a CHOICE: standing in a room scouts the
+	# rooms it opens onto. Reveal only where you are and exploring is a random
+	# walk; reveal the neighbours and the player picks between visible options.
+	var hidden := 0
+	for i in barrow.nodes.size():
+		if barrow.state_of(i, 0, []) == 0:
+			hidden += 1
+	assert(hidden > 0, "an UNSETTLED site hides nothing - fog is not applying where it should")
+	for nb in barrow.exits_of(0):
+		assert(barrow.state_of(nb, 0, []) == 1,
+			"standing at the way in does not scout what it opens onto - exploring is a coin flip")
+	assert(barrow.state_of(0, 0, []) == 2, "the room the player is standing in is not known")
+	# PERMANENCE: a room walked stays known after moving on.
+	var far := barrow.nodes.size() - 1
+	assert(barrow.state_of(far, 0, [str(barrow.nodes[far]["name"])]) == 2,
+		"a room already walked came back as unknown - fog is re-shrouding, which is an RTS convention")
+	# DETERMINISM, the same rule the terrain follows: the Atlas, the screen and
+	# any bake must each get the same town.
+	LocalMap.forget()
+	var town2 := LocalMap.for_place("saltmarsh", "Gallows Quay", "settlement")
+	assert(town2.nodes.size() == town.nodes.size()
+		and str(town2.nodes[0]["name"]) == str(town.nodes[0]["name"]),
+		"the same place generated two different towns")
+	GameState.character = _loc_char
+	GameState.state = _loc_state
+
+	var wm_src := FileAccess.get_file_as_string("res://scenes/ui/world_map.gd")
+
+	# AT-7 / AT-8 — THE ATLAS READS WHAT THE PLACES ACTUALLY CARRY.
+	#
+	# `shop` sat on every place for the life of the project and `world_map.gd`
+	# never once read it: "shop" appeared there only as a KIND, so a settlement
+	# with a keeper behind a counter drew the same mark as one without. Regions
+	# had the same shape of bug — real in the data, drawn as floating text.
+	#
+	# THESE ARE MECHANISM CHECKS AND THAT IS WORTH SAYING. They prove the Atlas
+	# still ASKS for the field, not that what it draws is right; judging a badge
+	# or a border is `screen_shots` work. They would not have caught the original
+	# defect either, because the original defect was that nobody looked. What they
+	# do catch is the field being quietly dropped again in a refactor.
+	assert(wm_src.contains("l.get(\"shop\"") or wm_src.contains("get(\"shop\", \"\")"),
+		"world_map.gd no longer reads a place's `shop` field - trade is invisible on the chart again (AT-7)")
+	assert(wm_src.contains("region_at") and wm_src.contains("region_n"),
+		"world_map.gd stopped handing region hearts to the chart shader - regions are back to floating text (AT-8)")
+	var shader_src := FileAccess.get_file_as_string("res://ui/chart_paper.gdshader")
+	assert(shader_src != "", "chart_paper.gdshader is missing - the Atlas has no paper")
+	assert(shader_src.contains("uniform vec2 region_at"),
+		"the chart shader no longer takes region hearts (AT-8)")
+	# ONE FACE AND ONE SYMBOL SET ACROSS BOTH TIERS. `place_map` carried its own
+	# `_draw_mark` with four shapes of its own before `MapInk` existed, and the
+	# Atlas lettered in the theme default while the reference is a book map. Two
+	# tiers of one atlas that letter differently read as two documents.
+	var pm2_src := FileAccess.get_file_as_string("res://scenes/ui/place_map.gd")
+	for pair in [[wm_src, "world_map"], [pm2_src, "place_map"]]:
+		var src2: String = pair[0]
+		assert(src2.contains("Ui.display"),
+			"%s letters in its own font instead of Ui.display - the two map tiers must read as one document" % str(pair[1]))
+		assert(src2.contains("MapInk."),
+			"%s draws its own marks instead of MapInk - two answers to what a ruin looks like is how a legend stops describing the map" % str(pair[1]))
+		assert(not src2.contains("get_theme_default_font()"),
+			"%s fell back to the theme default font" % str(pair[1]))
+
+	# AT-6, the drawing half: no question-mark cloud. A "?" is a promise, and a
+	# point-crawl has no surface to sweep — a place either has a pin or it does
+	# not — so clouds would import a busywork failure this design cannot produce.
+	assert(not wm_src.contains("var q := \"?\""),
+		"the Atlas is drawing question marks for unknown places again (AT-6)")
+	assert(wm_src.contains("_state_of") and wm_src.contains("HEARD"),
+		"world_map.gd has lost the heard-of state - fog is back to two states")
+	# ...and the feature must have something to show, or it is dead code that
+	# passes every grep. At least one shipped world has to carry a trader.
+	var traders := 0
+	for tw in Rules.builtin_worlds():
+		for tl in Rules.world_locations(str(tw.get("id", ""))):
+			if tl is Dictionary and str(tl.get("shop", "")) != "":
+				traders += 1
+	assert(traders > 0,
+		"no shipped world has a place with a `shop` - the trade badge can never appear, so nothing would notice it breaking")
+
+	# NOTHING READS TERRAIN OUT OF A PAINTING.
+	#
+	# `world_map._ensure_land` used to open chart.png and call blue "water" and
+	# dark "steep". That is a colour heuristic over generated art, and it was
+	# wrong in the way generated art is always wrong to read: Neon Spire's neon
+	# strips became rivers, its night became mountains, and the top of every plate
+	# was sky, because the plates are oblique illustrations with a horizon rather
+	# than maps.
+	#
+	# This is a grep, and a grep is the honest shape here — the invariant is
+	# literally a statement about what this file may touch, not a proxy for one.
+	assert(wm_src != "", "world_map.gd is missing")
+	for forbidden in ["get_pixel(", "get_image("]:
+		assert(not wm_src.contains(forbidden),
+			"world_map.gd calls %s - the road router is reading terrain out of the painting again (AT-4, and Invariants.md)" % forbidden)
+	# ...and it must still be routing over SOMETHING, or the grep above passes on
+	# a file that simply draws straight lines.
+	assert(wm_src.contains("WorldTerrain.for_world"),
+		"world_map.gd no longer asks WorldTerrain for its ground - roads have quietly gone back to straight lines")
+
+	# ROUGH GROUND COSTS WHAT ITS WORLD'S RELIEF SAYS IT COSTS.
+	#
+	# This first compared MEAN cost across two whole worlds - and that check was
+	# worthless, proven by mutation: hardcoding the HILL and PEAK constants so
+	# `relief` no longer entered `cost()` at all left SELF-CHECK OK. The mean is
+	# dominated by how much water and high country each world has, which
+	# `_classify` decides, so the assertion was re-testing `_classify` (already
+	# covered above) and saying nothing about `cost`.
+	#
+	# The claim `cost()` actually makes is per-class: the SAME kind of ground is
+	# dearer in a world with more relief. So compare like with like.
+	var _class_cost := func(wid2: String, want: int) -> float:
+		var t2 := WorldTerrain.for_world(wid2)
+		for yy in WorldTerrain.H:
+			for xx in WorldTerrain.W:
+				if t2.klass(Vector2i(xx, yy)) == want:
+					return t2.cost(Vector2i(xx, yy))
+		return -1.0
+	# INK MUST READ ON ITS PAPER. The stock is per family and hand-picked, so the
+	# one thing that can silently go wrong is a pairing nobody can read — pale ink
+	# on pale vellum, or dark ink on a dark blueprint. Contrast is checkable where
+	# taste is not, and below it the map is unusable.
+	#
+	# THROUGH `Ui.contrast_ratio`, not a hand-rolled one. The first version of
+	# this computed luminance from `Color.get_luminance()`, which works on
+	# GAMMA-ENCODED channels and is not the WCAG formula — it failed the fantasy
+	# stock at "3.9:1" when the real ratio is 9.0:1. The repo already had the
+	# right function, used by the palette checks a few hundred lines up, and
+	# reaching past it to write a second one is how two answers to one question
+	# get into a codebase.
+	for fam2 in WorldTerrain.PAPER.keys():
+		var ink_paper := Color(str(WorldTerrain.PAPER[fam2]["paper"]))
+		var ink_ink := Color(str(WorldTerrain.PAPER[fam2]["ink"]))
+		var got_ratio := Ui.contrast_ratio(ink_ink, ink_paper)
+		assert(got_ratio >= Ui.TEXT_MIN,
+			"'%s' draws %s ink on %s paper - %.1f:1, under the %.1f:1 the rest of this game is held to" % [
+				fam2, ink_ink.to_html(false), ink_paper.to_html(false), got_ratio, Ui.TEXT_MIN])
+
+	var city_hill: float = _class_cost.call("neonspire", WorldTerrain.HILL)
+	var fjord_hill: float = _class_cost.call("fimbulreach", WorldTerrain.HILL)
+	assert(city_hill > 0.0 and fjord_hill > 0.0,
+		"no hill found in neonspire (%.2f) or fimbulreach (%.2f) - the class search went blind" % [city_hill, fjord_hill])
+	assert(city_hill < fjord_hill * 0.8,
+		"a rise in a megacity costs %.2f and one in a fjord world %.2f - relief has stopped driving cost()" % [city_hill, fjord_hill])
 
 	print("SELF-CHECK OK")
 	get_tree().quit(0)

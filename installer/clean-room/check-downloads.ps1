@@ -124,7 +124,7 @@ Check 'stable-diffusion.cpp (vulkan)' "https://github.com/leejet/stable-diffusio
 
 # The asset name repeats the tag in full — verified here rather than trusted,
 # because fetch_nobodywho.py builds this URL by string-mashing.
-$nwTag = 'nobodywho-godot-v9.5.0'
+$nwTag = 'nobodywho-godot-v9.6.0'
 Check 'NobodyWho GDExtension' "https://github.com/nobodywho-ooo/nobodywho/releases/download/$nwTag/nobodywho-godot-$nwTag.zip" (100MB) $PK
 
 "`n=============================================="

@@ -18,6 +18,14 @@ func _ready() -> void:
 		print("unavailable: ", LocalGM.why_unavailable()); get_tree().quit(); return
 	Api.sse_delta.connect(func(t): _acc += t)
 	Api.sse_done.connect(_done)
+	# WARM FIRST, because the shipped game does. `_open_the_adventure` holds the
+	# loading curtain over `LocalGM.warm()` now, so a bench that skipped it was
+	# measuring a first turn no player takes — and reporting the model load as
+	# though it were the narrator being slow. Timed and reported on its own line:
+	# the seconds did not vanish, they moved somewhere honest.
+	var w0 := Time.get_ticks_msec()
+	await LocalGM.warm()
+	print("warm (behind the curtain): %5.1fs" % ((Time.get_ticks_msec() - w0) / 1000.0))
 	_go()
 
 func _go() -> void:
@@ -30,8 +38,7 @@ func _go() -> void:
 
 func _done(_ok: bool) -> void:
 	var s := (Time.get_ticks_msec() - _t0) / 1000.0
-	print("turn %d: %5.1fs  %4d chars%s" % [_n + 1, s, _acc.length(),
-		"   (includes model load)" if _n == 0 else ""])
+	print("turn %d: %5.1fs  %4d chars" % [_n + 1, s, _acc.length()])
 	print("   \"%s…\"" % _acc.strip_edges().replace("\n", " ").left(90))
 	_openings.append(_acc)
 	# RECORD IT, so the next turn's envelope can tell the GM what it just wrote.

@@ -44,6 +44,10 @@ var _questions := {}           # question label -> its chip buttons
 var _qbox: VBoxContainer = null   # rebuilt whenever the theme or idea changes
 var _premise_page := 0            # which six premises the Spark is offering
 var _forged: Dictionary = {}   # the smith's latest take, pre-seal
+## PL-5 — see the handler below. Members, so the connection can be a METHOD
+## Callable owned by this node instead of a lambda owned by nothing.
+var _sky: TextureRect = null
+var _sky_key := ""
 var _sealed: Dictionary = {}   # the world after the wax came down
 var _fails := 0                # consecutive failed strikes, for an honest message
 
@@ -76,6 +80,12 @@ func _build_stage(i: int) -> void:
 
 
 # ── Stage 0: the spark ───────────────────────────────────────────────────────
+func _on_sky_art(k: String) -> void:
+	if str(k) != _sky_key or not is_instance_valid(_sky):
+		return
+	_sky.texture = Art.texture_for(str(k))
+
+
 func _stage_spark() -> void:
 	_title_label("The Spark")
 	var line := Label.new()
@@ -468,10 +478,11 @@ func _stage_atlas() -> void:
 	sky.custom_minimum_size = Vector2(680, 190)
 	sky.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	sky.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	sky.texture = Art.texture_for(str(w.get("id", "")))
-	Art.art_ready.connect(func(k):
-		if str(k) == str(w.get("id", "")) and is_instance_valid(sky):
-			sky.texture = Art.texture_for(str(k)))
+	sky.texture = Art.world_tex(str(w.get("id", "")))
+	_sky = sky
+	_sky_key = str(w.get("id", ""))
+	if not Art.art_ready.is_connected(_on_sky_art):
+		Art.art_ready.connect(_on_sky_art)
 	var skc := CenterContainer.new()
 	skc.add_child(sky)
 	_stage_box.add_child(skc)

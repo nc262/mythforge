@@ -11,6 +11,9 @@ extends Control
 ## quiet about it.
 
 signal travel_requested(place: String)
+## AT-5 — clicking the place you are ALREADY STANDING IN did nothing at all, so
+## the gesture was free. It is the natural way in: travel there, then step inside.
+signal enter_requested(place: String)
 
 var locations: Array = []
 var here := ""
@@ -20,6 +23,29 @@ var quest_text := ""          # active quest prose — matched against names
 var _hover := -1
 var _camera := MythCamera.new()  # the shared MDL pan/zoom (adopted per Backlog §3)
 var _phase := 0.0
+var _paper: ColorRect = null
+var _paper_world := ""
+var _paper_regions := PackedVector2Array()
+## ── AT-10: WHAT IS DRAWN ON THE LAND ─────────────────────────────────────────
+## On a book map the land is not a colour, it is a SURFACE WITH THINGS ON IT:
+## ranges of little peaks, clumps of trees, a scatter of hills. Without them the
+## parchment renders a correct coastline round an empty beige field — which is
+## what the first parchment pass looked like, and why it read as unfinished
+## rather than as a map.
+##
+## Built once per (world, size) and cached: this is a few hundred glyphs and
+## `_draw` runs every frame for the cloud shadows.
+var _glyphs: Array = []          # {"p": Vector2, "kind": String, "s": float}
+var _glyph_key := ""
+## Ornament: the rose, the ships, the thing in the deep. Placed in open water,
+## cached with the glyphs, and never allowed near a pin — see _ensure_ornament.
+var _ornament: Array = []        # {"p": Vector2, "kind": String, "s": float}
+## Where each name was actually placed last frame. A label is laid out ONCE per
+## visible set and reused, because the solver is order-dependent: solving it
+## fresh every frame with a different iteration order would make the names
+## twitch between two equally-good positions.
+var _label_at := {}              # name -> Vector2 (screen, pre-camera)
+var _label_key := ""
 
 ## AT-3 — TWO TIERS: the realm, and one region within it.
 ##
@@ -42,33 +68,31 @@ var _region_hover := -1
 ##
 ## Roads were straight lines between pins, which is a spider-web rather than a
 ## road network: no road in any world runs dead straight across a bay and over a
-## mountain because those were the two ends. Baking the chart plate made it
-## worse — now there is visible country for a straight line to ignore.
+## mountain because those were the two ends. So the road is ROUTED — an A* over a
+## cost field, cheap on open ground and dear through water and high country. It
+## bends around the bay because the bay costs more, not because a wobble was
+## added to make it look bent.
 ##
-## So the road is ROUTED across the paper: an A* over a coarse cost grid sampled
-## from the chart, cheap around open ground and expensive through water and dark
-## high land. It bends around the bay because the bay costs more, not because a
-## wobble was added to make it look bent.
+## THE FIELD IS `WorldTerrain`, NOT THE PAINTING. This used to sample `chart.png`
+## and call blue "water" and dark "steep", which is a colour heuristic over
+## generated art — the thing [Terrain.md] deleted for the battle map. The comment
+## here argued that two of its three objections did not apply. Measured
+## 2026-08-26, they did:
 ##
-## THIS IS A COLOUR HEURISTIC OVER GENERATED ART, which [Terrain.md] deleted for
-## the battle map. Two of its three objections do not apply here and the third is
-## avoided on purpose:
+##   · Neon Spire: 73.2 % of a flat city classified "expensive" (night shadow
+##     read as mountain) and 0.2 % water found, in a world whose chart prompt
+##     asks for light-filled canals. Roads detoured up to 1.80x around glow.
+##   · Brasshaven: 0.0 % water. Its prompt also asks for canals.
+##   · Worse, the plates are not maps at all — they are oblique landscape
+##     illustrations WITH A HORIZON, so part of every cost grid was sky.
 ##
-##  · AMBIGUITY was fatal there because the read drove MECHANICS — open snow
-##    classified impassable. Here it drives nothing but the shape of a drawn
-##    line. Travel cost and peril come from Rules.ROAD and GameState.roads(); a
-##    misread bends a road and can never change what a journey costs.
-##  · COORDINATE MISMATCH was the real bug: the board drew cover-fit and sampled
-##    stretched, so the overlay described part of a painting that was off screen.
-##    The chart is drawn `draw_texture_rect(art, Rect2(ZERO, size))` — the whole
-##    image stretched — and is sampled the same way, so the grid and the picture
-##    cannot disagree. Keep those two together if either ever changes.
-##  · WALLS ARE NOT CELLS is a battle-map problem; a chart has no walls.
+## AT-4 had already forbidden exactly this ("the paper stops claiming positions
+## it cannot honour", 8a56197). This function landed two hours later and quietly
+## undid it. The ground is data now, generated before anything is drawn, and
+## nothing here opens an image.
 ##
-## Sampled ONCE per (world, size) and every route cached — `_draw` runs every
-## frame for the cloud shadows, and re-routing there would be a per-frame A*.
-const LAND_W := 56
-const LAND_H := 36
+## Built ONCE per (world, size) and every route cached — `_draw` runs every frame
+## for the cloud shadows, and re-routing there would be a per-frame A*.
 var _land: AStarGrid2D = null
 var _land_key := ""
 var _routes := {}             # "ax,ay|bx,by" → PackedVector2Array
@@ -108,18 +132,15 @@ func kind_shape(kind: String) -> String:
 
 ## One marker, drawn the same on the chart and in the legend — so the key is
 ## literally a picture of the thing it explains.
-func _draw_mark(at: Vector2, shape: String, col: Color, r: float) -> void:
-	match shape:
-		"ring":
-			draw_arc(at, r, 0, TAU, 20, col, maxf(1.5, r * 0.42), true)
-		"square":
-			draw_rect(Rect2(at - Vector2(r, r) * 0.86, Vector2(r, r) * 1.72), col)
-		"diamond":
-			draw_colored_polygon(PackedVector2Array([
-				at + Vector2(0, -r * 1.2), at + Vector2(r * 1.1, 0),
-				at + Vector2(0, r * 1.2), at + Vector2(-r * 1.1, 0)]), col)
-		_:
-			draw_circle(at, r, col)
+##
+## AT-10 — THE SYMBOL NOW CARRIES THE KIND ON ITS OWN. This took a `shape` and a
+## `col` because the palette does not hold seven separable hues and the pair was
+## needed to tell seven kinds apart. On a one-ink chart there is no hue left at
+## all, so the silhouette has to do the whole job — which is a stronger version
+## of the same accessibility rule, not a relaxation of it. `MapInk` is the single
+## home; `place_map` had its own copy of this function before it existed.
+func _draw_mark(at: Vector2, kind: String, _col: Color, r: float) -> void:
+	MapInk.draw_mark(self, at, kind, _ink(), _paper_tone(), r * 1.5)
 
 ## AT-1 — WHAT THE COLOURS MEAN.
 ##
@@ -135,19 +156,117 @@ const KIND_LABEL := {"tavern": "inn", "shop": "trade", "landmark": "landmark",
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	clip_contents = true  # cover-fit paper must never flood the neighbors
+	clip_contents = true  # the paper must never flood the neighbours
 	custom_minimum_size = Vector2(680, 430)
-	set_process(not Ui.reduce_motion)
+	_paper = ColorRect.new()
+	_paper.show_behind_parent = true
+	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_paper)
+	_sync_paper()
+	# ALWAYS PROCESS. `set_process(not Ui.reduce_motion)` was right when _process
+	# only drove cloud drift and a pulse; it now also keeps the paper aligned to
+	# the camera, and a player with reduce_motion on would have panned the pins
+	# away from the ground under them.
+	set_process(true)
 
 
 func _process(delta: float) -> void:
 	_phase += delta
+	_sync_paper()
 	queue_redraw()
 
 
+## THE PAPER IS A CHILD, DRAWN BEHIND THIS NODE.
+##
+## A ShaderMaterial set on this Control would apply to everything it draws — the
+## pins, the roads, the names, the legend — so the chart lives on its own
+## ColorRect with `show_behind_parent`, which is exactly what that flag is for.
+## Godot draws behind-parent children, then the parent, then normal children, so
+## the scrim and every pin still land on top.
+##
+## It carries the camera itself rather than riding `draw_set_transform`, which
+## only moves the parent's OWN draws. Keep these two in step: if the paper and
+## the pins ever disagree about pan or zoom, the map is lying about position
+## again, which is the whole defect this work exists to end.
+func _sync_paper() -> void:
+	if _paper == null:
+		return
+	var wid := GameState.world_id()
+	if _paper_world != wid:
+		_paper_world = wid
+		_paper.material = WorldTerrain.for_world(wid).paper_material()
+	_paper.position = _camera.cam
+	_paper.size = size
+	_paper.scale = Vector2(_camera.zoom, _camera.zoom)
+	# AT-8 — the regions the player has actually reached, in the shader's own UV
+	# space. Rebuilt only when the set changes: this runs every frame.
+	var uvs := _region_uvs()
+	if uvs != _paper_regions:
+		_paper_regions = uvs
+		var mat := _paper.material as ShaderMaterial
+		if mat != null:
+			mat.set_shader_parameter("region_n", uvs.size())
+			# The uniform is a fixed-size array; a short one leaves stale hearts
+			# behind it, and `region_n` would be the only thing hiding them.
+			var padded := PackedVector2Array(uvs)
+			while padded.size() < 8:
+				padded.append(Vector2.ZERO)
+			mat.set_shader_parameter("region_at", padded)
+
+
+## Region hearts as UV, fog-gated. `_region_anchor` returns INF for a region with
+## nothing known inside it, which is exactly the gate the labels already use — so
+## the tint appears the moment the name does, and never before it.
+##
+## The HEART, not the anchor: `_region_anchor` is where the LABEL sits, dropped
+## below the cluster so it does not print through a pin. Dividing the land by
+## label positions would put every march a little south of where it belongs.
+func _region_uvs() -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for r in regions:
+		if not (r is Dictionary):
+			continue
+		var nm := str(r.get("name", ""))
+		if nm == "" or _region_anchor(nm) == Vector2.INF:
+			continue
+		out.append(Vector2(float(r.get("x", 50)) / 100.0, float(r.get("y", 50)) / 100.0))
+		if out.size() >= 8:
+			break     # the shader's array is eight; REGION_PLACE_CAP keeps worlds small
+	return out
+
+
+## ── AT-6: THREE STATES, NOT TWO ──────────────────────────────────────────────
+##
+## `_known` was `not fog or nm == here or seen.has(nm)` — a place was either fully
+## known or a question mark under a cloud. That collapses two different kinds of
+## knowing: you can know OF the Sunken Fort without having stood in it.
+##
+## The precedent is exact. Baldur's Gate II updates the world map from dialogue
+## alone; Pillars of Eternity greys the icon of a location learned by being told
+## about it; Skyrim draws known-unvisited black against visited white. All three
+## ship the middle state this file did not have.
+##
+## HEARD is clickable, following BG2 rather than Pillars: you know the place is
+## out there, and setting off for it is the entire point of a chart.
+enum { UNKNOWN, HEARD, VISITED }
+
+
+func _state_of(nm: String) -> int:
+	if not fog:
+		return VISITED                  # the table turned fog off; all is known
+	if nm == here or seen.has(nm) or GameState.visited(nm):
+		return VISITED
+	return HEARD if GameState.heard_of(nm) else UNKNOWN
+
+
+## Kept as the "is this drawn at all" test, which is what every caller wanted it
+## for. A place merely heard of IS drawn — that is the point — so this is now
+## true one state earlier than it used to be.
 func _known(nm: String) -> bool:
-	return not fog or nm == here or seen.has(nm)
+	return _state_of(nm) != UNKNOWN
 
 
 func _questward(nm: String) -> bool:
@@ -169,35 +288,296 @@ func _ensure_land() -> void:
 		return
 	_land_key = key
 	_routes.clear()
+	var ground := WorldTerrain.for_world(GameState.world_id())
 	_land = AStarGrid2D.new()
-	_land.region = Rect2i(0, 0, LAND_W, LAND_H)
-	_land.cell_size = Vector2(size.x / float(LAND_W), size.y / float(LAND_H))
+	_land.region = Rect2i(0, 0, WorldTerrain.W, WorldTerrain.H)
+	# The grid is the TERRAIN's resolution, not one of its own. A second grid size
+	# meant a resample between the two, and a resample is where a coordinate
+	# mismatch hides — which is the bug this whole change exists to end.
+	_land.cell_size = Vector2(size.x / float(WorldTerrain.W), size.y / float(WorldTerrain.H))
 	_land.diagonal_mode = AStarGrid2D.DIAGONAL_MODE_ALWAYS
 	_land.update()
-	var art: Texture2D = Compiler.chart_art(GameState.world_id())
-	if art == null:
-		return                       # no paper to read: routes fall back to straight
-	var img := art.get_image()
-	if img == null:
+	for y in WorldTerrain.H:
+		for x in WorldTerrain.W:
+			_land.set_point_weight_scale(Vector2i(x, y), ground.route_cost(Vector2i(x, y)))
+
+
+## Screen pixels to a terrain cell, THROUGH PERCENT — the coordinate space every
+## place already uses. Going straight from pixels to cells would work today and
+## break the moment the chart is drawn at anything but the full rect; percent is
+## the one space the pins, the terrain and the paper all agree on.
+## Peaks on the high ground, trees on the low, hills between — sampled off the
+## SAME field the pins stand on, so a range drawn here is a range the roads
+## actually detour around.
+func _ensure_glyphs() -> void:
+	var key := "%s@%dx%d" % [GameState.world_id(), int(size.x), int(size.y)]
+	if _glyph_key == key:
 		return
-	if img.is_compressed():
-		img.decompress()
-	# Stretched exactly as _draw stretches it — see the note on LAND_W.
-	img.resize(LAND_W, LAND_H, Image.INTERPOLATE_LANCZOS)
-	for y in LAND_H:
-		for x in LAND_W:
-			var c := img.get_pixel(x, y)
-			# Blue running ahead of both other channels is water on every one of
-			# these plates, fantasy or neon. Darkness is ridge and deep forest.
-			var wet := clampf((c.b - maxf(c.r, c.g)) * 5.0, 0.0, 1.0)
-			var steep := clampf((0.26 - c.get_luminance()) * 4.0, 0.0, 1.0)
-			_land.set_point_weight_scale(Vector2i(x, y), 1.0 + wet * 14.0 + steep * 5.0)
+	_glyph_key = key
+	_glyphs.clear()
+	var g := WorldTerrain.for_world(GameState.world_id())
+	var urban: float = float(WorldTerrain.URBAN.get(g.family, 0.0))
+	# COVER COMES IN PATCHES. A per-cell dice roll scatters trees evenly across
+	# every plain on the map, which reads as speckle — no real map has woodland
+	# spread like static. A low-frequency field gates them instead, so forests
+	# are woods with edges and clearings between, and the same field thinned the
+	# hill arcs that were carpeting the whole interior.
+	var cover := FastNoiseLite.new()
+	cover.seed = g.seed_used + 5417
+	cover.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+	cover.frequency = 0.055
+	# A stride, not every cell: 6144 glyphs is a texture, not a drawing. Peaks
+	# are sparser than trees because a mountain glyph is bigger and a range of
+	# six reads as a range where sixty reads as noise.
+	for cy in range(1, WorldTerrain.H - 1, 2):
+		for cx in range(1, WorldTerrain.W - 1, 2):
+			var c := Vector2i(cx, cy)
+			var k := g.klass(c)
+			if k == WorldTerrain.DEEP or k == WorldTerrain.SHOAL:
+				continue
+			var h := absi(hash(Vector2i(cx * 7, cy * 13)))
+			var roll := float(h % 1000) / 1000.0
+			var jit := Vector2(float((h >> 3) % 100) / 100.0 - 0.5,
+				float((h >> 9) % 100) / 100.0 - 0.5) * 1.6
+			var at := g.pct_of(c) + jit
+			var kind := ""
+			var scale := 1.0
+			var cv := cover.get_noise_2d(float(cx), float(cy)) * 0.5 + 0.5
+			if k == WorldTerrain.PEAK and roll < 0.72:
+				kind = "peak"
+				scale = 0.85 + float((h >> 5) % 60) / 100.0
+			elif k == WorldTerrain.HILL and cv > 0.60 and roll < 0.45:
+				kind = "hill"
+				scale = 0.8 + float((h >> 7) % 40) / 100.0
+			elif k == WorldTerrain.PLAIN and cv > 0.56 and roll < 0.72:
+				# A CITY HAS NO FORESTS. On an urban world the low ground carries
+				# built blocks instead — the same rule `Art.CHART_GROUND` states
+				# and the shader's `urban` term already follows.
+				kind = "block" if roll < 0.72 * urban else "tree"
+				scale = 0.75 + float((h >> 11) % 50) / 100.0
+			if kind != "":
+				_glyphs.append({"p": at, "kind": kind, "s": scale})
+
+
+## ── AT-13: NAMES THAT DO NOT SIT ON TOP OF EACH OTHER ────────────────────────
+##
+## Every label was drawn at a fixed offset above its pin, so two places close
+## together printed through one another and a name over a mountain range became
+## unreadable. A chart engraver moves the word — above, below, out to one side —
+## until it is clear, and that is a solvable problem rather than a matter of
+## taste.
+##
+## Greedy, in draw order, over eight candidate positions at two distances. Not
+## optimal, and it does not need to be: with a dozen names the first fit is
+## almost always the one a person would pick, and the failure mode of a greedy
+## pass (one name pushed further out than strictly necessary) is invisible where
+## the failure mode of no pass at all is two words on top of each other.
+##
+## SOLVED ONCE PER VISIBLE SET, not per frame. The result depends on the order
+## labels are placed, so re-solving every frame with the hover changing would let
+## a name flick between two equally good spots.
+const LABEL_TRIES: Array[Vector2] = [
+	Vector2(0, -1), Vector2(0, 1), Vector2(1, -0.35), Vector2(-1, -0.35),
+	Vector2(1, 0.7), Vector2(-1, 0.7), Vector2(1, -1), Vector2(-1, -1)]
+
+
+func _solve_labels(font: Font) -> void:
+	# FOCUS IS IN THE KEY: focusing a region changes which names are drawn, and a
+	# layout cached for the whole realm left the focused view's names where the
+	# realm's neighbours had pushed them.
+	var key := "%s@%dx%d|%d|%s|%s" % [GameState.world_id(), int(size.x), int(size.y),
+		locations.size(), ",".join(PackedStringArray(seen)), _focus]
+	if _label_key == key:
+		return
+	_label_key = key
+	_label_at.clear()
+	var taken: Array[Rect2] = []
+	for furniture in [_legend_rect(font), _cartouche_rect(font)]:
+		if furniture.size.x > 0.0:
+			taken.append(furniture.grow(4.0))
+	# REGION BANNERS ARE RESERVED BEFORE ANY PLACE NAME IS SET. They were drawn by
+	# a separate pass the solver never saw, so a place name could be placed
+	# squarely on top of one. On Saltmarsh the region is named after its chief
+	# town — normal, and the banner is not redundant, since Gallows Quay the
+	# region also holds The Leaning Lantern — and "Gallows Quay" the place sat
+	# across "GALLOWS QUAY" the region, reading as a typo.
+	for rg in _visible_regions():
+		taken.append(_region_rect(font, str(rg["name"]), rg["at"]).grow(3.0))
+	for l0 in locations:
+		if l0 is Dictionary and _state_of(str(l0.get("name", ""))) != UNKNOWN and _in_focus(l0):
+			taken.append(Rect2(_pos_of(l0) - Vector2(8, 8), Vector2(16, 16)))
+	for l in locations:
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		if nm == "" or _state_of(nm) == UNKNOWN or not _in_focus(l):
+			continue
+		var p := _pos_of(l)
+		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14)
+		var best := p + Vector2(-sz.x / 2.0, -14.0)
+		# LEAST-BAD, NOT FIRST-CLEAR-OR-DEFAULT. Same fix the town tier needed:
+		# score every candidate by the area it actually overlaps plus a small
+		# pull toward the pin, and keep the cheapest. A crowded chart degrades
+		# instead of stacking a name on whatever sat at the default.
+		var best_cost := INF
+		for dist in [16.0, 26.0, 38.0]:
+			for dir in LABEL_TRIES:
+				var c := p + Vector2(dir.x * (sz.x * 0.5 + 8.0), dir.y * dist)
+				var r := Rect2(c - Vector2(sz.x / 2.0, sz.y * 0.8), sz + Vector2(6, 4))
+				var cost: float = float(dist) * 0.4
+				for t in taken:
+					var hit := r.intersection(t)
+					cost += hit.size.x * hit.size.y
+				if cost < best_cost:
+					best_cost = cost
+					best = c + Vector2(-sz.x / 2.0, 0)
+			if best_cost <= dist * 0.4 + 0.01:
+				break
+		taken.append(Rect2(best - Vector2(0, sz.y * 0.8), sz + Vector2(6, 4)))
+		_label_at[nm] = best
+
+
+## Lettering set INTO the sheet — a halo in the paper's own colour, the way an
+## engraver leaves a gap round a word so the hatching does not run through it.
+func _label(font: Font, nm: String, fallback: Vector2, sz: int, strength: float) -> void:
+	if nm == "":
+		return
+	var at: Vector2 = _label_at.get(nm, fallback)
+	MapInk.draw_label(self, font, at, nm, sz, _ink(), _paper_tone(), strength)
+
+
+## Ink glyphs, drawn the way a pen would: an outline and one shaded face. Every
+## one is built from lines rather than a texture, so they stay crisp at any zoom
+## — the same reason the coastline is a shader stroke.
+## THE CHART IS PAPER NOW, so everything drawn on it is ink. The pins, names and
+## legend were coloured for a dark panel — pale ink on a dark ground — and on
+## parchment that is a light-on-light map nobody can read. One place to ask, so
+## the glyphs, the lettering and the key cannot drift apart.
+func _ink() -> Color:
+	return WorldTerrain.for_world(GameState.world_id()).ink_colour()
+
+
+func _draw_glyphs() -> void:
+	var ink := _ink()
+	for gl in _glyphs:
+		var p: Vector2 = Vector2(gl["p"].x / 100.0 * size.x, gl["p"].y / 100.0 * size.y)
+		var sc: float = float(gl["s"])
+		match str(gl["kind"]):
+			"peak":
+				var w := 7.0 * sc
+				var hgt := 8.5 * sc
+				var a := p + Vector2(-w, 0)
+				var b := p + Vector2(0, -hgt)
+				var c2 := p + Vector2(w, 0)
+				# The shaded face first, then the outline over it — which is how
+				# an engraver builds a mountain and why it reads as solid.
+				draw_colored_polygon(PackedVector2Array([a, b, p + Vector2(0, 0)]),
+					Color(ink, 0.28))
+				draw_polyline(PackedVector2Array([a, b, c2]), Color(ink, 0.9), 1.6, true)
+			"hill":
+				var w2 := 5.0 * sc
+				draw_arc(p + Vector2(0, w2 * 0.4), w2, PI, TAU, 12, Color(ink, 0.7), 1.4, true)
+			"tree":
+				# A CROWN AND A TRUNK, not a bubble. At 3 px with a ring round it
+				# a tree reads as a dot, and a plain covered in dots reads as
+				# speckle rather than woodland — the shape has to say "tree" at
+				# the size it is actually drawn.
+				var r := 4.6 * sc
+				var crown := p + Vector2(0, -r * 0.55)
+				draw_line(p + Vector2(0, r * 0.75), crown, Color(ink, 0.72), 1.3, true)
+				var lobes := PackedVector2Array()
+				for li in 9:
+					var a2 := float(li) / 9.0 * TAU
+					var rr := r * (0.78 + 0.30 * float((li % 3)) / 2.0)
+					lobes.append(crown + Vector2(cos(a2), sin(a2) * 0.86) * rr)
+				draw_colored_polygon(lobes, Color(ink, 0.22))
+				lobes.append(lobes[0])
+				draw_polyline(lobes, Color(ink, 0.80), 1.25, true)
+			"block":
+				var bw := 4.4 * sc
+				var bh := 3.0 * sc
+				draw_rect(Rect2(p - Vector2(bw, bh) * 0.5, Vector2(bw, bh)), Color(ink, 0.22))
+				draw_rect(Rect2(p - Vector2(bw, bh) * 0.5, Vector2(bw, bh)), Color(ink, 0.75), false, 1.2)
+
+
+## Furniture goes in the OPEN WATER, and only where the water is genuinely open:
+## a ship drawn in a bay two cells from shore reads as a wreck, and a rose over a
+## coastline is a mistake. Scored by how far each candidate is from any land, so
+## the deep gets the ornament and the shallows are left alone.
+func _ensure_ornament() -> void:
+	if not _ornament.is_empty() and _glyph_key == "%s@%dx%d" % [
+			GameState.world_id(), int(size.x), int(size.y)]:
+		return
+	_ornament.clear()
+	var g := WorldTerrain.for_world(GameState.world_id())
+	var open: Array = []
+	for cy in range(3, WorldTerrain.H - 3, 3):
+		for cx in range(3, WorldTerrain.W - 3, 3):
+			var c := Vector2i(cx, cy)
+			if not g.is_water(c):
+				continue
+			# NINE, NOT 99. This was a sentinel, and the sentinel leaked: when a
+			# cell is clear of land all the way out to the loop's limit the value
+			# survives untouched, and it is then used as a SCALE — 1.0 + 99*0.06
+			# gave a compass rose of radius 208 px instead of 44, a pale disc a
+			# third of the sheet wide sitting on top of the legend. A sentinel and
+			# a measurement must never share a variable; the loop bound is a real
+			# answer ("clear at least this far"), so there is nothing to leak.
+			var clear := 9
+			for rr in range(1, 9):
+				var hit := false
+				for a in 8:
+					var ang := float(a) / 8.0 * TAU
+					var n := c + Vector2i(int(round(cos(ang) * float(rr))), int(round(sin(ang) * float(rr))))
+					if not g.in_bounds(n) or not g.is_water(n):
+						hit = true
+						break
+				if hit:
+					clear = rr
+					break
+			if clear >= 3:
+				open.append({"c": c, "room": clear})
+	if open.is_empty():
+		return
+	open.sort_custom(func(a, b): return int(a["room"]) > int(b["room"]))
+	# Spread them: the three best cells are usually neighbours in one basin, and
+	# a rose with two ships stacked on it is worse than no ornament at all.
+	var want := ["rose", "ship", "beast", "ship"]
+	var placed: Array[Vector2] = []
+	for cand in open:
+		if _ornament.size() >= want.size():
+			break
+		var at: Vector2 = g.pct_of(cand["c"])
+		var far := true
+		for q in placed:
+			if q.distance_to(at) < 26.0:
+				far = false
+				break
+		if not far:
+			continue
+		placed.append(at)
+		_ornament.append({"p": at, "kind": want[_ornament.size()],
+			"s": 1.0 + float(int(cand["room"])) * 0.06})
+
+
+func _draw_ornament() -> void:
+	var ink := _ink()
+	var paper := _paper_tone()
+	for o in _ornament:
+		var p: Vector2 = Vector2(o["p"].x / 100.0 * size.x, o["p"].y / 100.0 * size.y)
+		var sc: float = float(o["s"])
+		match str(o["kind"]):
+			"rose":
+				MapInk.draw_rose(self, p, 30.0 * sc, ink, paper)
+			"ship":
+				MapInk.draw_ship(self, p, 12.0 * sc, ink, paper)
+			"beast":
+				MapInk.draw_beast(self, p, 14.0 * sc, ink)
 
 
 func _cell_of(p: Vector2) -> Vector2i:
-	return Vector2i(
-		clampi(int(p.x / maxf(size.x, 1.0) * LAND_W), 0, LAND_W - 1),
-		clampi(int(p.y / maxf(size.y, 1.0) * LAND_H), 0, LAND_H - 1))
+	return WorldTerrain.for_world(GameState.world_id()).cell_of(Vector2(
+		p.x / maxf(size.x, 1.0) * 100.0, p.y / maxf(size.y, 1.0) * 100.0))
 
 
 ## Chaikin: two passes turn an A* staircase into something drawn by a hand that
@@ -212,7 +592,76 @@ func _smooth(pts: PackedVector2Array) -> PackedVector2Array:
 			out.append(pts[i].lerp(pts[i + 1], 0.75))
 		out.append(pts[pts.size() - 1])
 		pts = out
-	return pts
+	return _wander(pts)
+
+
+## THE HAND, not the ruler. Chaikin rounds a staircase, but it leaves a straight
+## run straight — and over flat ground A* returns long straight runs because they
+## are genuinely cheapest. Saltmarsh drew a dead horizontal line across half the
+## sheet: 65 % of its route points continued in exactly the same direction as the
+## one before.
+##
+## The cost field was the wrong place to fix that and a +/-12 % jitter there did
+## nothing measurable (see `WorldTerrain.route_cost`). The route is the
+## topological answer — which way the road goes — and this is the drawing of it,
+## the same distinction the coastline already makes. Displaced PERPENDICULAR to
+## travel by a low-frequency wave, so the line breathes instead of wobbling, and
+## pinned at both ends so it still meets its pins.
+##
+## Amplitude is 2.4 terrain cells. The first attempt used 0.6 and was invisible —
+## eight pixels of sway across eight hundred, which is a change that moves no
+## pixel and would have been worth deleting rather than keeping behind a comment.
+##
+## What makes that amplitude safe is an EASED PER-POINT LIMIT.
+##
+## Two wrong shapes came first and both are worth the four lines it takes to say
+## so. Reverting just the offending point left a visible kink — one point back on
+## the route between two neighbours that had moved. Halving the amplitude for the
+## whole route and retrying then made it worse: the Sunken Fort road runs along a
+## shoreline for one stretch of its length, so that stretch vetoed the sway of
+## the entire continent crossing and the road came back a ruler, printing
+## "WANDER GAVE UP n=264" while the short route swayed happily at amp 16.
+##
+## So: mark each point 1 where the full displacement stays on its own ground and
+## 0 where it does not, BLUR that mark along the route, and scale by it. The road
+## leans where it has room and eases back to the surveyed line as the coast comes
+## up — which is what a road does, and the blur is what makes it ease rather than
+## step.
+func _wet(ground: WorldTerrain, p: Vector2) -> bool:
+	return ground.is_water(ground.cell_of(Vector2(
+		p.x / maxf(size.x, 1.0) * 100.0, p.y / maxf(size.y, 1.0) * 100.0)))
+
+
+func _wander(pts: PackedVector2Array) -> PackedVector2Array:
+	var n := pts.size()
+	if n < 8:
+		return pts
+	var ground := WorldTerrain.for_world(GameState.world_id())
+	var amp: float = 2.4 * size.x / float(WorldTerrain.W)
+	var ph := float(absi(hash(Vector2i(int(pts[0].x), int(pts[0].y)))) % 1000) * 0.0063
+	var off := PackedVector2Array()
+	var room := PackedFloat32Array()
+	off.resize(n)
+	room.resize(n)
+	for i in n:
+		var t := float(i) / float(n - 1)
+		var d := (pts[mini(i + 1, n - 1)] - pts[maxi(i - 1, 0)]).normalized()
+		var w := sin(t * PI * 2.4 + ph) * 0.7 + sin(t * PI * 5.1 + ph * 1.7) * 0.3
+		# Zero at both ends, so the pins are untouched.
+		off[i] = d.orthogonal() * w * amp * sin(t * PI)
+		# AGAINST THE POINT'S OWN GROUND, not against water outright: a coastal
+		# route has points sitting ON the boundary and `cell_of` rounds them into
+		# the sea, so an absolute test is unsatisfiable and vetoes everything.
+		room[i] = 0.0 if (_wet(ground, pts[i] + off[i]) and not _wet(ground, pts[i])) else 1.0
+	for _pass in 4:
+		var blur := room.duplicate()
+		for i in range(1, n - 1):
+			blur[i] = (room[i - 1] + room[i] * 2.0 + room[i + 1]) * 0.25
+		room = blur
+	var out := PackedVector2Array()
+	for i in n:
+		out.append(pts[i] + off[i] * room[i])
+	return out
 
 
 ## The line a road actually takes. Cached, because _draw runs every frame.
@@ -233,9 +682,29 @@ func _route(a: Vector2, b: Vector2) -> PackedVector2Array:
 	return line
 
 
+## A ROAD IS DRAWN TWICE: a dark casing, then the road on it.
+##
+## Roads were a single thin line, which was legible over the old flat colour ramp
+## and became nearly invisible the moment the chart grew hillshading, contours and
+## texture — the terrain detail simply out-shouted them. This is the standard
+## cartographic answer and the reason printed maps have used it for a century: a
+## casing separates the line from whatever it crosses, so the road stays readable
+## over snow, over forest and over open water alike without having to be brighter
+## than everything around it.
+## The paper's own tone, for haloes and casings — asked of the terrain so it is
+## the same sheet the shader is painting.
+func _paper_tone() -> Color:
+	var fam := WorldSkin.family_for_id(GameState.world_id())
+	var pap: Dictionary = WorldTerrain.PAPER.get(fam, WorldTerrain.PAPER["fantasy"])
+	return Color(str(pap["paper"]))
+
+
 func _draw_path(pts: PackedVector2Array, col: Color, w: float) -> void:
 	if pts.size() < 2:
 		return
+	# The casing is the PAPER on parchment, not a dark outline: a road is a line
+	# scratched through the hatching, and the gap round it is what separates it.
+	draw_polyline(pts, Color(_paper_tone(), col.a * 0.9), w + 2.4, true)
 	draw_polyline(pts, col, w, true)
 
 
@@ -314,6 +783,8 @@ func _gui_input(event: InputEvent) -> void:
 			var nm := str(locations[_hover].get("name", ""))
 			if nm != here:
 				travel_requested.emit(nm)
+			else:
+				enter_requested.emit(nm)   # AT-5: step inside where you stand
 			return
 		var vis := _visible_regions()
 		if _region_hover >= 0 and _region_hover < vis.size():
@@ -350,14 +821,12 @@ func _draw() -> void:
 	# last environment plate painted, so the Atlas drew its location pins over a
 	# photograph of a tavern fireplace. The compiler knows where the real
 	# overhead plates live.
-	var art: Texture2D = Compiler.chart_art(GameState.world_id())
-	if art == null:
-		art = Art.texture_for("chart-" + GameState.world_id().validate_filename())
-	if art == null:
-		art = Art.texture_for(GameState.world_id())
-	if art != null:
-		draw_texture_rect(art, Rect2(Vector2.ZERO, size), false, Color(0.78, 0.75, 0.82, 1.0))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.4))
+	# The paper itself is `_paper`, a shader behind this node — see _sync_paper.
+	# What is DRAWN on the land goes here, under the roads and pins.
+	_ensure_glyphs()
+	_ensure_ornament()
+	_draw_glyphs()
+	_draw_ornament()
 	# Cloud shadows drift across the land.
 	if not Ui.reduce_motion:
 		for spec in [[0.13, 90.0, 0.31, 260.0], [0.61, -60.0, 0.72, 340.0]]:
@@ -365,7 +834,16 @@ func _draw() -> void:
 			var cs := float(spec[3])
 			draw_texture_rect(Ui.glow_tex(), Rect2(Vector2(cx, size.y * float(spec[2]) - cs / 2.0), Vector2(cs, cs)),
 				false, Color(0, 0, 0.02, 0.10))
-	var font := get_theme_default_font()
+	# THE SERIF THAT WAS HERE ALL ALONG. `Ui.display` is a FontVariation over
+	# `Ui.serif` (Palatino Linotype / Book Antiqua / Georgia) with glyph spacing
+	# already set — built for titles, and exactly what a chart wants. I filed a
+	# backlog row claiming this project had no serif face; it was wrong, because
+	# I grepped for font FILES and the theme uses a SystemFont, which ships
+	# nothing and falls back gracefully.
+	var font: Font = Ui.display
+	# Laid out before anything is lettered: the solver has to see every name that
+	# will be drawn before it can place the first one.
+	_solve_labels(font)
 	var here_p := Vector2.ZERO
 	for l in locations:
 		if l is Dictionary and str(l.get("name", "")) == here:
@@ -385,7 +863,7 @@ func _draw() -> void:
 				if t > 1.0:
 					continue
 				var p := _along(road, t)
-				draw_circle(p, 1.8, Color(Ui.c("gold_soft"), 0.75 * (1.0 - t * 0.3)))
+				draw_circle(p, 1.9, Color(_ink(), 0.8 * (1.0 - t * 0.3)))
 	_draw_roads()
 	_draw_regions(font)
 	for i in locations.size():
@@ -402,14 +880,19 @@ func _draw() -> void:
 		var p := _pos_of(l)
 		var nm := str(l.get("name", ""))
 		var is_here := nm == here
-		var known := _known(nm)
-		if not known:
-			# Fog: the unknown sleeps under a cloud — a rumor, not a name.
-			draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(34, 34), Vector2(68, 68)), false, Color(0.02, 0.02, 0.05, 0.55))
-			draw_circle(p, 4.0 if i == _hover else 3.0, Color(Ui.c("ink_dim"), 0.75))
-			var q := "?"
-			var qs := font.get_string_size(q, HORIZONTAL_ALIGNMENT_CENTER, -1, 12)
-			draw_string(font, p + Vector2(-qs.x / 2.0, -10), q, HORIZONTAL_ALIGNMENT_CENTER, -1, 12, Color(Ui.c("ink_dim"), 0.9))
+		var state := _state_of(nm)
+		if state == UNKNOWN:
+			# NOTHING. This drew a glow and a question mark, and a "?" is a
+			# promise — it says "there is a thing here, go and get it", which
+			# turns a chart into a checklist.
+			#
+			# The reason to drop it is stronger than taste. A point-crawl has no
+			# surface to sweep: a place either has a pin or it does not, so the
+			# reveal-the-whole-map busywork that fog is criticised for CANNOT
+			# occur here. Drawing "?" clouds would import a failure mode this
+			# design is immune to by construction. An empty edge of paper is a
+			# better invitation than a row of question marks — and never add a
+			# "map revealed" percentage for the same reason.
 			continue
 		var kind_s := str(l.get("kind", ""))
 		var col: Color = Ui.c(kind_color(kind_s))
@@ -419,38 +902,148 @@ func _draw() -> void:
 			draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(30, 30), Vector2(60, 60)), false, Color(Ui.c("gold"), 0.16 + 0.14 * pulse))
 			var star := "✦"
 			var ss := font.get_string_size(star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
-			draw_string(font, p + Vector2(-ss.x / 2.0, -16), star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(Ui.c("gold"), 0.8 + 0.2 * pulse))
-		# The lamp of a known place.
-		draw_texture_rect(Ui.glow_tex(), Rect2(p - Vector2(20, 20), Vector2(40, 40)), false, Color(col, 0.22))
-		_draw_mark(p, kind_shape(kind_s), Color(col, 0.95), 7.0 if i == _hover else 5.0)
-		draw_arc(p, 9.0, 0, TAU, 24, Color(col, 0.5), 1.5)
+			draw_string(font, p + Vector2(-ss.x / 2.0, -16), star, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(_ink(), 0.75 + 0.25 * pulse))
+		# HEARD OF: THE SHAPE, NOT THE SUBSTANCE.
+		#
+		# Hollow, unlit, and no trade badge — you know the place is out there and
+		# roughly where, which is what a rumour gives you. Whether anyone keeps a
+		# counter is something you learn by arriving.
+		#
+		# Hollow-vs-filled and NOT a hue difference, deliberately: the state has
+		# to survive colour-blindness and a dimmed screen, which is the same rule
+		# KIND_MARK already follows for the seven kinds.
+		if state == HEARD:
+			_draw_mark(p, kind_s, Color(col, 0.30), 4.0 if i == _hover else 3.0)
+			draw_arc(p, 11.0, 0, TAU, 24, Color(_ink(), 0.40 if i == _hover else 0.26), 1.1)
+			_label(font, nm, p + Vector2(-font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13).x / 2.0, -13),
+				13, 0.72 if i == _hover else 0.52)
+			continue
+		# The lamp of a visited place.
+
+		_draw_mark(p, kind_s, Color(col, 0.95), 7.0 if i == _hover else 5.0)
+		# AT-7 — WHO TRADES. A place carries a `shop` string and the Atlas never
+		# once read it: "shop" appeared here only as a KIND, so a settlement or a
+		# tavern with a keeper behind a counter looked exactly like one without,
+		# and the only way to find out was to walk there. `merchant_window` has
+		# matched this field against `here` all along; the map simply never asked.
+		#
+		# A BADGE, not a colour or a shape. Both of those already carry `kind`,
+		# and trade is orthogonal to kind — overloading either would have broken
+		# the seven-kinds rule that KIND_MARK exists to keep.
+		if str(l.get("shop", "")) != "":
+			_draw_trade(p)   # visited only — the HEARD branch returned above
+
 		if is_here:
 			var breathe := (2.0 * sin(_phase * 1.6)) if not Ui.reduce_motion else 0.0
-			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Ui.c("gold_soft"), 2.5)
-		var sz := font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13)
-		var tp := p + Vector2(-sz.x / 2.0, -14)
-		draw_string(font, tp + Vector2(1, 1), nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Color(0, 0, 0, 0.8))
-		draw_string(font, tp, nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 13, Ui.c("ink") if i == _hover or is_here else Ui.c("ink_soft"))
-	# Hover lore (known places tell their story; the fog only whispers).
-	if _hover >= 0:
-		var l2: Dictionary = locations[_hover]
-		var nm2 := str(l2.get("name", ""))
-		var lore := (str(l2.get("lore", "")).left(80)) if _known(nm2) else "somewhere unknown — the road will teach you"
-		var p2 := _pos_of(l2)
-		draw_string(font, Vector2(clampf(p2.x - 120, 8, size.x - 260), minf(p2.y + 26, size.y - 10)),
-			lore, HORIZONTAL_ALIGNMENT_LEFT, 250, 12, Ui.c("gold_soft"))
-	# The compass rose, steady in the corner regardless of the camera.
+			# YOU ARE HERE, in ink. This was `gold_soft`, a colour from the dark
+			# panel the chart used to be — measured on parchment at 1.05-1.23:1 on
+			# five of six worlds, so the one mark that answers "where am I" was
+			# the least visible thing on the sheet.
+			draw_arc(p, 13.0 + breathe, 0, TAU, 28, Color(_ink(), 0.9), 2.2, true)
+		_label(font, nm, p + Vector2(-font.get_string_size(nm, HORIZONTAL_ALIGNMENT_CENTER, -1, 14).x / 2.0, -14),
+			14, 1.0 if (i == _hover or is_here) else 0.85)
+	# THE FRAME AND THE KEY SIT ON THE SHEET, NOT ON THE MAP. Outside the camera
+	# transform, so they stay put while the country pans underneath them — a
+	# border that scrolls away with the land is a rectangle, not a frame.
+	#
+	# The compass went the other way: it used to be a hand-rolled four-point star
+	# pinned to this corner, and a rose belongs IN the open water with the ships.
+	# `MapInk.draw_rose` draws it there now, inside the transform, as furniture.
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-	var cpos := Vector2(size.x - 40, size.y - 40)
-	draw_arc(cpos, 16, 0, TAU, 32, Color(Ui.c("gold"), 0.55), 1.5)
-	draw_arc(cpos, 12, 0, TAU, 32, Color(Ui.c("gold"), 0.25), 1.0)
-	for d in 4:
-		var ang := d * PI / 2.0
-		var tip := cpos + Vector2(sin(ang), -cos(ang)) * (14.0 if d == 0 else 10.0)
-		draw_line(cpos, tip, Color(Ui.c("gold"), 0.8 if d == 0 else 0.4), 1.5 if d == 0 else 1.0)
-	var ns := font.get_string_size("N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11)
-	draw_string(font, cpos + Vector2(-ns.x / 2.0, -18), "N", HORIZONTAL_ALIGNMENT_CENTER, -1, 11, Color(Ui.c("gold"), 0.85))
+	_draw_cartouche(font)
+	MapInk.draw_border(self, Rect2(Vector2.ZERO, size), _ink(), _paper_tone())
 	_draw_legend(font)
+	if _hover >= 0 and _hover < locations.size() and locations[_hover] is Dictionary:
+		_draw_place_card(font, locations[_hover])
+
+
+## ── AT-9: WHAT A PLACE IS, WHEN YOU POINT AT IT ──────────────────────────────
+##
+## This printed `lore.left(80)` as bare text — no name, no kind, nothing about
+## what the place offers or what is wrong there, cut off mid-word at eighty
+## characters. And it printed it in `gold_soft`, a dark-panel UI colour, which on
+## parchment measured 1.05-1.23:1 on five of six worlds: the hover was not merely
+## thin, it was invisible everywhere but Neon Spire.
+##
+## A card now, in SCREEN space so it does not shrink when the map is zoomed out:
+## the name, what kind of place it is in this world's own words, whether you have
+## been, and — only for somewhere you have been — its lore, what it trades, and
+## what trouble is running there. The fog rules are the chart's own: a place you
+## have only heard of gives its name and kind and nothing it has not earned.
+func _draw_place_card(font: Font, l: Dictionary) -> void:
+	var nm := str(l.get("name", ""))
+	var state := _state_of(nm)
+	if nm == "" or state == UNKNOWN:
+		return
+	var ink := _ink()
+	var paper := _paper_tone()
+	var wid := GameState.world_id()
+	var kind := str(l.get("kind", ""))
+	var kind_label := str(WorldSkin.place_kind(wid, kind).get("label", kind.capitalize()))
+	var lines: Array = []                 # [text, size, alpha]
+	lines.append([nm, 16, 1.0])
+	lines.append(["%s · %s" % [kind_label, "visited" if state == VISITED else "heard of"], 12, 0.7])
+	if state == VISITED:
+		var lore := str(l.get("lore", "")).strip_edges()
+		if lore != "":
+			lines.append([lore, 13, 0.92])
+		if LocalMap.SETTLED_KINDS.has(kind):
+			var lm := LocalMap.for_place(wid, nm, kind)
+			var names: Array = []
+			for t in lm.trades:
+				names.append(str(t["name"]).trim_prefix("The "))
+			if not names.is_empty():
+				lines.append(["Trades: " + ", ".join(names), 12, 0.85])
+		var tr := GameState.trouble_known(nm)   # a secret is not on the card until uncovered
+		if not tr.is_empty() and str(tr.get("what", "")) != "":
+			lines.append(["Trouble (%d of %d): %s" % [int(tr.get("filled", 0)),
+				int(tr.get("size", 6)), str(tr.get("what", ""))], 12, 0.92])
+		# SAY WHAT THE CLICK DOES. Clicking the place you stand in opens it
+		# (AT-5); clicking anywhere else sets out for it. A card promising "look
+		# inside" on a town three days away would be the map lying.
+		lines.append(["click to look inside" if nm == here else "click to set out", 11, 0.55])
+	else:
+		lines.append(["You have heard of it. The road will teach you the rest.", 12, 0.8])
+
+	var w := 300.0
+	var pad := 10.0
+	var h := pad
+	var heights: Array = []
+	for ln in lines:
+		var sz := font.get_multiline_string_size(str(ln[0]), HORIZONTAL_ALIGNMENT_LEFT, w - pad * 2.0, int(ln[1]))
+		var lh: float = minf(sz.y, float(int(ln[1])) * 4.4)   # at most ~3-4 lines of lore
+		heights.append(lh)
+		h += lh + 3.0
+	h += pad - 3.0
+	# Beside the pin, in screen space, kept on the sheet.
+	var pin := _camera.cam + _pos_of(l) * _camera.zoom
+	var at := pin + Vector2(18.0, 12.0)
+	if at.x + w > size.x - 16.0:
+		at.x = pin.x - w - 18.0
+	if at.y + h > size.y - 16.0:
+		at.y = size.y - 16.0 - h
+	at.x = maxf(at.x, 16.0)
+	at.y = maxf(at.y, 16.0)
+	var box := Rect2(at, Vector2(w, h))
+	draw_rect(box, Color(paper, 0.97))
+	draw_rect(box, Color(ink, 0.85), false, 1.4)
+	draw_rect(box.grow(-3.0), Color(ink, 0.3), false, 0.8)
+	var y := at.y + pad
+	for i in lines.size():
+		var ln: Array = lines[i]
+		var fs := int(ln[1])
+		draw_multiline_string(font, Vector2(at.x + pad, y + float(fs)), str(ln[0]),
+			HORIZONTAL_ALIGNMENT_LEFT, w - pad * 2.0, fs, 4, Color(ink, float(ln[2])))
+		y += float(heights[i]) + 3.0
+
+
+## The coin beside a pin: someone here sells things. Fog-gated with everything
+## else by its caller — an undiscovered shop is not advertised.
+func _draw_trade(at: Vector2) -> void:
+	var c := at + Vector2(8.0, -8.0)
+	draw_circle(c, 4.0, Color(Ui.c("night"), 0.92))
+	draw_circle(c, 2.8, Ui.c("ember"))
+	draw_arc(c, 2.8, 0, TAU, 14, Color(Ui.c("night"), 0.85), 0.9, true)
 
 
 ## AT-1 — THE ROADS A TRAVELLER KNOWS.
@@ -562,7 +1155,13 @@ func _draw_roads() -> void:
 			break
 		# Old ink: a road is quieter than the places it joins — and it goes the
 		# way the land allows, not the way a ruler would.
-		_draw_path(_route(pts[best_a], pts[best_b]), Color(Ui.c("ink_soft"), 0.28), 1.6)
+		# Brighter than the old 0.28 because the casing now carries the contrast:
+		# a cased line reads at a lower alpha than a bare one, and the inferred
+		# web should still be quieter than a NAMED road, which is the distinction
+		# AT-2 draws.
+		# Heavier than the glyphs. A road has to be findable across a plain of
+		# drawn trees, and at 0.55 it was the palest line on a busy sheet.
+		_draw_path(_route(pts[best_a], pts[best_b]), Color(_ink(), 0.8), 2.0)
 		linked.append(best_b)
 		loose.erase(best_b)
 	# Named roads last, so they sit ON the web rather than under it.
@@ -590,6 +1189,15 @@ func _draw_roads() -> void:
 ## and half a word is worse than none.
 const REGION_DROP := 26.0
 
+## Where a region's letterspaced banner actually lies — the SAME measurement the
+## drawing uses, so the solver reserves exactly what gets inked.
+func _region_rect(font: Font, rname: String, at: Vector2) -> Rect2:
+	var wide := 0.0
+	for ch in rname.to_upper():
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 3.4
+	return Rect2(Vector2(at.x - wide * 0.5, at.y - 9.0), Vector2(wide, 16.0))
+
+
 func _draw_regions(font: Font) -> void:
 	var vis := _visible_regions()
 	var keep := _legend_rect(font).grow(6.0)
@@ -600,7 +1208,7 @@ func _draw_regions(font: Font) -> void:
 			continue
 		var focused := _focus != "" and str(vis[i]["name"]).nocasecmp_to(_focus) == 0
 		var lit: float = 0.95 if focused else (0.75 if i == _region_hover else 0.42)
-		var col := Color(Ui.c("gold_soft") if focused else Ui.c("ink_soft"), lit)
+		var col := Color(_ink(), lit * (1.0 if focused else 0.62))
 		var track := 3.4
 		var wide := 0.0
 		for ch in rn:
@@ -616,6 +1224,37 @@ func _draw_regions(font: Font) -> void:
 				Color(Ui.c("gold"), 0.5), 1.0, true)
 
 
+## The title panel. A chart names itself, and it does it in a box drawn ON the
+## sheet — which is also the honest place to put the world's name, since the
+## dialog title bar above this is chrome and disappears in a screenshot.
+##
+## Top-left, because that is where the eye starts and where the reference puts
+## it, and because the legend already owns bottom-left and the two must not
+## fight for the same corner.
+func _draw_cartouche(font: Font) -> void:
+	var title := WorldSkin.world_name(GameState.world_id()).to_upper()
+	if title == "":
+		return
+	var ink := _ink()
+	var paper := _paper_tone()
+	# Letterspaced by hand: `draw_string` has no tracking, and a title set solid
+	# reads as a label where a chart's name is always opened out.
+	var track := 4.2
+	var wide := 0.0
+	for ch in title:
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + track
+	var pad := 14.0
+	var box := Rect2(Vector2(26, 22), Vector2(wide + pad * 2.0, 44))
+	draw_rect(box, Color(paper, 0.93))
+	draw_rect(box, Color(ink, 0.8), false, 2.2)
+	draw_rect(box.grow(-4.0), Color(ink, 0.4), false, 1.0)
+	var x := box.position.x + pad
+	for ch in title:
+		draw_string(font, Vector2(x, box.position.y + 30.0), ch,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 20, Color(ink, 0.95))
+		x += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + track
+
+
 ## What the key will list: only the kinds and road states actually ON this
 ## chart, because a legend explaining a mark the player has never seen is
 ## furniture, not information.
@@ -624,8 +1263,8 @@ func _draw_regions(font: Font) -> void:
 ## be BEFORE it is painted. One geometry, two readers — computing the rect twice
 ## is exactly how a legend and the thing dodging it drift apart.
 const LEGEND_PAD := 8.0
-const LEGEND_ROW := 14.0
-const LEGEND_W := 112.0
+const LEGEND_ROW := 17.0
+const LEGEND_W := 122.0
 
 func _legend_entries() -> Dictionary:
 	var kinds: Array[String] = []
@@ -644,14 +1283,41 @@ func _legend_entries() -> Dictionary:
 		var st := str(r.get("state", Rules.ROAD_DEFAULT))
 		if st != "open" and not road_states.has(st):
 			road_states.append(st)
+	# Does anything the player KNOWS about actually trade? The legend lists only
+	# marks that are on this chart — a key explaining something never seen is
+	# furniture — so the badge earns its row the same way a kind does.
+	var trades := false
+	for l in locations:
+		if not (l is Dictionary):
+			continue
+		# VISITED, not merely heard of — the badge cannot appear for a rumour, so
+		# the legend must not offer to explain one. The pins and the key have to
+		# agree about which places show a coin or the key is furniture.
+		if fog and _state_of(str(l.get("name", ""))) != VISITED:
+			continue
+		if str(l.get("shop", "")) != "":
+			trades = true
 	kinds.sort()
 	road_states.sort()
-	return {"kinds": kinds, "roads": road_states}
+	return {"kinds": kinds, "roads": road_states, "trade": trades}
+
+
+## The cartouche's footprint, so the label solver and the region names dodge it
+## the same way they already dodge the key. Two things drawn on the sheet, one
+## rule for both.
+func _cartouche_rect(font: Font) -> Rect2:
+	var title := WorldSkin.world_name(GameState.world_id()).to_upper()
+	if title == "":
+		return Rect2()
+	var wide := 0.0
+	for ch in title:
+		wide += font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 4.2
+	return Rect2(Vector2(26, 22), Vector2(wide + 28.0, 44))
 
 
 func _legend_rect(_font: Font) -> Rect2:
 	var e := _legend_entries()
-	var rows: int = e["kinds"].size() + e["roads"].size()
+	var rows: int = e["kinds"].size() + e["roads"].size() + (1 if e["trade"] else 0)
 	if rows == 0:
 		return Rect2()
 	var h := LEGEND_PAD * 2.0 + LEGEND_ROW * float(rows)
@@ -662,7 +1328,7 @@ func _draw_legend(font: Font) -> void:
 	var e := _legend_entries()
 	var kinds: Array = e["kinds"]
 	var road_states: Array = e["roads"]
-	if kinds.is_empty() and road_states.is_empty():
+	if kinds.is_empty() and road_states.is_empty() and not e["trade"]:
 		return
 	var pad := LEGEND_PAD
 	var row := LEGEND_ROW
@@ -670,14 +1336,15 @@ func _draw_legend(font: Font) -> void:
 	var rect := _legend_rect(font)
 	var h := rect.size.y
 	var at := rect.position
-	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("night"), 0.62))
-	draw_rect(Rect2(at, Vector2(w, h)), Color(Ui.c("gold"), 0.28), false, 1.0)
+	# A KEY IS PRINTED ON THE SHEET, not floated over it in a dark panel.
+	draw_rect(Rect2(at, Vector2(w, h)), Color(_paper_tone(), 0.90))
+	draw_rect(Rect2(at, Vector2(w, h)), Color(_ink(), 0.55), false, 1.2)
 	for i in kinds.size():
 		var k: String = kinds[i]
 		var cy := at.y + pad + row * float(i) + row * 0.5
-		_draw_mark(Vector2(at.x + pad + 4.0, cy), kind_shape(k), Ui.c(kind_color(k)), 4.0)
+		_draw_mark(Vector2(at.x + pad + 4.0, cy), k, Ui.c(kind_color(k)), 3.4)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy + 4.0), str(KIND_LABEL[k]),
-			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
 	for j in road_states.size():
 		var st2: String = road_states[j]
 		var cy2 := at.y + pad + row * float(kinds.size() + j) + row * 0.5
@@ -689,5 +1356,13 @@ func _draw_legend(font: Font) -> void:
 		else:
 			draw_line(Vector2(x0, cy2), Vector2(x0 + 9.0, cy2), Color(col2, 0.9), 2.2, true)
 		draw_string(font, Vector2(at.x + pad + 14.0, cy2 + 4.0), str(Rules.road_rule(st2)["why"]),
-			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Ui.c("ink_soft"))
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
+	if e["trade"]:
+		# LAST ROW, and drawn with `_draw_trade` — the key is literally a picture
+		# of the mark it explains, which is the rule the kind marks already
+		# follow. Two drawings of one badge is how a legend starts lying.
+		var cyt := at.y + pad + row * float(kinds.size() + road_states.size()) + row * 0.5
+		_draw_trade(Vector2(at.x + pad - 4.0, cyt + 8.0))
+		draw_string(font, Vector2(at.x + pad + 14.0, cyt + 4.0), "trades here",
+			HORIZONTAL_ALIGNMENT_LEFT, w - 24.0, 11, Color(_ink(), 0.9))
 	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("border"), 0.9), false, 2.0)

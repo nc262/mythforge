@@ -6,25 +6,68 @@ extends Node
 var _want: Array = []
 
 
+## Which world to warm. The catalogs below are world-FLAVORED, so warming
+## embervale does nothing for neonspire — run it once per world you care about:
+##   godot --path godot res://tests/warm_art.tscn -- --world=neonspire
+func _world() -> String:
+	for a in OS.get_cmdline_user_args():
+		if str(a).begins_with("--world="):
+			return str(a).trim_prefix("--world=")
+	return "embervale"
+
+
 func _ready() -> void:
-	Ui.apply("embervale")
-	GameState.character = {"id": "dm-godot-demo", "name": "The Hollow Bell", "world_id": "embervale"}
-	GameState.state = {"world": {"here": "Embervale village square"}}
+	var wid := _world()
+	Ui.apply(wid)
+	GameState.character = {"id": "dm-godot-demo", "name": "The Hollow Bell", "world_id": wid}
+	# THE DEMO SCENE FOLLOWS THE WORLD TOO. "Embervale village square" was
+	# hardcoded here alongside a --world flag, so warming neonspire charted
+	# EMBERVALE and painted an Embervale battle map — the harness quietly
+	# ignoring the only argument it takes. Same shape as the backdrop it never
+	# waited for.
+	var wname := str(WorldSkin.world_name(wid))
+	GameState.state = {"world": {"here": "%s, the near ground" % wname}}
+	print("warming '%s' (family %s)" % [wid, WorldSkin.family_for_id(wid)])
 	var sheet := {"name": "Wren Ashvale", "race": "Half-Elf", "cls": "Wizard"}
-	Art.ensure("embervale")
+	# …and WAIT for it. This asked for the world backdrop and never added it to
+	# `_want`, so with everything else already cached `_wait()` saw nothing
+	# outstanding and quit Godot within a second - the run reported success
+	# having painted nothing. That is how three missing backdrops survived a
+	# warm over all six worlds.
+	Art.ensure(wid)
+	_want.append(wid)
 	Art.ensure_hero_portrait("dm-godot-demo", sheet)
 	_want.append("hero-dm-godot-demo")
 	for foe in ["Goblin", "Goblin Boss"]:
 		var entry := Combat.bestiary_for(foe)
 		if not entry.is_empty():
-			var key := "beast-" + str(entry.get("slug", ""))
+			var key := Art.beast_key(str(entry.get("slug", "")))
 			Art.ensure(key, str(entry.get("art", "")) + ", painted creature portrait, dark background, no text")
 			_want.append(key)
 	for nm in ["Silvered Dagger", "Traveler's Leathers", "Healing Potion"]:
 		Art.ensure_item_icon(nm)
-		_want.append("item-" + nm.to_lower().replace(" ", "-"))
-	_want.append(Art.ensure_battle_map("Embervale village square"))
-	_want.append(Art.ensure_world_chart("embervale", "Embervale"))
+		_want.append(Art.item_key(nm))
+	_want.append(Art.ensure_battle_map("%s, the near ground" % wname))
+	_want.append(Art.ensure_world_chart(wid, wname))
+	# THE FORGE CATALOGS. Nine heritages, twelve classes, eight backgrounds — the
+	# racks a player meets before they ever reach a scene, and until now the only
+	# one of the three that was ever painted was the single heritage they clicked.
+	var hs: Dictionary = Rules.tables.get("heritages", {})
+	for nm in hs:
+		var key := Art.race_key(str(nm))
+		Art.ensure(key, Art.race_prompt(str(nm), hs[nm]))
+		_want.append(key)
+	var cls: Dictionary = Rules.tables.get("class_presets", {})
+	for nm in cls:
+		var key := Art.class_key(str(nm))
+		Art.ensure(key, Art.class_prompt(str(nm), Rules.class_lore.get(nm, {}) if Rules.class_lore is Dictionary else {}))
+		_want.append(key)
+	var bgs: Dictionary = Rules.tables.get("backgrounds", {})
+	for nm in bgs:
+		var key := Art.bg_key(str(nm))
+		Art.ensure(key, Art.bg_prompt(str(nm), bgs[nm]))
+		_want.append(key)
+
 	# The EAS rooms — the illustrated environments every screen stands in.
 	for env in Art.ENV_PROMPTS:
 		Art.ensure_environment(str(env))
@@ -37,7 +80,10 @@ func _ready() -> void:
 
 
 func _wait() -> void:
-	var deadline := Time.get_ticks_msec() + 15 * 60 * 1000
+	# 15 min was written when this warmed a demo cast of about a dozen. It now
+	# warms the three forge catalogs as well - ~45 paintings a world at ~17 s
+	# each - so the old ceiling sat right on top of the real runtime.
+	var deadline := Time.get_ticks_msec() + 45 * 60 * 1000
 	while Time.get_ticks_msec() < deadline:
 		var missing := []
 		for k in _want:

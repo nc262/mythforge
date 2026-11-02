@@ -13,7 +13,22 @@ signal adventure_ready(adv: Dictionary)
 ## you ask to play and the game asks you to take a seat first. Same defect as the
 ## Character Forge's Cold Anvil, same treatment. Cold start to play is now ~14
 ## screens instead of ~18.
-const STAGES := ["The Hero", "The Campaign", "The Party", "Difficulty", "House Rules", "The Preview"]
+## PY-27 — THE WORLD COMES FIRST. This rail opened on "The Hero", and the world
+## was chosen two stages later. That is not cosmetic: forging a hero from stage
+## one commits their kit, body and portrait before the game knows whether it is
+## dressing a wizard or a runner, which is the upstream half of PY-21, PY-22 and
+## PY-23. The menu's own `_show_worlds()` already announced "Step 1 of 3 — world
+## > campaign > hero", so the doc was right and this flow was stale.
+##
+## NAMED, not numbered. Reordering meant touching a dozen bare `_enter_stage(2)`
+## calls, which is precisely where an off-by-one hides and ships.
+const S_CAMPAIGN := 0
+const S_HERO := 1
+const S_PARTY := 2
+const S_DIFFICULTY := 3
+const S_HOUSE := 4
+const S_PREVIEW := 5
+const STAGES := ["The Campaign", "The Hero", "The Party", "Difficulty", "House Rules", "The Preview"]
 ## UI-9 — four cards wearing the same glyph is a choice the eye cannot make.
 ## They all read "hero"; nothing about the picture said which way was harder.
 ## The library already carries a ladder that does: a book for the tale that
@@ -88,17 +103,17 @@ func _nav(back_to: int, fwd_text: String, fwd: Callable, back_fn := Callable()) 
 
 func _build_stage(i: int) -> void:
 	match i:
-		0:
-			_stage_hero()
-		1:
+		S_CAMPAIGN:
 			_stage_campaign()
-		2:
+		S_HERO:
+			_stage_hero()
+		S_PARTY:
 			_stage_party()
-		3:
+		S_DIFFICULTY:
 			_stage_difficulty()
-		4:
+		S_HOUSE:
 			_stage_house()
-		5:
+		S_PREVIEW:
 			_stage_preview()
 
 
@@ -140,27 +155,37 @@ func _stage_hero() -> void:
 	cards.append(later)
 	flow.add_child(later)
 	_stage_box.add_child(flow)
-	_nav(-1, "NEXT — THE CAMPAIGN", func():   # first stage now — nothing behind it
+	_nav(S_CAMPAIGN, "NEXT — THE PARTY", func():
 		if not (draft["hero"] is Dictionary) and str(draft["hero"]) != "later":
 			draft["hero"] = heroes[0] if not heroes.is_empty() else "later"
-		_enter_stage(1))
+		_enter_stage(S_PARTY))
 
 
 func _hero_selected(hd: Dictionary) -> bool:
 	return draft["hero"] is Dictionary and str(draft["hero"].get("name", "")).nocasecmp_to(str(hd.get("name", ""))) == 0
 
 
+## The hero forge reads the world through `GameState.world_id()` — every heritage
+## portrait, kit substitution and body prompt is world-flavored — so the chosen
+## world has to be PUBLISHED before the child spawns, not merely held in
+## `_camp_world`. Saved and restored around the child, because this is the menu:
+## whatever character was last played must survive a forge the player backs out
+## of. PY-27.
 func _spawn_char_forge() -> void:
+	var keep_character: Dictionary = GameState.character
+	GameState.character = {"id": "forge-draft", "world_id": str(_camp_world.get("id", ""))}
 	_child_forge = preload("res://scenes/forge/character_forge.tscn").instantiate()
 	_child_forge.menu_mode = true
 	_child_forge.hero_forged.connect(func(d):
+		GameState.character = keep_character
 		GameState.bank_hero(d)
 		_child_forge.queue_free()
 		draft["hero"] = d
-		_enter_stage(0))
+		_enter_stage(S_HERO))
 	_child_forge.closed.connect(func():
+		GameState.character = keep_character
 		_child_forge.queue_free()
-		_enter_stage(0))
+		_enter_stage(S_HERO))
 	add_child(_child_forge)
 
 
@@ -183,24 +208,24 @@ func _stage_campaign_world() -> void:
 		var world: Dictionary = w
 		var wid := str(world.get("id", ""))
 		var stories := _stories_for(world)
-		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid),
-			"title": str(world.get("name", "an unnamed world")).left(26),
-			"body": str(world.get("tagline", "")).left(60),
+		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid),
+			"title": Ui.trim(str(world.get("name", "an unnamed world")), 26),
+			"body": Ui.trim(str(world.get("tagline", "")), 60),
 			"foot": "%d tale%s + free roam" % [stories.size(), "" if stories.size() == 1 else "s"]})
 		card.set_selected(str(draft["adv"].get("world_id", "")) == wid)
 		card.pressed.connect(func():
 			_camp_world = world
 			for c in cards:
 				c.set_selected(c == card)
-			_enter_stage(1))
+			_enter_stage(S_CAMPAIGN))   # re-enter: the world is set, so tales show
 		cards.append(card)
 		grid.add_child(card)
 	_stage_box.add_child(_scrolled(grid))
-	_nav(0, "NEXT — THE PARTY", func():
+	_nav(-1, "NEXT — THE HERO", func():   # first stage now — nothing behind it
 		if draft["adv"].is_empty():
 			_refuse("Choose a world — or forge one at the war table.")
 			return
-		_enter_stage(2))
+		_enter_stage(S_HERO))
 
 
 ## Step two: which of that world's tales — or free roam within it?
@@ -222,8 +247,8 @@ func _stage_campaign_tale() -> void:
 			blurb = str(story.get("hook", story.get("premise", story.get("blurb", "")))).strip_edges()
 			if blurb == "":
 				blurb = "a tale of %s" % str(_camp_world.get("name", "this world"))
-		var card := Card.new({"glyph": "🌍", "art": Compiler.key_art(wid), "title": title.left(26),
-			"body": blurb.left(60),
+		var card := Card.new({"glyph": "🌍", "art": Art.world_tex(wid), "title": Ui.trim(title, 26),
+			"body": Ui.trim(blurb, 60),
 			"foot": str(_camp_world.get("name", ""))})
 		card.set_selected(str(draft["adv"].get("id", "")) == str(adv["id"]))
 		card.pressed.connect(func():
@@ -235,13 +260,13 @@ func _stage_campaign_tale() -> void:
 	_stage_box.add_child(_scrolled(grid))
 	var to_worlds := func():
 		_camp_world = {}
-		_enter_stage(1)
-	var to_party := func():
+		_enter_stage(S_CAMPAIGN)
+	var to_hero := func():
 		if draft["adv"].is_empty():
 			_refuse("Choose a tale — free roam counts.")
 			return
-		_enter_stage(2)
-	_nav(-1, "NEXT — THE PARTY", to_party, to_worlds)
+		_enter_stage(S_HERO)
+	_nav(-1, "NEXT — THE HERO", to_hero, to_worlds)
 
 
 ## Forged worlds carry their own stories; built-ins keep theirs in worlds.json.
@@ -273,10 +298,10 @@ func _spawn_camp_forge() -> void:
 	_child_forge.campaign_begun.connect(func(adv):
 		_child_forge.queue_free()
 		draft["adv"] = adv
-		_enter_stage(2))  # the forge already set voice+rules; party next
+		_enter_stage(S_HERO))  # the forge already set voice+rules; the hero next
 	_child_forge.closed.connect(func():
 		_child_forge.queue_free()
-		_enter_stage(1))
+		_enter_stage(S_CAMPAIGN))
 	add_child(_child_forge)
 
 
@@ -320,7 +345,7 @@ func _stage_party() -> void:
 	dim.text = "More chairs at the table — party multiplayer — is a future forging."
 	dim.modulate = Color(1, 1, 1, 0.6)
 	_stage_box.add_child(dim)
-	_nav(1, "NEXT — DIFFICULTY", func(): _enter_stage(3))
+	_nav(S_HERO, "NEXT — DIFFICULTY", func(): _enter_stage(S_DIFFICULTY))
 
 
 func _stage_difficulty() -> void:
@@ -339,21 +364,24 @@ func _stage_difficulty() -> void:
 		cards.append(card)
 		row.add_child(card)
 	_stage_box.add_child(row)
-	_nav(2, "NEXT — HOUSE RULES", func(): _enter_stage(4))
+	_nav(S_PARTY, "NEXT — HOUSE RULES", func(): _enter_stage(S_HOUSE))
 
 
 func _stage_house() -> void:
 	_title_label("House Rules")
 	var house := LineEdit.new()
-	house.placeholder_text = "In your words — e.g. no resurrection, critical fumbles hurt… (or leave the table's rules alone)"
+	# Short enough to READ. The full sentence was clipped by the field to
+	# "(or leave the table's r" — a placeholder that cuts itself off is worse
+	# than a shorter one (PY-11).
+	house.placeholder_text = "In your words — e.g. no resurrection, fumbles hurt…"
 	house.text = str(draft["house"])
 	house.custom_minimum_size = Vector2(560, 0)
 	var hc := CenterContainer.new()
 	hc.add_child(house)
 	_stage_box.add_child(hc)
-	_nav(3, "NEXT — THE PREVIEW", func():
+	_nav(S_DIFFICULTY, "NEXT — THE PREVIEW", func():
 		draft["house"] = house.text.strip_edges()
-		_enter_stage(5))
+		_enter_stage(S_PREVIEW))
 
 
 func _stage_preview() -> void:
@@ -384,14 +412,14 @@ func _stage_preview() -> void:
 	var bc := CenterContainer.new()
 	bc.add_child(body)
 	_stage_box.add_child(bc)
-	_nav(4, "BEGIN THE ADVENTURE", _begin)
+	_nav(S_HOUSE, "BEGIN THE ADVENTURE", _begin)
 
 
 ## Seat the table's choices into the adventure's state, then play.
 func _begin() -> void:
 	var adv: Dictionary = draft["adv"]
 	if adv.is_empty():
-		_enter_stage(1)
+		_enter_stage(S_CAMPAIGN)
 		return
 	# The chosen banked legend fills the adventure's Quenching; "later" leaves
 	# it empty so the hero is forged at the campfire when the tale opens.

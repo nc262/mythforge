@@ -26,13 +26,33 @@ alive.
 
 ## The two decisions that made the difference
 
-**Nothing resident on the card but the narrator.** A GM turn measured 19.3 s
-when a CUDA-shimmed image stack held ~7.4 GB of VRAM: the model loaded with a
-third of its layers on the CPU and stayed that way for the life of the process,
-because a llama.cpp GPU/CPU split is fixed at load time. stable-diffusion.cpp
-idles at **118 MB** — it loads its checkpoint per request instead of staying
-resident — and the same turn measures **3.7 s**. A fully-resident 8B beats a
-half-offloaded one by more than any prompt tuning can.
+**Enough free VRAM at load, and no image WHILE a turn streams.** These are two
+different rules, and for years this file carried only the first — stated in a way
+that made the second invisible.
+
+The first is real: a llama.cpp GPU/CPU split is fixed once, at load. A GM turn
+measured 19.3 s when a CUDA-shimmed image stack (ComfyUI-Zluda) held ~7.4 GB, and
+the narrator loaded with a third of its layers on the CPU and kept them there for
+the life of the process. The narrator needs **~5.9 GB**; leave it less and you pay
+all session.
+
+But sd-server is not that tenant, and the load ORDER turns out not to matter here.
+Measured, three ways, 16 GB RX 7900 GRE, three turns each:
+
+| | turn 1 | 2 | 3 |
+|---|---|---|---|
+| narrator alone on a clean card | 3.0 s | 3.5 s | 3.5 s |
+| engine already holding 6.6 GB when the narrator loads | 3.3 s | 3.6 s | 3.5 s |
+| engine generating 1024×1024 *while turns stream* | 3.9 s | 4.4 s | 4.6 s |
+
+and by the sixth concurrent turn, **6.1 s**. Peak VRAM in that run was 15310 MB of
+16384 — it never ran out, so nothing was evicted and no layer moved to the CPU.
+The cost is the two processes contending for the same shaders, not for memory.
+
+So a resident-but-idle engine is free (**127 MB** until its first image, 6.6 GB
+after, and it never gives that back — see CLAUDE.md), and what actually costs a
+turn is generating during one. `Art.hold` in `game.gd:952` already prevents
+exactly that, and this table is what it is worth: 3.5 s held against 6.1 s not.
 
 **Never one call that both invents and serialises.** The Worldsmith's world-core
 call took 95.8 s and failed; split into a prose call plus a schema call it takes

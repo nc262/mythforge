@@ -54,10 +54,55 @@ had a confident explanation attached first. See
   let one call both invent and serialise — think in prose, then serialise. This
   cost three wrong diagnoses before it was measured; see
   [godot/docs/LocalLLM-Tuning.md](godot/docs/LocalLLM-Tuning.md).
-- **The narrator must be the only thing on the card when it loads.** llama.cpp
-  fixes its GPU/CPU split once, at load time, and keeps it for the life of the
-  process. A resident image stack cost 19.3 s per turn; with nothing else on the
-  card it is **3.7 s**. sd-server idles at 118 MB because it loads per request.
+- **Two different rules, and the docs carried only the first for a year.**
+  (1) llama.cpp fixes its GPU/CPU split once, at load time. The narrator needs
+  **~5.9 GB**; leave it less and layers land on the CPU for the life of the
+  process — that is the 19.3 s per turn against 3.7 s, and the tenant that caused
+  it was a CUDA-shimmed ComfyUI-Zluda holding 7.4 GB, not sd-server.
+  (2) **Do not paint while the narrator talks.** Measured three ways below; the
+  load-order rule turns out not to bind for sd-server at all, and concurrency
+  does.
+
+  | | turn 1 | 2 | 3 | … | 6 |
+  |---|---|---|---|---|---|
+  | narrator alone, clean card | 3.0 s | 3.5 s | 3.5 s | | |
+  | engine already holding 6.6 GB at narrator load | 3.3 s | 3.6 s | 3.5 s | | |
+  | engine generating 1024×1024 during the turns | 3.9 s | 4.4 s | 4.6 s | … | **6.1 s** |
+
+  Peak VRAM in that last run was 15310 MB of 16384 — it never ran out, so nothing
+  was evicted. They were contending for shaders, not memory. `Art.hold` in
+  [godot/scripts/game.gd](godot/scripts/game.gd) already holds the art queue for
+  the whole stream; that table is what the flag is worth.
+
+  **What costs the card is the FIRST IMAGE, not the engine.** Two wrong answers
+  were written here before anyone sampled the GPU counter, so here is the counter
+  (`\GPU Adapter Memory(*)\Dedicated Usage`, summed, RX 7900 GRE):
+
+  | moment | dedicated VRAM |
+  |---|---|
+  | nothing running | 2271 MB |
+  | sd-server listening, never asked for an image | 2398 MB |
+  | immediately after its first image | 8989 MB |
+  | 20 s idle after that image | 8977 MB |
+  | after killing sd-server | 2264 MB |
+
+  So an idle engine costs **127 MB**, it takes **6.6 GB on first generation**, and
+  it **never gives that back** while the process lives. Killing it reclaims all
+  of it.
+
+  Both earlier claims misread the same log line. sd-server prints
+  `total params memory size = 6624.11MB (VRAM 6624.11MB, RAM 0.00MB)` *before*
+  `listening on:` — but that is an allocation PLAN, not a transfer. It reaches
+  "listening" in **0.8 s**, which is far too fast to have moved 6.6 GB, and the
+  `model_loader.cpp:1305 - loading tensors completed` lines land afterwards,
+  during the first request. Reading RSS was one trap; reading the plan line as a
+  completed load was the second, and the second was written while correcting the
+  first.
+
+  So THE ORDER THAT MATTERS is narrator-loads-before-first-image, not
+  narrator-loads-before-engine-starts. Having the engine merely *up* is nearly
+  free. `_open_the_adventure` starts it after `LocalGM.warm()` returns, which
+  satisfies the real rule with room to spare.
 - **`--vae-tiling` is load-bearing, not tuning.** Without it the VAE decode asks
   for a Vulkan buffer past this device's limit, falls back to a slow path, and
   eats 36.2 s of a 50.4 s image. Tiled: 3.1 s decode, 19.9 s image,
@@ -73,6 +118,24 @@ had a confident explanation attached first. See
   it: a pm2 app that polls the port and relaunches (needs `pm2 save`, or
   `dump.pm2` restores it), and a logon script in the Startup folder pointing at a
   different checkout entirely. Check both before believing a kill worked.
+
+## READ THIS BEFORE YOU FIX ANYTHING
+[godot/docs/Invariants.md](godot/docs/Invariants.md) — the rules that hold across
+the whole repo, each with the check that enforces it.
+
+It exists because this codebase carries **147** references to past incidents and,
+before it, **21** checks. The knowledge was written down every time and enforced
+almost never, so the same root cause kept surfacing somewhere new — five times in
+one day: an art key that did not carry its world (four prefixes), a package-vs-cache
+fallback hand-spelled at five sites in three ways, a progress report the forge never
+got although the character screen had it, a style anchor nobody trimmed.
+
+**Every one was already documented at the site of the fix.** A comment is only
+discoverable if you are already reading that file, which is exactly when you no
+longer need it. So:
+
+> **An RCA comment without a check is unfinished work.** When you write "this cost
+> us X", write the assertion in the same commit and add the row to Invariants.md.
 
 ## Workflow before changing anything
 DISCOVER → PLAN → CHALLENGE → EXECUTE → VERIFY → REVIEW → IMPROVE.
@@ -140,6 +203,7 @@ The game itself listens on nothing.
 | [godot/docs/Testing.md](godot/docs/Testing.md) | The five harnesses, and what each can and cannot prove |
 | [godot/docs/DesignSystem.md](godot/docs/DesignSystem.md) | The visual contract. Law for anything that renders |
 | [godot/docs/Features.md](godot/docs/Features.md) | The coarse map of what the game has |
+| [godot/docs/Invariants.md](godot/docs/Invariants.md) | **Repo-wide rules and the check enforcing each.** Read before fixing anything |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | RCAs, symptom → root cause → fix |
 | [docs/code-style.md](docs/code-style.md) | Conventions for the game and the tooling |
 

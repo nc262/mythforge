@@ -82,7 +82,31 @@ function Invoke-Harness {
 	$proc = Start-Process -FilePath $godot -PassThru -NoNewWindow `
 		-ArgumentList ($flags + @('--log-file', "$log.engine", '--path', "$repo\godot", "res://tests/$Scene.tscn")) `
 		-RedirectStandardOutput $log -RedirectStandardError $errLog
-	if (-not $proc.WaitForExit($TimeoutSec * 1000)) {
+	# A SCRIPT THAT DOES NOT LOAD IS RED IN SECONDS, NOT FIFTEEN MINUTES. A parse
+	# error does not stop Godot any more than a failed assert does: the scene tree
+	# keeps running with a dead script and the harness waits out the whole
+	# timeout. On 2026-09-16 that happened three times in one session — two name
+	# collisions in self_check and one in town_probe — each an error Godot had
+	# already written to the engine log in the FIRST SECOND, each costing the full
+	# 900 s before the gate said so. Polling the log while waiting turns that into
+	# a red within a couple of seconds. It only fires on a script failing to LOAD,
+	# never on a runtime error, which a harness may raise on purpose.
+	$deadline = (Get-Date).AddSeconds($TimeoutSec)
+	$dead = $null
+	while (-not $proc.WaitForExit(1000)) {
+		$early = (Get-Content "$log.engine", $errLog -ErrorAction SilentlyContinue) |
+			Where-Object { $_ -match 'Parse Error|Failed to load script|Compile Error' }
+		if ($early) { $dead = $early; break }
+		if ((Get-Date) -gt $deadline) { break }
+	}
+	if ($dead) {
+		$proc.Kill(); $proc.WaitForExit()
+		Write-Host "SCRIPT DID NOT LOAD" -ForegroundColor Red
+		$script:failed += $Scene
+		$dead | Select-Object -First 6 | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
+		return
+	}
+	if (-not $proc.HasExited) {
 		$proc.Kill(); $proc.WaitForExit()
 		Write-Host "TIMED OUT after ${TimeoutSec}s" -ForegroundColor Red
 		$script:failed += $Scene
@@ -108,12 +132,32 @@ function Invoke-Harness {
 		# budget to prove the thrash warning fires at all. Suppressing that is
 		# not hiding a defect — printing it every run is how a person learns to
 		# skim this section, which is the failure mode the section exists to fix.
-		$noise = 'ObjectDB instances were leaked|resources still in use|Godot Engine v|Initialize godot-rust|art cache is THRASHING'
+		# `add_bos_token` joined this list on 2026-08-17 only after being EXONERATED
+		# by measurement, not because it was noisy: it appeared 38 times in a run
+		# that exits 0, and the shipped GGUF carries no such metadata while neither
+		# NobodyWhoModel nor NobodyWhoChat exposes a property to set it. There is
+		# nothing to act on, and it was for a while read as the cause of a crash it
+		# had nothing to do with. See KnownIssues and docs/troubleshooting.md.
+		$noise = 'ObjectDB instances were leaked|resources still in use|Godot Engine v|Initialize godot-rust|art cache is THRASHING|add_bos_token not found in GGUF metadata'
 		$gripes = ($out -split "`n") | Where-Object { $_ -match 'WARNING:|SCRIPT ERROR|ERROR:' -and $_ -notmatch $noise }
 		if ($gripes) {
 			Write-Host "     $($gripes.Count) engine complaint(s) in a passing run:" -ForegroundColor DarkYellow
 			$gripes | Select-Object -First 3 | ForEach-Object { Write-Host "       $($_.Trim())" -ForegroundColor DarkYellow }
 			if ($gripes.Count -gt 3) { Write-Host "       … and $($gripes.Count - 3) more in $log" -ForegroundColor DarkYellow }
+		}
+		# …and a SHORT list that goes RED rather than yellow. A complaint that has
+		# been chased to its cause, fixed, and measured to zero is no longer triage:
+		# its return is a regression, and nothing else in the gate would notice,
+		# because a passing token plus a yellow line is exactly what it looked like
+		# for the unknown number of months it went unread. Only add a pattern here
+		# once it is actually at zero — a permanently-red gate teaches the same
+		# skimming this section exists to prevent.
+		$regressions = 'Lambda capture at index \d+ was freed'
+		$back = ($out -split "`n") | Where-Object { $_ -match $regressions }
+		if ($back) {
+			Write-Host "     REGRESSION — a complaint that was fixed is back:" -ForegroundColor Red
+			$back | Select-Object -First 3 | ForEach-Object { Write-Host "       $($_.Trim())" -ForegroundColor Red }
+			$script:failed += "$Scene (regression)"
 		}
 	} else {
 		Write-Host 'FAILED' -ForegroundColor Red
@@ -129,12 +173,35 @@ if ($Import) {
 
 # ── The offline gate — deterministic, no model, no GPU ───────────────────────
 Invoke-Harness -Scene 'self_check'     -Token 'SELF-CHECK OK'
+Invoke-Harness -Scene 'town_probe'     -Token 'TOWN-PROBE OK'
+Invoke-Harness -Scene 'site_probe'     -Token 'SITE-PROBE OK'   # sites, and a trouble's life: ends, reach, who hears
 Invoke-Harness -Scene 'click_driver'   -Token 'CLICKDRIVE OK'
 Invoke-Harness -Scene 'ui_playthrough' -Token 'PLAYTHROUGH OK'
+
+# ── PL-5's reproduction, kept as a guard ─────────────────────────────────────
+# This one FAILS DELIBERATELY without the fix: it dresses five dialogs and frees
+# each in the frame it was dressed, which is what a player does closing a panel
+# the instant it opens. Before the fix that printed ten "Lambda capture at index
+# N was freed" errors, 10/10, every run — the first deterministic reproduction
+# after four disproven theories. The regression list above catches the error
+# string, so this scene only has to CAUSE it.
+Invoke-Harness -Scene 'pl5_probe' -Token 'PL5-PROBE DONE'
 
 # ── The ones that can say an answer is GOOD, not merely well-shaped ──────────
 if ($Full) {
 	Invoke-Harness -Scene 'local_stack' -Token 'LOCAL STACK OK'
+	# ART HAS NO REAL-STACK COVERAGE WITHOUT THIS. `local_stack` drives the real
+	# model and never touches a painting, which is how PY-8 ("Envision this hero
+	# is inert") survived to be found by hand: the whole image pipeline was
+	# exercised by nothing but a player. art_probe commissions ONE picture from
+	# the real engine and reports where it stops — queued, painting, ready, or
+	# nowhere. Skipped, loudly, when no engine is listening, because a missing
+	# optional engine is not a red gate.
+	if (Get-NetTCPConnection -LocalPort 8189 -State Listen -EA SilentlyContinue) {
+		Invoke-Harness -Scene 'art_probe' -Token 'ART-PROBE OK'
+	} else {
+		Write-Host "`n── art_probe SKIPPED — nothing listening on :8189" -ForegroundColor DarkYellow
+	}
 	# bench_gm IS NOT GATED, because it does not assert — it measures turn
 	# latency and repetition and prints them. There is no pass token to match,
 	# and inventing a threshold here would make the gate red on a slow morning.
@@ -166,6 +233,27 @@ if ((Get-Content $bootLog -Raw) -match 'BOOTSTRAP-CHECK OK') {
 	Get-Content $bootLog | Select-String 'FAIL' | ForEach-Object { Write-Host "  $_" -ForegroundColor DarkRed }
 }
 
+# ── INVARIANT: --vae-tiling is load-bearing, not tuning ──────────────────────
+# Without it the VAE decode asks for a Vulkan buffer past this device's limit and
+# falls back to a slow path: 36.2 s of a 50.4 s image, for a pixel-identical
+# result at the same seed. There is ONE launch path today and it passes the flag;
+# this check exists so a SECOND one cannot appear without it. `self_check` cannot
+# see these files — they live outside res:// — so the guard belongs here.
+Write-Host "`n── invariant: --vae-tiling " -NoNewline -ForegroundColor Cyan
+$launchers = Get-ChildItem "$repo" -Recurse -Filter *.ps1 -EA SilentlyContinue | Where-Object {
+	$t = Get-Content $_.FullName -Raw
+	# an actual LAUNCH: names the exe AND passes it a model
+	$t -match 'sd-server\.exe' -and $t -match "'-m'|`"-m`"|\s-m\s"
+}
+$noTiling = @($launchers | Where-Object { (Get-Content $_.FullName -Raw) -notmatch '--vae-tiling' })
+if ($noTiling.Count) {
+	Write-Host 'FAILED' -ForegroundColor Red
+	$failed += 'invariant:--vae-tiling'
+	$noTiling | ForEach-Object { Write-Host "  launches sd-server without --vae-tiling: $($_.FullName)" -ForegroundColor DarkRed }
+} else {
+	Write-Host ("OK ({0} launch path(s))" -f $launchers.Count) -ForegroundColor Green
+}
+
 if ($failed.Count) {
 	Write-Host "`nRED: $($failed -join ', ')" -ForegroundColor Red
 	Write-Host 'Not exporting. A red gate must not reach the Desktop.' -ForegroundColor Red
@@ -193,6 +281,32 @@ if (-not $NoExport) {
 	$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 	$s.TargetPath = $exe; $s.WorkingDirectory = "$repo\dist"; $s.Save()
 	Write-Host "desktop $lnk" -ForegroundColor Green
+	# AND THE SCRIPTS BESIDE THE EXE, because the build that gets played has to
+	# behave like a real install. A shipped install has {app}\scripts, and
+	# services.gd looks for start-image-sdcpp.ps1 next to its own exe — so a build
+	# without them silently plays with baked art only, and the supervisor path is
+	# untestable by the one copy a human ever launches.
+	$distScripts = Join-Path $repo 'dist\scripts'
+	New-Item -ItemType Directory -Force -Path $distScripts | Out-Null
+	Copy-Item (Join-Path $repo 'scripts\*.ps1') $distScripts -Force -ErrorAction SilentlyContinue
+	Write-Host "dist scripts/ ($((Get-ChildItem $distScripts -Filter *.ps1).Count) launchers)" -ForegroundColor Green
+	# AND THE SAME MARKER THE INSTALLER WRITES. A real install records where it put
+	# the image engine in image-engine.path beside the exe, because the engine
+	# lives outside {app} on purpose and a convention is not a location.
+	$sdHunt = @()
+	$upSd = $repo
+	for ($i = 0; $i -lt 5 -and $upSd; $i++) {
+		$upSd = Split-Path -Parent $upSd
+		if ($upSd) { $sdHunt += (Join-Path $upSd 'stable-diffusion.cpp') }
+	}
+	if ($env:SDCPP_DIR) { $sdHunt = @($env:SDCPP_DIR) + $sdHunt }
+	$sdFound = $sdHunt | Where-Object { $_ -and (Test-Path (Join-Path $_ 'sd-server.exe')) } | Select-Object -First 1
+	if ($sdFound) {
+		Set-Content -Path (Join-Path $repo 'dist\image-engine.path') -Value $sdFound -Encoding utf8
+		Write-Host "dist image-engine.path -> $sdFound" -ForegroundColor Green
+	} else {
+		Write-Host 'dist image-engine.path: no sd-server found — the build will play with baked art' -ForegroundColor DarkYellow
+	}
 }
 
 Write-Host "`nGREEN" -ForegroundColor Green

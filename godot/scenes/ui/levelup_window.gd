@@ -14,6 +14,9 @@ var to_level := 2
 
 
 func _ready() -> void:
+	# PY-12 — dressed like every other dialog. Three of five never were, and
+	# Session Zero was the worst of them: an unstyled grey box over a skinned screen.
+	Ui.dress_dialog(self)
 	var s := GameState.sheet()
 	var cls := str(s.get("cls", ""))
 	title = "Level %d — %s grows" % [to_level, str(s.get("name", "the hero"))]

@@ -9,6 +9,14 @@ extends AcceptDialog
 ## Things the play screen owns (they stream or leave the screen) — the menu
 ## only asks, then closes.
 signal travel_requested(place: String)
+## AT-5 — step inside the place you stand in. THE ATLAS TAB NEVER EMITTED THIS.
+## It wired travel and nothing else, so clicking your own town did nothing, and
+## the only path into a town plan was `game._open_world_map()`, which no player
+## action reaches since every destination became a tab (45af4d6) — only the
+## `screenshot` harness still calls it. Towns, trades,
+## GM sites and trouble clocks were all built and all unreachable in the game;
+## every harness built the town map directly, so none of them could notice.
+signal enter_requested(place: String)
 signal resume_requested(snapshot_id: String)
 signal save_chapter_requested
 signal leave_requested
@@ -236,7 +244,9 @@ func _hero_panel() -> Control:
 	var purse := Label.new()
 	purse.theme_type_variation = "HintLabel"
 	purse.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	purse.text = "%d %s in the purse" % [int(s.get("gold", 0)), GameState.currency()]
+	# PY-25 - a neon-city runner does not keep a purse.
+	purse.text = "%d %s in the %s" % [int(s.get("gold", 0)), GameState.currency(),
+		WorldSkin.shop_word(GameState.world_id(), "purse")]
 	col.add_child(purse)
 	var conds: Array = s.get("conditions", [])
 	if not conds.is_empty():
@@ -928,7 +938,10 @@ func _fill_atlas() -> void:
 	var map_word := str(WorldSkin.skin_for_id(GameState.world_id()).get("flavor", {}).get("map", "chart")).capitalize()
 	host.add_child(MythHeader.new("The %s of %s" % [map_word, str(GameState.character.get("name", "the world")).split(":")[0]]))
 	if str(wd.get("here", "")) != "":
-		host.add_child(_body("You are at %s — click a lamp-lit place to travel." % str(wd["here"]), "ink_dim"))
+		host.add_child(_body("You are at %s — click it to step inside, or click another place to travel." % str(wd["here"]), "ink_dim"))
+	# AT-3's regions — the tab never passed them, so the in-game chart had no
+	# region names or extents at all while every harness shot showed them.
+	map.regions = GameState.regions()
 	map.here = str(wd.get("here", ""))
 	map.seen = wd.get("seen") if wd.get("seen") is Array else []
 	map.fog = bool(GameState.rule("fog", true))
@@ -938,6 +951,9 @@ func _fill_atlas() -> void:
 	map.custom_minimum_size = Vector2(0, 560)
 	map.travel_requested.connect(func(place: String):
 		travel_requested.emit(place)
+		queue_free())
+	map.enter_requested.connect(func(place: String):
+		enter_requested.emit(place)
 		queue_free())
 	host.add_child(map)
 

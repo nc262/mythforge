@@ -44,6 +44,17 @@ signal mood_changed(mood: String)
 ## Every path that moves the clock goes through advance_time(), so this fires
 ## from all of them for free: rests, travel, tags, the world tick.
 signal day_changed(day: int, time_of_day: String)
+## PY-6 - the purse moved and the banner did not. Buying a 25-credit blade left
+## the merchant reading "Your purse: 4 credits" while the chip row above it still
+## said 29: two truths on one screen for as long as the player kept shopping,
+## because the banner only repainted when the counter closed. Announced from
+## `add_gold`, which every delta in the game goes through, so a `[[gold]]` tag or
+## a sale fixes the banner too - not just the case that was noticed.
+signal purse_changed(total: int)
+## Something about a town's trouble the player should hear, already worded.
+## Emitted by the engine the moment it happens - arrival, a clue, a clock that
+## ran out overnight - so no caller has to remember to announce it.
+signal trouble_news(line: String)
 
 var character: Dictionary = {}
 var state: Dictionary = {}
@@ -103,7 +114,10 @@ func bank_hero(d: Dictionary) -> void:
 	# pin a copy to this hero's own id, or the roster shows a stranger's face
 	# (and blank cards, since the roster art key is "hero-<id>").
 	var h := d.duplicate(true)
-	if str(h.get("id", "")) == "":
+	# `null` is not `""`. A hero saved with an explicit null id read back as the
+	# string "<null>" here, sailed past this guard, and became the art key
+	# "hero-<null>". heroes.json on this machine has one (Quin).
+	if h.get("id") == null or str(h["id"]).strip_edges() == "":
 		h["id"] = str(h["name"]).validate_filename().to_lower()
 	var own := "hero-" + str(h["id"]).validate_filename()
 	# Prefer the hero's OWN pinned key, but only claim it if the copy really
@@ -111,7 +125,20 @@ func bank_hero(d: Dictionary) -> void:
 	# failure, which was honest, and then every reader ignored the field anyway
 	# (see hero_portrait_key). If the copy fails we keep the working key rather
 	# than a dangling one.
+	# THE ONE PLACE "heroprev" MUST BE HONOURED, and it was the one place asking
+	# a function that can never return it. `hero_portrait_key` refuses the shared
+	# scratch key on purpose — a hero pinned to it wears the NEXT forging's face
+	# — but banking is precisely the act of copying AWAY from it, so the source
+	# lookup cannot be the reader lookup. A hero forged from the menu carries
+	# portrait_key == "heroprev" (character_forge, menu_mode), so `src` came back
+	# "", the copy never ran, portrait_key stayed "heroprev", and the roster card
+	# asked the same refusing function and got "" for ever: a generic glyph on a
+	# hero painted seconds earlier. Two of the four heroes in heroes.json here.
 	var src := hero_portrait_key(h)
+	if src == "":
+		var raw := str(h.get("portrait_key", ""))
+		if raw != "" and Art.has_art(raw):
+			src = raw
 	if src != "" and Art.copy(src, own):
 		h["portrait_key"] = own
 	elif src != "":
@@ -436,19 +463,12 @@ func new_hero_sheet(nm: String, race: String, cls: String, rolled: Array[int],
 		background := "", extra := {}) -> Dictionary:
 	var preset: Dictionary = Rules.tables.get("class_presets", {}).get(cls, {"hitDie": 8})
 	var heritage: Dictionary = Rules.tables.get("heritages", {}).get(race, {})
-	# Best scores where the class wants them: cast ability or STR/DEX first, CON second.
-	var prio: Array[String] = []
-	var cast_ab: String = Rules.CAST_ABIL.get(cls, "")
-	if cast_ab != "":
-		prio.append(cast_ab)
-	for a in (["DEX", "STR"] if cls in ["Rogue", "Ranger", "Monk"] else ["STR", "DEX"]):
-		if not a in prio:
-			prio.append(a)
-	if not "CON" in prio:
-		prio.insert(1, "CON")
-	for a in Rules.ABILITIES:
-		if not a in prio:
-			prio.append(a)
+	# ONE source for "where does the class want its best score" (PY-9). This built
+	# its own priority list and the forge displayed the roll against the canonical
+	# STR..CHA order, so the Nature page showed a Warlock 15 STR and 9 CHA while
+	# the sheet it would actually commit put the 15 on CHA. The numbers were never
+	# wrong; the screen the player rerolls from was. Both ends ask Rules now.
+	var prio: Array = Rules.ability_priority(cls)
 	var abilities := {}
 	if extra.get("assign") is Dictionary and not extra["assign"].is_empty():
 		for a2 in Rules.ABILITIES:
@@ -541,6 +561,7 @@ func add_gold(delta: int) -> int:
 	var s := sheet()
 	s["gold"] = maxi(0, roundi(int(s.get("gold", 0)) + delta))
 	set_sheet(s)
+	purse_changed.emit(int(s["gold"]))
 	return s["gold"]
 
 
@@ -1153,6 +1174,12 @@ func advance_time(steps := 1) -> Dictionary:
 	if mood_now != mood_before:
 		mood_changed.emit(mood_now)
 	if int(c.get("day", 1)) != prev_day:
+		# A TOWN MOVES WHILE YOU ARE ELSEWHERE. This is the half of the clock that
+		# was missing: it only ever advanced when the GM said so, which makes it a
+		# counter the narrator keeps rather than a world that keeps going. The day
+		# rollover already exists and already fires `world_tick`, so the trouble
+		# creeps on the same heartbeat as everything else off-screen.
+		_creep_troubles(prev_day)
 		day_changed.emit(int(c["day"]),
 			TIMES[clampi(int(c.get("ti", 0)), 0, TIMES.size() - 1)])
 	# Timed sheet conditions wane as in-world time passes.
@@ -1259,7 +1286,12 @@ func _with_position(l: Dictionary, world: Dictionary) -> Dictionary:
 	var out := l.duplicate(true)
 	var reg := str(l.get("region", ""))
 	var at := region_at(reg, world)
-	var pos := Rules.place_position(str(l.get("name", "")), str(l.get("scope", "local")), at)
+	# KIND AND WORLD, or the search has nothing to score with: `kind` is what
+	# decides a tavern wants a coast and a ruin a drowned shoal, and `wid` is how
+	# it reaches the ground at all. Omitting either silently falls back to the old
+	# blind ring, which is the bug rather than a safe default.
+	var pos := Rules.place_position(str(l.get("name", "")), str(l.get("scope", "local")),
+		at, str(l.get("kind", "")), world_id())
 	out["x"] = pos.x
 	out["y"] = pos.y
 	return out
@@ -1292,7 +1324,7 @@ func regions() -> Array:
 			continue
 		var e: Dictionary = r.duplicate(true)
 		if not (e.has("x") and e.has("y")):
-			var p := Rules.region_position(str(e["name"]), i, rs.size())
+			var p := Rules.region_position(str(e["name"]), i, rs.size(), world_id())
 			e["x"] = p.x
 			e["y"] = p.y
 		out.append(e)
@@ -1326,7 +1358,7 @@ func region_at(region_name: String, _world := {}) -> Vector2:
 		if r is Dictionary and str(r.get("name", "")).nocasecmp_to(region_name) == 0:
 			if r.has("x") and r.has("y"):
 				return Vector2(float(r["x"]), float(r["y"]))
-			return Rules.region_position(region_name, i, rs.size())
+			return Rules.region_position(region_name, i, rs.size(), world_id())
 	return Vector2(50, 50)
 
 
@@ -1526,10 +1558,16 @@ func add_place(spec: Dictionary) -> String:
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
 	var made: Array = world.get("places") if world.get("places") is Array else []
 	var at := region_at(reg, world)
-	var pos := Rules.place_position(nm, scope, at)
+	var pos := Rules.place_position(nm, scope, at, str(spec.get("kind", "landmark")), world_id())
+	# HOW BIG, when the place is one people live in. The size was a dice roll in
+	# the generator, so the tale could charter "the capital of the Reach" and get a
+	# hamlet. The GM says; the engine keeps the word only if it knows it, and the
+	# generator falls back to its roll when nothing was said.
+	var sized := str(spec.get("size", "")).strip_edges().to_lower()
 	made.append({
 		"name": nm,
 		"kind": str(spec.get("kind", "landmark")),
+		"size": sized if SETTLEMENT_SIZES.has(sized) else "",
 		"lore": str(spec.get("lore", "")),
 		"shop": str(spec.get("shop", "")),
 		"region": reg,
@@ -1538,8 +1576,696 @@ func add_place(spec: Dictionary) -> String:
 		"origin": "gm",   # authored places never carry this; the chart can tell them apart
 	})
 	world["places"] = made
+	# A place the GM has just CHARTERED is one the tale has named out loud, so it
+	# is heard of by construction. Without this the [[place]] tag would put a pin
+	# on the map that the fog then hid, which is the contradiction AT-6 exists to
+	# end — and the loudest possible version of it.
+	var hrd: Array = world.get("heard") if world.get("heard") is Array else []
+	if not hrd.has(nm):
+		hrd.append(nm)
+	world["heard"] = hrd
 	save_kind("world", world)
 	return ""
+
+
+## ── A SITE: WHAT THE GM PUTS INSIDE A TOWN ───────────────────────────────────
+##
+## `site_probe` measured the gap this closes. The GM could charter a place on
+## the world chart and have it ACCEPTED, and the town the player was standing in
+## came back byte-identical — the plan is generated from (world, name) and never
+## read any of this, so nothing the story invented could appear in a settlement.
+##
+## THE SHAPE IS THE SAME AS `add_place` AND DELIBERATELY SO: the model proposes,
+## the engine disposes, and every refusal says which rule it broke. That pattern
+## is the one thing the research on LLM game masters agrees about — the systems
+## that gate world-writes stay coherent and the one famous for not gating it is
+## famous for incoherence.
+##
+## FOUR CHECKS, and no more:
+##   · the settlement must already be on the chart — otherwise this is a second
+##     way to create a place, the way a road to Atlantis would have been
+##   · the ward must exist in that settlement's generated plan
+##   · the kind must be one the engine can actually render and price
+##   · the name must be free inside that town
+##
+## NO LEVEL GATE. `add_place` refuses a distant kingdom because scope is how the
+## tale's reach is earned; a shop inside a town the party is already standing in
+## is not that, and importing the check would be the wrong rule at this
+## granularity.
+##
+## The GM never says WHERE in the ward. It names the ward; the engine places it
+## on a lot the town plan already produced. The model is good at naming things
+## and bad at coordinates, and the spatial-grounding literature is unanimous
+## about the second half of that.
+## 0 hamlet, 1 village, 2 town, 3 city — the index IS `LocalMap.size_tier`, and
+## what a settlement can offer is gated on it (WorldSkin.TRADE_TIERS).
+const SETTLEMENT_SIZES := ["hamlet", "village", "town", "city"]
+
+const SITE_KINDS := ["inn", "tavern", "store", "smith", "alchemist", "temple",
+	"fence", "sage", "guild", "home", "landmark"]
+
+
+func add_site(spec: Dictionary) -> String:
+	var nm := str(spec.get("name", "")).strip_edges()
+	if nm == "":
+		return "a site needs a name"
+	var town := str(spec.get("settlement", "")).strip_edges()
+	if town == "":
+		return "a site needs the settlement it stands in"
+	var host := {}
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(town) == 0:
+			host = p
+			break
+	if host.is_empty():
+		return "%s is not on the chart — name a settlement that is" % town
+	if not LocalMap.SETTLED_KINDS.has(str(host.get("kind", ""))):
+		return "%s is not a place anyone lives in — a site needs a settlement" % town
+	var knd := str(spec.get("kind", "landmark")).to_lower()
+	if not SITE_KINDS.has(knd):
+		return "kind must be one of: %s" % ", ".join(SITE_KINDS)
+	var lm := LocalMap.for_place(world_id(), town, str(host.get("kind", "settlement")))
+	var ward := int(spec.get("ward", -1))
+	if ward < 0 or ward >= lm.wards.size():
+		return "%s has wards 0-%d — ward %d is not one of them" % [
+			town, lm.wards.size() - 1, ward]
+	for ex in town_sites(town):
+		if ex is Dictionary and str(ex.get("name", "")).nocasecmp_to(nm) == 0:
+			return "%s already stands in %s" % [nm, town]
+	# A SIZE GATE, and only for a settlement. Every published system ties what a
+	# place can offer to how big it is — a hamlet has no guildhall — so a trade
+	# above this town's tier is refused with the size named, which is a fact the
+	# model can act on. A BUILDING is exempt: a fence in a tavern's back room is
+	# exactly right, and a single roof has no tier to speak of.
+	if lm.scale == "town" and WorldSkin.TRADE_KEYS.has(knd) and not WorldSkin.trades_at(lm.size_tier).has(knd):
+		return "%s is a %s — too small for %s; it would take a %s" % [town,
+			SETTLEMENT_SIZES[clampi(lm.size_tier, 0, 3)], WorldSkin.trade_name(WorldSkin.family_for_id(world_id()), knd),
+			SETTLEMENT_SIZES[clampi(_tier_for_trade(knd), 0, 3)]]
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("sites") if world.get("sites") is Dictionary else {}
+	var mine: Array = all.get(town) if all.get(town) is Array else []
+	mine.append({
+		"name": nm,
+		"kind": knd,
+		"ward": ward,
+		"lore": str(spec.get("lore", "")),
+		"shop": str(spec.get("shop", "")),
+		"origin": "gm",
+	})
+	all[town] = mine
+	world["sites"] = all
+	save_kind("world", world)
+	# The plan is memoised per (world, name) and now has a new tenant.
+	LocalMap.forget("%s|%s" % [world_id(), town])
+	return ""
+
+
+## ── A TOWN'S LIVE PROBLEM, ON A CLOCK ────────────────────────────────────────
+##
+## The one thing every acclaimed settlement has that a generated one did not.
+## The 2024 DMG's settlement entry is a population, an economy cap, one physical
+## trait, one reputation and one CURRENT CALAMITY — and the calamity is the only
+## one of those a generator cannot fake, because it has to be about this tale.
+##
+## THE CLOCK IS WHAT MAKES IT A LIFE RATHER THAN A SENTENCE. Blades in the Dark
+## and Apocalypse World's fronts arrived at the same mechanism independently:
+## segmented state that persists and ADVANCES WHETHER OR NOT THE PLAYER IS
+## THERE. A rumour table describes a town; a clock means the town moved while you
+## were away, and that is the difference the research is unanimous about.
+##
+## The engine owns the clock — how many segments, how they fill, when it runs
+## out, who hears of it, what it costs when it does. The GM owns what it IS.
+const CLOCK_MIN := 4
+const CLOCK_MAX := 8
+## ── WHO KNOWS ABOUT IT ───────────────────────────────────────────────────────
+## A famine is not a secret and a cult in the cellars is nothing else. So the
+## trouble's REACH is a socket, and the engine — not the narrator's memory —
+## decides when the player learns of it:
+##   town   — everyone here feels it; the player hears the moment they are there.
+##   region — every town in the region feels it; heard anywhere in the region.
+##   secret — cloak and dagger; found out by CLUES_TO_UNCOVER clues, by
+##            [[uncover]], or when it comes to a head where the player stands.
+## Before this the map printed every trouble to anyone who had visited the town,
+## so a conspiracy was spoiled on the Atlas card before a single clue.
+const TROUBLE_REACH := ["town", "region", "secret"]
+## ── WHAT IT COSTS IF NOBODY STOPS IT ─────────────────────────────────────────
+## Chosen by the GM when the trouble starts, APPLIED by the engine when the clock
+## fills. A clock that filled and changed nothing was a counter; skipping a
+## trouble cost exactly what doing it did. Every one of these is something the
+## game can actually do, because a consequence only the narrator remembers is a
+## consequence the narrator forgets.
+##   road   — every road out of the place turns dangerous (AT-2's peril roll)
+##   trade  — the shops shut: the counter will not open there
+##   prices — everything costs half as much again there
+##   law    — every quarter of the town drops a step of law on its plan
+const TROUBLE_FALLOUT := ["road", "trade", "prices", "law"]
+## The Three Clue Rule (Justin Alexander): any conclusion the player must reach
+## needs at least three routes to it, because they will miss some. So a secret is
+## exposed by the THIRD clue, not the first, and not by the one the GM planned.
+const CLUES_TO_UNCOVER := 3
+
+
+func _trouble_book() -> Dictionary:
+	if not (state.get("world") is Dictionary):
+		state["world"] = {}
+	if not (state["world"].get("trouble") is Dictionary):
+		state["world"]["trouble"] = {}
+	return state["world"]["trouble"]
+
+
+func _trouble_key(place_name: String) -> String:
+	for k in _trouble_book().keys():
+		if str(k).nocasecmp_to(place_name.strip_edges()) == 0:
+			return str(k)
+	return ""
+
+
+func _commit_troubles() -> void:
+	save_kind("world", state["world"])
+
+
+## `more` carries the optional parts: thread (a quest or the campaign it bears
+## on), fallout (TROUBLE_FALLOUT) and title (the quest's name).
+func set_trouble(place_name: String, what: String, size: int, reach := "town", more := {}) -> String:
+	var nm := place_name.strip_edges()
+	var txt := what.strip_edges()
+	if nm == "" or txt == "":
+		return "a trouble needs a place and a description"
+	var found := false
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(nm) == 0:
+			nm = str(p.get("name", ""))
+			found = true
+			break
+	if not found:
+		return "%s is not on the chart — name a place that is" % nm
+	if size < CLOCK_MIN or size > CLOCK_MAX:
+		return "a clock runs %d to %d segments, not %d" % [CLOCK_MIN, CLOCK_MAX, size]
+	if not TROUBLE_REACH.has(reach):
+		return "reach must be one of: %s" % ", ".join(TROUBLE_REACH)
+	if reach == "region" and region_of_place(nm) == "":
+		return "%s belongs to no region — use reach=town" % nm
+	# No fallout named is not a refusal: every trouble costs something, so the
+	# engine picks the one its reach implies.
+	var fall := str(more.get("fallout", "")).strip_edges().to_lower()
+	if fall == "":
+		fall = str({"town": "prices", "region": "road", "secret": "law"}[reach])
+	if not TROUBLE_FALLOUT.has(fall):
+		return "fallout must be one of: %s" % ", ".join(TROUBLE_FALLOUT)
+	var book := _trouble_book()
+	# A NEW TROUBLE DOES NOT RESET AN OLD ONE'S PROGRESS silently. If the town
+	# already has one RUNNING, say so — two live calamities in one village is the
+	# GM losing track, not the world getting worse.
+	#
+	# RUNNING, not merely present. This refused on any record at all, and nothing
+	# ever removed one, so a town whose trouble had come to a head could never be
+	# troubled again: "already has a trouble running" about a clock that had
+	# stopped. A spent trouble is history, and the next one replaces it.
+	var key := _trouble_key(nm)
+	var old: Dictionary = book.get(key, {}) if key != "" else {}
+	var same := str(old.get("what", "")) == txt
+	if not old.is_empty() and not same and not trouble_spent(old):
+		return "%s already has a trouble running — see it through or resolve it first" % nm
+	if same:
+		return ""   # the GM restating it; the record already says so
+	if key != "":
+		book.erase(key)
+	book[nm] = {"what": txt, "size": size, "filled": 0, "reach": reach, "known": false,
+		"fallout": fall, "thread": _thread_named(str(more.get("thread", ""))),
+		"title": str(more.get("title", "")).strip_edges().left(80),
+		"clues": [], "worked_day": -1}
+	_commit_troubles()
+	LocalMap.forget("%s|%s" % [world_id(), nm])   # a replaced trouble may lift a fallout
+	return ""
+
+
+## WHAT A TROUBLE MAY TIE INTO: the quests on the log and the campaign itself.
+## The GM decides whether it is relevant; the engine only checks that the thing
+## it named exists. A name that matches nothing leaves a SIDE matter — being
+## wrong about relevance is not a reason to lose the trouble.
+func quest_threads() -> Array[String]:
+	var out: Array[String] = []
+	var tale := str(Composer.campaign_story().get("title", ""))
+	if tale != "":
+		out.append(tale)
+	for q in (state.get("quests") if state.get("quests") is Array else []):
+		if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "" \
+				and not q.has("trouble"):
+			out.append(str(q["title"]))
+	return out
+
+
+func _thread_named(said: String) -> String:
+	var s := said.strip_edges()
+	for t in quest_threads():
+		if s != "" and t.nocasecmp_to(s) == 0:
+			return t
+	return ""
+
+
+## Advance (or wind back) a town's clock. Returns "" or the reason it could not.
+func tick_trouble(place_name: String, by: int) -> String:
+	var key := _trouble_key(place_name)
+	if key == "":
+		return "%s has no trouble running" % place_name
+	var t: Dictionary = _trouble_book()[key]
+	if trouble_spent(t):
+		return "%s's trouble has already come to a head" % key
+	t["filled"] = clampi(int(t.get("filled", 0)) + by, 0, int(t.get("size", 6)))
+	# PUSHED BACK TO NOTHING IS RESOLVED, and a resolved trouble is gone — it
+	# stayed as an empty clock that blocked the town's next one forever.
+	if by < 0 and int(t["filled"]) <= 0:
+		_end_trouble(key, t, "done", "Resolved: %s." % t.get("what", ""),
+			"%s breathes easier — %s is over." % [key, t.get("what", "")])
+		_trouble_book().erase(key)
+	elif trouble_spent(t):
+		_fall(key, t)
+	else:
+		_sync_trouble_quest(key)
+		if bool(t.get("known", true)) and by != 0:
+			trouble_news.emit("%s %s: %s (%d of %d)." % [key, "worsens" if by > 0 else "eases",
+				t.get("what", ""), int(t["filled"]), int(t.get("size", 6))])
+	_commit_troubles()
+	return ""
+
+
+## The player did something that bears directly on the trouble where they stand:
+## a check the GM marked trouble=1. Success pushes the clock back, failure forward,
+## and either way the day counts as worked — see `_creep_troubles`.
+func work_trouble(place_name: String, succeeded: bool) -> String:
+	var key := _trouble_key(place_name)
+	if key == "" or trouble_spent(_trouble_book()[key]):
+		return "%s has no trouble running" % place_name
+	_trouble_book()[key]["worked_day"] = int(clock().get("day", 1))
+	return tick_trouble(key, -1 if succeeded else 1)
+
+
+## What `Chronicle.read_trouble` concluded about the turn just played: a lead to
+## record, and whether the player was working the trouble — which counts the day
+## as worked, and makes the next roll here count against the clock.
+func apply_trouble_read(place_name: String, read: Dictionary) -> void:
+	var key := _trouble_key(place_name)
+	if key == "" or trouble_spent(_trouble_book()[key]):
+		return
+	# Set either way: the flag describes THIS turn, so a turn spent elsewhere
+	# clears one left over from an earlier turn's unrolled check.
+	_trouble_book()[key]["engaged"] = bool(read.get("working_it", false))
+	if bool(read.get("working_it", false)):
+		_trouble_book()[key]["worked_day"] = int(clock().get("day", 1))
+	_commit_troubles()
+	var lead := str(read.get("lead", "")).strip_edges()
+	if lead != "":
+		add_clue(key, lead)
+
+
+## Was the player working this place's trouble when the pending roll was called?
+## Read once: the flag belongs to that roll, not to every roll after it.
+func take_engaged(place_name: String) -> bool:
+	var key := _trouble_key(place_name)
+	if key == "" or not bool(_trouble_book()[key].get("engaged", false)):
+		return false
+	_trouble_book()[key].erase("engaged")
+	return true
+
+
+## [[clue]] — the player found a lead. Recorded on the trouble (and so on its
+## quest), and the third one exposes a secret.
+func add_clue(place_name: String, note: String) -> String:
+	var key := _trouble_key(place_name)
+	var n := note.strip_edges().left(160)
+	if key == "":
+		return "%s has no trouble to find clues about" % place_name
+	if n == "":
+		return "a clue needs a note"
+	var t: Dictionary = _trouble_book()[key]
+	if trouble_spent(t):
+		return "%s's trouble has already come to a head" % key
+	var clues: Array = t.get("clues") if t.get("clues") is Array else []
+	for c in clues:
+		if str(c).nocasecmp_to(n) == 0:
+			return ""
+	clues.append(n)
+	t["clues"] = clues
+	t["worked_day"] = int(clock().get("day", 1))
+	if not bool(t.get("known", true)):
+		if clues.size() >= CLUES_TO_UNCOVER:
+			t["known"] = true
+			trouble_news.emit("You piece it together — in %s, %s." % [key, t.get("what", "")])
+		else:
+			# The player learns the CLUE, never what it points at.
+			trouble_news.emit("Something is not right in %s: %s" % [key, n])
+	else:
+		trouble_news.emit("A lead on the trouble in %s: %s" % [key, n])
+	_sync_trouble_quest(key)
+	_commit_troubles()
+	return ""
+
+
+## ── A DAY PASSES, AND TROUBLE GETS WORSE WHERE NOBODY IS WORKING IT ──────────
+##
+## Every running clock advances one segment EXCEPT one somebody worked that day —
+## a clue found or a check made against it. This was "except where the party is
+## standing", which made sleeping in a troubled town the same as saving it.
+##
+## A clock that has already run out stays run out; its fallout is applied once.
+func _creep_troubles(day_ended := -1) -> void:
+	var book := _trouble_book()
+	if book.is_empty():
+		return
+	var moved := false
+	for k in book.keys():
+		var t: Dictionary = book[k]
+		if trouble_spent(t) or (day_ended >= 0 and int(t.get("worked_day", -1)) >= day_ended):
+			continue
+		t["filled"] = int(t.get("filled", 0)) + 1
+		moved = true
+		if trouble_spent(t):
+			_fall(str(k), t)
+		else:
+			_sync_trouble_quest(str(k))
+	if moved:
+		_commit_troubles()
+
+
+## THE CLOCK RAN OUT. Apply the fallout the GM chose, close the quest as failed,
+## and say so if the player knows the trouble exists — the road turns dangerous
+## either way, and they find out when they walk it.
+func _fall(key: String, t: Dictionary) -> void:
+	var fall := str(t.get("fallout", "prices"))
+	if fall == "road":
+		# THE WAYS IN, not only the roads somebody drew. The shipped worlds carry no
+		# authored roads at all (measured: saltmarsh and embervale, `roads()` == []),
+		# so "every road out turns dangerous" changed nothing — and travel peril is
+		# read per journey from `road_between`. So the roads to its three nearest
+		# neighbours are named dangerous too, which is what a traveller would meet.
+		var ends: Array[String] = []
+		for r in roads():
+			if str(r["from"]) == key and str(r["state"]) != "blocked":
+				ends.append(str(r["to"]))
+			elif str(r["to"]) == key and str(r["state"]) != "blocked":
+				ends.append(str(r["from"]))
+		var at := Vector2.INF
+		var near: Array = []
+		for p in places():
+			if p is Dictionary and p.has("x") and p.has("y"):
+				if str(p.get("name", "")) == key:
+					at = Vector2(float(p["x"]), float(p["y"]))
+				else:
+					near.append(p)
+		if at != Vector2.INF:
+			near.sort_custom(func(l, r): return Vector2(float(l["x"]), float(l["y"])).distance_to(at) < Vector2(float(r["x"]), float(r["y"])).distance_to(at))
+			for p in near.slice(0, 3):
+				if not ends.has(str(p["name"])) and str(road_between(key, str(p["name"])).get("state", "")) != "blocked":
+					ends.append(str(p["name"]))
+		for other in ends:
+			set_road({"from": key, "to": other, "state": "dangerous", "name": str(road_between(key, other).get("name", ""))})
+	LocalMap.forget("%s|%s" % [world_id(), key])
+	var cost := fallout_line(key, fall)
+	_end_trouble(key, t, "failed", "It came to a head: %s. %s." % [t.get("what", ""), cost.capitalize()],
+		"In %s, it has come to a head: %s. %s." % [key, t.get("what", ""), cost.capitalize()])
+
+
+func fallout_line(place_name: String, fall: String) -> String:
+	var lines := {"road": "the roads out of %s are dangerous now",
+		"trade": "the shops of %s have shut their doors",
+		"prices": "everything in %s costs half as much again",
+		"law": "the watch has lost its grip on the streets of %s"}
+	return str(lines.get(fall, "%s is changed")) % place_name
+
+
+## The fallout standing in a place now, or "". It lasts until a new trouble there
+## replaces the spent one. ponytail: no separate aftermath clock; add one when a
+## town needs to recover without a new trouble arriving.
+func fallout_at(place_name: String) -> String:
+	var key := _trouble_key(place_name)
+	if key == "":
+		return ""
+	var t: Dictionary = _trouble_book()[key]
+	return str(t.get("fallout", "")) if trouble_spent(t) else ""
+
+
+func _end_trouble(key: String, t: Dictionary, status: String, desc: String, news: String) -> void:
+	var q := _trouble_quest(key, t)
+	if not q.is_empty():
+		q["status"] = status
+		q["desc"] = desc.left(240)
+		save_kind("quests", state["quests"])
+	if bool(t.get("known", true)):
+		trouble_news.emit(news)
+
+
+## ── A TROUBLE THE PLAYER KNOWS OF IS A QUEST ─────────────────────────────────
+## Filed the moment it is known, kept in step with the clock and the clues, and
+## closed by the engine — done when resolved, failed when it came to a head. The
+## quest carries `trouble` so the model's quest-log rewrite cannot drop or
+## re-status it (see `Chronicle._update_quests`), and `thread` says whether it
+## bears on the tale or is a side matter.
+func _trouble_quest(key: String, t: Dictionary) -> Dictionary:
+	var id := "%s|%s" % [key, t.get("what", "")]
+	for q in (state.get("quests") if state.get("quests") is Array else []):
+		if q is Dictionary and str(q.get("trouble", "")) == id:
+			return q
+	return {}
+
+
+func _sync_trouble_quest(key: String) -> void:
+	var t: Dictionary = _trouble_book().get(key, {})
+	if t.is_empty() or not bool(t.get("known", true)):
+		return
+	if not (state.get("quests") is Array):
+		state["quests"] = []
+	var q := _trouble_quest(key, t)
+	if q.is_empty():
+		q = {"trouble": "%s|%s" % [key, t.get("what", "")], "status": "active"}
+		state["quests"].append(q)
+	var title := str(t.get("title", ""))
+	q["title"] = title if title != "" else "Trouble in %s" % key
+	var thread := str(t.get("thread", ""))
+	q["thread"] = thread
+	var clues: Array = t.get("clues") if t.get("clues") is Array else []
+	q["desc"] = ("%s (%d of %d).%s %s" % [t.get("what", ""), int(t.get("filled", 0)), int(t.get("size", 6)),
+		(" Leads: %s." % "; ".join(clues)) if not clues.is_empty() else "",
+		("Bears on: %s." % thread) if thread != "" else "A side matter."]).left(240)
+	save_kind("quests", state["quests"])
+
+
+## Every town with something going wrong in it, worst first — what the world tick
+## should be talking about.
+func running_troubles() -> Array:
+	var out: Array = []
+	var book := _trouble_book()
+	for k in book.keys():
+		var t: Dictionary = book[k]
+		if trouble_spent(t):
+			continue   # it came to a head; the world tick narrates what is moving
+		out.append({"place": str(k), "what": str(t.get("what", "")),
+			"filled": int(t.get("filled", 0)), "size": int(t.get("size", 6)),
+			"reach": str(t.get("reach", "town"))})
+	out.sort_custom(func(a, b):
+		return float(a["filled"]) / maxf(float(a["size"]), 1.0) > float(b["filled"]) / maxf(float(b["size"]), 1.0))
+	return out
+
+
+## A clock that has run out. It stays on the record — the fallout is real — but
+## it no longer blocks a new trouble and it no longer creeps.
+func trouble_spent(t: Dictionary) -> bool:
+	return int(t.get("filled", 0)) >= int(t.get("size", 6))
+
+
+func region_of_place(place_name: String) -> String:
+	for p in places():
+		if p is Dictionary and str(p.get("name", "")).nocasecmp_to(place_name) == 0:
+			return str(p.get("region", ""))
+	return ""
+
+
+## Does the player know about this place's trouble? A record written before reach
+## existed counts as known — the map was already showing it to them.
+func trouble_known(place_name: String) -> Dictionary:
+	var t := trouble_at(place_name)
+	return t if not t.is_empty() and bool(t.get("known", true)) else {}
+
+
+## THE ENGINE DECIDES WHEN WORD REACHES THE PLAYER. Called whenever the party's
+## place changes and whenever a trouble starts. Emits one `trouble_news` per
+## trouble learned just now, files its quest, and returns how many.
+func notice_troubles() -> int:
+	var book := _trouble_book()
+	var at := here()
+	var my_region := region_of_place(at)
+	var heard := 0
+	for k in book.keys():
+		var t: Dictionary = book[k]
+		if bool(t.get("known", true)):
+			continue
+		var reach := str(t.get("reach", "town"))
+		var line := ""
+		if str(k).nocasecmp_to(at) == 0 and (reach == "town" or trouble_spent(t)):
+			line = "All of %s is talking about it: %s." % [k, t.get("what", "")]
+		elif reach == "region" and my_region != "" and region_of_place(str(k)) == my_region:
+			line = "Word is on every road in %s — in %s, %s." % [my_region, k, t.get("what", "")]
+		if line == "":
+			continue
+		t["known"] = true
+		heard += 1
+		trouble_news.emit(line)
+		_sync_trouble_quest(str(k))
+	if heard > 0:
+		_commit_troubles()
+	return heard
+
+
+## [[uncover]] — the player has found out a secret trouble outright (a confession,
+## a caught conspirator). Clues are the usual road; this is the decisive one.
+func uncover_trouble(place_name: String) -> String:
+	var key := _trouble_key(place_name)
+	if key == "":
+		return "%s has no trouble to uncover" % place_name
+	var t: Dictionary = _trouble_book()[key]
+	if bool(t.get("known", true)):
+		return ""
+	t["known"] = true
+	trouble_news.emit("You have uncovered what is really happening in %s: %s." % [key, t.get("what", "")])
+	_sync_trouble_quest(key)
+	_commit_troubles()
+	return ""
+
+
+## What is going wrong here, and how far along it is. {} if nothing.
+func trouble_at(place_name: String) -> Dictionary:
+	var key := _trouble_key(place_name)
+	return _trouble_book()[key] if key != "" else {}
+
+
+## The smallest settlement tier that offers this trade.
+func _tier_for_trade(knd: String) -> int:
+	for t in WorldSkin.TRADE_TIERS.size():
+		if WorldSkin.TRADE_TIERS[t].has(knd):
+			return t
+	return 0
+
+
+## ── THE PLAYER ASKS A TOWN FOR SOMETHING THAT IS NOT ON ITS MAP ──────────────
+##
+## "Is there an apothecary here?" The GM decides whether this place has one —
+## the story's call, not a lookup — and the engine decides whether the answer is
+## legal: a real kind, a real ward, a name nobody else has, and a trade this
+## size of settlement could plausibly carry. Propose-and-validate, the same
+## shape as every other tag: the model invents inside a socket, the engine
+## refuses with a reason.
+##
+## Returns what to tell the player. `found` says whether the map changed.
+func answer_ask(town: String, query: String, said: Dictionary) -> Dictionary:
+	var q := query.strip_edges()
+	if q == "":
+		return {"found": false, "line": ""}
+	if said.is_empty() or not _ask_is_sane(said):
+		# A SCHEMA CALL RUNS WITH NO SAMPLER CHAIN (LocalLLM-Tuning.md), so a bad turn
+		# does not come back wrong, it comes back as rubble: measured once in five, an
+		# object carrying invented keys and a paragraph of noise. Rubble is not an
+		# answer, and the player gets the honest version of that.
+		return {"found": false, "line": "You ask after %s, and get nowhere." % q}
+	# THE SCHEMA CUTS AT ITS CEILING, mid-word: "jars of tea that c". Trim back to
+	# the last sentence that finished, or to the last whole word.
+	var answer := _last_sentence(str(said.get("answer", "")).strip_edges().left(240))
+	var knd := str(said.get("kind", "")).to_lower()
+	if bool(said.get("here", false)) and not SITE_KINDS.has(knd):
+		# It said yes and could not say what the thing IS. Not an answer either.
+		return {"found": false, "line": answer if answer != "" else "There is nothing like %s here." % q}
+	if not bool(said.get("here", false)):
+		return {"found": false, "line": answer if answer != "" else "There is nothing like %s here." % q}
+	var why := add_site({
+		"name": str(said.get("name", "")),
+		"kind": str(said.get("kind", "landmark")),
+		"ward": int(said.get("ward", -1)),
+		"settlement": town,
+		"lore": str(said.get("lore", "")),
+	})
+	if why != "":
+		# The refusal is the truth the player gets, in the engine's own words —
+		# "too small for a Guildhall" IS the answer to "is there a guildhall here".
+		return {"found": false, "line": why}
+	return {"found": true, "line": "%s %s" % [answer if answer != "" else
+		"%s stands in %s." % [said.get("name", ""), town], "(It is on the map now.)"]}
+
+
+## The keys an ask may carry. Anything else means the call came apart.
+const ASK_KEYS := ["here", "kind", "name", "ward", "lore", "answer"]
+
+
+func _last_sentence(t: String) -> String:
+	var s := t.strip_edges()
+	if s == "" or s.ends_with(".") or s.ends_with("!") or s.ends_with("?"):
+		return s
+	var cut := maxi(maxi(s.rfind("."), s.rfind("!")), s.rfind("?"))
+	if cut > 40:
+		return s.left(cut + 1)
+	var sp := s.rfind(" ")
+	return (s.left(sp) + "…") if sp > 20 else s
+
+
+func _ask_is_sane(said: Dictionary) -> bool:
+	for k in said.keys():
+		if not ASK_KEYS.has(str(k)):
+			return false
+	return true
+
+
+## Everything the GM has put inside one town. Empty for a town it has not touched.
+func town_sites(town: String) -> Array:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var all: Dictionary = world.get("sites") if world.get("sites") is Dictionary else {}
+	return all.get(town) if all.get(town) is Array else []
+
+
+## ── AT-6: KNOWING OF A PLACE IS NOT HAVING BEEN THERE ────────────────────────
+##
+## Fog was two-state — `seen` or hidden — and the table rule said so in as many
+## words: "the map hides what you haven't walked". That collapses two different
+## kinds of knowledge, and in THIS game the collapse has a specific and severe
+## failure: the GM names a place in prose, the player opens the Atlas, and the
+## place is not there. The map contradicts the narrator. In a game whose whole
+## premise is an LLM Game Master, prose is the primary channel and the chart's
+## job is to corroborate it, never to argue with it.
+##
+## So a place is UNKNOWN, HEARD OF, or VISITED. The precedent is exact: Baldur's
+## Gate II prints "Your world map has been updated" when an NPC mentions an area
+## you have never travelled to, Pillars of Eternity greys the icon of a location
+## learned through dialogue, and Skyrim draws a known-unvisited marker black
+## against a visited marker's white.
+##
+## `heard` is a plain list beside `seen`, and permanent for the same reason
+## `seen` is: re-shrouding exists to hide LIVE MOVING UNITS from an opponent, and
+## there is no adversary here and nothing that moves. Even RTS games keep terrain
+## revealed once seen.
+func hear_of(place_name: String) -> void:
+	var nm := place_name.strip_edges()
+	if nm == "":
+		return
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var h: Array = world.get("heard") if world.get("heard") is Array else []
+	if h.has(nm):
+		return
+	h.append(nm)
+	world["heard"] = h
+	save_kind("world", world)
+
+
+## Has the tale mentioned this place, by any route — prose, a tag, or a road?
+## Visiting implies hearing of: a save written before `heard` existed carries a
+## `seen` list and no `heard` at all, and a place the player has STOOD IN must
+## never come back as a rumour because the format changed under them.
+func heard_of(place_name: String) -> bool:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var h: Array = world.get("heard") if world.get("heard") is Array else []
+	var sn: Array = world.get("seen") if world.get("seen") is Array else []
+	return h.has(place_name) or sn.has(place_name) or str(world.get("here", "")) == place_name
+
+
+func visited(place_name: String) -> bool:
+	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
+	var sn: Array = world.get("seen") if world.get("seen") is Array else []
+	return sn.has(place_name) or str(world.get("here", "")) == place_name
 
 
 ## THE GM CREATES A REGION. Rare on purpose — see Rules.SCOPE_LEVEL.
@@ -1559,7 +2285,7 @@ func add_region(spec: Dictionary) -> String:
 		return "the frontier is out of reach for now (a new region needs level %d)" % int(Rules.SCOPE_LEVEL["far"])
 	var world: Dictionary = state.get("world", {}) if state.get("world") is Dictionary else {}
 	var rs: Array = world.get("regions") if world.get("regions") is Array else []
-	var p := Rules.region_position(nm, rs.size(), rs.size() + 1)
+	var p := Rules.region_position(nm, rs.size(), rs.size() + 1, world_id())
 	rs.append({"name": nm, "lore": str(spec.get("lore", "")),
 		"biome": str(spec.get("biome", "")), "x": p.x, "y": p.y, "origin": "gm"})
 	world["regions"] = rs

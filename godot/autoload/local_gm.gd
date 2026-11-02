@@ -45,6 +45,9 @@ const GEN_DEADLINE := 180.0
 var _model: Node = null
 var _chat: Node = null
 var _busy := false
+## Whether the narrator's worker has reported ready. One await, once — awaiting
+## `worker_started` after it has already fired waits for a signal never coming.
+var _chat_warm := false
 ## A SECOND chat over the same model, for structured answers.
 ##
 ## The sampler is per-chat-node, so constraining the narrator's node to JSON
@@ -171,6 +174,33 @@ func _ensure_nodes(system_prompt: String) -> bool:
 	return true
 
 
+## Build the narrator and WAIT for its worker, so the ~4.6 GB load happens
+## somewhere the player can see it working instead of inside their first
+## sentence.
+##
+## The nodes were built lazily by the first `stream()`, which is why `bench_gm`
+## measured turn 1 at 9.0 s against 3-4 s for every turn after it. PL-9's first
+## attempt tried to fix that by calling `start_worker()` earlier and measured
+## that it does not help: starting early is not being loaded, and `ask()` waits
+## for the weights whenever the worker was asked to start. The only thing that
+## moves the felt cost is waiting for readiness somewhere else — behind the
+## loading curtain, which `_open_the_adventure` already holds up.
+##
+## Returns false when there is no local narrator at all; the caller simply lifts
+## the curtain and the game says so honestly at the first turn, as before.
+func warm() -> bool:
+	if not available():
+		return false
+	if not _ensure_nodes(""):
+		return false
+	if _chat_warm:
+		return true
+	_chat_warm = true
+	if _chat.has_signal("worker_started"):
+		await _chat.worker_started
+	return true
+
+
 ## The narrator's sampler, set fresh before every turn.
 ##
 ## It had NONE — it ran on the extension's default, which the worker log shows
@@ -226,7 +256,11 @@ func _tune_narrator() -> void:
 ## half. See docs/LocalLLM-Tuning.md.
 ##
 ## Returns "" when unusable.
-func complete_json(prompt: String, schema := "") -> String:
+## `wait` overrides GEN_DEADLINE for a call somebody is SITTING THERE WAITING FOR.
+## Measured: an ask from the town map took 180 s once in five, because a schema
+## call runs with no sampler chain and a degenerate one runs to the deadline.
+## Three minutes is fine for a background pass and unplayable at a counter.
+func complete_json(prompt: String, schema := "", wait := 0.0) -> String:
 	if not available():
 		return ""
 	if _model == null and not _ensure_nodes(""):
@@ -255,6 +289,22 @@ func complete_json(prompt: String, schema := "") -> String:
 				_deliver(""))
 		if _json_chat.has_method("start_worker"):
 			_json_chat.call("start_worker")
+			# WAIT for it. `start_worker()` is asynchronous, so configuring in the
+			# same breath raced it and NobodyWho answered "Worker not started,
+			# dropping sampler config" and "Attempted to reset context, but no
+			# worker is running" — the first structured call of a session ran
+			# unconstrained and not stateless, silently.
+			#
+			# This await was written once before and REVERTED, because it turned a
+			# warning into `fatal runtime error: Rust cannot catch foreign
+			# exceptions` (0xC0000409). That abort was upstream: NobodyWho ran the
+			# GBNF grammar AFTER the truncation samplers, so when truncation left
+			# no grammar-valid token, llama.cpp threw a C++ exception across the FFI
+			# boundary and Rust aborted. Fixed upstream in nobodywho-godot-v9.6.0
+			# (issues #421/#487, PR #644); this project pinned v9.5.0 until then.
+			# Do not re-pin below v9.6.0 — the crash comes back and it is silent.
+			if _json_chat.has_signal("worker_started"):
+				await _json_chat.worker_started
 	# The sampler is set EVERY call, not once, because `prose()` and this share the
 	# node and each clobbers the other's config.
 	if schema != "" and _json_chat.has_method("set_sampler_preset_constrain_with_json_schema"):
@@ -271,7 +321,7 @@ func complete_json(prompt: String, schema := "") -> String:
 	# The timer always fires, answer or not, so it carries the id of the call it
 	# was armed for — otherwise a deadline left over from a call that finished in
 	# time would go off in the middle of a perfectly healthy later one.
-	get_tree().create_timer(GEN_DEADLINE).timeout.connect(_on_deadline.bind(gen))
+	get_tree().create_timer(GEN_DEADLINE if wait <= 0.0 else wait).timeout.connect(_on_deadline.bind(gen))
 	return await _json_done
 
 

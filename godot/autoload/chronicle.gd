@@ -63,8 +63,105 @@ func record(player_msg: String, gm_reply: String) -> void:
 	# The embedding runs on the same Vulkan device as the narrator; the beat never
 	# leaves the machine or the process.
 	LocalMemory.add_beat(GameState.cid(), beat, int(GameState.clock().get("day", 1)))
-	if _player_turns % CODEX_EVERY == 0:
-		_update_chronicle()
+	_after_turn(player_msg, gm_reply, _player_turns % CODEX_EVERY == 0)
+
+
+## The trouble read, then (on its cadence) the codex and quests — in that order,
+## on the one JSON node, so the three never contend.
+func _after_turn(player_msg: String, gm_reply: String, chronicle_due: bool) -> void:
+	await read_trouble(player_msg, gm_reply)
+	if chronicle_due:
+		await _update_chronicle()
+
+
+## ── THE PLAYER ASKS A TOWN FOR SOMETHING NOT ON ITS MAP ──────────────────────
+## The GM decides whether this town has one; `GameState.answer_ask` decides
+## whether the answer is legal. Schema-constrained, because the caller needs a
+## decision, not prose — and the prose it does write is one in-world sentence.
+## KIND IS REQUIRED. Measured with the real narrator: five asks, five yeses, and
+## `kind` left out of every one, so every answer landed as a generic landmark and
+## the size gate had nothing to bite on.
+const ASK_SCHEMA := '{"type":"object","required":["here","kind","name","ward","answer"],"properties":{' 	+ '"here":{"type":"boolean"},"kind":{"enum":["inn","tavern","store","smith","alchemist",' 	+ '"temple","fence","sage","guild","home","landmark"]},' 	+ '"name":{"type":"string","maxLength":60},"ward":{"type":"integer"},' 	+ '"lore":{"type":"string","maxLength":160},"answer":{"type":"string","maxLength":240}}}'
+
+
+func ask_after(town: String, town_kind: String, query: String) -> Dictionary:
+	if not LocalGM.available() or query.strip_edges() == "":
+		return {}
+	var brief := LocalMap.for_place(GameState.world_id(), town, town_kind).brief()
+	# THE WORLD ITSELF, because the narrator said yes to a SPACEPORT in a fantasy
+	# village: with only the town in front of it, nothing in the prompt said what kind
+	# of world this is, and a model with no grounds to refuse will not refuse.
+	var world := {}
+	for w in Rules.builtin_worlds() + GameState.global_get("cworlds", []):
+		if w is Dictionary and str(w.get("id", "")) == GameState.world_id():
+			world = w
+			break
+	var raw := await LocalGM.complete_json(
+		"You are the Game Master of %s, %s. %s" % [str(world.get("name", "this world")),
+			str(world.get("kind", "")), str(world.get("lore", "")).left(320)]
+		+ "%s
+
+" % brief
+		+ "The player is in %s, asking after: %s
+
+" % [town, query.strip_edges().left(120)]
+		+ "Decide whether this place HAS such a thing. `here` is true only if it fits a "
+		+ "place of this size and character, serves the story, and is not one of the places "
+		+ "already listed above. If true: `name` it in this world's voice, choose the closest "
+		+ "`kind`, and give the `ward` number of the quarter it stands in, from the list above. "
+		+ "Two examples, in a high-fantasy village: \"a blacksmith\" -> here true, kind smith. "
+		+ "\"a spaceport\" -> here FALSE, because nothing in this world flies; answer: "
+		+ "\"Folk here would stare at you — there is no such thing in this valley.\" "
+		+ "SAY NO WHEN IT DOES NOT BELONG. `here` is false for anything out of this world's "
+		+ "genre, anything grander than a place this size would hold, and anything this tale "
+		+ "has no room for — a no is a good answer and the commonest one. "
+		+ "`answer` is ONE short sentence said to the player in the world's own voice — where "
+		+ "to find it and what it is like, or why there is no such thing here. Never mention "
+		+ "rules, numbers or tags.",
+		ASK_SCHEMA, 25.0)   # somebody is standing at the box waiting for this
+	var parsed = JSON.parse_string(raw)
+	return parsed if parsed is Dictionary else {}
+
+
+## ── DID THAT TURN TOUCH THE TROUBLE? ─────────────────────────────────────────
+## MEASURED 2026-09-17 (tests/town_gm_probe, real narrator, a secret trouble,
+## four turns of the player investigating it): the narrator kept the secret and
+## planted traces in prose — worried faces at the well, a bitter tang at the mill
+## — and wrote ZERO [[clue]] tags and marked ZERO rolls trouble=1. The engine
+## side was correct and never fed. LocalLLM-Tuning.md already says why: one call
+## should not both invent and serialise. So the narrator writes the scene, and
+## this reads it afterwards: one small schema call, only on turns where the town
+## the party stands in has a trouble running.
+const TROUBLE_READ_SCHEMA := '{"type":"object","required":["lead","working_it"],"properties":{' 	+ '"lead":{"type":"string","maxLength":160},"working_it":{"type":"boolean"}}}'
+
+
+func read_trouble(player_msg: String, gm_reply: String) -> Dictionary:
+	var here := GameState.here()
+	var t := GameState.trouble_at(here)
+	if t.is_empty() or GameState.trouble_spent(t) or not LocalGM.available():
+		return {}
+	var clues: Array = t.get("clues") if t.get("clues") is Array else []
+	var raw := await LocalGM.complete_json(
+		"A trouble is running in %s: %s.
+Leads the player already has: %s
+
+" % [here, t.get("what", ""),
+			"; ".join(clues) if not clues.is_empty() else "(none)"]
+		+ "Read ONLY this exchange.
+Player: %s
+Narrator: %s
+
+" % [player_msg.left(400), gm_reply.left(1200)]
+		+ "`lead`: if the player saw, heard or learned something concrete in this exchange that points "
+		+ "toward the trouble and is not already a lead, one sentence describing what they found — "
+		+ "only what the exchange shows, never the hidden truth itself. Otherwise an empty string. "
+		+ "`working_it`: true only if the player was deliberately acting on or investigating this trouble.",
+		TROUBLE_READ_SCHEMA)
+	var parsed = JSON.parse_string(raw)
+	if not (parsed is Dictionary):
+		return {}
+	GameState.apply_trouble_read(here, parsed)
+	return parsed
 
 
 ## The beats most relevant to this moment. Empty when the encoder is missing —
@@ -171,17 +268,34 @@ func _update_quests() -> void:
 	var parsed = JSON.parse_string(raw)
 	if not (parsed is Dictionary) or not (parsed.get("quests") is Array):
 		return
+	GameState.save_kind("quests", merge_quests(current if current is Array else [], parsed["quests"]))
+	chronicle_updated.emit()
+
+
+## The model's rewrite of the log, merged over what the log already holds.
+func merge_quests(current: Array, from_model: Array) -> Array:
 	var out: Array = []
-	for q in parsed["quests"]:
+	# THE ENGINE'S QUESTS ARE NOT THE MODEL'S TO REWRITE. A trouble's quest is
+	# opened, updated and closed by `GameState` from the clock itself; this pass
+	# replaces the whole log, so without this it would drop them, or mark "done" a
+	# trouble whose clock is still running. Kept as they are, and any model entry
+	# carrying the same title is the model restating one.
+	var engine_titles: Array = []
+	for q in current:
+		if q is Dictionary and q.has("trouble"):
+			out.append(q)
+			engine_titles.append(str(q.get("title", "")).to_lower())
+	for q in from_model:
 		if not (q is Dictionary) or str(q.get("title", "")).strip_edges() == "":
+			continue
+		if engine_titles.has(str(q.get("title", "")).strip_edges().to_lower()):
 			continue
 		out.append({
 			"title": str(q.get("title", "")).strip_edges().left(80),
 			"desc": str(q.get("desc", "")).strip_edges().left(240),
 			"status": str(q.get("status", "active")),
 		})
-	GameState.save_kind("quests", out)
-	chronicle_updated.emit()
+	return out
 
 
 ## A day passes off-screen. Returns {"events": [String], "newQuest": Dictionary}
@@ -201,16 +315,28 @@ func world_tick() -> Dictionary:
 	var active: Array[String] = []
 	if quests is Array:
 		for q in quests:
-			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 				active.append(str(q["title"]))
 	var goals: Array[String] = []
 	if codex is Array:
 		for n in codex:
 			if n is Dictionary and str(n.get("goal", "")) != "" and str(n.get("name", "")) != "":
 				goals.append("%s wants %s" % [n["name"], n["goal"]])
+	# THE TOWNS' OWN TROUBLES COUNT AS THINGS IN MOTION, and they are the best
+	# material this call has: a clock says what is going wrong, WHERE, and how far
+	# along it is — which is exactly the "small and reactive" development this
+	# prompt asks for, and something it could previously only get from an NPC's
+	# stated goal.
+	var troubles: Array[String] = []
+	for t in GameState.running_troubles():
+		if str(t["what"]) == "":
+			continue
+		troubles.append("%s: %s (%d of %d%s)" % [t["place"], t["what"],
+			int(t["filled"]), int(t["size"]),
+			", SECRET — only traces may surface" if GameState.trouble_known(str(t["place"])).is_empty() else ""])
 	# Nothing in motion yet — a tick here would be the model inventing a world
 	# rather than advancing one.
-	if active.is_empty() and goals.is_empty():
+	if active.is_empty() and goals.is_empty() and troubles.is_empty():
 		return empty
 	var raw := await LocalGM.complete_json(
 		"You simulate a living world between scenes in an ongoing roleplay. A day has "
@@ -224,6 +350,11 @@ func world_tick() -> Dictionary:
 		% [_convo() if not transcript.is_empty() else "(just beginning)",
 			"; ".join(active) if not active.is_empty() else "(none)",
 			"; ".join(goals) if not goals.is_empty() else "(no known agendas)"]
+		+ ("Trouble brewing (the count is how far gone it is; PREFER THESE for your "
+			+ "developments, and say what WORSENED rather than restating the problem): "
+			+ "%s
+
+" % "; ".join(troubles) if not troubles.is_empty() else "")
 		+ "Day %d has dawned. What happened off-screen?" % int(GameState.clock().get("day", 1)),
 		TICK_SCHEMA)
 	var parsed = JSON.parse_string(raw)
@@ -351,13 +482,23 @@ func codex_text() -> String:
 	return "The named cast so far — keep them consistent: %s." % "; ".join(parts)
 
 
+## The mark a quest carries in every list: done, failed (a trouble that came to a
+## head) or still open. One place, so the log and the book cannot disagree.
+func quest_mark(q: Dictionary) -> String:
+	return {"done": "✓", "failed": "✕"}.get(str(q.get("status", "active")), "◈")
+
+
 func quests_text() -> String:
 	var quests = GameState.state.get("quests", [])
 	var active: Array[String] = []
 	if quests is Array:
 		for q in quests:
-			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 				active.append("%s%s" % [q["title"], (" — " + str(q.get("desc", ""))) if str(q.get("desc", "")) != "" else ""])
+	# A trouble quest that failed stays in the tale: its fallout is still standing.
+	for q in (quests if quests is Array else []):
+		if q is Dictionary and str(q.get("status", "")) == "failed":
+			active.append("FAILED, fallout still standing — %s: %s" % [q.get("title", ""), q.get("desc", "")])
 	if active.is_empty():
 		return ""
 	return "Active quests: %s. Keep the story moving toward these." % "; ".join(active)

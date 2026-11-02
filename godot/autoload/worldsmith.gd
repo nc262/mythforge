@@ -25,7 +25,11 @@ const CAP := {
 const CLASSES := ["Fighter", "Barbarian", "Rogue", "Ranger", "Monk", "Paladin",
 	"Wizard", "Sorcerer", "Cleric", "Druid", "Bard", "Warlock"]
 
-const LOC_KINDS := ["tavern", "shop", "landmark", "wilds", "home"]
+## SETTLEMENT IS IN THE LIST, and was not: a forged world could not contain a
+## town at all. Measured over the six shipped worlds too — 29 places, one
+## settlement — which is why the map's town tier was only ever reached through a
+## tavern being drawn as a village. `LocalMap` reads `kind` for its scale.
+const LOC_KINDS := ["settlement", "tavern", "shop", "landmark", "wilds", "home"]
 const TIERS := ["minor", "standard", "dire"]
 
 
@@ -87,7 +91,10 @@ const CORE_TASK := "You design original worlds for a tabletop-style roleplay adv
 	+ "generation prompt for an empty atmospheric establishing scene with no " \
 	+ "people; and `locations`, 5 to 7 places, each with a one-sentence `lore` and " \
 	+ "a `shop` naming what it trades (for a landmark, wilds or home, say what can " \
-	+ "be found or bartered there); and `regions`, 3 to 5 named parts of this " \
+	+ "be found or bartered there). AT LEAST ONE location must be a `settlement` — " \
+	+ "a village, town or city that people live in, which the game draws with its " \
+	+ "own quarters and trades; every other kind is one building or one wild place. " \
+	+ "Also write `regions`, 3 to 5 named parts of this " \
 	+ "world (a coast, a range, a quarter, a belt of stars) each with one " \
 	+ "sentence of `lore`, and give every location a `region` naming which one " \
 	+ "it stands in. Regions are the world's coarse shape — the GM will hang " \

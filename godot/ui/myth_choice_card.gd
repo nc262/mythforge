@@ -45,12 +45,7 @@ func _init(p: Dictionary = {}) -> void:
 	box.alignment = BoxContainer.ALIGNMENT_CENTER
 	box.add_theme_constant_override("separation", Ui.SPACE["xs"])
 	if p.get("art") is Texture2D:
-		var art := TextureRect.new()
-		art.texture = p["art"]
-		art.custom_minimum_size = Vector2(0, 56)
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		box.add_child(art)
+		box.add_child(_art_rect(p["art"]))
 	else:
 		# Hand-drawn icon, never a font glyph or emoji (MDL law). Legacy emoji
 		# payloads resolve to the matching drawn icon; unknowns get a sigil.
@@ -79,6 +74,35 @@ func _init(p: Dictionary = {}) -> void:
 		box.add_child(foot)
 	add_child(box)
 	set_selected(false)
+
+
+## The forge commissions its portraits while the grid is already on screen, so
+## the painting lands AFTER the card does. Swap the placeholder icon for it in
+## place — rebuilding the grid would move the cards under the player's cursor.
+func set_art(tex: Texture2D) -> void:
+	if tex == null or get_child_count() == 0:
+		return
+	var box := get_child(0)
+	if box.get_child_count() == 0:
+		return
+	var first := box.get_child(0)
+	if first is TextureRect:
+		(first as TextureRect).texture = tex
+	else:
+		var art := _art_rect(tex)
+		box.add_child(art)
+		box.move_child(art, 0)
+		first.queue_free()
+	payload["art"] = tex
+
+
+static func _art_rect(tex: Texture2D) -> TextureRect:
+	var art := TextureRect.new()
+	art.texture = tex
+	art.custom_minimum_size = Vector2(0, 56)
+	art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	return art
 
 
 func set_selected(on: bool) -> void:

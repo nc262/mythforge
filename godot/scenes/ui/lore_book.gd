@@ -186,7 +186,7 @@ func _places() -> void:
 		if not (l is Dictionary):
 			continue
 		var nm := str(l.get("name", "?"))
-		var key := "map-" + nm.to_lower().replace(" ", "-").validate_filename()
+		var key := Art.map_key(nm)
 		var body := str(l.get("desc", l.get("lore", l.get("blurb", ""))))
 		# The kind rides as a world-skinned chip (drawn icon + skinned label) —
 		# never the raw lowercase engine taxonomy.
@@ -204,7 +204,7 @@ func _cast() -> void:
 		if c is Dictionary and str(c.get("name", "")) != "":
 			var nm := str(c["name"])
 			seen[nm.to_lower()] = true
-			var key := "npc-" + nm.to_lower().replace(" ", "-")
+			var key := Art.npc_key(nm)
 			_host.add_child(_entry(nm, str(c.get("role", "")) + ("\n" + str(c.get("persona", "")) if str(c.get("persona", "")) != "" else "") + _npc_extra(nm),
 				key, "character portrait of %s, %s, %s, dramatic rim light, dark background, no text" % [nm, str(c.get("role", "a figure of this world")), Art.world_flavor()]))
 	# The cast you've actually met (codex), beyond the world's authored roster.
@@ -212,14 +212,14 @@ func _cast() -> void:
 		if n is Dictionary and str(n.get("name", "")) != "" and not seen.has(str(n["name"]).to_lower()):
 			seen[str(n["name"]).to_lower()] = true
 			var nm2 := str(n["name"])
-			var key2 := "npc-" + nm2.to_lower().replace(" ", "-")
+			var key2 := Art.npc_key(nm2)
 			_host.add_child(_entry(nm2, str(n.get("role", "")) + ("\n" + str(n.get("note", "")) if str(n.get("note", "")) != "" else "") + _npc_extra(nm2), key2, ""))
 	# Characters the GM has inscribed as structured resources ([[npc]]) but who
 	# aren't in the authored roster or codex yet.
 	for nm3 in GameState.cast():
 		if not seen.has(str(nm3).to_lower()):
 			var e: Dictionary = GameState.cast()[nm3]
-			_host.add_child(_entry(str(nm3), str(e.get("role", "")) + _npc_extra(str(nm3)), "npc-" + str(nm3).to_lower().replace(" ", "-"), ""))
+			_host.add_child(_entry(str(nm3), str(e.get("role", "")) + _npc_extra(str(nm3)), Art.npc_key(str(nm3)), ""))
 
 
 ## The player-facing structured facts about an NPC (secrets stay GM-only).
@@ -242,7 +242,7 @@ func _bestiary() -> void:
 			continue
 		var nm := str(b.get("name", "?"))
 		var slug := str(b.get("slug", nm.to_lower().replace(" ", "-")))
-		_host.add_child(_entry(nm, str(b.get("desc", b.get("art", ""))), "beast-" + slug,
+		_host.add_child(_entry(nm, str(b.get("desc", b.get("art", ""))), Art.beast_key(slug),
 			str(b.get("art", "a %s" % nm)) + ", painted creature portrait, dark background, no text"))
 
 
@@ -264,8 +264,7 @@ func _discoveries() -> void:
 func _quests() -> void:
 	for q in (GameState.state.get("quests") if GameState.state.get("quests") is Array else []):
 		if q is Dictionary and str(q.get("title", "")) != "":
-			var done := str(q.get("status", "active")) == "done"
-			_host.add_child(_entry(("✓ " if done else "◈ ") + str(q["title"]), str(q.get("desc", "")), "", ""))
+			_host.add_child(_entry(Chronicle.quest_mark(q) + " " + str(q["title"]), str(q.get("desc", "")), "", ""))
 
 
 func _chronicle() -> void:

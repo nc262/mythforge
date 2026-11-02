@@ -271,6 +271,13 @@ const PANEL_RESERVE := 76   # px kept free at the bottom for the exit control
 
 
 func dress_dialog(dlg: AcceptDialog, content: Control = null) -> void:
+	# PY-12 — A WINDOW DOES NOT INHERIT A THEME. In Godot 4 a Window starts a new
+	# theme context, so every PanelContainer INSIDE a dialog fell back to the
+	# engine default: hard-edged, borderless, unrounded — the "grey debug-looking
+	# box over a fully skinned neon screen" the report describes. The dialog's own
+	# panel was dressed below and its contents never were, which is why the
+	# merchant is on that list despite calling this function.
+	dlg.theme = theme
 	dlg.borderless = true          # no OS-style title bar, no stock ✕
 	dlg.transparent_bg = false
 	var sb := _flat(c("night"), Color(c("gold_soft"), 0.34), RADIUS["m"], 2, 0)
@@ -281,6 +288,15 @@ func dress_dialog(dlg: AcceptDialog, content: Control = null) -> void:
 	var ok := dlg.get_ok_button()
 	ok.theme_type_variation = "AccentButton"
 	ok.custom_minimum_size = Vector2(240, 44)   # R6 STR-27: a real 44px target
+	# …AND THE OTHER ONE. A ConfirmationDialog adds a cancel button this never
+	# touched, so Session Zero showed a dressed panel with a teal confirm and a
+	# stock grey "Cancel" beside it. Found in a screenshot, not in the source —
+	# `get_cancel_button()` exists only on ConfirmationDialog, hence the guard.
+	if dlg.has_method("get_cancel_button"):
+		var no: Button = dlg.get_cancel_button()
+		if no != null:
+			no.theme_type_variation = "GhostButton"
+			no.custom_minimum_size = Vector2(160, 44)
 	if content != null:
 		_cap_panel_content(dlg, content)
 
@@ -300,11 +316,90 @@ func _cap_panel_content(dlg: AcceptDialog, content: Control) -> void:
 		var cap := maxf(120.0, avail.y - 8.0 - PANEL_RESERVE)
 		if content.get_combined_minimum_size().y > cap:
 			content.custom_minimum_size.y = cap
+		# PL-7, and the cap above was never the whole story. A Window only ever
+		# GROWS to its contents and never shrinks back, and it grows DOWNWARD from
+		# the origin popup_centered fixed when it was shorter. Measured on the
+		# merchant counter: revealing an 86 px detail strip took the dialog from
+		# 541 px to 1002 px — against a contents minimum of 627 — and carried
+		# "Leave the counter" to y=875 on an 800 px screen. The exit was the
+		# dialog's own OK button, so there was no way out of the shop at all.
+		# Re-fit to what the contents actually ask for, then put the panel back on
+		# screen. Both halves are needed: a re-fit alone still hangs off a stale
+		# origin, and a clamp alone cannot place a window taller than the screen.
+		dlg.reset_size()
+		var room := Vector2i(avail) - dlg.size
+		dlg.position = dlg.position.clamp(Vector2i.ZERO, Vector2i(maxi(0, room.x), maxi(0, room.y)))
 	# Deferred: the content's real minimum height only exists once its children
 	# are in the tree, and callers dress the panel while still building it.
-	apply.call_deferred()
-	if not dlg.get_tree().root.size_changed.is_connected(apply):
-		dlg.get_tree().root.size_changed.connect(apply)
+	# PL-5, FOUND AT LAST — and it was never a leaked connection. A deferred
+	# LAMBDA is bound to no object, so Godot cannot cancel it when the dialog
+	# dies; it flushes on the next idle and rebinds two dead captures, `dlg` and
+	# `content`, which is the index-0/index-1 PAIR the reports always came in.
+	# Close a panel in the frame it opens and you get one pair, every time.
+	#
+	# `apply`'s own is_instance_valid guard cannot help: the error is emitted when
+	# the Callable is INVOKED, before its body runs. So the guard has to sit at
+	# the CALL SITE, in a method that takes the nodes as ARGUMENTS — arguments are
+	# checkable, captures are not.
+	_apply_when_built(dlg, content, apply)
+	# PL-5. `root` OUTLIVES every dialog, and Godot only tears a connection down
+	# when the EMITTER dies — so this one survived the panel that owned it, and
+	# the next window resize called `apply` with dlg/content already freed:
+	# "Lambda capture at index 0 was freed." Two captures, two errors, once per
+	# dialog ever dressed — and `is_connected` never caught it, because each call
+	# builds a FRESH lambda and no two are ever the same Callable. The content
+	# signal below needs none of this care: content is its own emitter and takes
+	# its connections with it when it goes.
+	var root := dlg.get_tree().root
+	root.size_changed.connect(apply)
+	dlg.tree_exited.connect(root.disconnect.bind("size_changed", apply), CONNECT_ONE_SHOT)
+	# …and again whenever the content changes height, which is the case the
+	# original build-time-only pass could not see. Deferred, because the signal
+	# fires mid-layout when a freshly-revealed autowrapped label still measures at
+	# one pixel wide, and re-fitting to THAT is how the window got tall in the
+	# first place.
+	if not content.minimum_size_changed.is_connected(apply):
+		content.minimum_size_changed.connect(apply, CONNECT_DEFERRED)
+
+
+## One frame later, and only if the panel still exists. See the note at the call.
+func _apply_when_built(dlg: AcceptDialog, content: Control, apply: Callable) -> void:
+	await get_tree().process_frame
+	if is_instance_valid(dlg) and is_instance_valid(content):
+		apply.call()
+
+
+## PY-11 — CUT AT A WORD, AND SAY THAT YOU CUT. Six card payloads used `.left(N)`
+## on prose, which severs mid-word with no signal: "quiet adventu", "stolen
+## blueprt", "answer them i". The writing on those cards is among the best things
+## in the game and it was being amputated on four screens. A cut sentence reads as
+## a bug; an ellipsis reads as a summary.
+func trim(s: String, n: int) -> String:
+	var t := s.strip_edges()
+	if t.length() <= n:
+		return t
+	var cut := t.substr(0, n)
+	var sp := cut.rfind(" ")
+	# Honour a space only if it is not absurdly early — one very long word should
+	# still be cut rather than collapsing the whole line to nothing.
+	if sp > int(n / 2.0):
+		cut = cut.substr(0, sp)
+	return cut.rstrip(" ,;:.-") + "…"
+
+
+## PY-14 — A THEME CHANGE DOES NOT REPAINT A CONTROL THAT PAINTS ITSELF.
+## Godot re-runs `_draw()` only when something calls `queue_redraw()`, so a widget
+## reading `Ui.c()` inside `_draw()` keeps whatever palette was live when it last
+## painted. THIRTEEN OF FOURTEEN self-drawn controls never asked, which is the
+## "two accents on one screen" report: the title, input border and buttons are
+## THEMED and went magenta in Neon Spire, while the eleven-icon toolbar, the
+## Session Zero sliders and the HP bar are SELF-DRAWN and stayed gold.
+##
+## `queue_redraw` is a method Callable owned by the control, so Godot drops the
+## connection when the control frees — the PL-5-safe shape, deliberately.
+func repaint_on_skin(c: CanvasItem) -> void:
+	if c != null and not changed.is_connected(c.queue_redraw):
+		changed.connect(c.queue_redraw)
 
 
 ## A full-bleed opaque backing for a plain-Control surface (the Lore Book), so
@@ -682,18 +777,28 @@ func ritual_open(dlg: Window) -> void:
 		if not reduce_motion:
 			scrim.create_tween().tween_property(scrim, "color:a", ALPHA["scrim"], TIME["base"])
 		var closed := [false]  # the close sound fires once, however the window dies
+		# PL-5, and the scrim rides in an Array for the same reason `closed` does.
+		# `lift` is called TWICE — once when the window hides, once when it leaves
+		# the tree — and the first call frees the scrim. A captured Object that has
+		# been freed makes GDScript print `Lambda capture at index 0 was freed`
+		# BEFORE the body runs, so the `is_instance_valid` guard below cannot
+		# prevent it; the engine has already complained by the time it is reached.
+		# Measured: exactly one such error per click_driver run, raised the frame the
+		# Record's exit is clicked. An Array is RefCounted, so it is never "freed" —
+		# the guard then does its job in silence.
+		var sc := [scrim]
 		var lift := func():
-			if not is_instance_valid(scrim):
+			if not is_instance_valid(sc[0]):
 				return
 			if not closed[0]:
 				closed[0] = true
 				Sfx.ui("ui_close")
 			if reduce_motion:
-				scrim.queue_free()
+				sc[0].queue_free()
 				return
-			var tw := scrim.create_tween()
-			tw.tween_property(scrim, "color:a", 0.0, TIME["base"])
-			tw.tween_callback(scrim.queue_free)
+			var tw: Tween = sc[0].create_tween()
+			tw.tween_property(sc[0], "color:a", 0.0, TIME["base"])
+			tw.tween_callback(sc[0].queue_free)
 		dlg.visibility_changed.connect(func():
 			if not dlg.visible:
 				lift.call())
@@ -970,10 +1075,36 @@ func _overlay_world_palette(wid: String) -> void:
 	var cols = Compiler.style_for(wid).get("colors")
 	if not (cols is Dictionary):
 		return
-	var acc = _hex(str(cols.get("accent", "")))
+	# A SHIPPED WORLD'S PALETTE WAS AUTHORED BY HAND; A GENERATED PACK MUST NOT
+	# OVERRULE IT. Measured across four compiled worlds — the pack accent replaced
+	# every one of them, and two came out wrong in a way a screenshot makes
+	# obvious: brasshaven, "brass, soot and secrets", rendered PALE BLUE
+	# (#c9d3f5 over an authored #d69a52 brass), and Neon Spire rendered ORANGE
+	# (#ff8400 over an authored #2de2e6 cyan). A forged world has no authored
+	# palette and still needs its pack's accent, so the split is exactly BUILTIN.
+	# Grounds still overlay either way: dominant and shadow only re-hue surfaces,
+	# and that is what lets a compiled world feel like itself.
+	var acc = _hex(str(cols.get("accent", ""))) if not WorldSkin.BUILTIN.has(wid) else null
 	if acc != null:
+		# PY-14, MEASURED — this is the "two accents on one screen". The overlay
+		# replaced the PRIMARY accent from the compiled pack and left the
+		# SECONDARY one at whatever the hand-tuned palette said, so Neon Spire ran
+		# an orange primary (#ff8400, from its pack) beside a magenta secondary
+		# (#ff5fd2, from PALETTES) — two unrelated hues, neither of them the cyan
+		# the palette was authored around. A screenshot is what settled it; the
+		# earlier `repaint_on_skin` fix was for a real but DIFFERENT bug (self-drawn
+		# controls not repainting on a skin CHANGE) and never touched this.
+		#
+		# So the pair moves together. The secondary keeps its ROLE — a contrasting
+		# partner, roughly a third of the wheel away — but is now derived from the
+		# world's own accent instead of a palette the overlay has already left
+		# behind. One world, one accent family.
 		pal["gold"] = acc
 		pal["gold_soft"] = acc.lightened(0.28)
+		var partner := Color.from_hsv(fposmod(acc.h + 0.38, 1.0),
+			clampf(acc.s * 0.92, 0.0, 1.0), clampf(acc.v * 1.02, 0.0, 1.0))
+		pal["amethyst"] = partner
+		pal["amethyst_deep"] = partner.darkened(0.34)
 	var dom = _hex(str(cols.get("dominant", "")))
 	if dom != null:
 		for k in ["surface", "surface2", "sheet"]:

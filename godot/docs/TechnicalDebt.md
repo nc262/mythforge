@@ -10,12 +10,26 @@ a check. A new shortcut adds a row here in the same commit.
 |---|---|---|---|
 | `game.gd` is a god-script (**3,062 lines, 106 functions** — streaming, tags, combat view, panels) | `scripts/game.gd` | every new system lands in the one file that must stay correct | **The window seam is spent.** All six rows of [EngineLayers.md](EngineLayers.md)'s backlog shipped — the eleven sibling windows now total 3,340 lines, more than `game.gd` — and the file still grew from ~1.5k to 3,062 against a 700–800 target, because new play-screen code landed here faster than dialogs left. What remains is the streaming/tag core that plan deliberately protected, two dispatch routers, and a 215-line `_ready`. Going further needs a **different** seam (a builder for construction, a table for the dispatchers), which is an architecture choice and is **not scheduled** until someone picks one |
 | `user://tiles` fills for a **player-forged** world | `user://tiles` | a world you forge yourself pours its own terrain — minutes of GPU, and the one art pour a player can still trigger | none available: nobody can pre-bake a world that does not exist yet. The six shipped worlds each carry 272 tiles in the package, so the install itself pours nothing. Deliberately **not** solved by shrinking tiles: see [Terrain.md](Terrain.md) |
-| Object tiles carry an opaque dark-grey background | tile bake | a boulder pasted into a snowfield brings its own grey square | composite the object over the cell's ground role at draw time, or key the flat background out at bake time |
 | A world package unpacks MISSING files only, never changed ones | `world_compiler._unpack_baked` | a package that **replaces** an asset (rather than adding one) is invisible to anyone who already unpacked that world | deliberate: overwriting would clobber a player's own `Compiler.reforge` output. Adding files works, which covers the normal case. A genuine asset replacement needs a stamp in `world.json` and an explicit re-extract |
 | The envelope is rebuilt as strings every turn | `prompt_composer.gd` | fine at today's size; grows with the campaign | the per-section budgeter is already in place — widen it when a section outgrows its cap |
 | Regenerating the opening video takes ~35 min/clip | `scripts/make_opening_video.py` | a developer cost only — the video ships pre-built, so no player ever pays it | none needed unless the opening changes |
 
 ## Paid, kept for the pattern
+
+- **Object tiles carried an opaque dark-grey background.** The row was **stale**
+  — the fix had already shipped, as the second of the three problems named in
+  `board_paint.gd`'s own header, and nothing here noticed. `_key_background`
+  averages the four corners (a single sample picked up grain and left a dark halo
+  round one boulder), keys anything within tolerance to transparent, and feathers
+  the rim so the object is not a cut-out. Measured on fimbulreach: **boulder
+  68.5 %, crates 78.3 % transparent; grass and dirt 0.0 %**.
+
+  What was genuinely missing was a check. `self_check` now asserts **both**
+  directions, because "an object tile has some transparency" also passes for a
+  keyer that has erased the boulder along with its background — so the ground
+  roles are asserted fully opaque in the same breath, and the object is asserted
+  not to be *mostly* gone. Mutation-tested by disabling the keying: boulder drops
+  68.5 % → 0.0 % and the harness goes red.
 
 - **Terrain sampler was a colour heuristic.** `lay_battlefield()` builds the
   field from roles and the painting follows the field, so there is nothing left

@@ -37,6 +37,7 @@ func _ready() -> void:
 	_check_rest_place()
 	_check_multiclass()
 	# The five gaps Testing.md listed as never covered. Spells must follow the
+	var _sig_before := _autoload_connections()
 	# multiclass check — that is what leaves a caster with slots to run out of.
 	_check_spells_to_exhaustion()
 	await _check_merchant_trade()
@@ -48,6 +49,8 @@ func _ready() -> void:
 	if is_instance_valid(_game):
 		_game.queue_free()
 	await get_tree().process_frame
+	await get_tree().process_frame   # queue_free lands on the NEXT idle, not this one
+	_report_leaked_connections(_sig_before)
 	if _fails.is_empty():
 		print("PLAYTHROUGH OK")
 		get_tree().quit(0)
@@ -114,6 +117,117 @@ func _turn(label: String, msg: String, reply: String, check: Callable) -> void:
 	print("  turn %s: ok" % label)
 
 
+## THE TOWN MAP AND THE STORY ARE ONE TOWN. Measured before this existed: no
+## prompt read the plan, the GM was never taught [[site]]/[[trouble]]/[[clock]]
+## although their handlers shipped, and clicking a building on the town map
+## posted a local line and asked for no turn. Each half worked alone and the
+## loop between them did not exist. This drives the loop the player's way:
+## the narrator is told the town, a click inside it asks for a turn, and the
+## tags in that reply change the map and the next turn's context.
+func _town_reaches_the_story(town: String, view: Node, dlg: Node) -> void:
+	var lm0: LocalMap = view.lm
+	var env := Composer.envelope("probe")
+	_ck(env.contains("TOWN — %s" % town) and env.contains(str(lm0.ward_name[lm0.wards.size() - 1])),
+		"town: the narrator is not told the quarters of %s, the town it stands in" % town)
+	for t in lm0.trades:
+		_ck(env.contains(str(t["name"])), "town: the map has %s but the narrator is never told" % t["name"])
+	for tag in ["[[site ", "[[trouble ", "[[clock "]:
+		_ck(env.contains(tag), "town: the GM is never taught %s — its handler can never fire" % tag)
+	var fails_before := _fails.size()
+	var room := str(lm0.nodes[1]["name"])
+	var ward := lm0.wards.size() - 1
+	# A KIND THIS TOWN IS BIG ENOUGH FOR: a fence arrives at city size, and the
+	# engine now refuses one in a village instead of standing it there.
+	var site_kind := str(WorldSkin.trades_at(lm0.size_tier)[0])
+	Api.test_replies = ["A crooked door, a crooked smile.\n[[site name=\"The Probe Lantern\" kind=%s ward=%d lore=\"buys what nobody asks about\"]]\n[[trouble what=\"smugglers bleed the market\" clock=6 fallout=trade title=\"The Smugglers' Toll\"]]" % [site_kind, ward]]
+	view.enter_room.emit(room)
+	for _f in 60:
+		await get_tree().process_frame
+		if not Mode.busy and not is_instance_valid(dlg):
+			break
+	_ck(not is_instance_valid(dlg), "town: walking to %s left the plan over the transcript" % room)
+	_ck(str(_game._last_framed).contains(room), "town: walking to %s asked the narrator for nothing" % room)
+	var w: Dictionary = GameState.state.get("world", {})
+	_ck(str(w.get("inside", {}).get(town, {}).get("here", "")) == room, "town: the walk to %s was not recorded" % room)
+	var lm1 := LocalMap.for_place(GameState.world_id(), town, lm0.kind)
+	_ck(lm1.nodes.any(func(n): return str(n["name"]) == "The Probe Lantern"),
+		"town: the GM's [[site]] did not reach the town map of %s" % town)
+	_ck(not GameState.trouble_at(town).is_empty(), "town: the GM's [[trouble]] did not start a clock in %s" % town)
+	var env2 := Composer.envelope("probe")
+	_ck(env2.contains("The Probe Lantern") and env2.contains("TROUBLE HERE") and env2.contains("The party is at %s" % room),
+		"town: the next turn's context does not carry what the last turn changed")
+	if _fails.size() == fails_before:
+		print("  town: %s → narrator told %d quarters, %d trades; walked to %s; [[site]] and [[trouble]] landed on the map" % [
+			town, lm0.wards.size(), lm0.trades.size(), room])
+	await _trouble_is_a_quest(town)
+
+
+## THE TROUBLE, PLAYED. `site_probe` holds the rules; this drives them through the
+## game the way a turn does: the tag parser, the dispatch, the roll bar and the
+## counter. The [[trouble]] above was written while the party stood in the town,
+## so it is heard at once and must already be a quest.
+func _trouble_is_a_quest(town: String) -> void:
+	var fails_before := _fails.size()
+	var quest := {}
+	for q in GameState.state.get("quests", []):
+		if q is Dictionary and str(q.get("trouble", "")).begins_with(town + "|"):
+			quest = q
+	_ck(str(quest.get("title", "")) == "The Smugglers' Toll" and str(quest.get("status", "")) == "active",
+		"trouble: a trouble the player heard of in %s is not an active quest on the log: %s" % [town, str(quest)])
+	# A clue and a roll against the trouble, in one real turn. dc=99 cannot pass.
+	Api.test_replies = ["The sergeant spits. \"Ask the tanners.\"
+[[clue note=\"the smugglers use the tannery drains\"]]
+[[check ability=CHA skill=Persuasion dc=99 trouble=1]]",
+		"The sergeant turns his back."]
+	_game._send("I lean on the watch sergeant about the smugglers")
+	await _settle()
+	var t := GameState.trouble_at(town)
+	_ck(str(t.get("clues", [])).contains("tannery drains"), "trouble: the GM's [[clue]] did not reach the trouble")
+	_ck(bool(_game._pending_check.get("trouble", false)), "trouble: a [[check ... trouble=1]] did not arm a roll against the trouble")
+	var before := int(t.get("filled", 0))
+	await _game._roll_pending()
+	await _settle()
+	_ck(int(GameState.trouble_at(town).get("filled", 0)) == before + 1,
+		"trouble: a failed roll against the trouble did not worsen it (%d -> %d)" % [before, int(GameState.trouble_at(town).get("filled", 0))])
+	_ck(str(quest.get("desc", "")).contains("tannery drains"), "trouble: the quest does not carry the lead: " + str(quest.get("desc", "")))
+	# THE REAL NARRATOR DOES NOT WRITE trouble=1 (town_gm_probe: 0 of 4). A plain
+	# check, on a turn the turn-read saw the player working the trouble, counts too.
+	Api.test_replies = ["\"Fine,\" he mutters. \"Prove it.\"\n[[check ability=CHA skill=Intimidation dc=99]]", "He laughs you off."]
+	_game._send("I tell the sergeant I know he takes the smugglers' coin")
+	await _settle()
+	GameState.apply_trouble_read(town, {"lead": "", "working_it": true})
+	var before2 := int(GameState.trouble_at(town).get("filled", 0))
+	await _game._roll_pending()
+	await _settle()
+	_ck(int(GameState.trouble_at(town).get("filled", 0)) == before2 + 1,
+		"trouble: a plain roll on a turn spent working the trouble did not move its clock (%d -> %d)" % [before2, int(GameState.trouble_at(town).get("filled", 0))])
+	# Let it run out, then walk up to a counter: fallout=trade shuts it.
+	GameState.tick_trouble(town, 99)
+	_ck(str(quest.get("status", "")) == "failed", "trouble: a trouble that came to a head left its quest %s" % quest.get("status", ""))
+	_game._open_shop()
+	await get_tree().process_frame
+	_ck(Mode.state != "Merchant", "trouble: the shops of %s opened although its trouble shut them" % town)
+	if Mode.state == "Merchant":
+		Mode.enter("Exploration")
+	# fallout=prices: the counter opens, dearer by half.
+	GameState.set_trouble(town, "the millers hoard the grain", 4, "town", {"fallout": "prices"})
+	GameState.tick_trouble(town, 4)
+	_game._open_shop()
+	await get_tree().process_frame
+	var counter: Node = null
+	for ch in _game.get_children():
+		if ch is AcceptDialog and ch.get_script() != null and str(ch.get_script().resource_path).ends_with("merchant_window.gd"):
+			counter = ch
+	_ck(counter != null and is_equal_approx(float(counter.markup), float(_game._shop_markup) * 1.5),
+		"trouble: fallout=prices did not raise the counter's prices in %s" % town)
+	if counter != null:
+		counter.queue_free()
+	if Mode.state == "Merchant":
+		Mode.enter("Exploration")
+	if _fails.size() == fails_before:
+		print("  trouble: heard in %s → quest filed; [[clue]] recorded; a roll against it worsened the clock; it came to a head, the quest failed, the shops shut" % town)
+
+
 func _check_loot(_quiet := false) -> bool:
 	var names: Array = GameState.inv().get("items", []).map(func(it): return str(it.get("name", "")))
 	return int(GameState.sheet().get("gold", 0)) == 35 and "Iron Dagger" in names
@@ -152,6 +266,28 @@ func _turn_levelup() -> void:
 	_ck(int(GameState.sheet().get("level", 1)) > lvl0, "levelup: never leveled (xp=%d)" % int(GameState.sheet().get("xp", 0)))
 	_ck(int(GameState.sheet().get("hpMax", 0)) > 12, "levelup: hpMax did not grow")
 	print("  turn levelup: ok (now level %d, HP %d)" % [int(GameState.sheet().get("level", 1)), int(GameState.sheet().get("hpMax", 0))])
+	# PL-6 — DISMISS IT, the way a player has to. The ceremony's window is
+	# `exclusive`, and leaving it up left this harness holding a modal nothing
+	# could open beside it: every later window raised "the parent window already
+	# has another exclusive child", and the shop only opened at all because the
+	# harness forced the FSM out of LevelUp. A player has no such lever — `Mode`
+	# refuses `shop` during the ceremony, and the modal eats the click besides —
+	# so the complaint was this harness's own posture, not a defect in the game.
+	var lw: Window = null
+	for ch in _game.get_children():
+		if ch is Window and ch.get_script() != null \
+				and str(ch.get_script().resource_path).ends_with("levelup_window.gd"):
+			lw = ch
+	_ck(lw != null, "levelup: the ceremony window never opened")
+	if lw != null:
+		lw.get_ok_button().pressed.emit()
+		for i in 20:
+			await get_tree().process_frame
+		_ck(not is_instance_valid(lw) or lw.is_queued_for_deletion(),
+			"levelup: 'Embrace it' did not close the ceremony window")
+	for ch in _game.get_children():
+		_ck(not (ch is Window and (ch as Window).exclusive and (ch as Window).visible),
+			"levelup: an exclusive modal is still up after the ceremony (%s)" % ch.name)
 
 
 ## The damage/heal tag path — the core of combat's HP math, driven for real.
@@ -534,8 +670,7 @@ func _check_refusals_land_near_the_button() -> void:
 		# Matching on wording instead caught "X waits by the fire — choose them
 		# at the Party stage", which is a confirmation, and the check failed
 		# against correct code. Match the control flow, not the prose.
-		var lines := src.split("
-")
+		var lines := src.split("\n")
 		var stray := 0
 		for i in lines.size():
 			var t := str(lines[i]).strip_edges()
@@ -664,8 +799,11 @@ func _check_atlas_reads_as_a_map() -> void:
 	# "is it plugged in" check was answered by the thing it was checking.
 	var calls_roads := false
 	var calls_legend := false
-	for line in src.split("
-"):
+	# "\n" as an ESCAPE, not a literal newline pasted into the string. This file
+	# and world_map.gd do not have to agree about line endings, and for a while
+	# they did not: a CRLF copy of this harness split an LF copy of world_map.gd
+	# into ONE line, so both AT-1 checks below failed on code that was correct.
+	for line in src.split("\n"):
 		var t := str(line).strip_edges()
 		if t.begins_with("func "):
 			continue
@@ -960,6 +1098,58 @@ func _slots1() -> Dictionary:
 ## had never run in a real game, and neither had the long rest that undoes it.
 ## Runs after _check_multiclass, which leaves a Fighter 2 / Wizard 1 holding INT
 ## 13 and an open first-level slot.
+## PL-5 INSTRUMENT. Godot exposes no way to inspect a lambda's captures, so the
+## error itself cannot be traced to a call site. But a leaked connection has a
+## property that IS visible: it outlives the scene that made it. Every screen this
+## harness opens is freed before the end, so any autoload signal holding MORE
+## connections at the end than at the start is holding one for a dead node.
+##
+## This is the instrument Invariants.md asks for instead of a fifth theory — it
+## catches the leak FORMING rather than waiting for it to fire, which matters
+## because the error is intermittent and 20+ clean runs have proved nothing.
+const _AUTOLOADS := ["Mode", "Services", "Ui", "Api", "GameState", "Rules", "Tags",
+	"Composer", "Combat", "Chronicle", "Art", "Sfx", "WorldSkin", "Pad", "Compiler",
+	"LocalGM", "LocalMemory", "Worldsmith"]
+
+
+func _autoload_connections() -> Dictionary:
+	var out := {}
+	var watched: Array = []
+	for name in _AUTOLOADS:
+		var node = get_node_or_null("/root/" + name)
+		if node != null:
+			watched.append([name, node])
+	# THE ROOT WINDOW TOO. It is not an autoload but it outlives every scene, and
+	# it is exactly what `skin.gd` leaked onto: `_cap_panel_content` connected a
+	# panel's lambda to root.size_changed, root never dies, so the connection
+	# survived every dialog that made one. An instrument that watches only
+	# autoloads cannot see that whole class.
+	watched.append(["root", get_tree().root])
+	for pair in watched:
+		var node: Object = pair[1]
+		for s in node.get_signal_list():
+			var sn := str(s["name"])
+			out["%s.%s" % [str(pair[0]), sn]] = node.get_signal_connection_list(sn).size()
+	return out
+
+
+func _report_leaked_connections(before: Dictionary) -> void:
+	var after := _autoload_connections()
+	var grew: Array = []
+	for k in after:
+		var b := int(before.get(k, 0))
+		var a := int(after[k])
+		if a > b:
+			grew.append("%s  %d -> %d  (+%d)" % [k, b, a, a - b])
+	grew.sort()
+	if grew.is_empty():
+		print("SIGNAL-LEAK none — every autoload signal ended where it started")
+		return
+	print("SIGNAL-LEAK %d signal(s) hold connections for scenes that are gone:" % grew.size())
+	for g in grew:
+		print("   ", g)
+
+
 func _check_spells_to_exhaustion() -> void:
 	var s := GameState.sheet()
 	var dc := Rules.spell_save_dc(s)
@@ -1270,7 +1460,8 @@ func _build_windows() -> void:
 	# Drive the real merchant open (now scenes/ui/merchant_window.gd) so a crash
 	# there surfaces here, not when a player walks up to a keeper mid-adventure —
 	# and assert the counter is genuinely stocked, not a bare dialog.
-	Mode.enter("Exploration")  # the level-up ceremony left the FSM in LevelUp; a player shops from Exploration
+	# No Mode.enter() crowbar here any more: the ceremony restores the previous
+	# mode itself once "Embrace it" is pressed, which _turn_levelup now does.
 	_game._open_shop()
 	await get_tree().process_frame
 	var shop: Node = null
@@ -1299,3 +1490,152 @@ func _build_windows() -> void:
 		_ck(f.get("_rail") != null, "forge %s: scaffold never built (_rail is null)" % path)
 		f.queue_free()
 	print("  forges: character, campaign, world, adventure, gm, persona all built")
+
+	# AT-5 — THE REAL WAY INTO A TOWN, THROUGH THE REAL ATLAS. Every harness built
+	# the town map directly, so none noticed the game itself could not reach it:
+	# the in-game Atlas is a character-screen TAB that wired travel and nothing
+	# else, and the one function that wired "step inside" had no caller left. So
+	# this goes the player's way — open the character screen on the Atlas, click
+	# the place you stand in — and asserts a town plan actually opens, and that
+	# the chart carries the world's regions.
+	# Its own context, restored after: the playthrough is inside a forged test
+	# world with no places at this point, so a shipped world is borrowed.
+	var atlas_keep_char := GameState.character
+	var atlas_keep_state := GameState.state
+	GameState.character = {"id": "dm-atlas-probe", "name": "Probe", "world_id": "embervale"}
+	GameState.state = {"world": {}}
+	var settled_here := ""
+	for pl in GameState.places():
+		# A TOWN, not merely a settled place: a tavern is one building now, and this
+		# check reads the town brief (quarters, trades) that only a town has.
+		if pl is Dictionary and LocalMap.TOWN_KINDS.has(str(pl.get("kind", ""))):
+			settled_here = str(pl["name"])
+			break
+	_ck(settled_here != "", "atlas: this world has no settled place to step into")
+	if settled_here != "":
+		Mode.enter("Exploration")
+		var wd0: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+		wd0["here"] = settled_here
+		GameState.state["world"] = wd0
+		var before := _game.get_child_count()
+		_game._open_character_screen("Atlas")
+		for _f in 8:
+			await get_tree().process_frame
+		# FOUND BY SCRIPT, not by position: other nodes land on the game in the
+		# same frames, so "the last child" is not reliably the screen just opened.
+		var rec: Node = null
+		for c0 in _game.get_children():
+			if c0.get_script() == preload("res://scenes/ui/character_screen.gd"):
+				rec = c0
+		_ck(rec != null, "atlas: the character screen did not open")
+		var chart: Node = null
+		if rec != null:
+			var stack: Array = [rec]
+			while not stack.is_empty() and chart == null:
+				var nd: Node = stack.pop_back()
+				if nd.get_script() == preload("res://scenes/ui/world_map.gd"):
+					chart = nd
+				for c in nd.get_children():
+					stack.append(c)
+		_ck(chart != null, "atlas: the Atlas tab holds no chart")
+		if chart != null:
+			_ck(chart.regions.size() == GameState.regions().size(),
+				"atlas: the in-game chart has %d regions, the world has %d" % [chart.regions.size(), GameState.regions().size()])
+			_ck(chart.enter_requested.get_connections().size() > 0,
+				"atlas: clicking the place you stand in is wired to nothing — the town map is unreachable in the game")
+			# READ BEFORE THE CLICK: the screen frees itself when a place is
+			# entered, and touching the chart afterwards is a script error that
+			# silently ends this whole function.
+			var region_count: int = chart.regions.size()
+			chart.enter_requested.emit(settled_here)
+			for _f in 8:
+				await get_tree().process_frame
+			var opened: Node = null
+			for c in _game.get_children():
+				if c is AcceptDialog and c.title == settled_here:
+					opened = c
+			_ck(opened != null, "atlas: stepping inside %s opened no window" % settled_here)
+			# THE TOWN IS IN THE WINDOW. A dialog with the right title is not a town
+			# map: this one opened empty, because the view was never parented.
+			var town_view: Node = null
+			if opened != null:
+				for c1 in opened.get_children():
+					if c1.get_script() == preload("res://scenes/ui/place_map.gd"):
+						town_view = c1
+			_ck(town_view != null, "atlas: the window for %s is EMPTY — the town map was never put in it" % settled_here)
+			if town_view != null:
+				_ck(town_view.lm != null and town_view.lm.wards.size() > 0,
+					"atlas: the town view for %s has no plan" % settled_here)
+			if opened != null:
+				print("  atlas: stepped inside %s from the in-game Atlas; %d regions on the chart" % [
+					settled_here, region_count])
+			# AT-19 — a player can ask this place for something the plan does not
+			# show. Offline the narrator is not there, so what is proved here is the
+			# wiring: the box exists, asking reaches the engine, and the answer comes
+			# back to the sheet rather than vanishing.
+			if town_view != null:
+				var ask_box: Node = null
+				var stack2: Array = [town_view]
+				while not stack2.is_empty() and ask_box == null:
+					var nd2: Node = stack2.pop_back()
+					if nd2 is LineEdit:
+						ask_box = nd2
+					for c2 in nd2.get_children():
+						stack2.append(c2)
+				_ck(ask_box != null, "town: %s has no way to ask after a place that is not drawn" % settled_here)
+				town_view.asked.emit("an apothecary")
+				for _f in 10:
+					await get_tree().process_frame
+				_ck(str(town_view.ask_note) != "" and str(town_view.ask_note) != "Asking…",
+					"town: asking after a place answered nothing (note: '%s')" % str(town_view.ask_note))
+			if town_view != null and town_view.lm.nodes.size() > 1:
+				await _town_reaches_the_story(settled_here, town_view, opened)
+			if opened != null and is_instance_valid(opened):
+				opened.queue_free()
+		if rec != null and is_instance_valid(rec):
+			rec.queue_free()
+	GameState.character = atlas_keep_char
+	GameState.state = atlas_keep_state
+	LocalMap.forget("embervale|%s" % settled_here)   # the probe wrote a site into it
+
+	# PY-18 — EVERY STAGE BUILDS, AND EVERY NAMED JUMP LANDS. The loop above only
+	# builds stage 0, so the rest of a forge's rail was never exercised: when two
+	# empty runes were cut and navigation moved from bare indices to names, a
+	# green gate said nothing about whether Heritage still led to Class. Two
+	# checks. Each stage is built by NAME and must put something on screen — a
+	# STAGES entry with no `match` arm builds an empty stage silently. And every
+	# `_s("...")` target in the source must be a real stage, because `_s` only
+	# asserts when that button is pressed, which no harness does.
+	var name_re := RegEx.new()
+	name_re.compile('_s[(]"([^"]+)"[)]')   # classes, not escapes: nothing for GDScript to reinterpret
+	for fpath in ["res://scenes/forge/character_forge", "res://scenes/forge/campaign_forge"]:
+		var fg: Node = load(fpath + ".tscn").instantiate()
+		get_tree().root.add_child(fg)
+		for _f in 6:
+			await get_tree().process_frame
+		var st: Array = fg._stages()
+		var built := 0
+		for si in st.size():
+			if str(st[si]) == "The Forging":
+				continue            # strikes the worldsmith on entry; its jumps are covered below
+			fg._clear_stage()
+			fg._build_stage(si)
+			_ck(fg._stage_box.get_child_count() > 0,
+				"%s: stage '%s' built nothing — a STAGES name with no match arm" % [fpath, st[si]])
+			built += 1
+		var fsrc := FileAccess.get_file_as_string(fpath + ".gd")
+		var jumps := 0
+		var landed := 0
+		for m in name_re.search_all(fsrc):
+			jumps += 1
+			if st.has(m.get_string(1)):
+				landed += 1
+			_ck(st.has(m.get_string(1)),
+				"%s: navigation jumps to '%s', which is not a stage" % [fpath, m.get_string(1)])
+		_ck(jumps >= st.size() - 1, "%s: only %d named jumps for %d stages — navigation is not named" % [fpath, jumps, st.size()])
+		fg.queue_free()
+		# COUNTED, not asserted in prose: the first version printed "all land"
+		# unconditionally, and the mutation test showed it saying so beside the
+		# failure it had just recorded.
+		print("  %s: %d stages built by name, %d of %d named jumps land" % [
+			fpath.get_file(), built, landed, jumps])

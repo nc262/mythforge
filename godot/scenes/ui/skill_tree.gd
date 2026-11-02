@@ -23,6 +23,8 @@ const MOTIF := {"cyber": "circuit", "steam": "gears", "pirate": "chart"}
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	clip_contents = true
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(760, 500)

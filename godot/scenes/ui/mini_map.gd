@@ -7,9 +7,13 @@ extends Control
 signal open_atlas
 
 var _phase := 0.0
+var _paper: ColorRect = null
+var _paper_world := ""
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	# The chart is drawn COVER-FIT, so it is always larger than this box on one
 	# axis and spilled outside the frame — a slab of map floating over the scene
 	# with a border round part of it. That is the "random rectangle on the
@@ -20,6 +24,25 @@ func _ready() -> void:
 	tooltip_text = "The chart — click to open the Atlas (Ctrl+M)"
 	set_process(not Ui.reduce_motion)
 	Art.art_ready.connect(func(_k): queue_redraw())
+	# THE SAME SHADER THE ATLAS DRAWS. The corner map used to cover-fit a chart
+	# PAINTING while the Atlas stretched it, so the two were pictures of different
+	# things and neither agreed with the pins on top. Full rect, one source.
+	_paper = ColorRect.new()
+	_paper.show_behind_parent = true
+	_paper.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_paper)
+	_sync_paper()
+
+
+func _sync_paper() -> void:
+	if _paper == null:
+		return
+	var wid := GameState.world_id()
+	if _paper_world != wid:
+		_paper_world = wid
+		_paper.material = WorldTerrain.for_world(wid).paper_material()
+	_paper.size = size
+	_paper.visible = visible
 
 
 ## Round-5 blocker: this floats above the transcript, and with no chart painted
@@ -42,6 +65,7 @@ func _has_chart() -> bool:
 ## assignment is: the chart hides itself during combat.
 func _process(delta: float) -> void:
 	visible = _has_chart() and not Combat.active()
+	_sync_paper()
 	if not visible:
 		return
 	_phase += delta
@@ -54,18 +78,8 @@ func _gui_input(event: InputEvent) -> void:
 
 
 func _draw() -> void:
-	var art: Texture2D = Compiler.chart_art(GameState.world_id())
-	if art == null:
-		art = Art.texture_for("chart-" + GameState.world_id().validate_filename())
-	if art == null:
-		art = Art.texture_for(GameState.world_id())
-	if art != null:
-		var tsize := Vector2(art.get_width(), art.get_height())
-		var s := maxf(size.x / tsize.x, size.y / tsize.y)
-		draw_texture_rect(art, Rect2((size - tsize * s) / 2.0, tsize * s), false, Color(0.8, 0.78, 0.85))
-	else:
-		draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night2"), 0.85))
-	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.35))
+	# The paper is `_paper`, the same shader the Atlas uses — see _sync_paper.
+	draw_rect(Rect2(Vector2.ZERO, size), Color(Ui.c("night"), 0.34))
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	var here := str(world.get("here", ""))
 	var seen: Array = world.get("seen") if world.get("seen") is Array else []

@@ -26,6 +26,8 @@ func _init(key := "", m := "dust", light_anchors: Array = []) -> void:
 
 
 func _ready() -> void:
+	# PY-14 — self-drawn: a theme change does not repaint us, so ask.
+	Ui.repaint_on_skin(self)
 	clip_contents = true
 	for i in 34:
 		_motes.append([randf(), randf(), 0.35 + randf()])

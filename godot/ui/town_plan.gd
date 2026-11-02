@@ -1,0 +1,470 @@
+class_name TownPlan extends RefCounted
+## AT-14 — A TOWN PLAN BUILT THE WAY THEY ARE ACTUALLY BUILT.
+##
+## ── WHY THE OLD ONE LOOKED LIKE A DIAGRAM ────────────────────────────────────
+## The first generator subdivided an AXIS-ALIGNED RECTANGLE into lots, then threw
+## away every lot that fell on a street, in the water, or outside the wall. Two
+## faults, and each is fatal on its own:
+##
+##   · the thing being split was a rectangle, so every lot was a rectangle, and a
+##     town of axis-aligned boxes reads as graph paper however much it is jittered
+##   · most candidates were DISCARDED, so the result was sparse — and sparse is
+##     what makes a town read as a hamlet scattered in a field
+##
+## ── WHAT REAL GENERATORS DO ──────────────────────────────────────────────────
+## Read out of watabou/TownGeneratorOS (`Ward.hx`, `Cutter.hx`) rather than
+## inferred from devlogs. Three things, and the third is the one that changes
+## everything:
+##
+##   1. SPLIT THE POLYGON, NOT A RECTANGLE. Cut along its LONGEST EDGE, at a
+##      ratio near the middle, with the cut angle jittered. Children are
+##      arbitrary polygons and get cut the same way. Every building is therefore
+##      a sub-polygon of its block, which means every wall facing a street is
+##      PARALLEL TO THAT STREET by construction — no "rotate the building to face
+##      the road" step, because the geometry cannot come out any other way.
+##
+##   2. NO REJECT STEP. Recurse on both halves unconditionally and keep every
+##      leaf. Density is not tuned, it is structural.
+##
+##   3. THE STREET IS THE GAP. Each cut opens a physical gap of the street's
+##      width, and each block is inset before it is subdivided. Streets are never
+##      drawn as lines over a layout — they are the negative space left behind,
+##      so a building cannot cross a street any more than it can cross the wall.
+##
+## Widths keep Watabou's ratio (main : regular : alley ~ 2 : 1 : 0.6) rather than
+## his units, because his are in the tool's own coordinate space and this plate
+## is 100 units across.
+##
+## Cutting is Sutherland–Hodgman, written here rather than reached for through
+## `Geometry2D.clip_polygons`: Clipper quantises to an integer grid and has an
+## open bug (godot#91285) where aligned edges — which recursive subdivision
+## produces constantly — emit degenerate rings that `triangulate_polygon` then
+## silently returns empty for. Half-plane clipping is exact, twenty lines, and
+## has no such failure.
+
+const MAIN_STREET := 2.4
+const REGULAR_STREET := 1.2
+const ALLEY := 0.7
+
+
+## Clip a polygon to the half-plane on one side of a line. The whole geometric
+## foundation of this file, and deliberately the only clipping it does.
+static func _half(poly: PackedVector2Array, at: Vector2, nrm: Vector2) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var n := poly.size()
+	if n < 3:
+		return out
+	for i in n:
+		var a: Vector2 = poly[i]
+		var b: Vector2 = poly[(i + 1) % n]
+		var da := (a - at).dot(nrm)
+		var db := (b - at).dot(nrm)
+		if da >= 0.0:
+			out.append(a)
+		# A sign change means the edge crosses the line: emit the crossing point.
+		if (da >= 0.0) != (db >= 0.0):
+			var t := da / (da - db)
+			out.append(a + (b - a) * t)
+	return out
+
+
+static func area(poly: PackedVector2Array) -> float:
+	if poly.size() < 3:
+		return 0.0
+	return absf(_signed_area(poly))
+
+
+static func centroid(poly: PackedVector2Array) -> Vector2:
+	if poly.is_empty():
+		return Vector2.ZERO
+	var c := Vector2.ZERO
+	for p in poly:
+		c += p
+	return c / float(poly.size())
+
+
+## The longest edge, which is where a block wants to be cut: splitting the long
+## way makes two blocks of sensible proportion, and splitting the short way makes
+## slivers.
+static func _longest_edge(poly: PackedVector2Array) -> int:
+	var best := 0
+	var bl := -1.0
+	for i in poly.size():
+		var d: float = poly[i].distance_to(poly[(i + 1) % poly.size()])
+		if d > bl:
+			bl = d
+			best = i
+	return best
+
+
+## CUT IN TWO, WITH A GAP. The gap is the street: each half is clipped to its own
+## side of a line offset by half the width, so the space between them is empty by
+## construction rather than by a later subtraction.
+static func cut(poly: PackedVector2Array, gap: float, ratio: float,
+		skew: float) -> Array:
+	if poly.size() < 3:
+		return []
+	var i := _longest_edge(poly)
+	var a: Vector2 = poly[i]
+	var b: Vector2 = poly[(i + 1) % poly.size()]
+	var along := (b - a).normalized()
+	var at := a + (b - a) * ratio
+	# THE HALF-PLANE NORMAL IS PERPENDICULAR TO THE DIVIDING LINE, which is the
+	# whole trap here. Using `along.rotated(90 degrees)` as the normal puts the
+	# dividing line PARALLEL to the longest edge, so every "split" shaved a thin
+	# strip off one side and the town came out as slivers. The normal has to be
+	# the edge direction itself for the cut to run ACROSS the block.
+	#
+	# The skew jitters it off true, because a perfectly square cut every time is
+	# what makes a subdivided shape read as a spreadsheet.
+	var nrm := along.rotated(skew)
+	var left := _half(poly, at + nrm * (gap * 0.5), nrm)
+	var right := _half(poly, at - nrm * (gap * 0.5), -nrm)
+	var out: Array = []
+	if left.size() >= 3 and area(left) > 0.001:
+		out.append(left)
+	if right.size() >= 3 and area(right) > 0.001:
+		out.append(right)
+	return out
+
+
+## ── INSET: MOVE EVERY VERTEX ALONG ITS BISECTOR ──────────────────────────────
+##
+## THIS WAS HALF-PLANE CLIPPING AND IT WAS DEMOLISHING THE TOWN. Clipping the
+## polygon to one side of each edge's line is only an inset when the polygon is
+## CONVEX. These are not: a ward inherits its shape from `bounds`, which is a
+## lobed ring cut back wherever the sea is, so it carries one to four reflex
+## vertices — and at a reflex vertex that infinite line runs straight through the
+## body and takes a wedge of it away.
+##
+## Measured before the fix, at a 0.6-unit inset on a 100-unit plate:
+##
+##     ward area  550  509  393  277  173
+##     "inset"    103  322    0   13  126
+##
+## A 393-unit quarter reduced to NOTHING, which is why whole districts rendered
+## as bare ground — not the recursion cap, which was the first suspect and was
+## innocent: the counters read nocut=0 onecut=0 cap=0 across all fourteen towns.
+##
+## Moving each vertex along the bisector of its two edges is the textbook offset
+## and is exact for any simple polygon, reflex vertices included: the distance
+## along the bisector is `by / cos(half-turn)`, which is what keeps both new
+## edges parallel to their originals at exactly `by`.
+static func inset(poly: PackedVector2Array, by: float) -> PackedVector2Array:
+	var n := poly.size()
+	if n < 3:
+		return PackedVector2Array()
+	# Orientation first, so "inward" is one rule rather than a per-vertex guess.
+	var ring := poly
+	if _signed_area(ring) < 0.0:
+		ring.reverse()
+	var out := PackedVector2Array()
+	for i in n:
+		var prev: Vector2 = ring[(i + n - 1) % n]
+		var here: Vector2 = ring[i]
+		var next: Vector2 = ring[(i + 1) % n]
+		var d0 := (here - prev).normalized()
+		var d1 := (next - here).normalized()
+		if d0.length_squared() < 0.5 or d1.length_squared() < 0.5:
+			continue                          # duplicated vertex; nothing to bisect
+		var n0 := d0.rotated(PI * 0.5)        # inward, given the orientation above
+		var n1 := d1.rotated(PI * 0.5)
+		var bis := (n0 + n1)
+		if bis.length_squared() < 0.000001:
+			continue                          # a 180-degree spike has no inside
+		bis = bis.normalized()
+		# CLAMPED. At a near-reversal the exact distance goes to infinity and the
+		# vertex shoots across the map; a spike that long is not worth a mitre.
+		var denom: float = maxf(bis.dot(n0), 0.25)
+		out.append(here + bis * (by / denom))
+	# A shape that grew, inverted or vanished was not inset — it self-intersected,
+	# which is what an offset does to a piece thinner than twice the distance.
+	# Returning nothing is honest; returning a bow-tie is a building shaped like
+	# an hourglass.
+	if out.size() < 3:
+		return PackedVector2Array()
+	var a := area(out)
+	if a <= 0.001 or a > area(poly):
+		return PackedVector2Array()
+	return out
+
+
+## ── A SHAPE THE MAP CAN ACTUALLY DRAW ────────────────────────────────────────
+## `draw_colored_polygon` ear-clips on the rendering server and fails SILENTLY on
+## a polygon that crosses itself — headless it says "triangulation failed", and
+## in the shipped game it simply draws nothing there. An inset or a burgage clip
+## on a thin, tapering plot folds over exactly that way: MEASURED across the six
+## towns, 2 buildings in each of three towns and one plaza.
+##
+## The fold is a degenerate offset, not a meaningful shape, so the honest repair
+## is the convex hull of the same points: it keeps the plot where it was, at
+## about the size it was, and it is always drawable.
+static func crosses(poly: PackedVector2Array) -> bool:
+	var n := poly.size()
+	if n < 4:
+		return false
+	for i in n:
+		var a1: Vector2 = poly[i]
+		var a2: Vector2 = poly[(i + 1) % n]
+		for j in range(i + 1, n):
+			if j == i or (j + 1) % n == i or j == (i + 1) % n:
+				continue
+			if Geometry2D.segment_intersects_segment(a1, a2, poly[j], poly[(j + 1) % n]) != null:
+				return true
+	return false
+
+
+static func simple(poly: PackedVector2Array) -> PackedVector2Array:
+	if not crosses(poly):
+		return poly
+	var hull := Geometry2D.convex_hull(poly)
+	# convex_hull repeats the first point at the end; a ring here does not.
+	if hull.size() > 3 and hull[0].is_equal_approx(hull[hull.size() - 1]):
+		hull.remove_at(hull.size() - 1)
+	return hull if hull.size() >= 3 else PackedVector2Array()
+
+
+static func _signed_area(poly: PackedVector2Array) -> float:
+	var a := 0.0
+	var n := poly.size()
+	for i in n:
+		var p: Vector2 = poly[i]
+		var q: Vector2 = poly[(i + 1) % n]
+		a += p.x * q.y - q.x * p.y
+	return a * 0.5
+
+
+## ── THE RIDGE: THE ONE LINE THAT MAKES A RECTANGLE A BUILDING ────────────────
+##
+## A plan-view footprint with a ridge line down it reads as a BUILDING; the same
+## footprint without one reads as a box. Worth knowing where that convention
+## comes from, because it is not where I assumed: real large-scale plan
+## cartography does not draw roofs at all — Ordnance Survey 1:500 town plans show
+## footprint outlines, party walls between terraces, and a cross-hatch reserved
+## for GLASS roofs. The ridge-on-a-plan-view-rectangle is a hybrid invented by
+## illustrators, borrowing the oblique bird's-eye cue and grafting it onto a
+## footprint. It is still the right answer here — it is a well-established
+## illustration convention and the thing every hand-drawn town map does — but it
+## is an illustrator's device, not an inherited cartographic one.
+##
+## Returns the ridge as a segment down the footprint's LONG axis, inset from both
+## ends so it reads as a roof line rather than as a diagonal across the shape.
+static func ridge(poly: PackedVector2Array) -> PackedVector2Array:
+	if poly.size() < 3:
+		return PackedVector2Array()
+	var c := centroid(poly)
+	# THE PRINCIPAL AXIS, NOT THE WIDEST PAIR OF VERTICES. The widest pair of a
+	# rectangle is its DIAGONAL, so the first version drew every roof corner to
+	# corner and a town of narrow plots came out looking cross-hatched. The
+	# principal axis of the vertex cloud is the long side, which is what a ridge
+	# runs along.
+	var cxx := 0.0
+	var cyy := 0.0
+	var cxy := 0.0
+	for p in poly:
+		var d := p - c
+		cxx += d.x * d.x
+		cyy += d.y * d.y
+		cxy += d.x * d.y
+	if absf(cxx) + absf(cyy) < 0.000001:
+		return PackedVector2Array()
+	var theta := 0.5 * atan2(2.0 * cxy, cxx - cyy)
+	var best := Vector2(cos(theta), sin(theta))
+	var lo := INF
+	var hi := -INF
+	for p in poly:
+		var t := p.dot(best)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	var half := (hi - lo) * 0.5
+	if half < 0.18:
+		return PackedVector2Array()      # too small to carry a line at this zoom
+	var mid := c.dot(best)
+	return PackedVector2Array([
+		c + best * (lo - mid + half * 0.38),
+		c + best * (hi - mid - half * 0.38)])
+
+
+## ── BURGAGE: STRIPS OFF A STREET, BACK TO BACK ───────────────────────────────
+##
+## The best-attested pattern in the medieval town record, and nothing like what
+## a plain subdivision produces. A plot is NARROW at the street and LONG behind
+## it — documented ratios run about 1:5 to 1:10 (Hungerford ~10 m by 100 m,
+## Cricklade ~10 by 60) — the building sits at the street end, and the depth
+## behind it is yard and garden. Two rows of them meet back to back down the
+## middle of a block.
+##
+## WHY RECURSIVE LONGEST-EDGE SPLITTING CANNOT PRODUCE THIS. Cutting the longest
+## edge halves the long dimension, so every piece tends toward SQUARE — that is
+## the whole point of the rule and it is why the first attempt at burgage here
+## failed. Taking a front slice off each squarish lot gave isolated specks
+## scattered through the block, not rows facing a street: the lots in a block's
+## interior have no street to face, so "the far side from the middle" pointed
+## nowhere useful for them.
+##
+## Strips need the OPPOSITE rule: cut repeatedly on ONE fixed axis, so the plots
+## stay full-depth and only get narrower. The street axis is the block's own
+## longest edge, which is the side a block presents to the world.
+static func burgage(block: PackedVector2Array, width: float, front: float,
+		rng: RandomNumberGenerator, out: Array) -> void:
+	if block.size() < 3 or width <= 0.01:
+		return
+	var i := _longest_edge(block)
+	var street := (block[(i + 1) % block.size()] - block[i]).normalized()
+	if street.length_squared() < 0.5:
+		return
+	# Back to back: halve the block across its depth so each row faces its own
+	# side, the way two rows of plots meet along the spine of a real block.
+	var depth := street.orthogonal()
+	var rows: Array = []
+	var halves := _slice(block, depth, 0.5)
+	if halves.size() == 2:
+		rows = halves
+	else:
+		rows = [block]
+	for row in rows:
+		var plots: Array = []
+		_strip(row, street, width, rng, plots)
+		for plot in plots:
+			# The building is the STREET END of the plot; the rest is yard.
+			var built := _front_of(plot, centroid(row), front)
+			if built.size() >= 3 and area(built) > 0.02:
+				out.append(built)
+
+
+## Cut a polygon in two on a fixed axis at a fraction of its extent. Unlike
+## `cut`, the direction is given rather than chosen, which is what makes strips
+## possible at all.
+static func _slice(poly: PackedVector2Array, nrm: Vector2, at: float) -> Array:
+	var lo := INF
+	var hi := -INF
+	for p in poly:
+		var t := p.dot(nrm)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	if hi - lo < 0.0001:
+		return []
+	var c := lo + (hi - lo) * at
+	var a := _half(poly, nrm * (c + ALLEY * 0.25), nrm)
+	var b := _half(poly, nrm * (c - ALLEY * 0.25), -nrm)
+	var out: Array = []
+	if a.size() >= 3 and area(a) > 0.001:
+		out.append(a)
+	if b.size() >= 3 and area(b) > 0.001:
+		out.append(b)
+	return out
+
+
+## Split a row into plots of roughly `width`, measured ALONG THE STREET, by
+## repeated bisection on that one axis. Full depth is preserved throughout,
+## which is the whole difference from `subdivide`.
+static func _strip(row: PackedVector2Array, street: Vector2, width: float,
+		rng: RandomNumberGenerator, out: Array, depth := 0) -> void:
+	if row.size() < 3:
+		return
+	var lo := INF
+	var hi := -INF
+	for p in row:
+		var t := p.dot(street)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	# Wide enough to be one plot, or too deep to keep splitting — either way it
+	# is a plot. The cap keeps a pathological sliver from recursing forever, and
+	# it KEEPS the piece rather than dropping it, which is the silent-loss shape
+	# this file has already been bitten by once.
+	if hi - lo <= width * rng.randf_range(1.0, 1.8) or depth > 9:
+		out.append(row)
+		return
+	var halves := _slice(row, street, 0.5 + (rng.randf() - 0.5) * 0.24)
+	if halves.size() < 2:
+		out.append(row)
+		return
+	for h in halves:
+		_strip(h, street, width, rng, out, depth + 1)
+
+
+## Keep the part of a plot AWAY from the block's spine — the street end.
+static func _front_of(plot: PackedVector2Array, spine: Vector2, keep: float) -> PackedVector2Array:
+	if plot.size() < 3 or keep >= 0.99:
+		return plot
+	var out := centroid(plot) - spine
+	if out.length_squared() < 0.000001:
+		return plot
+	out = out.normalized()
+	var lo := INF
+	var hi := -INF
+	for p in plot:
+		var t := p.dot(out)
+		lo = minf(lo, t)
+		hi = maxf(hi, t)
+	if hi - lo < 0.0001:
+		return plot
+	var got := _half(plot, out * (lo + (hi - lo) * (1.0 - keep)), out)
+	return got if got.size() >= 3 else plot
+
+
+## ── SUBDIVIDE A BLOCK INTO BUILDINGS ─────────────────────────────────────────
+##
+## Recurse until the piece is under a TARGET AREA that is itself jittered
+## log-normally, which is what gives a town some plainly larger buildings among
+## mostly middling ones. A single flat threshold gives every building the same
+## size, and same-size boxes are the other half of the graph-paper look.
+##
+## `empty_prob` drops the occasional finished lot, leaving a yard or a garden.
+## Watabou's richer wards use a much higher value than his poor ones; that is
+## what a courtyard IS, structurally.
+static func subdivide(block: PackedVector2Array, min_area: float,
+		grid_chaos: float, size_chaos: float, empty_prob: float,
+		rng: RandomNumberGenerator, out: Array, depth := 0) -> void:
+	if block.size() < 3:
+		return
+	# AT THE DEPTH CAP, KEEP THE BLOCK — do not drop it. Returning empty here
+	# meant any ward that needed more splits than the cap allows lost EVERY
+	# building under that branch, silently, and the quarter rendered as open
+	# ground. A too-large building is a visible imperfection; a vanished district
+	# is a hole nobody can diagnose from the picture.
+	if depth > 11:
+		out.append(block)
+		return
+	var target: float = min_area * pow(2.0, 4.0 * size_chaos * (rng.randf() - 0.5))
+	if area(block) < target:
+		if rng.randf() >= empty_prob:
+			out.append(block)
+		return
+	# THIRTY DEGREES, not sixty. Watabou's figure is +/-30 at full chaos and I
+	# doubled it; at 60 the cuts cross each other steeply enough that most leaves
+	# come out as WEDGES, and a town of triangles reads as broken glass rather
+	# than as buildings. The ratio jitter came down with it for the same reason.
+	var halves := cut(block, ALLEY,
+		0.5 + (rng.randf() - 0.5) * 0.5 * grid_chaos,
+		(rng.randf() - 0.5) * deg_to_rad(30.0) * grid_chaos)
+	for h in halves:
+		subdivide(h, min_area, grid_chaos, size_chaos, empty_prob, rng, out, depth + 1)
+
+
+## ── SPLIT A TOWN INTO WARDS ──────────────────────────────────────────────────
+##
+## The same cut, one scale up and with a wide street for a gap. Watabou grows a
+## Voronoi mesh for this; recursive splitting of the boundary reaches the same
+## place — irregular polygons that tile the town with streets between them — with
+## one primitive instead of two, and `Geometry2D.triangulate_delaunay` returns
+## only triangle indices, so a Voronoi would have to be derived by hand anyway.
+static func wards(boundary: PackedVector2Array, want: int,
+		rng: RandomNumberGenerator) -> Array:
+	var open: Array = [boundary]
+	while open.size() < want:
+		# Always split the biggest remaining ward, or the recursion eats one
+		# corner of the town and leaves the rest as a single slab.
+		var big := 0
+		for i in open.size():
+			if area(open[i]) > area(open[big]):
+				big = i
+		var poly: PackedVector2Array = open[big]
+		var halves := cut(poly, MAIN_STREET, 0.5 + (rng.randf() - 0.5) * 0.34,
+			(rng.randf() - 0.5) * deg_to_rad(34.0))
+		if halves.size() < 2:
+			break
+		open.remove_at(big)
+		for h in halves:
+			open.append(h)
+	return open

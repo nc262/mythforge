@@ -8,6 +8,12 @@ const GAME_SCENE := "res://scenes/game.tscn"
 
 var _busy := false
 var _cworlds: Array = []
+## PL-5. `Art` is an autoload and never dies, and Godot drops a connection only
+## when the EMITTER dies or the Callable's own OBJECT does. A lambda that reaches
+## no member of `self` belongs to neither, so it outlived this scene and kept
+## firing at freed nodes — "Lambda capture at index N was freed", one pair per
+## screen ever opened. A method Callable is owned by this node and goes with it.
+var _banner: TextureRect = null
 var _templates: Array = []
 
 @onready var _title: CenterContainer = $Title
@@ -61,10 +67,9 @@ func _ready() -> void:
 	banner.visible = banner.texture != null
 	$Title/Box.add_child(banner)
 	$Title/Box.move_child(banner, 0)
-	Art.art_ready.connect(func(k):
-		if str(k) == "prop-banner" and is_instance_valid(banner):
-			banner.texture = Art.texture_for("prop-banner")
-			banner.visible = true)
+	_banner = banner
+	if not Art.art_ready.is_connected(_on_banner_art):
+		Art.art_ready.connect(_on_banner_art)
 	_boot_cinematic()
 	_refresh()
 
@@ -261,9 +266,7 @@ func _paint_continue() -> void:
 			"world_id": last.get("world_id", "")})
 		# R6 root cause #1 again: prefer the world's BAKED establishing shot over
 		# whatever the art cache happens to hold under the bare world id.
-		var tex: Texture2D = Compiler.key_art(str(last.get("world_id", "")))
-		if tex == null:
-			tex = Art.texture_for(str(last.get("world_id", "")))
+		var tex: Texture2D = Art.world_tex(str(last.get("world_id", "")))
 		if tex != null:
 			$KeyArt.texture = tex
 
@@ -416,13 +419,20 @@ func _import_world() -> void:
 	dlg.canceled.connect(func(): dlg.queue_free())
 
 
+func _on_banner_art(k: String) -> void:
+	if str(k) != "prop-banner" or not is_instance_valid(_banner):
+		return
+	_banner.texture = Art.texture_for("prop-banner")
+	_banner.visible = true
+
+
 func _world_card(w: Dictionary) -> Button:
 	var wid := str(w.get("id", ""))
 	# The card wears the world's own skin palette (M-B), not a fantasy default.
 	var pal: Dictionary = Ui.PALETTES.get(str(WorldSkin.skin_for_id(wid).get("palette", "arcane")), Ui.PALETTES["arcane"])
 	var btn := _big_card("%s\n" % str(w.get("name", "?")), "", pal["gold"])
 	btn.clip_contents = true
-	var tex := Art.texture_for(wid)
+	var tex := Art.world_tex(wid)
 	if tex != null:
 		var art := TextureRect.new()
 		art.texture = tex
@@ -988,7 +998,7 @@ func _chronicle_card(t: Dictionary, last_id: String) -> Control:
 	panel.custom_minimum_size = Vector2(440, 172)
 	panel.add_theme_stylebox_override("panel", Ui.sb_card("legendary" if is_last else "common"))
 	panel.clip_contents = true
-	var tex := Art.texture_for(wid)
+	var tex := Art.world_tex(wid)
 	if tex != null:  # the world's key art is the cover
 		var art := TextureRect.new()
 		art.texture = tex

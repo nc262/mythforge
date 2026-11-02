@@ -83,6 +83,7 @@ func _wire_signals() -> void:
 	GameState.mood_changed.connect(_on_mood_changed)
 	# PS-5 — the day divider, from the engine that actually moved the clock.
 	GameState.day_changed.connect(_on_day_changed)
+	GameState.trouble_news.connect(_on_trouble_news)
 	_send_btn.pressed.connect(func(): _send(_msg.text))
 	_msg.text_submitted.connect(func(_t): _send(_msg.text))
 	_build_suggestions()   # R6 PLAY-04 — verbs above the box, before the box is empty
@@ -109,6 +110,10 @@ func _wire_signals() -> void:
 		_sheet_panel.visible = on
 		if on:
 			_render_codex())
+	# PY-6 - the banner follows the purse. It used to repaint only when the shop
+	# closed, so a player mid-purchase read 4 credits in the counter and 29 above
+	# it. `_render_chips` is cheap and the signal only fires on a real delta.
+	GameState.purse_changed.connect(_on_purse_changed)
 	Chronicle.chronicle_updated.connect(func():
 		if _panel_mode == "codex" and _sheet_panel.visible:
 			_render_codex()
@@ -178,9 +183,7 @@ func _open_the_room() -> void:
 	# game on — rendered ~60% empty void. Six worlds, ~1800 painted images, and
 	# the reason none of them showed up here was the wrong lookup. Ask the
 	# compiler first; keep the cache as the fallback for uncompiled worlds.
-	var world_tex: Texture2D = Compiler.key_art(GameState.world_id())
-	if world_tex == null:
-		world_tex = Art.texture_for(str(GameState.character.get("world_id", "")))
+	var world_tex: Texture2D = Art.world_tex(GameState.world_id())
 	if world_tex != null:
 		_scene_art.texture = world_tex
 		# Empty-state: before any words exist the scene IS the screen — bright.
@@ -204,7 +207,7 @@ func _open_companion_table() -> void:
 		_scene_art.texture = fire
 		_scene_art.modulate.a = 0.5
 		_ken_burns()
-	var slug := "npc-" + comp_name.to_lower().replace(" ", "-")
+	var slug := Art.npc_key(comp_name)
 	if not Art.has_art(slug):
 		Art.ensure(slug, "character portrait of %s, %s, warm firelight, painted head-and-shoulders portrait, dark background, no text" % [comp_name, Art.subject_style("char")], "1024x1024", true)
 	var face := MythPortrait.new(132, "gold", true)
@@ -217,9 +220,11 @@ func _open_companion_table() -> void:
 	face.offset_bottom = 150
 	add_child(face)
 	Ui.breathe(face)
-	Art.art_ready.connect(func(k):
-		if str(k) == slug and is_instance_valid(face):
-			face.set_portrait(Art.round_tex(slug, 132), comp_name.left(1)))
+	_comp_face = face
+	_comp_slug = slug
+	_comp_initial = comp_name.left(1)
+	if not Art.art_ready.is_connected(_on_comp_art):
+		Art.art_ready.connect(_on_comp_art)
 	# Clear-chat: sweep the table and start the talk fresh.
 	var clear_b := Button.new()
 	clear_b.theme_type_variation = "GhostButton"
@@ -263,6 +268,27 @@ func _open_the_adventure() -> void:
 	mini.offset_bottom = -72
 	add_child(mini)
 	_mini_map = mini
+	# PY-5 - AND THE CHAT LOG MUST NOT RUN UNDER IT. The comment above says the
+	# minimap was moved bottom-left "where nothing else lives"; the transcript
+	# lives there. Measured: the chart occupies (14,604)-(204,728) and the scroll
+	# (20,131)-(1260,688), so an 84x184 band of GM prose was drawn underneath an
+	# opaque chart - "What do you do next?" rendered as "next?" in a played
+	# session, and it costs words every turn once the log reaches the bottom.
+	#
+	# A SIBLING SPACER rather than padding inside the thread: messages are appended
+	# from five different places, and a trailing spacer would have to be re-moved to
+	# last in all five. The VBox shrinks the expanding scroll to make room, so the
+	# overlap becomes impossible by construction rather than by remembering. It
+	# mirrors the chart's own visibility, so a fight - where the chart hides itself
+	# - gets the height straight back.
+	var chatbox := $Margin/Split/ChatBox
+	_mini_gap = Control.new()
+	_mini_gap.custom_minimum_size = Vector2(0, MINI_GAP_PX)
+	_mini_gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	chatbox.add_child(_mini_gap)
+	chatbox.move_child(_mini_gap, _scroll.get_index() + 1)
+	_mini_gap.visible = mini.visible
+	mini.visibility_changed.connect(_sync_mini_gap)
 	_build_dice_menu()
 	_render_sheet()
 	_render_combat()  # a fight persisted mid-round resumes where it stood
@@ -293,6 +319,23 @@ func _open_the_adventure() -> void:
 		_say_system(("You are at %s." % _here) if _here != "" else "The tale continues…", "compass")
 		_recap()
 	_msg.grab_focus()
+	# PL-9 — and the narrator is NOT built yet. Its nodes were made lazily by the
+	# first `stream()`, so a ~4.6 GB load sat inside the player's first sentence:
+	# `bench_gm` measured turn 1 at 9.0 s against 2-4 s for every turn after it.
+	# The seconds do not go away — the weights have to be read — but they belong
+	# under the curtain, where a line of text can say what is happening, rather
+	# than behind an input box that looks frozen. Measured after: 4.5 s of
+	# labelled progress here, and turn 1 down to 3.6 s.
+	MythLoading.mark(0.95, "Waking the storyteller…")
+	await LocalGM.warm()
+	# ...and ONLY NOW the image engine. Measured on the GPU counter, not inferred:
+	# sd-server listening but never asked for a picture costs 127 MB of VRAM; its
+	# FIRST image takes 6.6 GB and never returns it while the process lives. So
+	# the engine being up is nearly free and the first generation is not, and
+	# llama.cpp fixes its GPU/CPU split once, at load - the 19.3 s per turn
+	# against 3.7 s in CLAUDE.md. The narrator finished loading on the line above,
+	# so nothing it needs can be taken out from under it now.
+	Services.ensure_engine()
 	# MIL §7 — the screen is genuinely built now; only now does the curtain lift.
 	await get_tree().process_frame
 	MythLoading.lift()
@@ -725,10 +768,11 @@ func _seat_the_hero() -> void:
 	# the ring got no texture and no letter, and drew as an empty circle. Keep the
 	# initial: it is what MythPortrait falls back to, and it is never wrong.
 	var initial := str(GameState.sheet().get("name", "?")).left(1).to_upper()
-	Art.art_ready.connect(func(k):
-		if str(k) == key and is_instance_valid(face):
-			face.set_portrait(Art.round_tex(key, 38), initial)
-			Ui.pulse(face))
+	_ring_face = face
+	_ring_key = key
+	_ring_initial = initial
+	if not Art.art_ready.is_connected(_on_ring_art):
+		Art.art_ready.connect(_on_ring_art)
 
 
 ## ── Suggested actions (R6 PLAY-04 / STR-02 / STR-03, all Critical) ──────────
@@ -784,7 +828,7 @@ func _render_suggestions() -> void:
 				acts.append(["Browse the wares", "I ask to see what the keeper has for sale."])
 				break
 	for q in (GameState.state.get("quests", []) if GameState.state.get("quests") is Array else []):
-		if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+		if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 			acts.append(["Ask about the task", "I ask around about %s." % str(q["title"])])
 			break
 	for cmp in GameState.sheet().get("companions", []):
@@ -903,6 +947,30 @@ func _send(raw: String) -> void:
 
 
 var _last_framed := ""
+## PL-5. `Art` is an autoload that never dies, and Godot drops a connection only
+## when the EMITTER dies or the Callable's own OBJECT does. A lambda reaching no
+## member of `self` belongs to neither, so it outlived this screen and kept
+## firing at freed portraits. These members carry what those lambdas captured,
+## so the connections can be METHOD Callables this node owns.
+var _comp_face = null
+var _comp_slug := ""
+var _comp_initial := "?"
+var _ring_face = null
+var _ring_key := ""
+var _ring_initial := "?"
+
+
+func _on_comp_art(k: String) -> void:
+	if str(k) != _comp_slug or not is_instance_valid(_comp_face):
+		return
+	_comp_face.set_portrait(Art.round_tex(_comp_slug, 132), _comp_initial)
+
+
+func _on_ring_art(k: String) -> void:
+	if str(k) != _ring_key or not is_instance_valid(_ring_face):
+		return
+	_ring_face.set_portrait(Art.round_tex(_ring_key, 38), _ring_initial)
+	Ui.pulse(_ring_face)
 
 
 func _stream(framed: String) -> void:
@@ -1194,7 +1262,7 @@ func _decorate_speaker(rt: RichTextLabel, clean: String) -> void:
 		if not (window.contains("\"") or window.contains("“") or window.contains("”")):
 			continue
 		var chip := MythPortrait.new(38, "amethyst")
-		chip.set_portrait(Art.round_tex("npc-" + nm.to_lower().replace(" ", "-")), nm.left(1).to_upper())
+		chip.set_portrait(Art.round_tex(Art.npc_key(nm)), nm.left(1).to_upper())
 		chip.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 		chip.tooltip_text = "%s — %s" % [nm, str(n.get("role", ""))] if str(n.get("role", "")) != "" else nm
 		row.add_child(chip)
@@ -1204,6 +1272,10 @@ func _decorate_speaker(rt: RichTextLabel, clean: String) -> void:
 
 # ── World tags → state ───────────────────────────────────────────────────────
 func _apply_world_tags(tags: Array) -> void:
+	# Rumour first: a place the prose merely NAMES is charted before any tag runs,
+	# so a [[scene]] that then moves the player finds it already known rather than
+	# creating it twice.
+	_hear_named_places()
 	for t in tags:
 		var a: Dictionary = t["attrs"]
 		match str(t["name"]):
@@ -1294,6 +1366,16 @@ func _apply_world_tags(tags: Array) -> void:
 			# is how "go to the tavern" would quietly charter a second tavern.
 			"place":
 				_gm_makes_place(a)
+			"site":
+				_gm_makes_site(a)
+			"trouble":
+				_gm_makes_trouble(a)
+			"clock":
+				_gm_ticks_clock(a)
+			"uncover":
+				_gm_uncovers(a)
+			"clue":
+				_gm_finds_clue(a)
 			"region":
 				_gm_makes_region(a)
 			"road":
@@ -1572,6 +1654,14 @@ func _roll_pending() -> void:
 		GameState.apply_hp(int(res["total"]) if check.get("heal", false) else -int(res["total"]))
 		_render_sheet()
 	_say_me(_md(str(res["text"])))
+	# A ROLL AGAINST THE TOWN'S TROUBLE MOVES ITS CLOCK. The GM marks the check;
+	# the dice decide which way. Said before the stream so the GM's next context
+	# already carries the clock where the roll left it.
+	# `take_engaged` is the fallback the real narrator needs: it does not write
+	# trouble=1 (measured, 0 of 4 turns), so a roll made while the turn-read saw the
+	# player working the trouble counts too.
+	if check.has("dc") and (bool(check.get("trouble", false)) or GameState.take_engaged(GameState.here())):
+		GameState.work_trouble(GameState.here(), int(res["total"]) >= int(check["dc"]))
 	_last_player_msg = str(res["text"])
 	_stream(Composer.envelope(str(res["text"])))
 
@@ -1670,7 +1760,7 @@ func _free_check(id: int) -> void:
 				_render_sheet()
 				_build_dice_menu()  # the crafted recipe may no longer be ready
 				_last_player_msg = note
-				_stream(Composer.envelope("[%s Narrate the making briefly.]" % note.replace("*", "")))
+				_stream(Composer.envelope("[%s Narrate the making briefly.%s]" % [note.replace("*", ""), GameState.here_pin()]))
 		return
 	# Raw dice tray: table candy, resolved and shown — the GM isn't bothered.
 	if id >= DICE_TRAY_BASE:
@@ -1714,7 +1804,11 @@ func _free_check(id: int) -> void:
 	await _animate_die(20, int(res.get("roll", res["total"])), label)
 	_say_me(_md(str(res["text"])))
 	_last_player_msg = str(res["text"])
-	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.]" % [label, int(res["total"])]))
+	# PY-7's first symptom: a successful Insight roll INSIDE Mercer's clinic was
+	# answered by "You stand outside the dimly lit entrance of Vex's Den" — a new
+	# place, no transition, and the roll's own outcome never narrated. A roll does
+	# not move anybody.
+	_stream(Composer.envelope("[I make a %s: I rolled %d. Narrate the outcome — set a DC if there was uncertainty.%s]" % [label, int(res["total"]), GameState.here_pin()]))
 
 
 ## The dice tray's free expression — "2d6+3" resolved at the table, which the
@@ -1857,6 +1951,13 @@ func _on_sheet_action(meta) -> void:
 # ── Combat actions ───────────────────────────────────────────────────────────
 var _init_rail: HBoxContainer       # the initiative rail: faces in turn order
 var _mini_map: Control              # the corner chart (it hides itself in combat)
+## The band the chart occupies above the input row, held out of the transcript so
+## no line of GM prose is ever drawn under it (PY-5). A constant rather than
+## arithmetic off the chart's anchors, and `click_driver` asserts the two rects
+## do not intersect - so if the layout moves and this number goes stale, the
+## harness says so instead of the player finding it.
+const MINI_GAP_PX := 92
+var _mini_gap: Control = null
 var _rail_turn_id := ""             # whose chip pulsed last
 var _rail_chips := {}               # id → MythPortrait, reused across renders
 var _rail_ids: Array = []           # roster signature; rebuild only when it changes
@@ -1896,7 +1997,7 @@ func _on_combat_action(meta) -> void:
 	if m == "cend":
 		_end_combat()
 		_last_player_msg = "The fight ends."
-		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.]"))
+		_stream(Composer.envelope("[I end the fight here. Narrate the aftermath of the battle briefly.%s]" % GameState.here_pin()))
 		return
 	if m == "cnext":
 		_run_round()
@@ -2532,9 +2633,16 @@ func _hud_bar(ratio: float) -> ImageTexture:
 func _open_shop() -> void:
 	if not Mode.can("shop"):
 		return
+	# A TROUBLE THAT CAME TO A HEAD COSTS SOMETHING HERE. The GM chose the fallout
+	# when the trouble began; the counter is where two of them are felt.
+	var fall := GameState.fallout_at(GameState.here())
+	if fall == "trade":
+		Sfx.ui("ui_deny")
+		_say_system(GameState.fallout_line(GameState.here(), fall).capitalize() + ".", "compass")
+		return
 	Mode.enter("Merchant")
 	var win := preload("res://scenes/ui/merchant_window.gd").new()
-	win.markup = _shop_markup
+	win.markup = _shop_markup * (1.5 if fall == "prices" else 1.0)
 	win.haggled.connect(func(m: float): _shop_markup = m)
 	win.counter_left.connect(_on_counter_left)
 	add_child(win)
@@ -2548,7 +2656,22 @@ func _on_counter_left(deals: Array) -> void:
 		var summary := "*At the trader: %s.*" % "; ".join(deals)
 		_say_me(_md(summary))
 		_last_player_msg = summary
-		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail.]" % summary.replace("*", "")))
+		# PY-1 - THE GM NEVER SEES THE NUMBER. It was handed "bought a Shock Blade
+		# (25 credits)", asked to colour the exchange, and wrote "your purse is 30
+		# credits lighter" - a figure no part of the engine ever produced, in a game
+		# whose whole contract is that the table owns every number. The player has
+		# already read the exact amount in the line above, which the engine wrote.
+		# PY-7 — AND SAY WHERE THEY ARE. Asking the GM to colour an exchange, with
+		# no location riding along, is an open invitation to invent a scene — and
+		# the GM took it: leaving the merchant
+		# put the player in a Night Market in The Sprawl, with a character from
+		# another location somehow present. `here_pin()` already exists and says
+		# exactly this — it was written for CN-1 (camped at a barrow-mound, woke
+		# in a mead-hall) and applied only to the REST paths. Its own comment has
+		# the reason it must ride here: "recency wins in a long context, so the
+		# pin has to travel WITH the instruction, not sit above it."
+		_stream(Composer.envelope("[%s Briefly color the exchange — the keeper's manner, a passing detail. Do NOT state amounts, prices or totals; the table has already told the player.%s]"
+			% [Composer.without_amounts(summary.replace("*", "")), GameState.here_pin()]))
 
 
 # ── The codex panel: the cast you've met and the threads you're pulling ─────
@@ -2564,7 +2687,7 @@ func _render_codex() -> void:
 			if not (n is Dictionary) or str(n.get("name", "")) == "":
 				continue
 			any = true
-			var tex := Art.texture_for("npc-" + str(n["name"]).to_lower().replace(" ", "-"))
+			var tex := Art.texture_for(Art.npc_key(str(n["name"])))
 			if tex != null:
 				var img: Image = tex.get_image()
 				img.resize(48, 48 * img.get_height() / maxi(1, img.get_width()))
@@ -2590,8 +2713,7 @@ func _render_codex() -> void:
 		for q in quests:
 			if q is Dictionary and str(q.get("title", "")) != "":
 				anyq = true
-				var done: bool = str(q.get("status", "active")) == "done"
-				_sheet_panel.append_text("%s %s%s\n" % ["✓" if done else "◈", _bb(str(q["title"])),
+				_sheet_panel.append_text("%s %s%s\n" % [Chronicle.quest_mark(q), _bb(str(q["title"])),
 					(" — " + _bb(str(q.get("desc", "")))) if str(q.get("desc", "")) != "" else ""])
 	if not anyq:
 		_sheet_panel.append_text("[color=%s]No threads yet — make a promise, take a job, swear revenge.[/color]\n" % Ui.c("ink_dim").to_html(false))
@@ -2604,8 +2726,13 @@ func _auto_portrait() -> void:
 		return
 	for n in codex:
 		if n is Dictionary and str(n.get("name", "")) != "":
-			var key := "npc-" + str(n["name"]).to_lower().replace(" ", "-")
-			if not Art.has_art(key):
+			var key := Art.npc_key(str(n["name"]))
+			# PY-16. `has_art` is only true once the paint FINISHES, ~20 s later,
+			# so every codex update inside that window called this again and said
+			# "Painting Cael Mercer…" a second time. `request` refused the
+			# duplicate work correctly — it was only the narration that doubled.
+			# `Art.status` knows the difference between finished and in flight.
+			if Art.status(key) == "":
 				_conjure_portrait(str(n["name"]))
 				return
 
@@ -2619,7 +2746,7 @@ func _conjure_portrait(nm: String) -> void:
 			break
 	var look := str(entry.get("appearance", entry.get("note", "")))
 	_say_system("Painting %s…" % nm, "easel")
-	await Art.ensure("npc-" + nm.to_lower().replace(" ", "-"),
+	await Art.ensure(Art.npc_key(nm),
 		"portrait of %s, %s. %s character portrait, painterly, head and shoulders" % [nm, look,
 		{"neonspire": "cyberpunk", "everyday": "contemporary"}.get(GameState.world_id(), "fantasy")])
 	if _panel_mode == "codex":
@@ -2690,8 +2817,21 @@ func _open_world_map() -> void:
 	map.travel_requested.connect(func(place):
 		dlg.queue_free()
 		_travel_to(place))
+	map.enter_requested.connect(func(place):
+		dlg.queue_free()
+		_open_place_map(place))
 	dlg.add_child(map)
 	add_child(dlg)
+	# THE ATLAS DESERVES THE SCREEN. This opened at the map's own 680x430 minimum
+	# — a postage stamp of world with a frame round it — which is also why the
+	# city grid read as graph paper: at that size there is no room for a district
+	# to be a district. Same clamp `character_screen` uses, and for the same
+	# reason it needed one: a fixed size never fits every window, and the ceiling
+	# has to be the screen or the OK button walks off the bottom.
+	var avail := Vector2(get_tree().root.get_visible_rect().size)
+	dlg.min_size = Vector2i(mini(1500, int(avail.x) - 8), mini(940, int(avail.y) - 8))
+	dlg.max_size = Vector2i(int(avail.x) - 8, int(avail.y) - 8)
+	dlg.size = dlg.min_size
 	dlg.popup_centered()
 	Ui.ritual_open(dlg)
 
@@ -2729,12 +2869,108 @@ func _gm_makes_place(a: Dictionary) -> void:
 		"shop": str(a.get("shop", "")),
 		"region": str(a.get("region", "")),
 		"scope": str(a.get("scope", "local")),
+		"size": str(a.get("size", "")),
 	})
 	if why == "":
 		_say_system("%s is added to the chart." % nm, "compass")
 		Sfx.play("chime")
 	elif not why.begins_with(nm) or why.find("already") < 0:
 		# "already on the chart" is not worth a line — the world simply knew it.
+		_say_system(why, "compass")
+
+
+## [[trouble place="Gallows Quay" what="press-gangs are taking men off the quay"
+##   clock=6]]   and   [[clock place="Gallows Quay" tick=1]]
+##
+## What is going wrong here, and how far along it is. The engine owns the clock —
+## its size, its filling, when it runs out — and the GM owns what it IS.
+##
+## A clock rather than a sentence because that is the difference between a town
+## that is DESCRIBED and one that is ALIVE: segmented state that persists across
+## visits and advances whether or not the player is there. Blades in the Dark and
+## Apocalypse World's fronts arrived at it independently, and it is the one
+## mechanism the research on this was unanimous about.
+func _gm_makes_trouble(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	if where == "":
+		where = GameState.here()
+	var why := GameState.set_trouble(where, str(a.get("what", "")), int(a.get("clock", 6)),
+		str(a.get("reach", "town")).strip_edges().to_lower(),
+		{"fallout": str(a.get("fallout", "")), "thread": str(a.get("thread", "")), "title": str(a.get("title", ""))})
+	if why != "":
+		_say_system(why, "compass")
+		return
+	# NOT "trouble is brewing": that told the player about a secret the moment the
+	# GM thought of it. Whether they hear is the engine's call — see notice_troubles.
+	GameState.notice_troubles()
+
+
+## Everything the engine says about a trouble — heard of, a lead, worse, eased,
+## come to a head — arrives here, worded, from the moment it happened. A METHOD,
+## for the reason `_on_purse_changed` is one (PL-5, freed lambda captures).
+func _on_trouble_news(line: String) -> void:
+	_say_system(line, "compass")
+	Chronicle.chronicle_updated.emit()   # the quest log moved with it
+
+
+## [[uncover place="Gallows Quay"]] — the player has found out a secret trouble.
+func _gm_uncovers(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	var why := GameState.uncover_trouble(where if where != "" else GameState.here())
+	if why != "":
+		_say_system(why, "compass")
+
+
+## [[clue place="Gallows Quay" note="..."]] — a lead on a trouble.
+func _gm_finds_clue(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	var why := GameState.add_clue(where if where != "" else GameState.here(), str(a.get("note", "")))
+	if why != "":
+		_say_system(why, "compass")
+
+
+func _gm_ticks_clock(a: Dictionary) -> void:
+	var where := str(a.get("place", "")).strip_edges()
+	var why := GameState.tick_trouble(where if where != "" else GameState.here(), int(a.get("tick", 1)))
+	if why != "":
+		_say_system(why, "compass")
+		return
+	GameState.notice_troubles()   # a secret that comes to a head where you stand is out
+
+
+## [[site name="The Drowned Bell" kind=fence ward=3 settlement="Gallows Quay"
+##   lore="Buys what the tide brings in, no questions asked."]]
+##
+## The tier below [[place]]: a building INSIDE a town, attached to one of the
+## quarters the plan already generated. Before this the GM could charter a place
+## on the chart and the town the player stood in never moved — `site_probe`
+## measured exactly that, and it is the difference between a map the story can
+## write on and a map it can only point at.
+##
+## The refusal is spoken, like every other. It names the rule and, where it can,
+## the legal answers — "Gallows Quay has wards 0-6" teaches the next attempt in
+## a way "no" never does, and that matters more here than for a hosted model:
+## the tool-calling literature is clear that small local models recover from
+## vague errors far worse than large ones do.
+func _gm_makes_site(a: Dictionary) -> void:
+	var nm := str(a.get("name", "")).strip_edges()
+	if nm == "":
+		return
+	var town := str(a.get("settlement", "")).strip_edges()
+	if town == "":
+		town = GameState.here()          # the town we are standing in, if unsaid
+	var why := GameState.add_site({
+		"name": nm,
+		"kind": str(a.get("kind", "landmark")),
+		"ward": int(a.get("ward", -1)),
+		"settlement": town,
+		"lore": str(a.get("lore", "")),
+		"shop": str(a.get("shop", "")),
+	})
+	if why == "":
+		_say_system("%s now stands in %s." % [nm, town], "compass")
+		Sfx.play("chime")
+	elif why.find("already stands") < 0:
 		_say_system(why, "compass")
 
 
@@ -2782,6 +3018,128 @@ func _gm_makes_region(a: Dictionary) -> void:
 		_say_system(why, "compass")
 
 
+## AT-6 — THE TALE NAMING A PLACE PUTS IT ON THE CHART, unvisited.
+##
+## Baldur's Gate II prints "Your world map has been updated" when an NPC mentions
+## somewhere you have never been; this is that, and it is the whole reason the
+## three-state fog exists. Without it the GM can say "word reaches you of the
+## Sunken Fort", the player opens the Atlas, and the Atlas says there is no such
+## place — the map calling the narrator a liar, in a game that is nothing but a
+## narrator.
+##
+## Reads the accumulated reply rather than the [[scene]] tag, because being TOLD
+## about somewhere is exactly the case where no tag fires. `_track_here` handles
+## the other half: prose that moves you.
+##
+## FOUR CHARACTERS MINIMUM, and full-name matching only. A gazetteer holds names
+## like "The Office" and "Home"; a looser match would have the GM mention a home
+## and silently chart someone's apartment across the map.
+func _hear_named_places() -> void:
+	var prose := _acc.to_lower()
+	if prose.strip_edges() == "":
+		return
+	for l in GameState.places():
+		if not (l is Dictionary):
+			continue
+		var nm := str(l.get("name", ""))
+		if nm.length() < 4 or GameState.heard_of(nm):
+			continue
+		if prose.contains(nm.to_lower()):
+			GameState.hear_of(nm)
+
+
+## AT-5 — THE INSIDE OF A PLACE.
+##
+## A settled place is never fogged and an unsettled one is; `LocalMap` decides
+## which from `kind`, so this does not have to know the rule and cannot disagree
+## with the generator about it.
+##
+## Walking a room is recorded per place, keyed by the place's own name — the
+## world's `seen` list is a list of PLACES and would collide with a room called
+## "The Way In" the moment two ruins had one.
+func _open_place_map(place: String) -> void:
+	var kind := ""
+	for l in GameState.places():
+		if l is Dictionary and str(l.get("name", "")) == place:
+			kind = str(l.get("kind", ""))
+	var lm := LocalMap.for_place(GameState.world_id(), place, kind)
+	if lm.nodes.is_empty():
+		_say_system("There is nothing charted inside %s." % place, "compass")
+		return
+	var world: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	var inside: Dictionary = world.get("inside") if world.get("inside") is Dictionary else {}
+	var rec: Dictionary = inside.get(place) if inside.get(place) is Dictionary else {}
+	var dlg := AcceptDialog.new()
+	dlg.title = place
+	dlg.ok_button_text = "Step back out"
+	var view := preload("res://scenes/ui/place_map.gd").new()
+	view.lm = lm
+	view.here_room = str(rec.get("here", str(lm.nodes[0]["name"])))
+	view.walked = rec.get("walked") if rec.get("walked") is Array else [str(lm.nodes[0]["name"])]
+	# AT-19 — the player asks this place for something the plan does not show. The
+	# GM decides whether it is here (the story's call); the engine decides whether
+	# that answer is legal (a real kind, a real ward, a free name, a trade a place
+	# this size could carry) and puts it on the map.
+	view.asked.connect(func(query: String):
+		var said: Dictionary = await Chronicle.ask_after(place, kind, query)
+		var out: Dictionary = GameState.answer_ask(place, query, said)
+		var line := str(out.get("line", ""))
+		if bool(out.get("found", false)):
+			LocalMap.forget("%s|%s" % [GameState.world_id(), place])
+			view.lm = LocalMap.for_place(GameState.world_id(), place, kind)
+			Sfx.play("chime")
+		view.answered(line)
+		view.queue_redraw()
+		# The transcript keeps it too: what the town told you is part of the tale.
+		_say_system("You ask after %s. %s" % [query, line], "compass"))
+	view.enter_room.connect(func(room):
+		var w2: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+		var ins: Dictionary = w2.get("inside") if w2.get("inside") is Dictionary else {}
+		var r2: Dictionary = ins.get(place) if ins.get(place) is Dictionary else {}
+		var walked: Array = r2.get("walked") if r2.get("walked") is Array else []
+		if not walked.has(room):
+			walked.append(room)
+		r2["walked"] = walked
+		r2["here"] = room
+		ins[place] = r2
+		w2["inside"] = ins
+		GameState.save_kind("world", w2)
+		view.here_room = room
+		view.walked = walked
+		Sfx.ui("travel")
+		# The GM narrates arrival, which is what makes a room a place rather than
+		# a dot. The map moved the pin; the story says what is there.
+		#
+		# That comment was true of nothing: this posted a local line and no turn,
+		# so walking into the inn on the town map never reached the story. It
+		# closes the plan the way travelling from the chart does — the answer is
+		# in the transcript, behind the window — and asks for a turn.
+		_say_system("You move to %s, within %s." % [room, place], "compass")
+		if Mode.can("send_message"):
+			dlg.queue_free()
+			_last_player_msg = "I go to %s in %s." % [room, place]
+			_stream(Composer.envelope("[I walk to %s, within %s. Describe briefly what I find there — who is about, and what they want.]" % [room, place])))
+	# THE VIEW GOES IN THE DIALOG, AND THE DIALOG GOES IN THE TREE, BEFORE IT IS
+	# DRESSED. This called `dress_dialog(dlg, view)` and then `add_child(dlg)`,
+	# and never added `view` to `dlg` at all — `dress_dialog` styles and caps a
+	# content node, it does not parent one. So stepping into a town opened a
+	# themed, EMPTY window, and dressing it before it had a tree raised
+	# "data.tree is null" and abandoned the cap half-way. Every other caller
+	# dresses from the dialog's own `_ready`, once it is in the tree. Nobody saw
+	# it because nothing could reach this function — the Atlas tab never wired
+	# "step inside" (AT-5) — and every harness built the town map on its own.
+	dlg.add_child(view)
+	add_child(dlg)
+	Ui.dress_dialog(dlg, view)
+	var lavail := Vector2(get_tree().root.get_visible_rect().size)
+	dlg.min_size = Vector2i(mini(1300, int(lavail.x) - 8), mini(860, int(lavail.y) - 8))
+	dlg.max_size = Vector2i(int(lavail.x) - 8, int(lavail.y) - 8)
+	dlg.size = dlg.min_size
+	dlg.popup_centered()
+	dlg.confirmed.connect(dlg.queue_free)
+	dlg.canceled.connect(dlg.queue_free)
+
+
 ## Auto here-tracking: the GM's [[scene]] prose moves the pin when the place
 ## matches a charted location — the map follows the story without a click.
 func _track_here(place: String) -> void:
@@ -2801,6 +3159,7 @@ func _track_here(place: String) -> void:
 			seen.append(nm)
 		world["seen"] = seen
 		GameState.save_kind("world", world)
+		GameState.notice_troubles()
 		return
 
 
@@ -2817,6 +3176,8 @@ func _travel_to(place: String) -> void:
 	var world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	world["here"] = place
 	# The map remembers: fog burned away stays away.
+	GameState.hear_of(place)
+	world = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
 	var seen: Array = world.get("seen") if world.get("seen") is Array else []
 	if not seen.has(place):
 		seen.append(place)
@@ -2828,6 +3189,7 @@ func _travel_to(place: String) -> void:
 	GameState.advance_time(GameState.travel_cost(place))
 	Sfx.ui("travel")   # MIL — departure has a sound; the road opens
 	_say_system("You set off for %s." % place, "compass")
+	GameState.notice_troubles()
 	# Distance is the one cost that is invisible in the prose — the clock moved,
 	# and nothing on screen says a far road spent more of the day than a near one.
 	_coach("travel",
@@ -2863,6 +3225,20 @@ func _apply_time_tint() -> void:
 
 
 ## The banner chips: time · weather · place · quest · party wounds.
+## The chart hides itself in combat; the gap it reserves goes with it.
+func _sync_mini_gap() -> void:
+	if is_instance_valid(_mini_gap) and is_instance_valid(_mini_map):
+		_mini_gap.visible = _mini_map.visible
+
+
+## The signal carries the new total and `_render_chips` takes none, so this is
+## the adaptor. A METHOD rather than a lambda on purpose: PL-5 is open about
+## freed lambda captures on autoload signals, and a bound method is dropped
+## automatically when the node goes.
+func _on_purse_changed(_total: int) -> void:
+	_render_chips()
+
+
 func _render_chips() -> void:
 	_apply_time_tint()
 	_render_suggestions()   # the verbs track the same state the chips do
@@ -2888,7 +3264,7 @@ func _render_chips() -> void:
 	var quests = GameState.state.get("quests", [])
 	if quests is Array:
 		for q in quests:
-			if q is Dictionary and str(q.get("status", "active")) != "done" and str(q.get("title", "")) != "":
+			if q is Dictionary and str(q.get("status", "active")) == "active" and str(q.get("title", "")) != "":
 				bits.append("◈ " + str(q["title"]).left(36))
 				break
 	if bool(GameState.sheet().get("inspiration", false)):
@@ -3012,6 +3388,7 @@ func _open_character_screen(at := "", pulse := -1) -> void:
 	if at != "":
 		rec._active = at
 	rec.travel_requested.connect(_travel_to)
+	rec.enter_requested.connect(_open_place_map)   # AT-5: the Atlas tab's way into a town
 	rec.resume_requested.connect(_recall_snapshot)
 	rec.save_chapter_requested.connect(_save_snapshot)
 	rec.leave_requested.connect(_leave_to_hall)

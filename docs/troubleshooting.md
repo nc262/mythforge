@@ -38,13 +38,22 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 
 ## Turns are slow (tens of seconds)
 
-- **Cause, almost always:** the model is not fully resident on the GPU. A
-  llama.cpp GPU/CPU split is decided **once, at load time**, so anything holding
-  VRAM when the model loads costs you for the life of the process.
-- **Fix:** make sure nothing else is on the card when the game starts.
-  stable-diffusion.cpp idles at ~118 MB and loads per request, so it is not the
-  culprit; a resident image stack (7+ GB) absolutely is. Measured on this box:
-  19.3 s per turn with one resident, 3.7 s without.
+- **Cause 1 — a bad split, permanent.** A llama.cpp GPU/CPU split is decided
+  **once, at load time**. The narrator needs ~5.9 GB; if less is free when it
+  loads, layers land on the CPU and stay there for the life of the process.
+  Measured: 19.3 s per turn with a CUDA-shimmed ComfyUI-Zluda holding ~7.4 GB at
+  load, against 3.7 s with the card clear.
+- **Cause 2 — a picture is being painted right now.** This one is temporary,
+  and it is the one you will actually hit. Two processes on the same shaders:
+  turns went 3.5 s → 6.1 s while sd-server generated 1024×1024 images, with peak
+  VRAM at 15310 MB of 16384 — nothing was evicted, they were simply competing.
+- **Fix:** for cause 1, check what is on the card *before the game starts* —
+  sd-server is NOT the usual culprit (127 MB until its first image, 6.6 GB after,
+  which still leaves the narrator enough on a 16 GB card); a Python image stack
+  is. For cause 2, confirm `Art.hold` is still being set around the stream in
+  `game.gd` — that flag is the fix and it already exists.
+- **NOT the cause:** sd-server merely being up when the narrator loads. Measured
+  at 3.3/3.6/3.5 s against 3.0/3.5/3.5 s on a clear card — no penalty.
 - See [godot/docs/Performance.md](../godot/docs/Performance.md).
 
 ## A structured call takes 90+ seconds and then fails
@@ -85,6 +94,25 @@ fix. A symptom with a guess instead of a root cause does not belong here.
 - **Related:** sd-server **ignores `steps` in the request body**. Steps are a
   launch flag or nothing.
 
+## The gate sits for fifteen minutes and then says TIMED OUT
+
+- **Cause:** a harness script failed to **load** — almost always a parse error,
+  and in this repo usually a duplicate `var` name in `self_check.gd`'s one long
+  function, or an untyped array literal iterated in a `for` (see *Invariants*).
+  Godot does not exit on a parse error any more than on a failed `assert`: the
+  scene tree keeps running with a dead script, so the harness waits out the
+  900 s timeout for an error it wrote to its engine log in the first second.
+- **Fix:** `Invoke-Harness` polls the engine log while it waits and fails the
+  harness as **SCRIPT DID NOT LOAD** the moment `Parse Error`, `Compile Error`
+  or `Failed to load script` appears. A green gate runs in ~30 s; this was
+  adding 900 s per mistake, and it happened three times on 2026-09-16.
+- **Before blaming the gate,** read `mythforge-<pid>-<scene>.log.engine` in the
+  temp folder — the line is there.
+- **Do not pick a replacement name by guessing.** `wm_src` collided, and so did
+  the next guess, `chart_src`. `grep -c 'name' godot/tests/self_check.gd`
+  first. And do not `sed -g` a rename across that file: the pre-existing
+  `chart_src` got renamed along with the new one.
+
 ## A regex silently matches nothing
 
 - **Cause:** `\uXXXX` is a JavaScript escape. Godot's RegEx is **PCRE2**, where
@@ -92,6 +120,126 @@ fix. A symptom with a guess instead of a root cause does not belong here.
   no error.
 - **Fix:** put the literal character in the pattern (`•`, `—`, `–`, `"`, `"`).
   This was written twice before it stuck.
+
+## A source-reading check fails on code that is obviously correct
+
+**Symptom:** `ui_playthrough` reports "the road network is defined but never
+called" while the call is right there in `world_map.gd`. The definition checks in
+the same block pass, so the file was read fine.
+
+- **Cause:** the check split the file on a **literal newline pasted inside the
+  string**. `core.autocrlf` is `true` here, so the working tree is genuinely
+  mixed — `world_map.gd` is LF, and any file rewritten by a tool in text mode
+  becomes CRLF. A CRLF harness splitting an LF file yields **one** line, and
+  every per-line match silently fails. Measured: `parts=1` against 692 newlines
+  in the file.
+- **Fix:** `split("\n")` — the escape, not a pasted newline. `strip_edges()`
+  already removes a trailing `\r`, so the escape is correct on both. All three
+  such splits in `ui_playthrough.gd` now use it.
+- **It never shows in `git status`.** Git normalises on commit, so a whole-file
+  CRLF conversion is invisible in the diff and the gate goes red with a clean
+  tree — which reads exactly like a real regression.
+- **Writing files from a script on this box:** open in binary, or pass
+  `newline=""`. Python's default text mode rewrites every line ending in the file.
+
+## "Lambda capture at index N was freed. Passed null instead."
+
+- **A lambda that captures `self` is NOT the suspect.** Godot binds such a lambda
+  to `self` and disconnects it automatically when the node frees — the connection
+  dump prints it as `<anonymous lambda>(self lambda)`. Chasing those wastes the
+  afternoon; the ones to look at print as plain `(lambda)`.
+- **An `is_instance_valid()` guard cannot silence it.** The error is raised when
+  the Callable is *invoked* with a dead capture, before the first line of the body
+  runs. If you see the error and the guard both, the guard is working and the
+  error is still real.
+- **Fix by making the capture RefCounted**, not by guarding harder: hold the node
+  in a one-element Array and test `arr[0]`. An Array is never "freed", so the
+  guard does its job in silence.
+- **Instrument:** dump `sig.get_connections()` and print `c["callable"]` — it
+  reports `(self lambda)` vs `(lambda)`. Then put a `printerr` as the first
+  statement of each candidate; the engine error prints immediately *before* the
+  body, so the marker that follows the error names the caller, and the marker that
+  precedes it names the caller's caller.
+
+## llama.cpp aborts with "Rust cannot catch foreign exceptions" — SOLVED
+
+**Upstream bug, fixed in `nobodywho-godot-v9.6.0`.** This project was pinned to
+v9.5.0. Exit `0xC0000409`, no Godot stack, last worker line `Worker writing until
+done`.
+
+- **Cause:** NobodyWho ran the GBNF grammar **after** the truncation samplers
+  (top-k/top-p/temperature). When truncation leaves no grammar-valid token,
+  llama.cpp throws a C++ exception across the FFI boundary and Rust aborts.
+  Upstream issues #421 and #487, fixed by PR #644.
+- **Fix:** bump the pin in `scripts/fetch_nobodywho.py` **and**
+  `installer/clean-room/check-downloads.ps1`, delete
+  `godot/addons/nobodywho/libnobodywho-*.dll`, re-run the fetch. **Never pin
+  below v9.6.0.**
+- **The confound that cost six local runs.** It looked like "explicit
+  `start_worker()` + a constrained sampler aborts, lazy start is fine". It is
+  not: with a lazy start the first sampler config is *dropped* ("Worker not
+  started"), so the first generation runs unconstrained and later constrained
+  ones land in a context that happens not to collide. The trigger is
+  content-dependent, so a same-variable bisection can point straight at the wrong
+  thing while every arm reproduces.
+- **The old section below is kept**: everything it says about what was ruled out
+  locally is still true and still the right method — it simply could not reach a
+  cause that lived upstream.
+
+## What the local bisection ruled out (still valid method notes)
+
+**Symptom:** exit `0xC0000409`, no Godot stack, the last worker line is
+`Worker writing until done`.
+
+- **Not the double BOS.** `check_double_bos_eos: … starts with 2 BOS tokens`
+  appears **38 times in a `local_stack` run that exits 0** and prints
+  `LOCAL STACK OK`. It is noise. Neither is it fixable from the game:
+  `NobodyWhoModel` exposes only `model_path` and `projection_model_path`, and
+  `NobodyWhoChat` only `model_node`, `system_prompt`, `allow_thinking`,
+  `context_length` — there is no `add_bos_token` to set.
+- **Measured cause (five runs, one variable each):** a **constrained** sampler —
+  a `JsonSchema` or `Grammar` step — reaching a worker that has genuinely started,
+  as that worker's first act. The same worker with an unconstrained builder chain
+  generates for seven minutes without complaint, and once it has done one
+  unconstrained turn, eleven `JsonSchema` configs land and work.
+- **Read the sampler config out of the worker log before theorising.**
+  `set_sampler_preset_json` looks grammar-free and is not: it installs a default
+  GBNF `Grammar` step, which made one bisection arm prove the opposite of what it
+  appeared to.
+- **Method:** the whole thing was settled by one grep of a *passing* log and five
+  single-variable runs. Every earlier theory came from reading a failing log only.
+
+## A dialog's exit button walks off the bottom of the screen
+
+**Symptom:** a panel opens fine, then reveals some content — a detail strip, a
+longer page — and its exit button is *gone*. Escape does nothing, clicking
+outside does nothing, nothing scrolls. Task Manager is the only way out. This
+soft-locked the merchant counter for weeks (PL-7).
+
+- **Cause, and both halves are needed to explain it:** a `Window` with
+  `wrap_controls` only ever **grows** to its contents minimum and never shrinks
+  back, and it grows **downward** from the origin `popup_centered()` fixed when
+  it was shorter. Measured on the counter: 86 px of new content took the dialog
+  from 541 px to **1002 px** against a contents minimum of **627**, putting the
+  OK button at **y=875 on an 800 px screen**. The over-growth comes from a
+  transient — a freshly-revealed autowrapped label measures ~1 px wide mid-layout
+  and reports an enormous height — and the window keeps it forever.
+- **Fix:** `Skin._cap_panel_content` calls `reset_size()` (re-fit to what the
+  contents actually ask for) and then clamps `position` so the whole window is on
+  screen, and it runs on `content.minimum_size_changed` — deferred, or it re-fits
+  to the very transient that caused the problem — as well as on root resize.
+- **Three earlier attempts failed because each was half the fix.** A re-fit alone
+  still hangs off a stale origin; a clamp alone cannot place a 1002 px window on
+  an 800 px screen. Both were reasoned from screenshots.
+- **Why no harness saw it:** `click_driver` opened the shop and audited it — in
+  the one state where nothing is wrong, because it never clicked a ware. And its
+  on-screen check asked `b.get_viewport().get_visible_rect()`, which for a control
+  inside a dialog **is the dialog**, and the dialog grows with the button. It now
+  measures in root coordinates.
+- **Headless lies about screen size.** With no window, the root viewport reported
+  a square **1280x1280** — 480 px taller than the shipped 1280x800 — so every
+  "does this fit on screen" question was being asked of a screen no player owns.
+  `click_driver` now pins the root to the size in `project.godot`.
 
 ## A mesh was rewritten and Godot kept serving the old one
 
@@ -177,26 +325,6 @@ so a log that captures only stdout shows a run that simply stopped mid-way.
 (`-HarnessTimeoutSec`, default 900), kills it, captures **both** streams, and
 reports it red. Anything else that drives a harness unattended must do the same
 or it waits forever.
-
-## A dialog's exit button is off the bottom of the screen
-
-The merchant counter soft-lock (PL-7): pick any ware and "Leave the counter" is
-gone, with no way out but killing the game.
-
-- **Cause:** an embedded `Window` grows to its content's minimum size and **never
-  shrinks back**, nor re-centres. The detail strip was toggled from
-  `visible = false`, and for the frame it appeared its autowrapped `Label` was
-  measured at zero width — one word per line — so the dialog grew to **1002 px
-  for 571 px of content** and kept it. Measured, not inferred: three earlier
-  fixes (re-measuring the content cap, clamping the position) assumed the
-  content was too tall, and it never was.
-- **Fix:** keep anything that appears later **in the layout from the start** and
-  reveal it with `modulate.a`, so a wrapping label always has its real width.
-  The dialog now stays 627 px before and after picking.
-- **Why no harness saw it:** `click_driver`'s audit measured a dialog's buttons
-  against the dialog's own viewport, so a button that left the screen with its
-  window was still "on-screen". It now measures in screen space, and the shop
-  station picks a ware and must leave by the button.
 
 ## The exe won't copy to the Desktop
 

@@ -299,7 +299,7 @@
    },
    {
     "name": "Hearthwood Market",
-    "kind": "shop",
+    "kind": "settlement",
     "x": 27,
     "y": 45,
     "lore": "Stalls of the valley folk under faded awnings.",
@@ -369,7 +369,7 @@
    },
    {
     "name": "The Night Market",
-    "kind": "shop",
+    "kind": "settlement",
     "x": 25,
     "y": 41,
     "lore": "A churning bazaar of bootleg everything under tarps and drones.",

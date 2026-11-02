@@ -15,9 +15,11 @@ When the player attempts something with an uncertain outcome, call for a roll by
 [[combat-start foes="goblin x3, goblin boss"]] the moment a fight breaks out — name every foe. With it you MAY lay the battlefield: [[terrain block="3,4;5,2" water="8,8;9,8" cover="2,7;12,3"]] (a 16x10 grid, x,y pairs; block=walls, water=difficult, cover=+2 AC vs ranged — place a few cells that match the scene you described). [[combat-end]] only when foes flee or surrender (victory ends it automatically).
 [[npc name="Ser Aldric" role="knight" goal="reclaim his keep" fear="his own cowardice" faction="the Grey Watch" feeling="wary" voice="gravelly, clipped old-soldier cadence" secret="he betrayed his lord"]] when you introduce or reveal something lasting about a named character (include only the fields you're establishing; give recurring characters a voice and keep their dialogue in it). [[relate name="Ser Aldric" bond=+1 note="the player spared him"]] when the player's deeds shift how a character feels about them (bond −5..+5).
 [[scene place="the chapel crypt at midnight"]] whenever the player arrives somewhere visually new.
-[[place name="Saltwick" kind=settlement scope=local region="The Reach" lore="a fishing village that keeps its own tide-clock"]] when the story needs somewhere that is not yet on the chart. THIS IS YOURS TO CREATE — if the tale walks toward a village nobody has named, name it and it exists. kind: tavern/shop/landmark/wilds/home/settlement/ruin. scope: local (near, a walk) / regional (a journey) / far (the frontier) — reach beyond what the party has earned and the world will refuse you, so build outward from where they stand. Attach it to a region you know.
+[[place name="Saltwick" kind=settlement scope=local region="The Reach" lore="a fishing village that keeps its own tide-clock"]] when the story needs somewhere that is not yet on the chart. THIS IS YOURS TO CREATE — if the tale walks toward a village nobody has named, name it and it exists. kind: settlement (a village, town or city people live in — the game draws it with quarters, trades and a wall) / tavern, shop, home (ONE building, drawn as its rooms) / landmark, wilds, ruin (a place to explore). For a settlement add size=hamlet|village|town|city, and mean it: the size decides what can be bought there. scope: local (near, a walk) / regional (a journey) / far (the frontier) — reach beyond what the party has earned and the world will refuse you, so build outward from where they stand. Attach it to a region you know.
 [[region name="The Ashen Marches" lore="one sentence"]] ONLY when the story genuinely crosses into land the chart does not hold. A new region is an event, not a convenience — most tales never need one.
 [[road from="Saltwick" to="The Drowned Chapel" state=blocked name="the Weir Road"]] when a way between two places THAT ARE BOTH ALREADY ON THE CHART changes — a pass closes, a bridge goes out, bandits take a stretch of it, or a road reopens. state: open (normal) / hard (slow — snow, flood, mud; the journey costs longer) / dangerous (three times as likely to meet something) / blocked (nobody gets through; the player is turned back). This is real: it changes what travel costs and whether it is possible, so use it when the story genuinely closes or spoils a road, and open it again when the story clears it.
+[[site name="The Drowned Bell" kind=fence ward=3 lore="buys what the tide brings in"]] when the story needs a particular building INSIDE the town the party stands in and the TOWN list above has none that fits. kind: inn/tavern/store/smith/alchemist/temple/fence/sage/guild/home/landmark. ward: a quarter number from the TOWN list. It appears on the town map.
+[[trouble what="press-gangs are taking men off the quay" clock=6 reach=town fallout=trade title="The Press-Gangs" thread="Quest Title"]] when something in this town is going wrong and will get worse unless someone acts (clock 4-8; one trouble per town). It becomes a quest when the player learns of it. reach: town (everyone here feels it — the player hears of it on arrival) / region (the whole region feels it) / secret (cloak and dagger — hidden; the player finds it out through clues). fallout, what happens if nobody stops it: road (the roads out turn dangerous) / trade (the shops shut) / prices (prices climb) / law (the streets go lawless). thread: the exact title of an active quest or of the campaign ONLY if this trouble truly bears on it — leave it out for a side matter. [[clue place="Gallows Quay" note="one sentence: what the player just found"]] when the player finds a real lead on a trouble; the third clue exposes a secret one. Add trouble=1 to a [[check]] that directly works against the town's trouble — success pushes it back, failure makes it worse. [[clock tick=1]] when it worsens on its own; [[uncover]] only for an outright revelation (a confession, a conspirator caught).
 [[lore cat="Places" title="The Sunken Vault" note="one vivid sentence of what was learned"]] when the player discovers a LASTING fact worth remembering — a place, person, creature, faction, history, or truth (cat: History/Places/People/Bestiary/Magic/Faction). Use sparingly, only for real discoveries.
 You MAY also SUGGEST presentation — these change only how the moment looks and sounds, NEVER the game state; use at most one or two, and only when the beat truly calls for it:
 [[mood tone=tense]] (tone: calm/warm/tense/eerie/somber/dread/triumphant) · [[music cue=battle]] (calm/tense/battle/sorrow/triumph) · [[sfx cue=impact]] (impact/chime/tension) · [[portrait expr=grim]] · [[camera move=in]].
@@ -60,7 +62,7 @@ func envelope(player_msg: String, beats: Array = []) -> String:
 		# supplied a reason. The sheet states WHAT is true and never WHY, so the
 		# only cure is to say out loud that the why is not the model's to invent.
 		# Recalled beats are the one place a cause may legitimately come from.
-		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s | These values are FACTS, but their CAUSES are not yours to invent. If the sheet shows lost hit points, missing gold, or a condition, you do NOT know how it happened unless the recalled beats below say so. Never explain a number by inventing an event — no battles, wounds, thefts or bargains that are not in the established context. If a cause matters and none is recorded, have a character ask rather than assert.]" % summary)
+		parts.append("[THE PLAYER'S SHEET (live, engine-owned): %s | These values are FACTS, but their CAUSES are not yours to invent. If the sheet shows lost hit points, missing %s, or a condition, you do NOT know how it happened unless the recalled beats below say so. Never explain a number by inventing an event — no battles, wounds, thefts or bargains that are not in the established context. If a cause matters and none is recorded, have a character ask rather than assert.]" % [summary, GameState.currency()])
 	parts.append("[%s]" % scene_context())
 	parts.append("[%s]" % GameState.clock_text())
 	for extra in [GameState.inv_text(), GameState.spell_text(),
@@ -120,7 +122,20 @@ func scene_context() -> String:
 			names.append(str(n["name"]))
 	var loc := here if here != "" else "not yet established — establish where the player is before acting"
 	var near := ", ".join(names.slice(0, 6)) if not names.is_empty() else "no one named yet — establish who, if anyone, is present"
-	return "SCENE — location: %s. Cast who may be near: %s%s" % [loc, near, geography_context()]
+	return "SCENE — location: %s. Cast who may be near: %s%s%s" % [loc, near, geography_context(), town_context()]
+
+
+## The town the party stands in, as its map drew it — see `LocalMap.brief`.
+func town_context() -> String:
+	var here := GameState.here()
+	var w: Dictionary = GameState.state.get("world") if GameState.state.get("world") is Dictionary else {}
+	for l in GameState.places():
+		if l is Dictionary and str(l.get("name", "")) == here and LocalMap.SETTLED_KINDS.has(str(l.get("kind", ""))):
+			var inside: Dictionary = w.get("inside") if w.get("inside") is Dictionary else {}
+			var rec: Dictionary = inside.get(here) if inside.get(here) is Dictionary else {}
+			var b := LocalMap.for_place(GameState.world_id(), here, str(l["kind"])).brief(str(rec.get("here", "")))
+			return (" " + b) if b != "" else ""
+	return ""
 
 
 ## WHAT THE WORLD IS MADE OF, and how far this party may reach into it.
@@ -255,16 +270,25 @@ func system_prompt() -> String:
 			break
 	if world.is_empty():
 		return ""
-	# The tale, when this adventure is one rather than free roam. Adventure ids
-	# are "dm-<world>-<story-slug>", which is how the Hall names them too.
-	var story := {}
+	return compose_world_gm(world, campaign_story(world))
+
+
+## The tale, when this adventure is one rather than free roam, or {}. Adventure
+## ids are "dm-<world>-<story-slug>", which is how the Hall names them too.
+## A trouble's `thread` may name it — that is what "ties into the main quest" means.
+func campaign_story(world := {}) -> Dictionary:
+	var wid := GameState.world_id()
+	if world.is_empty():
+		for w in Rules.builtin_worlds() + GameState.global_get("cworlds", []):
+			if w is Dictionary and str(w.get("id", "")) == wid:
+				world = w
+				break
 	var slug := GameState.cid().trim_prefix("dm-").trim_prefix(wid + "-")
 	if slug != "" and slug != "freeroam":
 		for s in world.get("stories", []):
 			if s is Dictionary and str(s.get("title", "")).to_lower().replace(" ", "-").begins_with(slug.left(12)):
-				story = s
-				break
-	return compose_world_gm(world, story)
+				return s
+	return {}
 
 
 func sheet_summary(s: Dictionary) -> String:
@@ -301,13 +325,41 @@ func sheet_summary(s: Dictionary) -> String:
 		if not bits.is_empty():
 			story_line = " The player wrote their own story — honor it and weave it into THIS world's setting, renaming places/factions to fit: %s" % " ".join(bits)
 	var dc := Rules.spell_save_dc(s)
-	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d gold. Abilities: %s. Conditions: %s.%s%s%s" % [
+	# PY-4 - THE ENGINE WAS TELLING THE NARRATOR THE WRONG WORD. This read
+	# "Purse: %d gold" for every world, so in Neon Spire the sheet handed the GM
+	# "Purse: 95 gold" and it duly charged the player "50 gold pieces" in a city
+	# whose HUD, merchant and kit all say credits. The model was not guessing; it
+	# was repeating us. GameState.currency() has been the UI's source all along.
+	return ("%s, level %d %s. HP %d/%d, AC %d, passive Perception %d. Purse: %d %s. Abilities: %s. Conditions: %s.%s%s%s" % [
 		str(s.get("name", "the hero")), int(s.get("level", 1)), Rules.class_label(s),
 		int(s.get("hp", 10)), int(s.get("hpMax", 10)), Rules.eff_ac(s, GameState.inv()),
-		Rules.passive_perception(s), int(s.get("gold", 0)),
+		Rules.passive_perception(s), int(s.get("gold", 0)), GameState.currency(),
 		", ".join(ab_parts),
 		", ".join(cond_names) if not cond_names.is_empty() else "none",
 		(" Spell save DC %d, spell attack +%d (enemies roll saves against this; use these numbers)." % [dc, Rules.spell_attack(s)]) if dc > 0 else "",
 		exh_line,
 		story_line,
 	])
+
+
+## Strip quantities out of something the narrator is about to be told (PY-1).
+##
+## The engine handed the GM "bought a Shock Blade (25 credits)" and asked it to
+## colour the exchange. It answered "your purse is 30 credits lighter" - a figure
+## nothing in the engine ever produced, in a game whose entire contract is that
+## THE TABLE OWNS EVERY NUMBER. The envelope already forbids the narrator from
+## stating numeric outcomes; this stops the game from inviting one.
+##
+## The player is not deprived of anything: the exact amount is in the line the
+## engine wrote for them a moment earlier. Only the copy the model sees is
+## stripped, and only parentheticals carrying a digit - so "(25 credits)" goes
+## and "(the one with the cracked grip)" stays.
+##
+## This closes the case where the game asks for the paraphrase. A model inventing
+## a number unprompted is a different failure, and the envelope's ban is what
+## covers that one.
+var _amount_re := RegEx.create_from_string("\\s*\\([^)]*\\d[^)]*\\)")
+
+
+func without_amounts(text: String) -> String:
+	return _amount_re.sub(text, "", true).replace("  ", " ")
