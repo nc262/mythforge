@@ -41,6 +41,20 @@ if (-not $godot -or -not (Test-Path $godot)) {
 if (-not $godot) { Write-Error 'no Godot console build found; set $env:GODOT'; exit 1 }
 Write-Host "godot   $godot" -ForegroundColor DarkGray
 
+# ── Preflight: what the gate cannot see, checked before it pretends to ───────
+# PL-12. The offline harnesses run in Api.test_mode and never load NobodyWho, so
+# a checkout WITHOUT the dll passed all of them and then failed the export with
+# "close the running game" — nothing was running. Name the real cause first.
+$gdext = Get-Content "$repo\godot\addons\nobodywho\nobodywho.gdextension" -Raw
+if ($gdext -match 'windows\.release\.x86_64\s*=\s*"res://([^"]+)"') {
+	$dll = Join-Path "$repo\godot" $Matches[1]
+	if (-not (Test-Path $dll)) {
+		Write-Host "RED: the NobodyWho dll is missing — $dll" -ForegroundColor Red
+		Write-Host '  It is gitignored (over GitHub''s file limit). Run: python scripts/fetch_nobodywho.py' -ForegroundColor Yellow
+		exit 1
+	}
+}
+
 # REDIRECT TO A FILE, NEVER PIPE. `Godot_..._console.exe` is a shim that spawns
 # the real GUI binary and relays its output; put a PowerShell pipe on the far end
 # and the pair deadlocks with the harness apparently running — 105 s of CPU, ten
@@ -262,6 +276,30 @@ if ($failed.Count) {
 
 # ── Export, and then the copy that is actually played ────────────────────────
 if (-not $NoExport) {
+	# PROVENANCE. Every checkout's gate repoints the ONE Desktop shortcut, so the
+	# last gate to run decides what gets played. On 2026-11-02 a stale master
+	# exported over a build from a branch 111 commits ahead of it. Each export
+	# stamps its commit beside the exe; refuse to replace — here, or wherever the
+	# shortcut points now — a build this checkout's history does not contain.
+	# Unstamped (older) builds are not judged. Delete the .commit file to override.
+	$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Mythforge.lnk'
+	$dists = @("$repo\dist")
+	if (Test-Path $lnk) {
+		$cur = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk).WorkingDirectory
+		if ($cur) { $dists += $cur }
+	}
+	foreach ($d in ($dists | Select-Object -Unique)) {
+		$stampFile = Join-Path $d 'Mythforge.commit'
+		if (-not (Test-Path $stampFile)) { continue }
+		$stamp = (Get-Content $stampFile -Raw).Trim()
+		& git -C $repo merge-base --is-ancestor $stamp HEAD 2>$null
+		if ($LASTEXITCODE -ne 0) {
+			Write-Host "`nRED: $d holds a build of $stamp, which this checkout does not contain." -ForegroundColor Red
+			Write-Host '  Exporting would replace a newer game with an older one. Merge that work first,' -ForegroundColor Yellow
+			Write-Host "  or delete $stampFile if the older build really is the one to play." -ForegroundColor Yellow
+			exit 1
+		}
+	}
 	Write-Host "`n── export " -NoNewline -ForegroundColor Cyan
 	New-Item -ItemType Directory -Force "$repo\dist" | Out-Null
 	$exportStart = Get-Date
@@ -274,10 +312,10 @@ if (-not $NoExport) {
 		Write-Host 'FAILED — no fresh exe. Close the running game and re-run.' -ForegroundColor Red; exit 1
 	}
 	Write-Host ("{0:N0} bytes" -f (Get-Item $exe).Length) -ForegroundColor Green
+	Set-Content -Path "$repo\dist\Mythforge.commit" -Value (& git -C $repo rev-parse HEAD) -Encoding ascii
 
 	# The game runs from dist: the nobodywho dll and baked/ must sit beside the
 	# exe (world_compiler.gd baked_dirs), so the Desktop gets a shortcut, not a copy.
-	$lnk = Join-Path ([Environment]::GetFolderPath('Desktop')) 'Mythforge.lnk'
 	$s = (New-Object -ComObject WScript.Shell).CreateShortcut($lnk)
 	$s.TargetPath = $exe; $s.WorkingDirectory = "$repo\dist"; $s.Save()
 	Write-Host "desktop $lnk" -ForegroundColor Green

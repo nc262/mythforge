@@ -9,6 +9,16 @@ description: Take the next item off Mythforge's backlog and carry it all the way
 be a scheduler. Pick the work, do the work, prove the work, record the work,
 pick again. Stop only for the short list in *When to actually ask* below.
 
+## 0. Am I on the live branch?
+
+Before reading the backlog, `git worktree list`, and for every other local
+branch `git rev-list --left-right --count HEAD...<branch>`. **If another branch
+is ahead, stop and say so** — its Backlog is the real one. On 2026-11-02 a
+session on `master` re-fixed PL-7 and re-ran the PL-10 bisection, both solved
+in August on a worktree branch 111 commits ahead and unpushed since Aug 6.
+After merging one in, run the gate with `-Import`: the class cache predates the
+merge and cannot see the new `class_name`s.
+
 ## 1. Pick
 
 The queue is [godot/docs/Backlog.md](../../../godot/docs/Backlog.md) — the one
