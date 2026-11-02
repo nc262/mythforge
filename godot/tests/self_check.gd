@@ -2887,6 +2887,31 @@ The term for spell slots is "Echoes."
 			var nn := str(nd.get("name", ""))
 			assert(not names.has(nn), "%s has two rooms called '%s'" % [lm.place, nn])
 			names[nn] = true
+	# AT-17: A TRADE HAS A PROPER NAME. "The Tavern" lost to a chart tavern's
+	# proper name in the real narrator's reply — a role word is not a place.
+	assert(not town.trades.is_empty(), "Gallows Quay sells nothing - the trade-name checks below would pass vacuously")
+	var owners := {}
+	for t in town.trades:
+		var who := str(t["name"]).get_slice("'s ", 0)
+		if str(t["name"]).contains("'s "):
+			assert(not owners.has(who), "%s has two trades run by %s - one family, two shops, and the narrator cannot tell which is meant" % [town.place, who])
+			owners[who] = true
+		assert(str(t["name"]) != "The %s" % t["word"],
+			"%s's %s is called '%s' - a role word, which the narrator cannot tell from any other %s" % [town.place, t["kind"], t["name"], t["word"]])
+		assert(town.brief().contains("%s (%s)" % [t["name"], t["word"]]),
+			"the brief names %s without saying it is a %s" % [t["name"], t["word"]])
+	for k in WorldSkin.TRADE_KEYS:
+		assert(int(WorldSkin._SIGN_TRADES.has(k)) + int(WorldSkin._CIVIC_TRADES.has(k)) + int(WorldSkin._OWNER_TRADES.has(k)) == 1,
+			"trade '%s' is in %s naming styles - it needs exactly one" % [k, "no" if not (WorldSkin._SIGN_TRADES + WorldSkin._CIVIC_TRADES + WorldSkin._OWNER_TRADES).has(k) else "two"])
+	for fam in WorldSkin.FAMILIES:
+		var sg: Dictionary = WorldSkin.SIGNS.get(fam, {})
+		for part in ["adj", "noun", "folk"]:
+			assert(sg.get(part) is Array and not (sg[part] as Array).is_empty(),
+				"world family '%s' has no '%s' words for trade names - it would borrow fantasy's" % [fam, part])
+		var titles := {}
+		for tw in ["Ashby", "Brack", "Corve", "Dunmere", "Eskholm", "Fallow"]:
+			titles[WorldSkin.trade_title(fam, "tavern", tw)] = true
+		assert(titles.size() > 2, "family '%s' gives six towns %d tavern name(s) - the seed is not reaching the name" % [fam, titles.size()])
 	# A FRIENDLY TOWN IS NEVER FOGGED. People live there, there is signage, and
 	# you can ask; fogging one means walking it to reveal streets, which is
 	# busywork wearing exploration's clothes.

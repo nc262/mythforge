@@ -180,7 +180,8 @@ func brief(standing_at := "") -> String:
 			_WEALTH[clampi(ward_wealth[i], 0, 3)], _LAW[clampi(ward_law[i], 0, 3)]])
 	var places_in: Array[String] = []
 	for t in trades:
-		places_in.append("%s in %s" % [t["name"], ward_name[int(t["ward"])]])
+		# The trade word rides along: "The Leaning Lantern" alone does not say it pours ale.
+		places_in.append("%s (%s) in %s" % [t["name"], t["word"], ward_name[int(t["ward"])]])
 	for s in sites:
 		var w := int(s.get("ward", 0))
 		places_in.append("%s (%s) in %s%s" % [s.get("name", ""), s.get("kind", ""), ward_name[w],
@@ -913,8 +914,12 @@ func _plan_trades() -> void:
 				lots.append(c)
 		if not lots.is_empty():
 			at = lots[absi(hash(key + place)) % lots.size()]
-		var nm := "The %s" % WorldSkin.trade_name(fam, key)
-		trades.append({"kind": key, "name": nm, "ward": best})
+		var nm := WorldSkin.trade_title(fam, key, place)
+		var salt := 1
+		while _has_name(nm) and salt < 8:
+			nm = WorldSkin.trade_title(fam, key, place, salt)
+			salt += 1
+		trades.append({"kind": key, "name": nm, "word": WorldSkin.trade_name(fam, key), "ward": best})
 		_add(nm, "site:" + key, at.x, at.y)
 		if nodes.size() > 1:
 			edges.append([0, nodes.size() - 1])

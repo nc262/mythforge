@@ -991,7 +991,8 @@ func _draw_place_card(font: Font, l: Dictionary) -> void:
 			var lm := LocalMap.for_place(wid, nm, kind)
 			var names: Array = []
 			for t in lm.trades:
-				names.append(str(t["name"]).trim_prefix("The "))
+				var tn := str(t["name"]).trim_prefix("The ")
+				names.append(tn if tn.contains(str(t["word"])) else "%s (%s)" % [tn, t["word"]])
 			if not names.is_empty():
 				lines.append(["Trades: " + ", ".join(names), 12, 0.85])
 		var tr := GameState.trouble_known(nm)   # a secret is not on the card until uncovered

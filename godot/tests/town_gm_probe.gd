@@ -15,6 +15,12 @@ const LINES := [
 	"I watch the mill after dark to see who comes and goes.",
 	"I confront the miller and press him hard for the truth.",
 ]
+const TRADE_LINES := [
+	"I look for somewhere to get a drink and hear the local gossip.",
+	"My sword is notched. Where can I get it mended?",
+	"I need a room for the night.",
+	"I want to buy rope, lamp oil and travel rations.",
+]
 var _acc := ""
 
 
@@ -79,4 +85,28 @@ func _ready() -> void:
 	var t := GameState.trouble_at(town)
 	print("RESULT: %d turns; leaked the secret in %d; %d [[clue]] (%d accepted); %d rolls marked trouble=1; clues on record %d; known=%s" % [
 		LINES.size(), leaks, clues, accepted, worked, (t.get("clues", []) as Array).size(), not GameState.trouble_known(town).is_empty()])
+	# AT-17: lines that SEND the player to a trade. A hit is the map's FULL name,
+	# case-sensitive; "map-names" above strips "The " and so scores any
+	# capitalised "Tavern" as a hit. An invented name is a "The X Y" the map lacks.
+	var proper := RegEx.create_from_string("The (?:[A-Z][\\w']+(?: (?:&|and|of the|of))? ?){1,3}")
+	var ctx := Composer.town_context()   # wards and chart places are not inventions
+	var hits := 0
+	var invented := 0
+	for line in TRADE_LINES:
+		_acc = ""
+		LocalGM.stream(Composer.envelope(line), Composer.system_prompt())
+		await Api.sse_done
+		var clean := str(Tags.parse(_acc)["clean"])
+		var used: Array = names.filter(func(n): return clean.contains(n))
+		var made: Array = []
+		for m in proper.search_all(clean):
+			var s := m.get_string().strip_edges()
+			# "The Crooked Goose Tavern" is the map's name with its trade word on.
+			if not ctx.contains(s) and not names.any(func(n): return s.begins_with(n)):
+				made.append(s)
+		hits += 1 if not used.is_empty() else 0
+		invented += 1 if not made.is_empty() else 0
+		print("[trade: %s] used=%s invented=%s\n    \"%s\"" % [line.left(30), used, made,
+			clean.strip_edges().replace("\n", " ").left(300)])
+	print("TRADES: map names=%s; %d/%d turns used one, %d invented one" % [names, hits, TRADE_LINES.size(), invented])
 	get_tree().quit()

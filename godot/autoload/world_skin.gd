@@ -108,6 +108,47 @@ func trade_name(family: String, key: String) -> String:
 	return str(FAMILIES["fantasy"]["trades"].get(key, key))
 
 
+## AT-17: A TRADE NEEDS A PROPER NAME. "The Tavern" is a role word, and a generic
+## noun loses to any proper one — the real narrator sent the player to a chart
+## tavern instead of the market's own. So each trade gets a name the way real
+## towns name them: a SIGN for a house you drink or deal in, an OWNER for a
+## workshop, the TOWN for its temple and guild. Seeded by town + trade, so the
+## map, the brief and every visit agree; the words are the family's flavour.
+## ponytail: six of each per family; widen when two towns in one world collide.
+const SIGNS := {
+	"fantasy": {"adj": ["Leaning", "Gilded", "Drowsy", "Crooked", "Silver", "Merry"], "noun": ["Lantern", "Stag", "Kettle", "Goose", "Anvil", "Thistle"], "folk": ["Harrow", "Thorne", "Mabry", "Pell", "Ashdown", "Crane"]},
+	"cyber": {"adj": ["Neon", "Static", "Chrome", "Broken", "Midnight", "Ghost"], "noun": ["Circuit", "Koi", "Signal", "Lotus", "Socket", "Relay"], "folk": ["Okafor", "Vance", "Tanaka", "Rourke", "Mbeki", "Sato"]},
+	"everyday": {"adj": ["Lucky", "Blue", "Corner", "Sunny", "Red", "Old"], "noun": ["Penny", "Door", "Spoon", "Lamp", "Fox", "Bench"], "folk": ["Miller", "Garcia", "Patel", "Brooks", "Nguyen", "Walsh"]},
+	"space": {"adj": ["Drifting", "Cold", "Last", "Silent", "Bright", "Red"], "noun": ["Comet", "Airlock", "Orbit", "Beacon", "Dock", "Star"], "folk": ["Okonkwo", "Reyes", "Ivanova", "Chen", "Halloran", "Adeyemi"]},
+	"steam": {"adj": ["Brass", "Copper", "Smoking", "Rusted", "Iron", "Whistling"], "noun": ["Gear", "Piston", "Gauge", "Boiler", "Kettle", "Cog"], "folk": ["Ashworth", "Fennimore", "Blackwood", "Crowley", "Pendleton", "Hargreave"]},
+	"pirate": {"adj": ["Salty", "Drunken", "Black", "Rusty", "Jolly", "Sunken"], "noun": ["Anchor", "Parrot", "Gull", "Barrel", "Kraken", "Compass"], "folk": ["Morgan", "Teague", "Flint", "Bonney", "Rackham", "Doyle"]},
+	"horror": {"adj": ["Hanged", "Weeping", "Hollow", "Silent", "Last", "Black"], "noun": ["Crow", "Bell", "Candle", "Lamb", "Gate", "Lantern"], "folk": ["Marsh", "Gaunt", "Whateley", "Corwin", "Pike", "Hale"]},
+	"norse": {"adj": ["Red", "Grey", "Howling", "Iron", "Frost", "One-Eyed"], "noun": ["Wolf", "Raven", "Boar", "Horn", "Elk", "Hammer"], "folk": ["Ragnarsson", "Eiriksdottir", "Bjornsson", "Haldorsdottir", "Ulfsson", "Sigrunsdottir"]},
+}
+const _SIGN_TRADES := ["inn", "tavern", "fence"]
+const _CIVIC_TRADES := ["temple", "guild"]
+const _OWNER_TRADES := ["store", "smith", "alchemist", "sage"]
+
+
+## `salt` re-rolls a name that is already taken in the same town.
+func trade_title(family: String, key: String, town: String, salt := 0) -> String:
+	var s: Dictionary = SIGNS.get(family, SIGNS["fantasy"])
+	var word := trade_name(family, key)
+	# TOWN hash + the trade's slot WITHIN ITS STYLE, not a hash per trade: per-trade
+	# hashes gave one town Crane's Smithy AND Crane's General Store. Slots are
+	# 0..n-1 and n is below the pool size, so no two trades share a word.
+	var h := absi(hash("%s|%d" % [town, salt]))
+	if _SIGN_TRADES.has(key):
+		var k := _SIGN_TRADES.find(key)
+		return "The %s %s" % [s["adj"][(h + k) % s["adj"].size()], s["noun"][(h / 7 + k) % s["noun"].size()]]
+	if _CIVIC_TRADES.has(key):
+		return "%s %s" % [town.trim_prefix("The ").get_slice(" ", 0), word]
+	# "Sage's Study" under an owner is "Harrow's Study", not "Harrow's Sage's Study".
+	if word.contains("'s "):
+		word = word.get_slice("'s ", 1)
+	return "%s's %s" % [s["folk"][(h + _OWNER_TRADES.find(key)) % s["folk"].size()], word]
+
+
 ## Everything a settlement of this size offers — its own row and all below it.
 func trades_at(tier: int) -> Array:
 	var out: Array = []
