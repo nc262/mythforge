@@ -63,8 +63,26 @@ func _ready() -> void:
 	var shop: Node = _find_dialog("merchant_window.gd")
 	await _must(shop != null, "Shop button click did not open the trading post")
 	await _visit("shop", shop)
-	await _click(shop.get_ok_button())
+	# PL-7 — pick a ware the way a hand does; the counter must still let you go.
+	# The soft-lock was a dialog that grew to 1002 px for 571 px of content when
+	# the detail strip appeared, so the exit fell off the bottom of the screen.
+	var wl: ItemList = shop._wares
+	var wp := wl.get_global_rect().position + wl.get_item_rect(1).get_center() + Vector2(shop.position)
+	for pressed in [true, false]:
+		var mb := InputEventMouseButton.new()
+		mb.button_index = MOUSE_BUTTON_LEFT
+		mb.pressed = pressed
+		mb.position = wp
+		mb.global_position = wp
+		get_tree().root.push_input(mb, true)
+		await get_tree().process_frame
+	await _must(wl.get_selected_items() == PackedInt32Array([1]), "shop: clicking a ware did not select it")
+	await _visit("shop-picked", shop)
+	var okb: Button = shop.get_ok_button()
+	await _click(okb)
 	await _settle(6)
+	await _must(not is_instance_valid(shop) or shop.is_queued_for_deletion(),
+		"shop: 'Leave the counter' did not close it after picking a ware (PL-7 soft-lock)")
 	Mode.enter("Exploration")
 	# ── Station: the Lore Book ──
 	await _click(_game.get_node("Margin/Split/ChatBox/Input/Lore"))
@@ -190,8 +208,14 @@ func _visit(station: String, root: Node) -> void:
 		var clip := scrolled.get_global_rect() if scrolled != null else b.get_viewport().get_visible_rect()
 		if scrolled != null and not clip.intersects(r):
 			continue   # scrolled out of view — reachable, not lost
-		if not b.get_viewport().get_visible_rect().intersects(r):
-			_issues.append("%s: '%s' sits off-screen at %s" % [station, _label(b), r])
+		# Measure against the SCREEN, not the button's own window: a dialog that
+		# grows past the bottom keeps every button inside itself (PL-7 hid here).
+		var on_screen := r
+		var host := b.get_window()
+		if host != null and host != get_tree().root and host.is_embedded():
+			on_screen.position += Vector2(host.position)
+		if not get_tree().root.get_visible_rect().intersects(on_screen):
+			_issues.append("%s: '%s' sits off-screen at %s" % [station, _label(b), on_screen])
 			continue
 		# Probe the button's on-screen centre. For a partly-scrolled card the true
 		# centre can sit under the scroll's clip edge; use the visible slice so we

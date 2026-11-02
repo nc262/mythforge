@@ -141,7 +141,11 @@ func _ready() -> void:
 	# its painted face, the buy price, and why the sell price reads low.
 	_detail = HBoxContainer.new()
 	_detail.add_theme_constant_override("separation", Ui.SPACE["m"])
-	_detail.visible = false
+	# PL-7 — laid out from the start, only transparent. Toggling `visible` let the
+	# autowrapped label be measured at zero width for a frame: the dialog grew to
+	# 1002 px for 571 px of content, never shrank, and pushed "Leave the counter"
+	# off the screen. A Window grows to its content's minimum and never shrinks.
+	_detail.modulate.a = 0.0
 	_detail_art = MythPlate.new(Vector2(72, 72), 0.0)
 	_detail.add_child(_detail_art)
 	_detail_txt = Label.new()
@@ -210,7 +214,7 @@ func _refresh() -> void:
 
 
 func _show_detail(item_name: String, line: String) -> void:
-	_detail.visible = true
+	_detail.modulate.a = 1.0
 	_detail_art.set_texture(Art.item_tex(item_name))
 	_detail_txt.text = line
 

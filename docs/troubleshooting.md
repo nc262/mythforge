@@ -11,6 +11,12 @@ fix. A symptom with a guess instead of a root cause does not belong here.
   per-file limit), so a fresh clone has the manifest but no DLL.
 - **Fix:** `python scripts/fetch_nobodywho.py`, or run `scripts/install.ps1`,
   which does it as step 3.
+- **Same cause, different face:** `verify.ps1` passes all three offline harnesses
+  (they run in `Api.test_mode`, so they never need the DLL) and then says
+  `export FAILED — no fresh exe. Close the running game`. Nothing is running: the
+  export log says `GDExtension: Failed to copy shared object`. Hit 2026-11-02 in
+  the main checkout, which had the addon's manifest but never its DLL — every
+  harness log also carried `GDExtension dynamic library not found`.
 
 > "no .gguf model in …"
 
@@ -171,6 +177,26 @@ so a log that captures only stdout shows a run that simply stopped mid-way.
 (`-HarnessTimeoutSec`, default 900), kills it, captures **both** streams, and
 reports it red. Anything else that drives a harness unattended must do the same
 or it waits forever.
+
+## A dialog's exit button is off the bottom of the screen
+
+The merchant counter soft-lock (PL-7): pick any ware and "Leave the counter" is
+gone, with no way out but killing the game.
+
+- **Cause:** an embedded `Window` grows to its content's minimum size and **never
+  shrinks back**, nor re-centres. The detail strip was toggled from
+  `visible = false`, and for the frame it appeared its autowrapped `Label` was
+  measured at zero width — one word per line — so the dialog grew to **1002 px
+  for 571 px of content** and kept it. Measured, not inferred: three earlier
+  fixes (re-measuring the content cap, clamping the position) assumed the
+  content was too tall, and it never was.
+- **Fix:** keep anything that appears later **in the layout from the start** and
+  reveal it with `modulate.a`, so a wrapping label always has its real width.
+  The dialog now stays 627 px before and after picking.
+- **Why no harness saw it:** `click_driver`'s audit measured a dialog's buttons
+  against the dialog's own viewport, so a button that left the screen with its
+  window was still "on-screen". It now measures in screen space, and the shop
+  station picks a ware and must leave by the button.
 
 ## The exe won't copy to the Desktop
 
