@@ -2674,6 +2674,31 @@ The term for spell slots is "Echoes."
 	var rec_body := chron_src.substr(chron_src.find("func record("), 900)
 	assert(rec_body.contains("_after_turn(") and chron_src.contains("await read_trouble(player_msg, gm_reply)"),
 		"Chronicle.record no longer reads the turn for the trouble - leads and effort would only ever come from tags the real narrator does not write")
+	# AT-18: A CALM TOWN'S TURN IS READ FOR A NEW TROUBLE. 8 calm turns, 0 [[trouble]]
+	# tags, 3 that set one up in prose (town_gm_probe -- calm).
+	assert(chron_src.contains("return await read_new_trouble(player_msg, gm_reply)"),
+		"read_trouble no longer falls through to read_new_trouble - a town with no trouble never gets one, because the narrator does not write the tag")
+	var _nt_char = GameState.character
+	var _nt_state = GameState.state
+	GameState.character = {"id": "dm-new-trouble", "world_id": "embervale"}
+	GameState.state = {"world": {"here": "Hearthwood Market"}}
+	for junk in ["trouble", "You overhear mentions of trouble on the road"]:
+		Chronicle.apply_new_trouble("Hearthwood Market", {"started": true, "what": junk, "fallout": "law"})
+		assert(GameState.trouble_at("Hearthwood Market").is_empty(),
+			"a read of '%s' became the town's trouble - the constrained call returned exactly that, measured" % junk)
+	var nt := Chronicle.apply_new_trouble("Hearthwood Market",
+		{"started": true, "what": "a bandit gang is taking the trade road,", "fallout": "road", "title": "The Bandit Problem"})
+	var rec_t := GameState.trouble_at("Hearthwood Market")
+	assert(str(nt.get("why", "?")) == "" and str(rec_t.get("what", "")) == "a bandit gang is taking the trade road"
+		and str(rec_t.get("reach", "")) == "town",
+		"a sound read did not land as a known town trouble, trimmed: %s / %s" % [nt, rec_t])
+	GameState.character = _nt_char
+	GameState.state = _nt_state
+	# THE EXAMPLE IS NOT THE STORY. With "press-gangs are taking men off the quay" as
+	# the [[trouble]] example, 8 of 16 calm turns told the player about press-gangs —
+	# an inland market town included. A placeholder took that to 0 of 8.
+	assert(not Composer.PROTOCOL.contains("press-gang"),
+		"the [[trouble]] example is concrete again - the narrator tells it as news in every town")
 	GameState.state.erase("world")
 
 	# ── The first-run tutorial ───────────────────────────────────────────────

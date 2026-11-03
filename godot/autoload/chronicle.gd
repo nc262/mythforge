@@ -138,8 +138,10 @@ const TROUBLE_READ_SCHEMA := '{"type":"object","required":["lead","working_it"],
 func read_trouble(player_msg: String, gm_reply: String) -> Dictionary:
 	var here := GameState.here()
 	var t := GameState.trouble_at(here)
-	if t.is_empty() or GameState.trouble_spent(t) or not LocalGM.available():
+	if not LocalGM.available():
 		return {}
+	if t.is_empty() or GameState.trouble_spent(t):
+		return await read_new_trouble(player_msg, gm_reply)
 	var clues: Array = t.get("clues") if t.get("clues") is Array else []
 	var raw := await LocalGM.complete_json(
 		"A trouble is running in %s: %s.
@@ -161,6 +163,60 @@ Narrator: %s
 	if not (parsed is Dictionary):
 		return {}
 	GameState.apply_trouble_read(here, parsed)
+	return parsed
+
+
+## ── DID THAT TURN START ONE? ─────────────────────────────────────────────────
+## MEASURED 2026-11-02 (town_gm_probe `-- calm`, a town with no trouble, 8
+## turns): ZERO [[trouble]] tags, while the prose set one up in 3 — press-gangs
+## on the quay, told by a trader and a priestess. Nothing else ever starts a
+## trouble, so the clocks, the leads and `read_trouble` above all starved. Same
+## cure: the narrator tells it, this reads it. Only in a settled place with no
+## trouble running, so a town that has one costs no extra call.
+const NEW_TROUBLE_SCHEMA := '{"type":"object","required":["started","what","fallout"],"properties":{' 	+ '"started":{"type":"boolean"},"what":{"type":"string","maxLength":200},' 	+ '"fallout":{"enum":["road","trade","prices","law"]},"title":{"type":"string","maxLength":50}}}'
+
+
+func read_new_trouble(player_msg: String, gm_reply: String) -> Dictionary:
+	var here := GameState.here()
+	var settled := false
+	for p in GameState.places():
+		if p is Dictionary and str(p.get("name", "")) == here:
+			settled = LocalMap.SETTLED_KINDS.has(str(p.get("kind", "")))
+			break
+	if not settled:
+		return {}
+	var raw := await LocalGM.complete_json(
+		"The party is in %s.\nRead ONLY this exchange.\nPlayer: %s\nNarrator: %s\n\n" % [
+			here, player_msg.left(400), gm_reply.left(1200)]
+		+ "`started`: true only if the NARRATOR'S words establish an ongoing problem IN %s itself " % here
+		+ "that will get worse unless someone acts — a threat, a crime, a scarcity, a feud people here are "
+		+ "suffering now. False for ordinary hardship, a mood, a rumour about somewhere else, or anything the "
+		+ "exchange does not actually say. If true: `what`, ONE short clause (under 15 words) saying what is going wrong, in the "
+		+ "narrator's terms; `fallout`, what it costs the town if nobody stops it (road: the roads out turn "
+		+ "dangerous / trade: the shops shut / prices: prices climb / law: the streets go lawless); `title`, a "
+		+ "short name for it.",
+		NEW_TROUBLE_SCHEMA)
+	var parsed = JSON.parse_string(raw)
+	if not (parsed is Dictionary) or not bool(parsed.get("started", false)):
+		return {}
+	return apply_new_trouble(here, parsed)
+
+
+## The engine's half of the read, apart so `self_check` can run it with no model.
+func apply_new_trouble(here: String, parsed: Dictionary) -> Dictionary:
+	# Measured: a constrained call returned what="trouble" once, and once a line
+	# of narration ("You overhear mentions of…"). Neither is a trouble to record.
+	# The cap is a backstop: at 120 it cut two of four mid-word, one into a stray glyph.
+	var what := str(parsed.get("what", "")).strip_edges().rstrip(",;: ")
+	if what.split(" ", false).size() < 4 or what.to_lower().begins_with("you "):
+		parsed["why"] = "not a trouble: '%s'" % what
+		return parsed
+	# reach=town: the player has just HEARD it, so it is known, not a secret.
+	var why := GameState.set_trouble(here, what, 6, "town",
+		{"fallout": str(parsed.get("fallout", "")), "title": str(parsed.get("title", ""))})
+	parsed["why"] = why
+	if why == "":
+		GameState.notice_troubles()
 	return parsed
 
 
