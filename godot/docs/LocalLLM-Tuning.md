@@ -138,6 +138,18 @@ model was generating garbage that never terminated. Going 8192 → 16384 turned 
 - A wedged worker cannot be reasoned about. Free the node and rebuild it; that
   also disconnects its signals, so a late answer cannot be handed to whichever
   call is waiting next.
+- **A JSON schema is compiled by llguidance** (NobodyWho v9.6.0,
+  `core/src/sampler.rs`), not GBNF, and its defaults are loose: **unbounded
+  whitespace** at every token boundary, and **extra keys** unless the object says
+  `"additionalProperties": false`. With no sampler behind the grammar, both ran to
+  the deadline (PL-13): 53 386 chars of newlines after `"cast"`, and 82 063 chars
+  of invented keys in a three-field story object. Of the root `x-guidance`
+  options, `whitespace_pattern` is **silently ignored** by this build (the
+  runaway was byte-identical with it set); `whitespace_flexible: false` works but
+  alone writes `{"a":"b"}`, which this model handles badly — codex and quests came
+  back `[]`. `LocalGM.compact_schema` pins `": "` and `", "` as separators, and
+  only the Worldsmith uses it: on Chronicle's calls it made world-tick events open
+  with a stray `": "`.
 
 ## 7. Settled numbers
 

@@ -359,6 +359,23 @@ or it waits forever.
 - **Fix:** check pm2's dump and the Startup folder before believing a kill
   worked. Both are disabled here.
 
+## A new world forges with no cast and no campaigns (PL-13)
+
+> `WARNING: LocalGM: JSON generation exceeded its deadline after 53386 chars`
+
+- **Cause:** llguidance, which compiles NobodyWho's JSON schemas, allows any run
+  of whitespace between tokens and any extra key in an object. The copy step has
+  no sampler, so once it starts padding it never stops. The DLL was NOT the cause
+  — v9.6.0 was green on Aug 17; the forge prompt changed on Sep 17 and the new
+  prose walked into the loop. The world also placed 0/7 places in a region
+  ("Aquari Coast" vs "The Aquari Coast"), and the harness itself carried a
+  stale copy of the location kinds that predated `settlement`.
+- **Fix:** Worldsmith objects are closed, its copy step sends the schema on one
+  line (`LocalGM.compact_schema`), regions are resolved at the forge. The world
+  call went **252 s → 51 s**, cast 0 → 3, stories 0 → 2, placed 0/7 → 4/7.
+- **Instrument:** the deadline warning prints the head and tail of what the
+  worker wrote. That one line is what named the cause.
+
 ## Method notes that keep earning their place
 
 - **A string search is not a dependency check.** A grep for a filename found 44

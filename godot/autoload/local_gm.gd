@@ -63,6 +63,8 @@ var _json_gen := 0
 ## Whether the shared node currently holds the prose sampler. The two configs
 ## replace each other, so whoever runs next has to put its own back.
 var _json_prose := false
+## What the JSON worker has written so far, so a deadline can say WHAT hung.
+var _json_partial := ""
 signal _json_free
 ## Emitted with the answer on success and with "" on failure — see the note where
 ## it is wired up.
@@ -283,6 +285,7 @@ func complete_json(prompt: String, schema := "", wait := 0.0) -> String:
 		_json_prose = false
 		add_child(_json_chat)
 		_json_chat.connect("response_finished", func(t: String): _deliver(t))
+		_json_chat.connect("response_updated", func(t: String): _json_partial += t)
 		if _json_chat.has_signal("worker_failed"):
 			_json_chat.connect("worker_failed", func(why: String):
 				push_warning("LocalGM: JSON generation failed: %s" % why)
@@ -317,12 +320,36 @@ func complete_json(prompt: String, schema := "", wait := 0.0) -> String:
 	# own context, so an accumulating conversation is pure cost.
 	if _json_chat.has_method("reset_context"):
 		_json_chat.call("reset_context")
+	_json_partial = ""
 	_json_chat.call("ask" if _json_chat.has_method("ask") else "say", prompt)
 	# The timer always fires, answer or not, so it carries the id of the call it
 	# was armed for — otherwise a deadline left over from a call that finished in
 	# time would go off in the middle of a perfectly healthy later one.
 	get_tree().create_timer(GEN_DEADLINE if wait <= 0.0 else wait).timeout.connect(_on_deadline.bind(gen))
 	return await _json_done
+
+
+## PL-13: NobodyWho compiles a JSON schema with llguidance, whose default lets
+## ANY run of whitespace sit between two tokens. With no sampler chain behind the
+## grammar, the Worldsmith's cast call wrote 53 386 chars of newlines and spaces
+## and nothing else until GEN_DEADLINE. So: one line, no newlines, but the
+## ": " and ", " this model writes by habit. Measured, the other two settings:
+## - bare `whitespace_flexible: false` ({"a":"b"}) pushed it off its tokens —
+##   codex and quests came back [] and a three-key object wrote prose inside its
+##   first string for 83 039 chars;
+## - `whitespace_pattern` is SILENTLY IGNORED by the llguidance in v9.6.0 — the
+##   runaway was byte-identical with it set.
+## The key is read on the ROOT object only. Applied by the Worldsmith alone: on
+## Chronicle's calls it made 2 of 3 world-tick events open with a stray ": ",
+## and those calls were never measured looping.
+## Spliced as text: a parse/stringify round trip turns `"minItems":3` into 3.0.
+func compact_schema(schema: String) -> String:
+	var s := schema.strip_edges()
+	if not s.begins_with("{") or s.contains("x-guidance"):
+		return schema
+	var rest := s.substr(1).strip_edges()
+	return '{"x-guidance":{"whitespace_flexible":false,"key_separator":": ","item_separator":", "}' \
+		+ ("" if rest.begins_with("}") else ",") + rest
 
 
 ## Speech to text, in this process. NobodyWhoSTT ships with the same extension
@@ -407,6 +434,7 @@ func prose(prompt: String) -> String:
 			_json_prose = true
 	if _json_chat.has_method("reset_context"):
 		_json_chat.call("reset_context")
+	_json_partial = ""
 	_json_chat.call("ask" if _json_chat.has_method("ask") else "say", prompt)
 	get_tree().create_timer(GEN_DEADLINE).timeout.connect(_on_deadline.bind(gen))
 	return await _json_done
@@ -436,7 +464,7 @@ func _deliver(text: String) -> void:
 func _on_deadline(gen: int) -> void:
 	if gen != _json_gen or not _json_busy:
 		return
-	push_warning("LocalGM: JSON generation exceeded %ds — discarding the worker" % int(GEN_DEADLINE))
+	push_warning("LocalGM: JSON generation exceeded its deadline after %d chars — discarding the worker. Head: %s … Tail: %s" % [_json_partial.length(), _json_partial.left(600).c_escape(), _json_partial.right(200).c_escape()])
 	if _json_chat != null and is_instance_valid(_json_chat):
 		_json_chat.queue_free()
 	_json_chat = null

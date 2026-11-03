@@ -209,7 +209,7 @@ func _ready() -> void:
 		_ck((w.get("stories", []) as Array).size() == 2, "exactly 2 campaigns, not 'about 2'")
 		_ck((w.get("cast", []) as Array).size() == 3, "exactly 3 cast members")
 		_ck((w.get("creatures", []) as Array).size() == 6, "a full bestiary of 6")
-		var kinds := ["tavern", "shop", "landmark", "wilds", "home"]
+		var kinds: Array = Worldsmith.LOC_KINDS
 		var kinds_ok := true
 		for l in w.get("locations", []):
 			if not kinds.has(str(l.get("kind", ""))):

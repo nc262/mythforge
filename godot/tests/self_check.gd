@@ -1753,6 +1753,28 @@ The term for spell slots is "Echoes."
 	var decoy := "**PART 3**\n- Fighter: Kraelion"
 	assert(Worldsmith.parse_reskins(decoy).get("names", {}).size() == 1,
 		"a partial answer yields only what it actually said")
+	# PL-13: the real model filed every place under "Aquari Coast" beside a region
+	# named "The Aquari Coast", and 0/7 places sat in a region GameState could find.
+	var placed := Worldsmith.place_in_regions(
+		[{"name": "Elysium's Edge", "region": "Aquari Coast"}, {"name": "Grotto", "region": "Aquari Caves"}],
+		[{"name": "The Aquari Coast", "lore": ""}])
+	assert(str(placed[0]["region"]) == "The Aquari Coast", "a place's region resolves to the name the region list holds")
+	assert(str(placed[1]["region"]) == "Aquari Caves", "a region the list never names is left as written")
+	# PL-13: llguidance allows unbounded whitespace by default, and the cast call
+	# spent 180 s writing nothing else. Every schema is sent on one line, still valid,
+	# integers still integers; and a Worldsmith object cannot grow keys it lacks
+	# (the story call invented them until the deadline).
+	for sc in [Worldsmith.core_schema(), "{}", '{"type":"object","properties":{"n":{"type":"array","minItems":3}}}']:
+		var cs := LocalGM.compact_schema(sc)
+		assert(JSON.parse_string(cs) is Dictionary and JSON.parse_string(cs)["x-guidance"]["whitespace_flexible"] == false,
+			"a schema is sent with whitespace pinned at its root: %s" % cs.left(80))
+	assert(LocalGM.compact_schema('{"a":{"type":"array","minItems":3}}').contains('"minItems":3}'), "integers survive the splice")
+	# A raw tab inside a JSON string is invalid JSON; Godot's parser forgives it, llguidance's does not.
+	assert(not LocalGM.compact_schema("{}").contains("\t") and not LocalGM.compact_schema("{}").contains("\n"),
+		"the whitespace pattern is escaped, not raw control characters")
+	assert(FileAccess.get_file_as_string("res://autoload/worldsmith.gd").contains("LocalGM.compact_schema(schema)"),
+		"the Worldsmith's copy step sends its schema on one line")
+	assert(Worldsmith.core_schema().count('"additionalProperties":false') == 3, "world, location and region objects are closed")
 
 	# The World Compiler's stages think in prose and are shaped afterwards, so
 	# the coercion is load-bearing: measured, the style stage returned eleven
@@ -1796,6 +1818,12 @@ The term for spell slots is "Echoes."
 		== "Her own potential", "a bolded em-dash label comes off")
 	assert(Worldsmith._strip_label("Ashen tide", "A") == "Ashen tide",
 		"an answer that merely starts with the letter is left alone")
+	# PL-13: the copy step swaps the two answers, labels and all.
+	assert(Worldsmith._strip_label("B: Eternal, maddening servitude.", "[AB]") == "Eternal, maddening servitude.",
+		"B's label comes off an answer filed under a")
+	assert(Worldsmith._strip_label("A pact for power.", "[AB]") == "A pact for power.", "the article A is not a label")
+	assert(FileAccess.get_file_as_string("res://autoload/worldsmith.gd").count('"kind"), "[AB]")') == 2,
+		"ask_back strips either label from either answer")
 
 	# The World Forge's question pool. The whole point is that two different
 	# worlds get asked different things, so that is what gets asserted — a pool

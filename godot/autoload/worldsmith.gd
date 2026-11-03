@@ -57,7 +57,7 @@ func _obj(props: Dictionary) -> String:
 	var parts: Array[String] = []
 	for k in keys:
 		parts.append('"%s":%s' % [k, props[k]])
-	return '{"type":"object","required":["%s"],"properties":{%s}}' % [
+	return '{"type":"object","additionalProperties":false,"required":["%s"],"properties":{%s}}' % [
 		"\",\"".join(keys), ",".join(parts)]
 
 
@@ -166,7 +166,7 @@ func _ask(prompt: String, schema: String) -> Dictionary:
 		return {}
 	var raw := await LocalGM.complete_json(
 		"Copy the following into the required fields. Use ONLY what it says — do "
-		+ "not invent, summarise or improve anything.\n\n" + thought, schema)
+		+ "not invent, summarise or improve anything.\n\n" + thought, LocalGM.compact_schema(schema))
 	var parsed = JSON.parse_string(raw)
 	return parsed if parsed is Dictionary else {}
 
@@ -272,12 +272,12 @@ func _world(idea: String, payload: Dictionary) -> Dictionary:
 		"backdrop": _cap(core.get("backdrop", ""), "backdrop"),
 		"cast": _clean_cast(life.get("cast", [])),
 		"stories": _clean_stories(life.get("stories", [])),
-		"locations": _clean_locs(core.get("locations", [])),
 		"regions": _clean_regions(core.get("regions", [])),
 		"creatures": _clean_creatures(life.get("creatures", [])),
 		"reskins": null,
 		"_status": 200,
 	}
+	out["locations"] = place_in_regions(_clean_locs(core.get("locations", [])), out["regions"])
 
 	if refining:
 		# The class reskins are not part of what a refine asks about, so they
@@ -377,8 +377,10 @@ func ask_back(world: Dictionary) -> Dictionary:
 	if parsed.is_empty():
 		return {}
 	var q := _strip_label(_cap(parsed.get("question", ""), "premise"), "QUESTION")
-	var a := _strip_label(_cap(parsed.get("a", ""), "kind"), "A")
-	var b := _strip_label(_cap(parsed.get("b", ""), "kind"), "B")
+	# EITHER label off either field: the copy step files "B: …" under `a` as
+	# often as not (PL-13 probe, 3/3 swapped under both whitespace settings).
+	var a := _strip_label(_cap(parsed.get("a", ""), "kind"), "[AB]")
+	var b := _strip_label(_cap(parsed.get("b", ""), "kind"), "[AB]")
 	# Two identical options is not a choice, and a button the width of the screen
 	# is not an option — an answer that arrives as a paragraph means the model
 	# described the world instead of answering, so drop the whole row.
@@ -485,6 +487,24 @@ func _clean_locs(items) -> Array:
 				"region": _cap(p.get("region", ""), "name"),
 			})
 	return out
+
+
+## PL-13: a place names its region the way prose does — "Aquari Coast" under a
+## region the same answer calls "The Aquari Coast". GameState matches region names
+## exactly (case aside), so every such place landed on the chart's centre ring:
+## measured 0/7 placed on the local_stack world. Resolved here, once, to the name
+## the region list holds; a region the list never names stays as written.
+func place_in_regions(locs: Array, regions: Array) -> Array:
+	var canon := {}
+	for r in regions:
+		canon[_region_key(str(r["name"]))] = str(r["name"])
+	for l in locs:
+		l["region"] = canon.get(_region_key(str(l.get("region", ""))), l.get("region", ""))
+	return locs
+
+
+func _region_key(s: String) -> String:
+	return s.strip_edges().to_lower().trim_prefix("the ")
 
 
 ## Regions, deduped by name. Coordinates are NOT asked for and never will be —
